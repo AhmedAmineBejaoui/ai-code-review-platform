@@ -1,0 +1,58 @@
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass
+from typing import Any
+
+
+@dataclass
+class Analysis:
+    id: str
+    repo: str
+    provider: str
+    pr_number: int | None
+    commit_sha: str | None
+    source: str
+    status: str
+    stage: str | None
+    progress: int | None
+    nb_files_changed: int | None
+    additions_total: int | None
+    deletions_total: int | None
+    diff_hash: str
+    diff_raw: str
+    diff_redacted: str | None
+    has_secrets: bool
+    redaction_stats_json: str
+    static_stats_json: str
+    error_code: str | None
+    error_message: str | None
+    created_at: str
+    updated_at: str
+    metadata_json: str
+
+    @property
+    def metadata(self) -> dict[str, Any]:
+        try:
+            return json.loads(self.metadata_json)
+        except Exception:
+            return {}
+
+    @property
+    def redaction_stats(self) -> dict[str, Any]:
+        try:
+            return json.loads(self.redaction_stats_json)
+        except Exception:
+            return {}
+
+    @property
+    def static_stats(self) -> dict[str, Any]:
+        try:
+            return json.loads(self.static_stats_json)
+        except Exception:
+            return {}
+
+    @property
+    def diff_text(self) -> str:
+        # Backward-compatible alias for older code paths.
+        return self.diff_raw

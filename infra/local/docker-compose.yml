@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:15
+    container_name: ai-review-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: simplepass
+      POSTGRES_DB: ai_code_review_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ai_code_review_platform"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    container_name: ai-review-redis
+    ports:
+      - "6380:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+    container_name: ai-review-api
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:simplepass@db:5432/ai_code_review_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ANALYSIS_QUEUE_NAME: analyses
+      GITHUB_WEBHOOK_SECRET: local-dev-secret
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ../../apps/backend
+      dockerfile: Dockerfile
+    container_name: ai-review-worker
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses
+    environment:
+      DATABASE_URL: postgresql+psycopg://postgres:simplepass@db:5432/ai_code_review_platform
+      REDIS_URL: redis://redis:6379/0
+      CELERY_BROKER_URL: redis://redis:6379/0
+      CELERY_RESULT_BACKEND: redis://redis:6379/1
+      ANALYSIS_QUEUE_NAME: analyses
+      GITHUB_WEBHOOK_SECRET: local-dev-secret
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  pgdata:
