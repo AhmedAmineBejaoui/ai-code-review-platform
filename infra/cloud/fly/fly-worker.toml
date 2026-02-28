@@ -1,0 +1,39 @@
+# Fly.io configuration for the Celery worker process
+# App name: ai-review-worker
+# Create with: flyctl apps create ai-review-worker --machines
+
+app            = "ai-review-worker"
+primary_region = "iad"
+
+[build]
+  dockerfile = "../../apps/backend/Dockerfile"
+
+# ─── Process definition ───────────────────────────────────────────────────────
+# Override the Dockerfile CMD with the celery worker command.
+# --concurrency=1 keeps memory usage predictable on 512MB VMs.
+[processes]
+  worker = "celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses --concurrency=1"
+
+# ─── Non-secret environment variables ────────────────────────────────────────
+[env]
+  ENV                                      = "production"
+  ANALYSIS_QUEUE_NAME                      = "analyses"
+  CELERY_TASK_ALWAYS_EAGER                 = "false"
+  CELERY_WORKER_POOL                       = "prefork"
+  SECRET_SCAN_ENABLED                      = "true"
+  STATIC_ANALYSIS_ENABLED                  = "true"
+  STATIC_ANALYSIS_RUFF_ENABLED             = "true"
+  STATIC_ANALYSIS_SEMGREP_ENABLED          = "true"
+  STATIC_ANALYSIS_AUTO_CHECKOUT_ENABLED    = "true"
+  STATIC_ANALYSIS_REPO_HOST                = "github.com"
+  STATIC_ANALYSIS_CHECKOUT_TIMEOUT_SECONDS = "45"
+  PURGE_RAW_DIFF_AFTER_REDACTION           = "true"
+  SECRETS_BOOTSTRAP_FROM_ENV               = "true"
+
+# ─── No HTTP service needed ───────────────────────────────────────────────────
+# Workers connect outbound to Redis/PostgreSQL only.
+
+# ─── VM resources ─────────────────────────────────────────────────────────────
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import json
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_analysis_service
 from app.api.errors import ApiError
+from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.core.services.analysis_service import (
     AnalysisService,
     CreateAnalysisCommand,
@@ -187,6 +189,28 @@ def _raise_api_error(exc: ServiceError) -> None:
     ) from exc
 
 
+def _parse_metadata_query(raw: str | None) -> dict[str, Any]:
+    if raw is None or not raw.strip():
+        return {}
+    try:
+        parsed = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ApiError(
+            status_code=400,
+            code="INVALID_METADATA",
+            message="metadata query must be valid JSON object",
+            details={"field": "metadata"},
+        ) from exc
+    if not isinstance(parsed, dict):
+        raise ApiError(
+            status_code=400,
+            code="INVALID_METADATA",
+            message="metadata query must be a JSON object",
+            details={"field": "metadata"},
+        )
+    return parsed
+
+
 def _to_finding_response(model: Finding) -> FindingResponse:
     return FindingResponse(
         id=model.id,
@@ -307,8 +331,10 @@ def _to_analysis_response(
 
 
 @router.post("/analyze", response_model=AnalyzeAcceptedResponse, status_code=202)
+@router.post("/analyses", response_model=AnalyzeAcceptedResponse, status_code=202)
 async def create_analysis(
     payload: AnalyzeRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.create")),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalyzeAcceptedResponse:
     created: Analysis | None = None
@@ -361,9 +387,70 @@ async def create_analysis(
     return AnalyzeAcceptedResponse(analysis_id=queued.id, status="QUEUED", task_id=enqueued.task_id)
 
 
+@router.post("/analyze/stream", response_model=AnalyzeAcceptedResponse, status_code=202)
+@router.post("/analyses/stream", response_model=AnalyzeAcceptedResponse, status_code=202)
+async def create_analysis_stream(
+    request: Request,
+    source: Literal["github_actions", "github_webhook", "cli", "manual"] = Query(default="github_actions"),
+    repo: str = Query(max_length=255),
+    pr_number: int | None = Query(default=None, ge=1),
+    commit_sha: str | None = Query(default=None, min_length=6, max_length=64, pattern=r"^[0-9a-fA-F]+$"),
+    metadata: str | None = Query(default=None),
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.create")),
+    service: AnalysisService = Depends(get_analysis_service),
+) -> AnalyzeAcceptedResponse:
+    created: Analysis | None = None
+    try:
+        created = await service.create_analysis_from_stream(
+            source=source,
+            repo=repo,
+            pr_number=pr_number,
+            commit_sha=commit_sha,
+            metadata=_parse_metadata_query(metadata),
+            diff_stream=request.stream(),
+        )
+        queued = await service.update_analysis_status(
+            UpdateAnalysisStatusCommand(
+                analysis_id=created.id,
+                status="QUEUED",
+                stage="QUEUED",
+                progress=10,
+                metadata_updates={"pipeline": {"queued": True}},
+            )
+        )
+        enqueued = enqueue_analysis_job(created.id)
+    except QueueUnavailableError as exc:
+        if created is not None:
+            try:
+                await service.update_analysis_status(
+                    UpdateAnalysisStatusCommand(
+                        analysis_id=created.id,
+                        status="FAILED",
+                        stage="FAILED",
+                        progress=100,
+                        error_code="QUEUE_DOWN",
+                        error_message="Unable to enqueue analysis job",
+                        metadata_updates={"pipeline": {"queued": False}},
+                    )
+                )
+            except ServiceError:
+                pass
+        raise ApiError(
+            status_code=503,
+            code="QUEUE_UNAVAILABLE",
+            message="Queue unavailable while enqueuing analysis",
+            details={"analysis_id": created.id if created is not None else None},
+        ) from exc
+    except ServiceError as exc:
+        _raise_api_error(exc)
+
+    return AnalyzeAcceptedResponse(analysis_id=queued.id, status="QUEUED", task_id=enqueued.task_id)
+
+
 @router.get("/analyses/{analysis_id}", response_model=AnalysisResponse)
 async def get_analysis(
     analysis_id: str,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisResponse:
     try:
@@ -381,6 +468,7 @@ async def get_analysis(
 async def list_analyses(
     page: int = Query(default=1, ge=1),
     size: int = Query(default=settings.API_DEFAULT_PAGE_SIZE, ge=1, le=settings.API_MAX_PAGE_SIZE),
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisListResponse:
     try:
@@ -401,6 +489,7 @@ async def list_analyses(
 async def update_analysis_status(
     analysis_id: str,
     payload: UpdateStatusRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisResponse:
     try:
@@ -427,6 +516,7 @@ async def update_analysis_status(
 async def create_analysis_finding(
     analysis_id: str,
     payload: CreateFindingRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> FindingResponse:
     try:

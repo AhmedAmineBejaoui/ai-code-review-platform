@@ -8,6 +8,7 @@ from typing import Any
 
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
+from app.core.security.secret_store import get_secret_store
 from app.core.static_analysis import RuffAnalyzer, SemgrepAnalyzer, StaticAnalysisService
 from app.core.static_analysis.base import StaticAnalysisResult
 from app.core.static_analysis.workspace import prepare_workspace
@@ -73,13 +74,14 @@ def run_static_analysis_stage(parsed: Any, *, repo_name: str, commit_sha: str | 
         )
 
     service = StaticAnalysisService(analyzers=analyzers)
+    git_token = get_secret_store().resolve_static_analysis_git_token()
     workspace = prepare_workspace(
         repo=repo_name,
         commit_sha=commit_sha,
         default_workspace_path=settings.STATIC_ANALYSIS_WORKSPACE_PATH,
         auto_checkout_enabled=settings.STATIC_ANALYSIS_AUTO_CHECKOUT_ENABLED,
         git_host=settings.STATIC_ANALYSIS_REPO_HOST,
-        git_token=settings.STATIC_ANALYSIS_GIT_TOKEN,
+        git_token=git_token,
         checkout_timeout_seconds=settings.STATIC_ANALYSIS_CHECKOUT_TIMEOUT_SECONDS,
         checkout_base_path=settings.STATIC_ANALYSIS_CHECKOUT_BASE_PATH,
     )

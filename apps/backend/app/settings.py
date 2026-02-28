@@ -13,6 +13,10 @@ _ENV_FILES = list(dict.fromkeys(_ENV_FILES))
 class Settings(BaseSettings):
     env: str = "dev"
     GITHUB_WEBHOOK_SECRET: str = "c153311a45d393520b58f26f53963ce2e581e098cc8f909033f64e1e009a6434"
+    GITHUB_APP_ID: str | None = None
+    GITHUB_APP_INSTALLATION_ID: str | None = None
+    GITHUB_APP_PRIVATE_KEY_PEM: str | None = None
+    GITHUB_API_BASE_URL: str = "https://api.github.com"
     REDIS_URL: str | None = None
     CELERY_BROKER_URL: str | None = None
     CELERY_RESULT_BACKEND: str | None = None
@@ -41,8 +45,31 @@ class Settings(BaseSettings):
     STATIC_ANALYSIS_CHECKOUT_TIMEOUT_SECONDS: int = 45
     STATIC_ANALYSIS_CHECKOUT_BASE_PATH: str | None = None
     STATIC_ANALYSIS_FILTER_CHANGED_LINES: bool = True
+    SECRETS_ENCRYPTION_KEY: str | None = None
+    SECRETS_BOOTSTRAP_FROM_ENV: bool = True
+    RBAC_ENFORCEMENT_ENABLED: bool = False
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100
+
+    # ── LLM Integration (OpenAI) ──────────────────────────────────────────────
+    LLM_ENABLED: bool = False
+    OPENAI_API_KEY: str | None = None
+    OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_MAX_TOKENS: int = 2048
+
+    # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
+    QDRANT_ENABLED: bool = False
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_COLLECTION: str = "code_review_rules"
+    QDRANT_API_KEY: str | None = None
+
+    # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
+    OBJECT_STORAGE_ENABLED: bool = False
+    MINIO_ENDPOINT: str = "localhost:9000"
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET: str = "ai-review-artifacts"
+    MINIO_SECURE: bool = False
 
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 

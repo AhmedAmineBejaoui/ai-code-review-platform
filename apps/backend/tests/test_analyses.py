@@ -86,6 +86,62 @@ def test_analyze_happy_path():
     assert "task_id" in data
 
 
+def test_analyze_stream_happy_path():
+    repo = f"owner/repo-{uuid.uuid4().hex[:8]}"
+    resp = client.post(
+        "/v1/analyze/stream",
+        params={
+            "source": "github_actions",
+            "repo": repo,
+            "pr_number": 1,
+            "commit_sha": "abc123",
+            "metadata": '{"actor":"test-stream"}',
+        },
+        content=VALID_DIFF.encode("utf-8"),
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+    )
+    assert resp.status_code == 202
+    data = resp.json()
+    assert data["status"] == "QUEUED"
+    assert "analysis_id" in data
+    assert "task_id" in data
+
+
+def test_analyze_stream_invalid_utf8_rejected():
+    repo = f"owner/repo-{uuid.uuid4().hex[:8]}"
+    resp = client.post(
+        "/v1/analyze/stream",
+        params={
+            "source": "github_actions",
+            "repo": repo,
+            "pr_number": 1,
+            "commit_sha": "abc123",
+        },
+        content=b"diff --git a/a b/a\n@@ -1 +1 @@\n+\xff\xfe\xfd\n",
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert resp.status_code == 400
+    assert resp.json()["error"]["code"] == "INVALID_DIFF_ENCODING"
+
+
+def test_analyze_stream_diff_too_large_rejected():
+    repo = f"owner/repo-{uuid.uuid4().hex[:8]}"
+    big_diff = ("diff --git a/x b/x\n@@ -1 +1 @@\n" + ("+" * 3_000_000)).encode("utf-8")
+    resp = client.post(
+        "/v1/analyze/stream",
+        params={
+            "source": "github_actions",
+            "repo": repo,
+            "pr_number": 1,
+            "commit_sha": "abc123",
+        },
+        content=big_diff,
+        headers={"Content-Type": "application/octet-stream"},
+    )
+    assert resp.status_code == 413
+    assert resp.json()["error"]["code"] == "DIFF_TOO_LARGE"
+
+
 def test_get_analysis_happy_path():
     repo = f"owner/repo-{uuid.uuid4().hex[:8]}"
     created = client.post("/v1/analyze", json=_body(repo)).json()

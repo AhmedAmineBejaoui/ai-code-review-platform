@@ -1,7 +1,44 @@
+# infra/local/docker-compose.yml
+# Full local dev stack — complete architecture with all services from the diagram:
+#
+#   CORE:        PostgreSQL 15 · Redis 7
+#   FUTURE SVCS: Qdrant (vector store) · MinIO (S3 object storage)
+#   APPLICATION: FastAPI API · Celery Worker
+#   MONITORING:  Flower · redis-exporter · postgres-exporter
+#   OBSERV:      Prometheus · Grafana (4 dashboards)
+#   TOOLING:     Adminer (DB UI)
+#
+# Usage: make up
+# Ports summary:
+#   8000 → FastAPI API         9090 → Prometheus
+#   3000 → Grafana             5555 → Flower (Celery UI)
+#   9000 → MinIO API           9001 → MinIO Console
+#   6333 → Qdrant REST         6334 → Qdrant gRPC
+#   8080 → Adminer (DB UI)     5432 → PostgreSQL
+#   6380 → Redis               9121 → redis-exporter
+#   9187 → postgres-exporter
+
+networks:
+  ai-review-net:
+    driver: bridge
+
+volumes:
+  pgdata:           # PostgreSQL data
+  qdrant_data:      # Qdrant vector embeddings
+  minio_data:       # MinIO object storage
+  prometheus_data:  # Prometheus time-series data (15 days)
+  grafana_data:     # Grafana dashboards + config
+
 services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  CORE INFRASTRUCTURE
+  # ═══════════════════════════════════════════════════════════════════════════
+
   db:
     image: postgres:15
     container_name: ai-review-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: simplepass
@@ -10,35 +47,123 @@ services:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      - ai-review-net
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ai_code_review_platform"]
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   redis:
     image: redis:7-alpine
     container_name: ai-review-redis
+    restart: unless-stopped
     ports:
       - "6380:6379"
+    networks:
+      - ai-review-net
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Vector Store (Qdrant) ───────────────────────────────────────────────────
+  # Stores KB chunk embeddings for semantic search.
+  # REST API + Dashboard: http://localhost:6333/dashboard
+  # gRPC:                 localhost:6334
+  qdrant:
+    image: qdrant/qdrant:v1.9.2
+    container_name: ai-review-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API + Web dashboard
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    networks:
+      - ai-review-net
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ─── Object Storage (MinIO — S3-compatible) ──────────────────────────────────
+  # Stores analysis artifacts, diffs, KB documents.
+  # S3 API:  http://localhost:9000
+  # Console: http://localhost:9001  (minioadmin / minioadmin)
+  # Bucket:  ai-review-artifacts
+  minio:
+    image: minio/minio:RELEASE.2024-03-21T23-13-43Z
+    container_name: ai-review-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_PROMETHEUS_AUTH_TYPE: public   # Expose /minio/v2/metrics/cluster
+    ports:
+      - "9000:9000"   # S3 API endpoint
+      - "9001:9001"   # Web Console
+    volumes:
+      - minio_data:/data
+    networks:
+      - ai-review-net
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  APPLICATION SERVICES
+  # ═══════════════════════════════════════════════════════════════════════════
 
   api:
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
+    image: ai-review-backend:local
     container_name: ai-review-api
+    restart: unless-stopped
+    env_file:
+      - ../../.env
     environment:
+      # Docker-internal service addresses (override .env localhost values)
       DATABASE_URL: postgresql+psycopg://postgres:simplepass@db:5432/ai_code_review_platform
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       ANALYSIS_QUEUE_NAME: analyses
-      GITHUB_WEBHOOK_SECRET: local-dev-secret
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
     ports:
       - "8000:8000"
     depends_on:
@@ -46,25 +171,187 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ai-review-net
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz')\""]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
   worker:
     build:
       context: ../../apps/backend
       dockerfile: Dockerfile
+    image: ai-review-backend:local
     container_name: ai-review-worker
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses
+    restart: unless-stopped
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses --concurrency=2
+    env_file:
+      - ../../.env
     environment:
       DATABASE_URL: postgresql+psycopg://postgres:simplepass@db:5432/ai_code_review_platform
       REDIS_URL: redis://redis:6379/0
       CELERY_BROKER_URL: redis://redis:6379/0
       CELERY_RESULT_BACKEND: redis://redis:6379/1
       ANALYSIS_QUEUE_NAME: analyses
-      GITHUB_WEBHOOK_SECRET: local-dev-secret
+      # Force prefork inside Linux containers (solo is only needed on Windows host)
+      CELERY_WORKER_POOL: prefork
+      QDRANT_URL: http://qdrant:6333
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      MINIO_SECURE: "false"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
+      qdrant:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    networks:
+      - ai-review-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "5"
 
-volumes:
-  pgdata:
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  CELERY MONITORING
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  flower:
+    image: mher/flower:2.0
+    container_name: ai-review-flower
+    restart: unless-stopped
+    command: >
+      celery
+      --broker=redis://redis:6379/0
+      flower
+      --port=5555
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-review-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  METRICS EXPORTERS
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: ai-review-redis-exporter
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - ai-review-net
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: ai-review-postgres-exporter
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: "postgresql://postgres:simplepass@db:5432/ai_code_review_platform?sslmode=disable"
+    ports:
+      - "9187:9187"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ai-review-net
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  OBSERVABILITY STACK
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: ai-review-prometheus
+    restart: unless-stopped
+    volumes:
+      - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+      - --web.enable-admin-api
+    ports:
+      - "9090:9090"
+    networks:
+      - ai-review-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ai-review-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_SERVER_ROOT_URL: "http://localhost:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3000:3000"
+    depends_on:
+      - prometheus
+    networks:
+      - ai-review-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  DATABASE MANAGEMENT + STORAGE UI
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  adminer:
+    image: adminer:4.8.1
+    container_name: ai-review-adminer
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - ai-review-net

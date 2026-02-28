@@ -1,174 +1,280 @@
 # AI Code Review Platform
 
-Backend-first monorepo for an automated code review platform:
-- FastAPI API
-- Celery worker pipeline
-- PostgreSQL persistence
-- Redis queue
-- Diff parsing (unified diff)
-- Secret detection + redaction
-- Static analysis (Ruff + Semgrep)
+Automated code review platform — FastAPI + Celery pipeline with secret scanning, static analysis (Ruff + Semgrep), LLM summarization, vector search (Qdrant), and S3 object storage (MinIO).
 
-This README is a complete operational guide with detailed commands.
+---
 
-## 1) Repository Structure
+## Table of Contents
+
+1. [Repository Structure](#1-repository-structure)
+2. [Architecture](#2-architecture)
+3. [Requirements](#3-requirements)
+4. [Getting Started](#4-getting-started)
+5. [Services & Ports](#5-services--ports)
+6. [Environment Variables](#6-environment-variables)
+7. [Make Commands](#7-make-commands)
+8. [Running Tests](#8-running-tests)
+9. [Manual End-to-End Test](#9-manual-end-to-end-test)
+10. [Database Migrations](#10-database-migrations)
+11. [Webhook Local Testing](#11-webhook-local-testing)
+12. [Local Process Mode (no Docker for API/worker)](#12-local-process-mode-no-docker-for-apiworker)
+13. [CI/CD & Cloud Deployment](#13-cicd--cloud-deployment)
+14. [Common Errors & Fixes](#14-common-errors--fixes)
+15. [Security Notes](#15-security-notes)
+
+---
+
+## 1. Repository Structure
 
 ```text
 ai-code-review-platform/
   apps/
-    backend/        # FastAPI + Celery + Alembic + core pipeline
-    dashboard/      # Frontend placeholder
-    cli/            # CLI placeholder
+    backend/          # FastAPI + Celery + Alembic + analysis pipeline
   infra/
-    local/          # docker-compose for local stack
-    cloud/          # cloud infra placeholders
-    observability/  # observability placeholders
+    local/            # docker-compose.yml  (full local stack)
+    observability/    # Prometheus config + Grafana provisioning + dashboards
+    cloud/            # Fly.io TOML configs + cloud deployment guide
   docs/
-    manual-test-windows.md
-    architecture.md
-  t6_manual/
-    demo.py         # manual static-analysis sample file
+    architecture.md   # Full architecture diagram
+  .github/
+    workflows/
+      ci.yml          # Lint + test + Docker smoke test
+      cd.yml          # Build → GHCR → Fly.io deploy
+  Makefile            # All dev commands (make help)
+  .env.example        # Environment variable template
 ```
 
-## 2) Implemented Features (Current State)
+---
 
-- T1: `/v1/analyze` intake endpoint + validations + DB insert + 202 response
-- T2: relational schema with Alembic migrations
-- T3: async worker pipeline (RECEIVED -> QUEUED -> RUNNING -> COMPLETED/FAILED)
-- T4: unified diff parser with files/hunks/line mapping
-- T5: secret scanning + redaction + security findings
-- T6: static analysis with Ruff + Semgrep + changed-line filtering
-- Tool run tracking: `tool_runs` table (status, duration, exit code, snippets, etc.)
-- Optional workspace checkout for static analysis using repo + commit SHA
+## 2. Architecture
 
-## 3) Core API Endpoints
+See [`docs/architecture.md`](docs/architecture.md) for the full diagram.
 
-- `GET /healthz`
-- `POST /v1/analyze`
-- `GET /v1/analyses/{analysis_id}`
-- `GET /v1/analyses?page=1&size=20`
-- `POST /v1/analyses/{analysis_id}/status`
-- `POST /v1/analyses/{analysis_id}/findings`
-- `POST /webhooks/github`
-- `GET /__routes`
+**Short summary:**
 
-## 4) Requirements
+```
+GitHub Webhook / REST client
+        │
+        ▼
+  FastAPI :8000  →  Redis (broker)  →  Celery Worker
+                                             │
+                         ┌───────────────────┼──────────────────┐
+                         ▼                   ▼                  ▼
+                    PostgreSQL            Qdrant             MinIO
+                    (results)         (vector search)    (artifacts)
+                                             │
+                                         OpenAI (optional)
+```
 
-- Python 3.11+
-- Docker + Docker Compose (recommended for local infra)
-- Git (required by static auto-checkout feature)
+Observability: Prometheus scrapes FastAPI, Flower, Redis, PostgreSQL, MinIO → Grafana (4 dashboards).
 
-Backend dependencies are managed in `apps/backend/pyproject.toml` (Poetry format).
+---
 
-## 5) Environment Variables
+## 3. Requirements
 
-Use root `.env.example` as base:
+| Tool | Version | Notes |
+|------|---------|-------|
+| Docker Desktop | latest | Must be running |
+| Git | any | |
+| Make | any | Windows: `choco install make` or use `winget install GnuWin32.Make` |
+| Python | 3.11+ | Only needed for local process mode / tests without Docker |
 
-```powershell
+---
+
+## 4. Getting Started
+
+### Step 1 — Clone
+
+```bash
+git clone https://github.com/<your-username>/ai-code-review-platform.git
+cd ai-code-review-platform
+```
+
+### Step 2 — Create `.env`
+
+```bash
+# Linux / macOS / Git Bash
+cp .env.example .env
+
+# Windows PowerShell
 Copy-Item .env.example .env
 ```
 
-Most important keys:
-- `DATABASE_URL=postgresql+psycopg://...`
-- `REDIS_URL=redis://...`
-- `CELERY_BROKER_URL=...`
-- `CELERY_RESULT_BACKEND=...`
-- `GITHUB_WEBHOOK_SECRET=...`
-- `MAX_DIFF_BYTES=2000000`
-- `SECRET_SCAN_*`
-- `STATIC_ANALYSIS_*`
-- `STATIC_ANALYSIS_WORKSPACE_PATH=.` (local fallback workspace)
-- `STATIC_ANALYSIS_AUTO_CHECKOUT_ENABLED=true`
-- `STATIC_ANALYSIS_REPO_HOST=github.com`
-- `STATIC_ANALYSIS_GIT_TOKEN=` (optional token for private repo checkout)
+Minimum required values for local dev (rest can stay as-is):
 
-## 6) Quick Start (Recommended: Docker)
-
-### 6.1 Start infrastructure and app containers
-
-From repo root:
-
-```powershell
-cd infra/local
-docker compose up -d db redis api worker
+```env
+GITHUB_WEBHOOK_SECRET=local-dev-secret
+CELERY_WORKER_POOL=solo        # Windows host only; leave empty on Linux/macOS
 ```
 
-### 6.2 Run migrations
-
-```powershell
-cd ../../apps/backend
-python -m alembic upgrade head
-python -m alembic current
-```
-
-### 6.3 Verify health
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:8000/healthz" -Method Get
-```
-
-## 7) Quick Start (Local Process Mode, without API/worker Docker)
-
-Use Docker only for DB + Redis, run API and worker directly on host.
-
-### 7.1 Start DB and Redis
-
-```powershell
-cd infra/local
-docker compose up -d db redis
-```
-
-### 7.2 Run migrations
-
-```powershell
-cd ../../apps/backend
-python -m alembic upgrade head
-```
-
-### 7.3 Start API
-
-```powershell
-cd apps/backend
-uvicorn app.main:app --reload --port 8000
-```
-
-### 7.4 Start worker (Windows-safe)
-
-```powershell
-cd apps/backend
-python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
-```
-
-Linux/macOS:
+Generate a Fernet encryption key (optional for dev):
 
 ```bash
-cd apps/backend
-celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses
+make generate-fernet-key
+# → paste the output into SECRETS_ENCRYPTION_KEY= in .env
 ```
 
-## 8) Manual End-to-End Test
+### Step 3 — Build & start all services
 
-### 8.1 Quick script test
-
-```powershell
-cd apps/backend
-python t6_manual/run_t6_test.py
+```bash
+make build
+make up
 ```
 
-Expected:
-- status goes to `COMPLETED`
-- `static_stats` has tool counters
-- `static_findings` may contain Ruff/Semgrep findings
+### Step 4 — Apply database migrations
 
-### 8.2 Manual API test (PowerShell)
+```bash
+make migrate
+```
 
+### Step 5 — Verify
+
+```bash
+curl http://localhost:8000/healthz
+# → {"status":"ok"}
+```
+
+Open the API docs in your browser: http://localhost:8000/docs
+
+---
+
+## 5. Services & Ports
+
+After `make up`, all services are available at:
+
+| Port | Service | URL |
+|------|---------|-----|
+| 8000 | FastAPI API | http://localhost:8000/docs |
+| 8000 | Prometheus metrics | http://localhost:8000/metrics |
+| 3000 | Grafana | http://localhost:3000 `admin / admin` |
+| 9090 | Prometheus | http://localhost:9090 |
+| 5555 | Flower (Celery UI) | http://localhost:5555 |
+| 8080 | Adminer (DB UI) | http://localhost:8080 |
+| 5432 | PostgreSQL | direct TCP |
+| 6380 | Redis | `redis://localhost:6380` |
+| 6333 | Qdrant REST + Dashboard | http://localhost:6333/dashboard |
+| 6334 | Qdrant gRPC | `grpc://localhost:6334` |
+| 9000 | MinIO S3 API | http://localhost:9000 |
+| 9001 | MinIO Console | http://localhost:9001 `minioadmin / minioadmin` |
+| 9121 | redis-exporter metrics | http://localhost:9121/metrics |
+| 9187 | postgres-exporter metrics | http://localhost:9187/metrics |
+
+---
+
+## 6. Environment Variables
+
+Copy `.env.example` to `.env`. Key variables:
+
+### Core
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATABASE_URL` | `postgresql+psycopg://...` | PostgreSQL connection string |
+| `REDIS_URL` | `redis://localhost:6380/0` | Redis URL (host port is 6380) |
+| `CELERY_WORKER_POOL` | _(empty)_ | Set `solo` on Windows host, leave empty in Docker |
+
+### GitHub Integration
+| Variable | Description |
+|----------|-------------|
+| `GITHUB_WEBHOOK_SECRET` | HMAC secret for webhook validation |
+| `GITHUB_APP_ID` | GitHub App ID |
+| `GITHUB_APP_INSTALLATION_ID` | Installation ID |
+| `GITHUB_APP_PRIVATE_KEY_PEM` | RSA private key (PEM format) |
+
+### Optional Services
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LLM_ENABLED` | `false` | Enable OpenAI LLM summarization |
+| `OPENAI_API_KEY` | _(empty)_ | OpenAI API key |
+| `QDRANT_ENABLED` | `false` | Enable Qdrant vector search |
+| `OBJECT_STORAGE_ENABLED` | `false` | Enable MinIO artifact storage |
+
+### Security
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `SECRETS_ENCRYPTION_KEY` | _(empty)_ | Fernet key for encrypting secrets at rest |
+| `RBAC_ENFORCEMENT_ENABLED` | `false` | Enable role-based access control |
+
+---
+
+## 7. Make Commands
+
+```bash
+make help               # Show all available commands
+```
+
+### Stack control
+```bash
+make build              # Build Docker images (with cache)
+make build-no-cache     # Build Docker images (no cache)
+make up                 # Start all services (detached)
+make down               # Stop and remove containers
+make ps                 # Show running service status
+make clean              # Remove volumes + containers (DESTRUCTIVE)
+```
+
+### Database
+```bash
+make migrate            # Run: alembic upgrade head
+make migrate-history    # Show Alembic migration history
+make migrate-create m=<name>   # Create a new autogenerated migration
+```
+
+### Logs & shells
+```bash
+make logs               # Tail all container logs
+make logs-api           # Tail API logs only
+make logs-worker        # Tail worker logs only
+make api-shell          # Open bash in API container
+make worker-shell       # Open bash in worker container
+make db-shell           # Open psql in DB container
+```
+
+### Testing
+```bash
+make test               # Run pytest (local Poetry env)
+```
+
+### Security
+```bash
+make generate-fernet-key   # Generate a SECRETS_ENCRYPTION_KEY value
+```
+
+---
+
+## 8. Running Tests
+
+```bash
+# Via Makefile (recommended)
+make test
+
+# Directly with Poetry
+cd apps/backend
+poetry run pytest tests/ -v --tb=short
+
+# One file
+poetry run pytest tests/test_analyses.py -v
+poetry run pytest tests/unit/test_static_analysis.py -v
+```
+
+Linting:
+```bash
+cd apps/backend
+poetry run ruff check app tests
+poetry run ruff format --check app tests
+```
+
+---
+
+## 9. Manual End-to-End Test
+
+### PowerShell
 ```powershell
 $diff = @"
-diff --git a/t6_manual/demo.py b/t6_manual/demo.py
+diff --git a/demo.py b/demo.py
 index 1111111..2222222 100644
---- a/t6_manual/demo.py
-+++ b/t6_manual/demo.py
-@@ -0,0 +1,8 @@
+--- a/demo.py
++++ b/demo.py
+@@ -0,0 +1,6 @@
 +import os
 +import subprocess
 +
@@ -180,210 +286,171 @@ index 1111111..2222222 100644
 "@
 
 $payload = @{
-  source = "manual"
-  repo = "owner/t6-manual-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
-  pr_number = 999
+  source     = "manual"
+  repo       = "owner/test-repo"
+  pr_number  = 1
   commit_sha = "abc123"
-  diff_text = $diff
-  metadata = @{ actor = "manual-test" }
+  diff_text  = $diff
 } | ConvertTo-Json -Depth 10
 
-$create = Invoke-RestMethod -Uri "http://localhost:8000/v1/analyze" -Method Post -ContentType "application/json" -Body $payload
-$analysisId = $create.analysis_id
+$r = Invoke-RestMethod -Uri "http://localhost:8000/v1/analyze" -Method Post `
+     -ContentType "application/json" -Body $payload
 
-for ($i=1; $i -le 40; $i++) {
-  $r = Invoke-RestMethod -Uri "http://localhost:8000/v1/analyses/$analysisId" -Method Get
+$id = $r.analysis_id
+Write-Host "Created analysis: $id"
+
+for ($i = 1; $i -le 30; $i++) {
+  $r = Invoke-RestMethod -Uri "http://localhost:8000/v1/analyses/$id"
   Write-Host "[$i] status=$($r.status)"
-  if ($r.status -in @("COMPLETED","FAILED")) { break }
+  if ($r.status -in @("COMPLETED", "FAILED")) { break }
   Start-Sleep -Seconds 2
 }
 
-$r.static_stats | ConvertTo-Json -Depth 10
-$r.static_findings | Select-Object source,rule_id,severity,category,file_path,line_start,message | Format-Table -AutoSize
-$r.tool_runs | Select-Object tool_name,status,duration_ms,exit_code,findings_count,warning | Format-Table -AutoSize
+$r.static_findings | Select-Object source, rule_id, severity, file_path, message | Format-Table -AutoSize
 ```
 
-## 9) Static Analysis Checkout Behavior
+---
 
-Current behavior in worker static stage:
+## 10. Database Migrations
 
-1. If `STATIC_ANALYSIS_AUTO_CHECKOUT_ENABLED=true` and valid `repo` + long enough `commit_sha`:
-   - clone `https://<host>/<repo>.git`
-   - fetch and checkout `commit_sha`
-   - run Ruff/Semgrep in that checked-out workspace
-2. Otherwise:
-   - fallback to `STATIC_ANALYSIS_WORKSPACE_PATH`
+```bash
+# Apply all pending migrations
+make migrate
 
-For fake/manual repos, use short `commit_sha` like `abc123` to force safe local fallback.
+# Show history
+make migrate-history
 
-## 10) Database Migrations
+# Create a new migration
+make migrate-create m=add_new_table
 
-Run from `apps/backend` only:
-
-```powershell
-python -m alembic upgrade head
-python -m alembic current
-python -m alembic history
-```
-
-Create a new migration:
-
-```powershell
-python -m alembic revision -m "description"
-```
-
-## 11) Test Commands
-
-From `apps/backend`:
-
-```powershell
-python -m pytest -q
-```
-
-Run one test file:
-
-```powershell
-python -m pytest tests/test_analyses.py -q
-python -m pytest tests/unit/test_static_analysis.py -q
-```
-
-Optional tool checks:
-
-```powershell
-ruff check app tests
-semgrep scan --config=auto --json --quiet .
-```
-
-## 12) Useful Operational Commands
-
-### Docker
-
-```powershell
-cd infra/local
-docker compose up -d
-docker compose ps
-docker compose logs -f api
-docker compose logs -f worker
-docker compose down
-```
-
-### PostgreSQL check
-
-```powershell
-docker exec -it ai-review-postgres psql -U postgres -d ai_code_review_platform
-```
-
-Inside psql:
-
-```sql
-\dt
-SELECT id, status, created_at FROM analyses ORDER BY created_at DESC LIMIT 10;
-SELECT tool_name, status, findings_count, duration_ms FROM tool_runs ORDER BY created_at DESC LIMIT 10;
-```
-
-### Redis check
-
-```powershell
-docker exec -it ai-review-redis redis-cli ping
-```
-
-## 13) Main Tables (Backend)
-
-- `analyses`
-- `files_changed`
-- `analysis_files`
-- `analysis_hunks`
-- `analysis_hunk_lines`
-- `findings`
-- `tool_runs`
-- `citations`
-- `kb_documents`
-- `kb_chunks`
-- `policies`
-- `audit_logs`
-
-## 14) Common Errors and Fixes
-
-### Error: `No 'script_location' key found in configuration`
-Cause: running Alembic from wrong directory.
-Fix:
-
-```powershell
+# Run directly (from apps/backend)
 cd apps/backend
-python -m alembic upgrade head
+poetry run alembic upgrade head
+poetry run alembic current
+poetry run alembic history
 ```
 
-### Error: `cd ... A positional parameter cannot be found that accepts argument 'Amin'`
-Cause: path has spaces and is not quoted.
-Fix:
+---
 
+## 11. Webhook Local Testing
+
+1. Start the stack: `make up && make migrate`
+2. Expose the API with ngrok:
+   ```bash
+   ngrok http 8000
+   ```
+3. Set GitHub App webhook URL to `https://<ngrok-id>.ngrok-free.app/webhooks/github`
+4. Set the same `GITHUB_WEBHOOK_SECRET` in your `.env` and GitHub App settings
+5. Use **GitHub → App → Advanced → Redeliver** to replay events
+
+---
+
+## 12. Local Process Mode (no Docker for API/worker)
+
+Use Docker only for infrastructure (DB + Redis), run API and worker directly on host.
+
+```bash
+# Start only core infra
+docker compose -f infra/local/docker-compose.yml up -d db redis
+
+# Apply migrations
+cd apps/backend
+poetry run alembic upgrade head
+
+# Start API (terminal 1)
+poetry run uvicorn app.main:app --reload --port 8000
+
+# Start worker (terminal 2) — Windows
+python -m celery -A app.workers.celery_app.celery_app worker \
+  --loglevel=info -Q analyses -P solo
+
+# Start worker (terminal 2) — Linux/macOS
+poetry run celery -A app.workers.celery_app.celery_app worker \
+  --loglevel=info -Q analyses
+```
+
+---
+
+## 13. CI/CD & Cloud Deployment
+
+### CI (GitHub Actions)
+
+Runs automatically on every PR and push to `main`:
+- `ruff check` + `ruff format --check`
+- `pytest` (with PostgreSQL + Redis services)
+- Docker build smoke test
+
+### CD (GitHub Actions → Fly.io)
+
+Runs on merge to `main`:
+1. Build Docker image → push to GHCR
+2. Deploy API to Fly.io (`ai-review-api`)
+3. Deploy Worker to Fly.io (`ai-review-worker`)
+
+**Cloud services used (100% free):**
+
+| Component | Service | Free limit |
+|-----------|---------|------------|
+| PostgreSQL | Supabase | 500 MB, no CC |
+| Redis | Upstash | 10 000 cmd/day |
+| Compute | Fly.io | 3 VMs, scale-to-zero |
+| Docker images | GHCR | Unlimited (public) |
+
+See [`infra/cloud/README.md`](infra/cloud/README.md) for the full deployment guide.
+
+**GitHub Actions secrets to configure** (Settings → Secrets → Actions):
+
+| Secret | Description |
+|--------|-------------|
+| `FLY_API_TOKEN` | `flyctl auth token` |
+| `PROD_DATABASE_URL` | Supabase connection string |
+| `PROD_REDIS_URL` | Upstash Redis URL |
+| `PROD_CELERY_RESULT_BACKEND` | Upstash Redis URL (db 1) |
+| `PROD_GITHUB_WEBHOOK_SECRET` | Production webhook secret |
+| `PROD_GITHUB_APP_ID` | GitHub App ID |
+| `PROD_GITHUB_APP_PRIVATE_KEY_PEM` | RSA private key (PEM) |
+| `PROD_SECRETS_ENCRYPTION_KEY` | Fernet key |
+
+---
+
+## 14. Common Errors & Fixes
+
+### `No 'script_location' key found in configuration`
+Run Alembic from the correct directory:
+```bash
+cd apps/backend
+poetry run alembic upgrade head
+```
+
+### `cd ... positional parameter cannot be found` (Windows paths with spaces)
+Quote the path:
 ```powershell
 cd "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend"
 ```
 
-### Error: `celery: command not found`
-Fix:
-- Use module form:
-
-```powershell
+### `celery: command not found`
+Use the module form:
+```bash
 python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
 ```
 
 ### Status stuck at `QUEUED`
-Checklist:
-- worker process is running
-- Redis broker URL is correct
-- queue name matches `ANALYSIS_QUEUE_NAME=analyses`
-- worker subscribed to queue `-Q analyses`
+- Worker process is running
+- `REDIS_URL` / `CELERY_BROKER_URL` point to the right host/port
+- Worker is subscribed to the correct queue: `-Q analyses`
+- `ANALYSIS_QUEUE_NAME=analyses` in `.env`
 
-### Redis port conflict (`Bind ... 6379 failed`)
-Your compose maps Redis to `6380:6379`.
-Use `REDIS_URL=redis://localhost:6380/0` in host environment.
+### Redis port conflict (`Bind 6379 failed`)
+The compose file maps Redis to `6380:6379` on the host.
+Use `REDIS_URL=redis://localhost:6380/0` in your host `.env`.
 
-## 15) Webhook Local Testing (GitHub + ngrok)
+---
 
-1. Start API at `http://localhost:8000`
-2. Expose with ngrok:
+## 15. Security Notes
 
-```bash
-ngrok http 8000
-```
-
-3. Set GitHub App webhook URL:
-`https://<ngrok-id>.ngrok-free.app/webhooks/github`
-4. Configure same `GITHUB_WEBHOOK_SECRET` in GitHub App and `.env`
-5. Use GitHub "Ping" or "Redeliver" to test.
-
-## 16) Security Notes
-
-- Never commit `.env` with real secrets.
-- Rotate tokens/keys after public exposure.
-- API output returns redacted diff (`diff_redacted`), not raw diff.
-- Avoid logging raw secrets in worker/API logs.
-
-## 17) Current Placeholders
-
-- `apps/dashboard` is minimal placeholder.
-- `apps/cli` is minimal placeholder.
-- `apps/backend/app/api/http/knowledge_base.py` is currently empty.
-
-## 18) Fast Command Cheat Sheet
-
-```powershell
-# 1) Infra up
-cd infra/local
-docker compose up -d db redis
-
-# 2) Migrate
-cd ../../apps/backend
-python -m alembic upgrade head
-
-# 3) Run API
-uvicorn app.main:app --reload --port 8000
-
-# 4) Run worker (new terminal)
-python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
-
-# 5) Run tests
-python -m pytest -q
-```
+- Never commit `.env` with real secrets — it is in `.gitignore`.
+- Rotate all tokens/keys immediately after any public exposure.
+- API responses return `diff_redacted`, never the raw diff.
+- `SECRETS_ENCRYPTION_KEY` uses Fernet (AES-128-CBC). Generate with `make generate-fernet-key`.
+- `RBAC_ENFORCEMENT_ENABLED=false` by default — enable in production.
+- `ALLOW_UNSAFE_DIFF_API=false` — never set to `true` in production.

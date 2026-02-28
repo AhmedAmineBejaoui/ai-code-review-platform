@@ -269,6 +269,93 @@ class KBChunkORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class EncryptedSecretORM(Base):
+    __tablename__ = "encrypted_secrets"
+    __table_args__ = (
+        UniqueConstraint("namespace", "secret_key", name="uq_encrypted_secrets_namespace_key"),
+        Index("idx_encrypted_secrets_namespace", "namespace"),
+        Index("idx_encrypted_secrets_namespace_key", "namespace", "secret_key"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    namespace: Mapped[str] = mapped_column(Text, nullable=False)
+    secret_key: Mapped[str] = mapped_column(Text, nullable=False)
+    ciphertext: Mapped[str] = mapped_column(Text, nullable=False)
+    meta_json: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class UserORM(Base):
+    __tablename__ = "users"
+    __table_args__ = (
+        UniqueConstraint("email", name="uq_users_email"),
+        Index("idx_users_email", "email"),
+        Index("idx_users_is_active", "is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    email: Mapped[str] = mapped_column(Text, nullable=False)
+    display_name: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RoleORM(Base):
+    __tablename__ = "roles"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_roles_code"),
+        Index("idx_roles_code", "code"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(Text, nullable=False)
+    is_system: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class PermissionORM(Base):
+    __tablename__ = "permissions"
+    __table_args__ = (
+        UniqueConstraint("code", name="uq_permissions_code"),
+        Index("idx_permissions_code", "code"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    code: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str] = mapped_column(Text, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class UserRoleORM(Base):
+    __tablename__ = "user_roles"
+    __table_args__ = (
+        UniqueConstraint("user_id", "role_id", name="uq_user_roles_user_role"),
+        Index("idx_user_roles_user_id", "user_id"),
+        Index("idx_user_roles_role_id", "role_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    user_id: Mapped[str] = mapped_column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role_id: Mapped[str] = mapped_column(Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class RolePermissionORM(Base):
+    __tablename__ = "role_permissions"
+    __table_args__ = (
+        UniqueConstraint("role_id", "permission_id", name="uq_role_permissions_role_permission"),
+        Index("idx_role_permissions_role_id", "role_id"),
+        Index("idx_role_permissions_permission_id", "permission_id"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    role_id: Mapped[str] = mapped_column(Text, ForeignKey("roles.id", ondelete="CASCADE"), nullable=False)
+    permission_id: Mapped[str] = mapped_column(Text, ForeignKey("permissions.id", ondelete="CASCADE"), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class AuditLogORM(Base):
     __tablename__ = "audit_logs"
     __table_args__ = (Index("idx_audit_logs_created_at", "created_at"),)

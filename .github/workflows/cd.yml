@@ -1,0 +1,154 @@
+# CD: runs only on push to main (after a PR merges).
+# Builds the backend image, pushes to GitHub Container Registry (ghcr.io),
+# then deploys API and Worker to Fly.io sequentially.
+#
+# Required GitHub Actions secrets (Settings > Secrets and variables > Actions):
+#   FLY_API_TOKEN                   - from `flyctl auth token`
+#   PROD_DATABASE_URL               - Supabase connection string (postgresql+psycopg://...)
+#   PROD_REDIS_URL                  - Upstash Redis URL (rediss://...)
+#   PROD_CELERY_RESULT_BACKEND      - Upstash Redis URL with /1 suffix
+#   PROD_GITHUB_WEBHOOK_SECRET      - Webhook secret for production GitHub App
+#   PROD_GITHUB_APP_ID              - GitHub App ID
+#   PROD_GITHUB_APP_PRIVATE_KEY_PEM - GitHub App private key (full PEM, multiline OK)
+#   PROD_SECRETS_ENCRYPTION_KEY     - Fernet key for secrets at rest
+
+name: CD
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: cd-production
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}/backend
+
+jobs:
+
+  # ─── Build & Push Docker Image ───────────────────────────────────────────────
+  build-and-push:
+    name: Build & Push to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}
+      image-tags: ${{ steps.meta.outputs.tags }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=sha,prefix=sha-,format=short
+            type=ref,event=branch
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: apps/backend
+          dockerfile: apps/backend/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # ─── Deploy API to Fly.io ─────────────────────────────────────────────────────
+  deploy-api:
+    name: Deploy API to Fly.io
+    runs-on: ubuntu-latest
+    needs: build-and-push
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Set production secrets on Fly API app
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}" \
+            REDIS_URL="${{ secrets.PROD_REDIS_URL }}" \
+            CELERY_BROKER_URL="${{ secrets.PROD_REDIS_URL }}" \
+            CELERY_RESULT_BACKEND="${{ secrets.PROD_CELERY_RESULT_BACKEND }}" \
+            GITHUB_WEBHOOK_SECRET="${{ secrets.PROD_GITHUB_WEBHOOK_SECRET }}" \
+            GITHUB_APP_ID="${{ secrets.PROD_GITHUB_APP_ID }}" \
+            GITHUB_APP_PRIVATE_KEY_PEM="${{ secrets.PROD_GITHUB_APP_PRIVATE_KEY_PEM }}" \
+            SECRETS_ENCRYPTION_KEY="${{ secrets.PROD_SECRETS_ENCRYPTION_KEY }}" \
+            --app ai-review-api \
+            --stage
+
+      - name: Deploy API to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config infra/cloud/fly/fly-api.toml \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" \
+            --wait-timeout 120
+
+  # ─── Deploy Worker to Fly.io ──────────────────────────────────────────────────
+  deploy-worker:
+    name: Deploy Worker to Fly.io
+    runs-on: ubuntu-latest
+    needs: deploy-api
+    environment: production
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Fly CLI
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      - name: Set production secrets on Fly Worker app
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl secrets set \
+            DATABASE_URL="${{ secrets.PROD_DATABASE_URL }}" \
+            REDIS_URL="${{ secrets.PROD_REDIS_URL }}" \
+            CELERY_BROKER_URL="${{ secrets.PROD_REDIS_URL }}" \
+            CELERY_RESULT_BACKEND="${{ secrets.PROD_CELERY_RESULT_BACKEND }}" \
+            GITHUB_APP_ID="${{ secrets.PROD_GITHUB_APP_ID }}" \
+            GITHUB_APP_PRIVATE_KEY_PEM="${{ secrets.PROD_GITHUB_APP_PRIVATE_KEY_PEM }}" \
+            SECRETS_ENCRYPTION_KEY="${{ secrets.PROD_SECRETS_ENCRYPTION_KEY }}" \
+            --app ai-review-worker \
+            --stage
+
+      - name: Deploy Worker to Fly.io
+        env:
+          FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+        run: |
+          flyctl deploy \
+            --config infra/cloud/fly/fly-worker.toml \
+            --image "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ github.sha }}" \
+            --wait-timeout 120

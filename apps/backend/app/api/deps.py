@@ -4,6 +4,7 @@ from functools import lru_cache
 
 from fastapi import Depends
 
+from app.core.security.secret_store import EncryptedSecretStore, get_secret_store
 from app.core.services.analysis_service import AnalysisService
 from app.core.trust_center.policy_engine import PolicyEngine
 from app.data.repos.analyses_repo import AnalysesRepo
@@ -18,8 +19,13 @@ def get_analyses_repo() -> AnalysesRepo:
 
 
 @lru_cache(maxsize=1)
+def get_encrypted_secret_store() -> EncryptedSecretStore:
+    return get_secret_store()
+
+
+@lru_cache(maxsize=1)
 def get_github_client() -> GithubClient:
-    return GithubClient()
+    return GithubClient(secret_store=get_encrypted_secret_store())
 
 
 @lru_cache(maxsize=1)

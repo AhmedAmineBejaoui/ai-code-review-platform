@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import asyncio
+import codecs
 import hashlib
 import re
 import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import ceil
-from typing import Any, Protocol
+from typing import Any, AsyncIterator, Protocol
 
 from app.data.models.analysis import Analysis
 from app.data.models.finding import Finding
@@ -145,7 +146,58 @@ class AnalysisService:
         self._policy_provider = policy_provider
 
     async def create_analysis(self, command: CreateAnalysisCommand) -> Analysis:
-        repo, diff_text, commit_sha = self._validate(command)
+        repo, commit_sha = self._validate_repo_and_target(
+            repo=command.repo,
+            pr_number=command.pr_number,
+            commit_sha=command.commit_sha,
+        )
+        diff_text = self._validate_diff_text(command.diff_text)
+
+        return await self._persist_analysis(
+            source=command.source,
+            repo=repo,
+            pr_number=command.pr_number,
+            commit_sha=commit_sha,
+            diff_text=diff_text,
+            metadata=command.metadata,
+        )
+
+    async def create_analysis_from_stream(
+        self,
+        *,
+        source: str,
+        repo: str,
+        pr_number: int | None,
+        commit_sha: str | None,
+        metadata: dict[str, Any],
+        diff_stream: AsyncIterator[bytes],
+    ) -> Analysis:
+        normalized_repo, normalized_commit_sha = self._validate_repo_and_target(
+            repo=repo,
+            pr_number=pr_number,
+            commit_sha=commit_sha,
+        )
+        diff_text = await self._read_diff_text_from_stream(diff_stream)
+
+        return await self._persist_analysis(
+            source=source,
+            repo=normalized_repo,
+            pr_number=pr_number,
+            commit_sha=normalized_commit_sha,
+            diff_text=diff_text,
+            metadata=metadata,
+        )
+
+    async def _persist_analysis(
+        self,
+        *,
+        source: str,
+        repo: str,
+        pr_number: int | None,
+        commit_sha: str | None,
+        diff_text: str,
+        metadata: dict[str, Any],
+    ) -> Analysis:
 
         diff_hash = hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
         analysis_id = uuid.uuid4().hex
@@ -167,9 +219,9 @@ class AnalysisService:
                     analysis_id=analysis_id,
                     repo=repo,
                     provider="github",
-                    pr_number=command.pr_number,
+                    pr_number=pr_number,
                     commit_sha=commit_sha,
-                    source=command.source,
+                    source=source,
                     status="RECEIVED",
                     stage="RECEIVED",
                     progress=0,
@@ -186,7 +238,7 @@ class AnalysisService:
                     static_stats={},
                     error_code=None,
                     error_message=None,
-                    metadata=command.metadata,
+                    metadata=metadata,
                 ),
             )
         except DuplicateAnalysisError as exc:
@@ -202,6 +254,69 @@ class AnalysisService:
                 message="Database unavailable while storing analysis",
                 status_code=503,
             ) from exc
+
+    async def _read_diff_text_from_stream(self, diff_stream: AsyncIterator[bytes]) -> str:
+        decoder = codecs.getincrementaldecoder("utf-8")()
+        chunks: list[str] = []
+        total_bytes = 0
+        marker_tail = ""
+        has_marker = False
+        has_non_whitespace = False
+
+        try:
+            async for raw_chunk in diff_stream:
+                if not raw_chunk:
+                    continue
+                total_bytes += len(raw_chunk)
+                if total_bytes > settings.MAX_DIFF_BYTES:
+                    raise ServiceError(
+                        code="DIFF_TOO_LARGE",
+                        message="diff_text exceeds max allowed size",
+                        status_code=413,
+                        details={"max_bytes": settings.MAX_DIFF_BYTES, "current_bytes": total_bytes},
+                    )
+
+                decoded = decoder.decode(raw_chunk, final=False)
+                if decoded:
+                    chunks.append(decoded)
+                    if decoded.strip():
+                        has_non_whitespace = True
+                    marker_probe = marker_tail + decoded
+                    if "diff --git" in marker_probe or "@@" in marker_probe:
+                        has_marker = True
+                    marker_tail = marker_probe[-32:]
+
+            decoded_final = decoder.decode(b"", final=True)
+        except UnicodeDecodeError as exc:
+            raise ServiceError(
+                code="INVALID_DIFF_ENCODING",
+                message="diff stream must be valid UTF-8 text",
+                status_code=400,
+            ) from exc
+
+        if decoded_final:
+            chunks.append(decoded_final)
+            if decoded_final.strip():
+                has_non_whitespace = True
+            marker_probe = marker_tail + decoded_final
+            if "diff --git" in marker_probe or "@@" in marker_probe:
+                has_marker = True
+
+        if not has_non_whitespace:
+            raise ServiceError(
+                code="EMPTY_DIFF",
+                message="diff_text is empty",
+                status_code=400,
+                details={"field": "diff_text"},
+            )
+        if not has_marker:
+            raise ServiceError(
+                code="INVALID_DIFF_FORMAT",
+                message="diff_text must contain a unified diff marker",
+                status_code=400,
+                details={"accepted_markers": ["diff --git", "@@"]},
+            )
+        return "".join(chunks)
 
     async def get_analysis(self, analysis_id: str) -> Analysis:
         try:
@@ -404,8 +519,8 @@ class AnalysisService:
                 status_code=503,
             ) from exc
 
-    def _validate(self, command: CreateAnalysisCommand) -> tuple[str, str, str | None]:
-        repo = command.repo.strip()
+    def _validate_repo_and_target(self, *, repo: str, pr_number: int | None, commit_sha: str | None) -> tuple[str, str | None]:
+        repo = repo.strip()
         if not repo:
             raise ServiceError(
                 code="MISSING_REPO",
@@ -421,21 +536,24 @@ class AnalysisService:
                 details={"field": "repo"},
             )
 
-        diff_text = command.diff_text
+        if pr_number is None and not (commit_sha or "").strip():
+            raise ServiceError(
+                code="MISSING_TARGET",
+                message="pr_number or commit_sha is required",
+                status_code=400,
+                details={"fields": ["pr_number", "commit_sha"]},
+            )
+
+        normalized_commit_sha = (commit_sha or "").strip() or None
+        return repo, normalized_commit_sha
+
+    def _validate_diff_text(self, diff_text: str) -> str:
         if not diff_text.strip():
             raise ServiceError(
                 code="EMPTY_DIFF",
                 message="diff_text is empty",
                 status_code=400,
                 details={"field": "diff_text"},
-            )
-
-        if command.pr_number is None and not (command.commit_sha or "").strip():
-            raise ServiceError(
-                code="MISSING_TARGET",
-                message="pr_number or commit_sha is required",
-                status_code=400,
-                details={"fields": ["pr_number", "commit_sha"]},
             )
 
         diff_size = len(diff_text.encode("utf-8"))
@@ -454,9 +572,7 @@ class AnalysisService:
                 status_code=400,
                 details={"accepted_markers": ["diff --git", "@@"]},
             )
-
-        commit_sha = (command.commit_sha or "").strip() or None
-        return repo, diff_text, commit_sha
+        return diff_text
 
     @staticmethod
     def _utc_iso_z_now() -> str:

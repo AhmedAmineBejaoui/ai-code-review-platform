@@ -1,0 +1,63 @@
+# Fly.io configuration for the FastAPI API process
+# App name: ai-review-api
+# Create with: flyctl apps create ai-review-api --machines
+
+app            = "ai-review-api"
+primary_region = "iad"
+
+# ─── Build ────────────────────────────────────────────────────────────────────
+# In CD, we supply --image from GHCR and skip the build step.
+# The [build] section is kept for manual `flyctl deploy` from a local machine.
+[build]
+  dockerfile = "../../apps/backend/Dockerfile"
+
+# ─── Non-secret environment variables ────────────────────────────────────────
+# Secrets (DATABASE_URL, REDIS_URL, etc.) are injected via `flyctl secrets set`.
+# Never put secret values here.
+[env]
+  ENV                             = "production"
+  ANALYSIS_QUEUE_NAME             = "analyses"
+  CELERY_TASK_ALWAYS_EAGER        = "false"
+  CELERY_WORKER_POOL              = "prefork"
+  SECRET_SCAN_ENABLED             = "true"
+  STATIC_ANALYSIS_ENABLED         = "true"
+  STATIC_ANALYSIS_RUFF_ENABLED    = "true"
+  STATIC_ANALYSIS_SEMGREP_ENABLED = "true"
+  RBAC_ENFORCEMENT_ENABLED        = "false"
+  MAX_DIFF_BYTES                  = "2000000"
+  PURGE_RAW_DIFF_AFTER_REDACTION  = "true"
+  SECRETS_BOOTSTRAP_FROM_ENV      = "true"
+
+# ─── HTTP Service ─────────────────────────────────────────────────────────────
+[[services]]
+  internal_port      = 8000
+  protocol           = "tcp"
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[services.ports]]
+    port        = 80
+    handlers    = ["http"]
+    force_https = true
+
+  [[services.ports]]
+    port     = 443
+    handlers = ["tls", "http"]
+
+  [services.concurrency]
+    type       = "requests"
+    hard_limit = 20
+    soft_limit = 15
+
+  [[services.http_checks]]
+    interval     = "15s"
+    timeout      = "5s"
+    grace_period = "30s"
+    method       = "GET"
+    path         = "/healthz"
+
+# ─── VM resources ─────────────────────────────────────────────────────────────
+[[vm]]
+  size   = "shared-cpu-1x"
+  memory = "512mb"
