@@ -25,6 +25,10 @@ class Analysis:
     has_secrets: bool
     redaction_stats_json: str
     static_stats_json: str
+    change_type: str | None
+    change_type_confidence: float | None
+    change_type_source: str | None
+    change_type_signals_json: str
     error_code: str | None
     error_message: str | None
     created_at: str
@@ -49,6 +53,13 @@ class Analysis:
     def static_stats(self) -> dict[str, Any]:
         try:
             return json.loads(self.static_stats_json)
+        except Exception:
+            return {}
+
+    @property
+    def change_type_signals(self) -> dict[str, Any]:
+        try:
+            return json.loads(self.change_type_signals_json)
         except Exception:
             return {}
 

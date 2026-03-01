@@ -96,6 +96,10 @@ def init_db() -> None:
                     has_secrets BOOLEAN NOT NULL DEFAULT FALSE,
                     redaction_stats JSONB NOT NULL DEFAULT '{}'::jsonb,
                     static_stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    change_type TEXT NULL CHECK (change_type IS NULL OR change_type IN ('bugfix', 'feature', 'refactor')),
+                    change_type_confidence DOUBLE PRECISION NULL CHECK (change_type_confidence IS NULL OR (change_type_confidence >= 0 AND change_type_confidence <= 1)),
+                    change_type_source TEXT NULL CHECK (change_type_source IS NULL OR change_type_source IN ('heuristic', 'llm')),
+                    change_type_signals JSONB NOT NULL DEFAULT '{}'::jsonb,
                     error_code TEXT NULL,
                     error_message TEXT NULL,
                     metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
@@ -117,6 +121,10 @@ def init_db() -> None:
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS has_secrets BOOLEAN NOT NULL DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS redaction_stats JSONB NOT NULL DEFAULT '{}'::jsonb"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS static_stats JSONB NOT NULL DEFAULT '{}'::jsonb"))
+        conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS change_type TEXT"))
+        conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS change_type_confidence DOUBLE PRECISION"))
+        conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS change_type_source TEXT"))
+        conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS change_type_signals JSONB NOT NULL DEFAULT '{}'::jsonb"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error_code TEXT"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS error_message TEXT"))
         conn.execute(text("UPDATE analyses SET diff_raw = COALESCE(diff_raw, diff_text, '') WHERE diff_raw IS NULL"))
@@ -130,6 +138,7 @@ def init_db() -> None:
         conn.execute(text("UPDATE analyses SET has_secrets = COALESCE(has_secrets, FALSE)"))
         conn.execute(text("UPDATE analyses SET redaction_stats = COALESCE(redaction_stats, '{}'::jsonb)"))
         conn.execute(text("UPDATE analyses SET static_stats = COALESCE(static_stats, '{}'::jsonb)"))
+        conn.execute(text("UPDATE analyses SET change_type_signals = COALESCE(change_type_signals, '{}'::jsonb)"))
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN diff_raw SET NOT NULL"))
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN diff_text SET NOT NULL"))
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN progress SET DEFAULT 0"))
@@ -139,6 +148,7 @@ def init_db() -> None:
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN has_secrets SET DEFAULT FALSE"))
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN redaction_stats SET DEFAULT '{}'::jsonb"))
         conn.execute(text("ALTER TABLE analyses ALTER COLUMN static_stats SET DEFAULT '{}'::jsonb"))
+        conn.execute(text("ALTER TABLE analyses ALTER COLUMN change_type_signals SET DEFAULT '{}'::jsonb"))
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_status"))
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS analyses_status_check"))
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_progress_range"))
@@ -146,6 +156,9 @@ def init_db() -> None:
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_nb_files_changed"))
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_additions_total"))
         conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_deletions_total"))
+        conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_change_type"))
+        conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_change_type_confidence"))
+        conn.execute(text("ALTER TABLE analyses DROP CONSTRAINT IF EXISTS ck_analyses_change_type_source"))
         conn.execute(
             text(
                 """
@@ -191,6 +204,33 @@ def init_db() -> None:
                 """
             )
         )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE analyses
+                ADD CONSTRAINT ck_analyses_change_type
+                CHECK (change_type IS NULL OR change_type IN ('bugfix', 'feature', 'refactor'))
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE analyses
+                ADD CONSTRAINT ck_analyses_change_type_confidence
+                CHECK (change_type_confidence IS NULL OR (change_type_confidence >= 0 AND change_type_confidence <= 1))
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE analyses
+                ADD CONSTRAINT ck_analyses_change_type_source
+                CHECK (change_type_source IS NULL OR change_type_source IN ('heuristic', 'llm'))
+                """
+            )
+        )
 
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_created_at ON analyses(created_at DESC)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_repo_pr ON analyses(repo, pr_number)"))
@@ -198,6 +238,7 @@ def init_db() -> None:
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_diff_hash ON analyses(diff_hash)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_status ON analyses(status)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_has_secrets ON analyses(has_secrets)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_analyses_change_type ON analyses(change_type)"))
 
         conn.execute(
             text(

@@ -47,6 +47,10 @@ class CreateAnalysisInput:
     has_secrets: bool = False
     redaction_stats: dict[str, Any] = field(default_factory=dict)
     static_stats: dict[str, Any] = field(default_factory=dict)
+    change_type: str | None = None
+    change_type_confidence: float | None = None
+    change_type_source: str | None = None
+    change_type_signals: dict[str, Any] = field(default_factory=dict)
     error_code: str | None = None
     error_message: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -122,13 +126,16 @@ class AnalysesRepo:
                                 id, repo, provider, pr_number, commit_sha, source, status,
                                 stage, progress, nb_files_changed, additions_total, deletions_total,
                                 created_at, updated_at, diff_hash, diff_raw, diff_text, diff_redacted,
-                                has_secrets, redaction_stats, static_stats, error_code, error_message, metadata_json
+                                has_secrets, redaction_stats, static_stats, change_type, change_type_confidence,
+                                change_type_source, change_type_signals, error_code, error_message, metadata_json
                             )
                             VALUES (
                                 :id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
                                 :stage, :progress, :nb_files_changed, :additions_total, :deletions_total,
                                 :created_at, :updated_at, :diff_hash, :diff_raw, :diff_text, :diff_redacted,
-                                :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb), :error_code, :error_message, CAST(:metadata_json AS jsonb)
+                                :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb),
+                                :change_type, :change_type_confidence, :change_type_source, CAST(:change_type_signals AS jsonb),
+                                :error_code, :error_message, CAST(:metadata_json AS jsonb)
                             )
                             """
                         ),
@@ -154,6 +161,10 @@ class AnalysesRepo:
                             "has_secrets": payload.has_secrets,
                             "redaction_stats": json.dumps(payload.redaction_stats),
                             "static_stats": json.dumps(payload.static_stats),
+                            "change_type": payload.change_type,
+                            "change_type_confidence": payload.change_type_confidence,
+                            "change_type_source": payload.change_type_source,
+                            "change_type_signals": json.dumps(payload.change_type_signals),
                             "error_code": payload.error_code,
                             "error_message": payload.error_message,
                             "metadata_json": json.dumps(payload.metadata),
@@ -316,6 +327,47 @@ class AnalysesRepo:
                         {
                             "analysis_id": analysis_id,
                             "static_stats": json.dumps(static_stats),
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+
+        if row is None:
+            return None
+        return self._row_to_model(row)
+
+    def update_change_classification(
+        self,
+        *,
+        analysis_id: str,
+        change_type: str,
+        confidence: float,
+        source: str,
+        signals: dict[str, Any],
+    ) -> Analysis | None:
+        with _REPO_LOCK:
+            with self._engine.begin() as conn:
+                row = (
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE analyses
+                            SET change_type = :change_type,
+                                change_type_confidence = :change_type_confidence,
+                                change_type_source = :change_type_source,
+                                change_type_signals = CAST(:change_type_signals AS jsonb),
+                                updated_at = NOW()
+                            WHERE id = :analysis_id
+                            RETURNING *
+                            """
+                        ),
+                        {
+                            "analysis_id": analysis_id,
+                            "change_type": change_type,
+                            "change_type_confidence": confidence,
+                            "change_type_source": source,
+                            "change_type_signals": json.dumps(signals),
                         },
                     )
                     .mappings()
@@ -734,6 +786,11 @@ class AnalysesRepo:
             static_stats_serialized = static_stats
         else:
             static_stats_serialized = json.dumps(static_stats or {})
+        change_type_signals = row.get("change_type_signals")
+        if isinstance(change_type_signals, str):
+            change_type_signals_serialized = change_type_signals
+        else:
+            change_type_signals_serialized = json.dumps(change_type_signals or {})
 
         created_at_str = AnalysesRepo._to_utc_iso_str(row.get("created_at"))
         updated_at_str = AnalysesRepo._to_utc_iso_str(row.get("updated_at"))
@@ -752,6 +809,9 @@ class AnalysesRepo:
         deletions_total = row.get("deletions_total")
         if deletions_total is not None:
             deletions_total = int(deletions_total)
+        change_type_confidence = row.get("change_type_confidence")
+        if change_type_confidence is not None:
+            change_type_confidence = float(change_type_confidence)
 
         return Analysis(
             id=str(row["id"]),
@@ -772,6 +832,10 @@ class AnalysesRepo:
             has_secrets=bool(row.get("has_secrets", False)),
             redaction_stats_json=redaction_stats_serialized,
             static_stats_json=static_stats_serialized,
+            change_type=row.get("change_type"),
+            change_type_confidence=change_type_confidence,
+            change_type_source=row.get("change_type_source"),
+            change_type_signals_json=change_type_signals_serialized,
             error_code=row.get("error_code"),
             error_message=row.get("error_message"),
             created_at=created_at_str,

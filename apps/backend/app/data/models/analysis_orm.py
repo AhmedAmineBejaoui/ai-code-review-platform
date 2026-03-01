@@ -33,10 +33,23 @@ class AnalysisORM(Base):
         CheckConstraint("nb_files_changed IS NULL OR nb_files_changed >= 0", name="ck_analyses_nb_files_changed"),
         CheckConstraint("additions_total IS NULL OR additions_total >= 0", name="ck_analyses_additions_total"),
         CheckConstraint("deletions_total IS NULL OR deletions_total >= 0", name="ck_analyses_deletions_total"),
+        CheckConstraint(
+            "change_type IS NULL OR change_type IN ('bugfix', 'feature', 'refactor')",
+            name="ck_analyses_change_type",
+        ),
+        CheckConstraint(
+            "change_type_confidence IS NULL OR (change_type_confidence >= 0 AND change_type_confidence <= 1)",
+            name="ck_analyses_change_type_confidence",
+        ),
+        CheckConstraint(
+            "change_type_source IS NULL OR change_type_source IN ('heuristic', 'llm')",
+            name="ck_analyses_change_type_source",
+        ),
         Index("idx_analyses_repo_pr_sha", "repo", "pr_number", "commit_sha"),
         Index("idx_analyses_diff_hash", "diff_hash"),
         Index("idx_analyses_created_at", "created_at"),
         Index("idx_analyses_has_secrets", "has_secrets"),
+        Index("idx_analyses_change_type", "change_type"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
@@ -59,6 +72,10 @@ class AnalysisORM(Base):
     has_secrets: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     redaction_stats: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     static_stats: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    change_type: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_type_confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    change_type_source: Mapped[str | None] = mapped_column(Text, nullable=True)
+    change_type_signals: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
     error_code: Mapped[str | None] = mapped_column(Text, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")

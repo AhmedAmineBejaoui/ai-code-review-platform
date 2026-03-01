@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.change_classification import ChangeClassifier
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
 from app.core.security.secret_store import get_secret_store
@@ -15,6 +16,8 @@ from app.core.static_analysis.workspace import prepare_workspace
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, CreateToolRunInput
 from app.settings import settings
 from app.workers.celery_app import celery_app
+
+_CHANGE_CLASSIFIER = ChangeClassifier()
 
 
 def _security_message(rule_id: str, default_message: str) -> str:
@@ -238,6 +241,28 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             ),
         )
 
+        change_type: str | None = None
+        change_type_confidence: float | None = None
+        change_type_source: str | None = None
+        try:
+            classification = _CHANGE_CLASSIFIER.classify(
+                metadata=analysis.metadata,
+                parsed_diff=parsed,
+            )
+            repo.update_change_classification(
+                analysis_id=analysis_id,
+                change_type=classification.change_type,
+                confidence=classification.confidence,
+                source=classification.source,
+                signals=classification.signals,
+            )
+            change_type = classification.change_type
+            change_type_confidence = classification.confidence
+            change_type_source = classification.source
+        except Exception:
+            # Change categorization must not block the rest of the review pipeline.
+            pass
+
         static_findings_count = 0
         static_stats: dict[str, Any] = {"scan_disabled": True}
         static_warnings: list[str] = []
@@ -340,6 +365,12 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "scan_failed": bool(static_stats.get("scan_failed", False)),
             "warnings": static_warnings,
         }
+        if change_type is not None and change_type_confidence is not None and change_type_source is not None:
+            metrics["change_classification"] = {
+                "change_type": change_type,
+                "confidence": change_type_confidence,
+                "source": change_type_source,
+            }
 
         repo.update_status(
             analysis_id=analysis_id,

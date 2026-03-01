@@ -82,6 +82,10 @@ class AnalysisResponse(BaseModel):
     has_secrets: bool
     redaction_stats: dict[str, Any] = Field(default_factory=dict)
     static_stats: dict[str, Any] = Field(default_factory=dict)
+    change_type: Literal["bugfix", "feature", "refactor"] | None = None
+    change_type_confidence: float | None = Field(default=None, ge=0, le=1)
+    change_type_source: Literal["heuristic", "llm"] | None = None
+    change_type_signals: dict[str, Any] = Field(default_factory=dict)
     error_code: str | None
     error_message: str | None
     metadata: dict[str, Any] = Field(default_factory=dict)
@@ -319,6 +323,10 @@ def _to_analysis_response(
         has_secrets=model.has_secrets,
         redaction_stats=model.redaction_stats,
         static_stats=model.static_stats,
+        change_type=model.change_type,
+        change_type_confidence=model.change_type_confidence,
+        change_type_source=model.change_type_source,
+        change_type_signals=model.change_type_signals,
         error_code=model.error_code,
         error_message=model.error_message,
         metadata=model.metadata,
