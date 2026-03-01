@@ -78,6 +78,7 @@ class AnalysisResponse(BaseModel):
     created_at: str
     updated_at: str
     diff_hash: str
+    summary: str | None
     diff_redacted: str | None
     has_secrets: bool
     redaction_stats: dict[str, Any] = Field(default_factory=dict)
@@ -319,6 +320,7 @@ def _to_analysis_response(
         created_at=model.created_at,
         updated_at=model.updated_at,
         diff_hash=model.diff_hash,
+        summary=model.summary,
         diff_redacted=model.diff_redacted,
         has_secrets=model.has_secrets,
         redaction_stats=model.redaction_stats,

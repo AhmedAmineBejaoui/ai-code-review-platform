@@ -232,6 +232,7 @@ class AnalysisService:
                     updated_at=created_at,
                     diff_hash=diff_hash,
                     diff_raw=diff_text,
+                    summary=None,
                     diff_redacted=None,
                     has_secrets=False,
                     redaction_stats={},

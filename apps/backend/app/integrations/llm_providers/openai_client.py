@@ -36,16 +36,15 @@ class OpenAIClient:
                 raise
         return self._aclient
 
-    async def summarize_diff(self, diff_text: str, max_chars: int = 500) -> str:
-        """Return a human-readable summary of *diff_text*.
+    @staticmethod
+    def _fallback_text(text: str, max_chars: int) -> str:
+        fallback = text.strip().replace("\n", " ")
+        return fallback[:max_chars]
 
-        Falls back to a truncated plain-text summary when LLM is disabled or
-        the API call fails.
-        """
+    async def complete_text(self, *, system_prompt: str, user_prompt: str, max_chars: int = 500) -> str:
         if not self._enabled or not self._api_key:
             await asyncio.sleep(0)
-            summary = diff_text.strip().replace("\n", " ")
-            return summary[:max_chars]
+            return self._fallback_text(user_prompt, max_chars=max_chars)
 
         try:
             client = self._get_client()
@@ -53,19 +52,30 @@ class OpenAIClient:
                 model=self._model,
                 max_tokens=self._max_tokens,
                 messages=[
-                    {
-                        "role": "system",
-                        "content": (
-                            "You are a senior code reviewer. "
-                            "Summarize the following git diff in 2-3 sentences, "
-                            "highlighting the most important changes."
-                        ),
-                    },
-                    {"role": "user", "content": diff_text[:12000]},
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt[:12000]},
                 ],
             )
-            return response.choices[0].message.content or ""
+            content = response.choices[0].message.content or ""
+            if content.strip():
+                return content
+            return self._fallback_text(user_prompt, max_chars=max_chars)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("OpenAI summarize_diff failed: %s", exc)
-            summary = diff_text.strip().replace("\n", " ")
-            return summary[:max_chars]
+            logger.warning("OpenAI complete_text failed: %s", exc)
+            return self._fallback_text(user_prompt, max_chars=max_chars)
+
+    async def summarize_diff(self, diff_text: str, max_chars: int = 500) -> str:
+        """Return a human-readable summary of *diff_text*.
+
+        Falls back to a truncated plain-text summary when LLM is disabled or
+        the API call fails.
+        """
+        return await self.complete_text(
+            system_prompt=(
+                "You are a senior code reviewer. "
+                "Summarize the following git diff in 2-3 sentences, "
+                "highlighting the most important changes."
+            ),
+            user_prompt=diff_text,
+            max_chars=max_chars,
+        )

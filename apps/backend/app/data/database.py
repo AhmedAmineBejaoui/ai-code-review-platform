@@ -91,6 +91,7 @@ def init_db() -> None:
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     diff_hash TEXT NOT NULL,
                     diff_raw TEXT NOT NULL,
+                    summary TEXT NULL,
                     diff_text TEXT NOT NULL,
                     diff_redacted TEXT NULL,
                     has_secrets BOOLEAN NOT NULL DEFAULT FALSE,
@@ -116,6 +117,7 @@ def init_db() -> None:
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS additions_total INTEGER"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS deletions_total INTEGER"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS diff_raw TEXT"))
+        conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS summary TEXT"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS diff_text TEXT"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS diff_redacted TEXT"))
         conn.execute(text("ALTER TABLE analyses ADD COLUMN IF NOT EXISTS has_secrets BOOLEAN NOT NULL DEFAULT FALSE"))

@@ -43,6 +43,7 @@ class CreateAnalysisInput:
     updated_at: str
     diff_hash: str
     diff_raw: str
+    summary: str | None = None
     diff_redacted: str | None = None
     has_secrets: bool = False
     redaction_stats: dict[str, Any] = field(default_factory=dict)
@@ -125,14 +126,14 @@ class AnalysesRepo:
                             INSERT INTO analyses (
                                 id, repo, provider, pr_number, commit_sha, source, status,
                                 stage, progress, nb_files_changed, additions_total, deletions_total,
-                                created_at, updated_at, diff_hash, diff_raw, diff_text, diff_redacted,
+                                created_at, updated_at, diff_hash, diff_raw, summary, diff_text, diff_redacted,
                                 has_secrets, redaction_stats, static_stats, change_type, change_type_confidence,
                                 change_type_source, change_type_signals, error_code, error_message, metadata_json
                             )
                             VALUES (
                                 :id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
                                 :stage, :progress, :nb_files_changed, :additions_total, :deletions_total,
-                                :created_at, :updated_at, :diff_hash, :diff_raw, :diff_text, :diff_redacted,
+                                :created_at, :updated_at, :diff_hash, :diff_raw, :summary, :diff_text, :diff_redacted,
                                 :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb),
                                 :change_type, :change_type_confidence, :change_type_source, CAST(:change_type_signals AS jsonb),
                                 :error_code, :error_message, CAST(:metadata_json AS jsonb)
@@ -156,6 +157,7 @@ class AnalysesRepo:
                             "updated_at": payload.updated_at,
                             "diff_hash": payload.diff_hash,
                             "diff_raw": payload.diff_raw,
+                            "summary": payload.summary,
                             "diff_text": payload.diff_raw,  # legacy compatibility column
                             "diff_redacted": payload.diff_redacted,
                             "has_secrets": payload.has_secrets,
@@ -327,6 +329,38 @@ class AnalysesRepo:
                         {
                             "analysis_id": analysis_id,
                             "static_stats": json.dumps(static_stats),
+                        },
+                    )
+                    .mappings()
+                    .first()
+                )
+
+        if row is None:
+            return None
+        return self._row_to_model(row)
+
+    def update_summary_result(
+        self,
+        *,
+        analysis_id: str,
+        summary: str,
+    ) -> Analysis | None:
+        with _REPO_LOCK:
+            with self._engine.begin() as conn:
+                row = (
+                    conn.execute(
+                        text(
+                            """
+                            UPDATE analyses
+                            SET summary = :summary,
+                                updated_at = NOW()
+                            WHERE id = :analysis_id
+                            RETURNING *
+                            """
+                        ),
+                        {
+                            "analysis_id": analysis_id,
+                            "summary": summary,
                         },
                     )
                     .mappings()
@@ -828,6 +862,7 @@ class AnalysesRepo:
             deletions_total=deletions_total,
             diff_hash=str(row["diff_hash"]),
             diff_raw=str(diff_raw),
+            summary=row.get("summary"),
             diff_redacted=row.get("diff_redacted"),
             has_secrets=bool(row.get("has_secrets", False)),
             redaction_stats_json=redaction_stats_serialized,

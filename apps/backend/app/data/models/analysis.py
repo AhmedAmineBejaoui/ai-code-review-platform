@@ -21,6 +21,7 @@ class Analysis:
     deletions_total: int | None
     diff_hash: str
     diff_raw: str
+    summary: str | None
     diff_redacted: str | None
     has_secrets: bool
     redaction_stats_json: str

@@ -13,11 +13,13 @@ from app.core.security.secret_store import get_secret_store
 from app.core.static_analysis import RuffAnalyzer, SemgrepAnalyzer, StaticAnalysisService
 from app.core.static_analysis.base import StaticAnalysisResult
 from app.core.static_analysis.workspace import prepare_workspace
+from app.core.summarization import SummaryGenerationInput, SummaryService
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, CreateToolRunInput
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
 _CHANGE_CLASSIFIER = ChangeClassifier()
+_SUMMARY_SERVICE = SummaryService()
 
 
 def _security_message(rule_id: str, default_message: str) -> str:
@@ -345,6 +347,54 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         repo.update_static_analysis_result(analysis_id=analysis_id, static_stats=static_stats)
 
+        summary_text = "Automatic summary unavailable."
+        summary_source = "heuristic"
+        summary_fallback = True
+        try:
+            sorted_files = sorted(
+                parsed.files,
+                key=lambda file_item: (file_item.additions_count + file_item.deletions_count),
+                reverse=True,
+            )
+            top_files = [file_item.path_new for file_item in sorted_files[:6]]
+
+            severity_rank = {"BLOCKER": 3, "WARN": 2, "INFO": 1}
+            findings_for_summary = repo.list_findings_by_analysis(analysis_id)
+            sorted_findings = sorted(
+                findings_for_summary,
+                key=lambda finding: severity_rank.get(finding.severity, 0),
+                reverse=True,
+            )
+            top_findings = [
+                f"{finding.severity}/{finding.category}: {finding.message[:160]}"
+                for finding in sorted_findings[:3]
+            ]
+
+            summary_input = SummaryGenerationInput(
+                repo=analysis.repo,
+                pr_number=analysis.pr_number,
+                change_type=change_type,
+                files_changed=files_count,
+                additions_total=additions_total,
+                deletions_total=deletions_total,
+                top_files=top_files,
+                top_findings=top_findings,
+                diff_excerpt=(diff_redacted or "")[:5000],
+            )
+            summary_result = _SUMMARY_SERVICE.generate(summary_input)
+            summary_text = summary_result.summary
+            summary_source = summary_result.source
+            summary_fallback = summary_result.fallback_used
+        except Exception:
+            summary_text = "Automatic summary unavailable."
+            summary_source = "heuristic"
+            summary_fallback = True
+
+        try:
+            repo.update_summary_result(analysis_id=analysis_id, summary=summary_text)
+        except Exception:
+            pass
+
         duration_ms = int((time.perf_counter() - started_at) * 1000)
         metrics = {
             "diff_size_bytes": len(analysis.diff_raw.encode("utf-8")),
@@ -371,6 +421,11 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "confidence": change_type_confidence,
                 "source": change_type_source,
             }
+        metrics["summary"] = {
+            "source": summary_source,
+            "fallback_used": summary_fallback,
+            "preview": summary_text[:180],
+        }
 
         repo.update_status(
             analysis_id=analysis_id,

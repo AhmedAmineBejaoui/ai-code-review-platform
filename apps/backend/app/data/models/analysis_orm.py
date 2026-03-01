@@ -68,6 +68,7 @@ class AnalysisORM(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     diff_hash: Mapped[str] = mapped_column(Text, nullable=False)
     diff_raw: Mapped[str] = mapped_column(Text, nullable=False)
+    summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     diff_redacted: Mapped[str | None] = mapped_column(Text, nullable=True)
     has_secrets: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
     redaction_stats: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
