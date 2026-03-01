@@ -1,79 +1,59 @@
 from __future__ import annotations
 
 import pytest
+from pydantic import ValidationError
 
-from app.core.summarization import SummaryGenerationInput, SummaryService
-from app.settings import settings
+from app.core.summarization import SummaryOutput, SummaryService
 
 
 class _FakeLLM:
-    def __init__(self, response: str) -> None:
-        self._response = response
+    def __init__(self, responses: list[str]) -> None:
+        self._responses = responses
+        self._index = 0
 
-    async def complete_text(self, *, system_prompt: str, user_prompt: str, max_chars: int = 500) -> str:  # noqa: ARG002
-        return self._response
+    def generate(self, prompt: str):  # noqa: ANN001
+        _ = prompt
+        response = self._responses[min(self._index, len(self._responses) - 1)]
+        self._index += 1
 
+        class _Resp:
+            def __init__(self, text: str) -> None:
+                self.text = text
 
-def _payload() -> SummaryGenerationInput:
-    return SummaryGenerationInput(
-        repo="acme/repo",
-        pr_number=42,
-        change_type="feature",
-        files_changed=4,
-        additions_total=80,
-        deletions_total=15,
-        top_files=["app/api/users.py", "app/services/user_service.py"],
-        top_findings=["WARN/quality: simplify nested condition"],
-        diff_excerpt="diff --git a/app/api/users.py b/app/api/users.py\n+def create_user(): pass",
-    )
+        return _Resp(response)
 
 
-def test_summary_falls_back_to_heuristic_when_llm_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "LLM_ENABLED", False)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", None)
-    service = SummaryService(llm_client=_FakeLLM('{"summary":"ignored"}'))
-
-    result = service.generate(_payload())
-
-    assert result.source == "heuristic"
-    assert result.fallback_used is True
-    assert "This PR updates" in result.summary
+def test_extract_json() -> None:
+    service = SummaryService(llm_client=_FakeLLM(['{"summary":"ok summary long enough"}']))
+    text = 'hello {"summary":"ok"} bye'
+    assert service._extract_json(text) == '{"summary":"ok"}'
 
 
-def test_summary_uses_llm_when_valid_json_is_returned(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "test-key")
-    service = SummaryService(llm_client=_FakeLLM('{"summary":"This PR adds a user creation endpoint and updates service validation."}'))
-
-    result = service.generate(_payload())
-
-    assert result.source == "llm"
-    assert result.fallback_used is False
-    assert "adds a user creation endpoint" in result.summary
+def test_summary_schema() -> None:
+    parsed = SummaryOutput(summary="This summary is long enough to be valid.")
+    assert parsed.summary.startswith("This summary")
 
 
-def test_summary_repairs_json_wrapped_in_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "test-key")
+def test_summary_schema_rejects_too_short() -> None:
+    with pytest.raises(ValidationError):
+        SummaryOutput(summary="short")
+
+
+def test_generate_summary_with_repair() -> None:
     service = SummaryService(
         llm_client=_FakeLLM(
-            'Here is the result:\n{"summary":"This PR introduces feature flags for onboarding and updates related API handlers."}\nThank you.'
+            [
+                "not-json",
+                '{"summary":"This PR improves auth validation and updates endpoint guards to reduce runtime failures."}',
+            ]
         )
     )
 
-    result = service.generate(_payload())
-
-    assert result.source == "llm"
-    assert result.fallback_used is False
-    assert "feature flags for onboarding" in result.summary
-
-
-def test_summary_falls_back_when_llm_output_is_invalid(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(settings, "LLM_ENABLED", True)
-    monkeypatch.setattr(settings, "OPENAI_API_KEY", "test-key")
-    service = SummaryService(llm_client=_FakeLLM("short"))
-
-    result = service.generate(_payload())
-
-    assert result.source == "heuristic"
-    assert result.fallback_used is True
+    out = service.generate_summary(
+        repo="acme/repo",
+        pr_number=5,
+        change_type="bugfix",
+        diff_redacted="diff --git a/x b/x\n+fix stuff",
+        files_changed=["app/auth.py"],
+    )
+    assert "improves auth validation" in out.summary
