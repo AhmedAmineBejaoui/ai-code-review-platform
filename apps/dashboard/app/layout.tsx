@@ -9,8 +9,8 @@ const inter = Inter({
 })
 
 export const metadata: Metadata = {
-  title: "CodeGuardian Dashboard",
-  description: "Ship code with absolute confidence.",
+  title: "TrustReview — Explainable AI Code Review",
+  description: "Ship code with absolute confidence. The enterprise-grade AI code review assistant that detects bugs, security flaws, and performance issues before you merge.",
 }
 
 export default function RootLayout({
