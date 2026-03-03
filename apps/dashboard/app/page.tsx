@@ -186,10 +186,24 @@ function ReviewsTable({
 /* ━━━━━━━━━━━━━━━━━ LANDING PAGE ━━━━━━━━━━━━━━━━━ */
 
 export default function HomePage() {
+  const fadeInUp = {
+    hidden: { opacity: 0, y: 20 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
+  }
+  const stagger = {
+    hidden: { opacity: 0 },
+    show: { opacity: 1, transition: { staggerChildren: 0.1 } },
+  }
+
   return (
     <main className="min-h-screen bg-white text-slate-900">
       {/* ── NAVBAR ── */}
-      <header className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg">
+      <motion.header 
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+        className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg"
+      >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4 md:px-8">
           <div className="flex items-center gap-2.5">
             <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
@@ -217,7 +231,7 @@ export default function HomePage() {
             </Button>
           </div>
         </div>
-      </header>
+      </motion.header>
 
       {/* ── HERO ── */}
       <section className="relative overflow-hidden">
