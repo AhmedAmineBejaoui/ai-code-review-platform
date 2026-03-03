@@ -2,6 +2,7 @@
 
 import { motion } from "framer-motion"
 import Link from "next/link"
+import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
 import {
   ArrowRight,
   BookOpen,
@@ -220,15 +221,21 @@ export default function HomePage() {
           </nav>
 
           <div className="flex items-center gap-4">
-            <Link href="/auth" className="hidden text-sm font-medium text-slate-700 transition hover:text-slate-900 sm:inline">
-              Sign In
-            </Link>
-            <Button
-              asChild
-              className="rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-5 text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700"
-            >
-              <Link href="/auth">Start Free Trial</Link>
-            </Button>
+            <SignedOut>
+              <SignInButton mode="redirect">
+                <button className="hidden text-sm font-medium text-slate-700 transition hover:text-slate-900 sm:inline">
+                  Sign In
+                </button>
+              </SignInButton>
+              <SignUpButton mode="redirect">
+                <Button className="rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-5 text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700">
+                  Start Free Trial
+                </Button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
           </div>
         </div>
       </motion.header>
@@ -278,15 +285,25 @@ export default function HomePage() {
             </motion.p>
 
             <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-3">
+            <SignedOut>
+              <SignUpButton mode="redirect">
+                <Button className="h-12 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700">
+                  Analyze My Repo
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </SignUpButton>
+            </SignedOut>
+            <SignedIn>
               <Button
                 asChild
                 className="h-12 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700"
               >
-                <Link href="/auth">
+                <Link href="#preview">
                   Analyze My Repo
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Link>
               </Button>
+            </SignedIn>
               <Button variant="outline" className="h-12 rounded-2xl border-slate-300 px-7 text-base text-slate-800">
                 View Demo
               </Button>
