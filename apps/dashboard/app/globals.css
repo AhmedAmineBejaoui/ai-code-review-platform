@@ -1,0 +1,44 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 220 24% 97%;
+    --foreground: 223 27% 16%;
+    --card: 0 0% 100%;
+    --card-foreground: 223 27% 16%;
+    --primary: 245 83% 62%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 239 100% 97%;
+    --secondary-foreground: 245 45% 35%;
+    --muted: 220 20% 96%;
+    --muted-foreground: 220 11% 46%;
+    --accent: 187 100% 96%;
+    --accent-foreground: 220 40% 20%;
+    --border: 220 16% 90%;
+    --input: 220 16% 90%;
+    --ring: 245 83% 62%;
+    --radius: 1rem;
+  }
+
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-manrope), sans-serif;
+  }
+
+  h1,
+  h2,
+  h3,
+  h4 {
+    font-family: var(--font-sora), sans-serif;
+  }
+}
+
+.grid-dots {
+  background-size: 20px 20px;
+}
