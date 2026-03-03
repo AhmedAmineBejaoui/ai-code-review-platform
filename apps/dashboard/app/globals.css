@@ -67,3 +67,83 @@
 .trusted-marquee:hover .trusted-marquee-track {
   animation-play-state: paused;
 }
+
+/* ── Hero blob morph ── */
+@keyframes blob-morph {
+  0%,100% { border-radius: 42% 58% 62% 38% / 46% 40% 60% 54%; }
+  25%     { border-radius: 56% 44% 36% 64% / 60% 52% 48% 40%; }
+  50%     { border-radius: 38% 62% 52% 48% / 42% 58% 42% 58%; }
+  75%     { border-radius: 62% 38% 44% 56% / 54% 46% 54% 46%; }
+}
+@keyframes blob-rotate {
+  0%   { transform: translate(-50%,-50%) rotate(0deg); }
+  100% { transform: translate(-50%,-50%) rotate(360deg); }
+}
+@keyframes blob-glow-pulse {
+  0%,100% { opacity: .55; transform: scale(1); }
+  50%     { opacity: .85; transform: scale(1.08); }
+}
+
+.hero-blob-wrap {
+  position: relative;
+  width: 280px;
+  height: 280px;
+}
+
+/* Outer glow */
+.hero-blob-wrap::before {
+  content: '';
+  position: absolute;
+  inset: -32px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(129,140,248,.35) 0%, rgba(124,58,237,.18) 40%, transparent 70%);
+  animation: blob-glow-pulse 6s ease-in-out infinite;
+  filter: blur(18px);
+}
+
+.hero-blob {
+  position: absolute;
+  inset: 0;
+  border-radius: 42% 58% 62% 38% / 46% 40% 60% 54%;
+  animation: blob-morph 10s ease-in-out infinite, blob-rotate 28s linear infinite;
+  /* Iridescent layered gradient */
+  background:
+    radial-gradient(circle at 28% 28%, #67e8f9 0%, transparent 36%),
+    radial-gradient(circle at 72% 32%, #a78bfa 0%, transparent 34%),
+    radial-gradient(circle at 50% 65%, #2dd4bf 0%, transparent 38%),
+    radial-gradient(circle at 42% 48%, #4f46e5 0%, #7c3aed 40%, #0f172a 78%);
+  box-shadow:
+    0 42px 70px -30px rgba(30,64,175,.46),
+    inset 0 -28px 44px -18px rgba(6,182,212,.35),
+    inset 0 22px 36px -14px rgba(139,92,246,.40);
+}
+
+/* Glass inner ring */
+.hero-blob::after {
+  content: '';
+  position: absolute;
+  inset: 14px;
+  border-radius: inherit;
+  border: 1.5px solid rgba(255,255,255,.35);
+  background: radial-gradient(circle at 35% 30%, rgba(255,255,255,.22) 0%, transparent 50%);
+}
+
+/* Specular highlight dots */
+.hero-blob-highlight-1 {
+  position: absolute;
+  width: 36px; height: 36px;
+  left: 58%; top: 56%;
+  border-radius: 50%;
+  background: rgba(103,232,249,.65);
+  filter: blur(4px);
+  animation: blob-morph 8s ease-in-out infinite reverse;
+}
+.hero-blob-highlight-2 {
+  position: absolute;
+  width: 28px; height: 28px;
+  left: 34%; top: 34%;
+  border-radius: 50%;
+  background: rgba(196,181,253,.65);
+  filter: blur(3px);
+  animation: blob-morph 9s ease-in-out 1s infinite;
+}

@@ -289,13 +289,13 @@ export default function HomePage() {
 
           {/* Right – Abstract 3D illustration */}
           <div className="relative mx-auto w-full max-w-[560px]">
-            <div className="relative h-[430px] overflow-hidden rounded-2xl bg-gradient-to-br from-white via-slate-50 to-[#eef3fb]">
-              {/* Radial gradient blobs */}
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_70%_55%,rgba(45,212,191,0.2),transparent_45%),radial-gradient(circle_at_45%_45%,rgba(129,140,248,0.4),transparent_42%),radial-gradient(circle_at_55%_60%,rgba(196,181,253,0.35),transparent_48%)]" />
-              {/* Central organic shape */}
-              <div className="absolute left-1/2 top-1/2 h-[230px] w-[230px] -translate-x-1/2 -translate-y-1/2 rounded-[46%_54%_56%_44%/47%_40%_60%_53%] bg-[radial-gradient(circle_at_30%_30%,#67e8f9_0%,#4f46e5_30%,#7c3aed_55%,#0f172a_85%)] shadow-[0_42px_70px_-30px_rgba(30,64,175,0.46)] after:absolute after:inset-[14px] after:rounded-[inherit] after:border after:border-white/35 after:content-['']" />
-              <div className="absolute left-[58%] top-[58%] h-8 w-8 rounded-full bg-cyan-300/70 blur-[2px]" />
-              <div className="absolute left-[38%] top-[36%] h-7 w-7 rounded-full bg-violet-300/70 blur-[2px]" />
+            <div className="relative flex h-[430px] items-center justify-center">
+              {/* Animated iridescent organic blob */}
+              <div className="hero-blob-wrap">
+                <div className="hero-blob" />
+                <div className="hero-blob-highlight-1" />
+                <div className="hero-blob-highlight-2" />
+              </div>
             </div>
 
             {/* Floating card – Security Risk */}
