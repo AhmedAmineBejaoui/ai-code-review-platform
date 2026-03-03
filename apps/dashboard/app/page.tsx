@@ -633,7 +633,8 @@ export default function HomePage() {
               </Button>
             </CardContent>
           </Card>
-        </div>
+          </motion.div>
+        </motion.div>
       </section>
 
       {/* ── FOOTER ── */}
