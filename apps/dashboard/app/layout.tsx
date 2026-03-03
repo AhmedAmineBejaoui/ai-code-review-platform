@@ -1,6 +1,7 @@
 import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
 import { Inter } from "next/font/google"
+import Script from "next/script"
 
 import "./globals.css"
 
@@ -19,8 +20,24 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider>
-      <html lang="en">
-        <body className={`${inter.variable} antialiased`}>
+      <html lang="en" suppressHydrationWarning>
+        <body className={`${inter.variable} theme-transition antialiased`}>
+          <Script id="theme-init" strategy="beforeInteractive">
+            {`
+              try {
+                var key = 'dashboard-theme';
+                var saved = localStorage.getItem(key);
+                var theme = saved === 'dark' || saved === 'light'
+                  ? saved
+                  : (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+                if (theme === 'dark') {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (e) {}
+            `}
+          </Script>
           {children}
         </body>
       </html>

@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    color-scheme: light;
     --background: 220 24% 97%;
     --foreground: 223 27% 16%;
     --card: 0 0% 100%;
@@ -22,6 +23,25 @@
     --radius: 1rem;
   }
 
+  .dark {
+    color-scheme: dark;
+    --background: 222 47% 11%;
+    --foreground: 210 40% 98%;
+    --card: 224 44% 14%;
+    --card-foreground: 210 40% 98%;
+    --primary: 256 91% 72%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 223 31% 18%;
+    --secondary-foreground: 210 40% 98%;
+    --muted: 223 26% 20%;
+    --muted-foreground: 215 20% 70%;
+    --accent: 222 30% 22%;
+    --accent-foreground: 210 40% 98%;
+    --border: 223 24% 24%;
+    --input: 223 24% 24%;
+    --ring: 256 91% 72%;
+  }
+
   * {
     @apply border-border;
   }
@@ -34,6 +54,13 @@
     @apply bg-background text-foreground;
     font-family: var(--font-inter), sans-serif;
   }
+}
+
+.theme-transition,
+.theme-transition * {
+  transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+  transition-duration: 320ms;
+  transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .grid-dots {
