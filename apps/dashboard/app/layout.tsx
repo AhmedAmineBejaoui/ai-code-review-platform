@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs"
 import { Inter } from "next/font/google"
 import Script from "next/script"
 
+import { ThemeModeButton } from "@/components/theme-mode-button"
 import "./globals.css"
 
 const inter = Inter({
@@ -39,6 +40,9 @@ export default function RootLayout({
             `}
           </Script>
           {children}
+          <div className="fixed bottom-5 right-5 z-50 flex items-center justify-center">
+             <ThemeModeButton />
+          </div>
         </body>
       </html>
     </ClerkProvider>

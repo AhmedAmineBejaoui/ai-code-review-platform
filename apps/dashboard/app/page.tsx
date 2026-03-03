@@ -197,13 +197,13 @@ export default function HomePage() {
   }
 
   return (
-    <main className="min-h-screen bg-white text-slate-900">
+    <main className="min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* ── NAVBAR ── */}
       <motion.header 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className="sticky top-0 z-50 border-b border-slate-200/80 bg-white/80 backdrop-blur-lg"
+        className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60"
       >
         <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4 md:px-8">
           <div className="flex items-center gap-2.5">
