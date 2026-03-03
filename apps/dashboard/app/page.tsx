@@ -409,23 +409,31 @@ export default function HomePage() {
             Empower your team to merge faster while maintaining the highest standards of code quality and security.
           </p>
         </div>
-        <div className="grid gap-5 md:grid-cols-3">
+        <motion.div 
+          className="grid gap-5 md:grid-cols-3"
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={stagger}
+        >
           {features.map((feature) => (
-            <Card key={feature.title} className="rounded-2xl border-slate-200 shadow-sm transition hover:shadow-md">
-              <CardHeader className="space-y-4">
-                <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${feature.iconClass}`}>
-                  <feature.icon className="h-5 w-5" />
-                </span>
-                <div>
-                  <CardTitle className="text-xl text-slate-900">{feature.title}</CardTitle>
-                  <CardDescription className="mt-2 leading-relaxed text-slate-500">
-                    {feature.description}
-                  </CardDescription>
-                </div>
-              </CardHeader>
-            </Card>
+            <motion.div key={feature.title} variants={fadeInUp}>
+              <Card className="h-full rounded-2xl border-slate-200 shadow-sm transition hover:shadow-md">
+                <CardHeader className="space-y-4">
+                  <span className={`inline-flex h-10 w-10 items-center justify-center rounded-xl ${feature.iconClass}`}>
+                    <feature.icon className="h-5 w-5" />
+                  </span>
+                  <div>
+                    <CardTitle className="text-xl text-slate-900">{feature.title}</CardTitle>
+                    <CardDescription className="mt-2 leading-relaxed text-slate-500">
+                      {feature.description}
+                    </CardDescription>
+                  </div>
+                </CardHeader>
+              </Card>
+            </motion.div>
           ))}
-        </div>
+        </motion.div>
       </section>
 
       {/* ── DARK SECTION — Trust Layer ── */}
@@ -441,10 +449,17 @@ export default function HomePage() {
               Every finding is grounded, cited, and policy-checked. Fewer false positives, faster merges.
             </p>
           </div>
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+          <motion.div 
+            className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4"
+            initial="hidden"
+            whileInView="show"
+            viewport={{ once: true, margin: "-50px" }}
+            variants={stagger}
+          >
             {trustLayerCards.map((card) => (
-              <div
+              <motion.div
                 key={card.title}
+                variants={fadeInUp}
                 className="group rounded-2xl border border-white/10 bg-white/[0.04] p-6 backdrop-blur-sm transition hover:border-indigo-400/30 hover:bg-white/[0.07]"
               >
                 <span className="mb-4 inline-flex h-10 w-10 items-center justify-center rounded-xl bg-indigo-500/20 text-indigo-300">
@@ -452,9 +467,9 @@ export default function HomePage() {
                 </span>
                 <h3 className="mb-2 text-lg font-semibold text-white">{card.title}</h3>
                 <p className="text-sm leading-relaxed text-slate-400">{card.description}</p>
-              </div>
+              </motion.div>
             ))}
-          </div>
+          </motion.div>
         </div>
       </section>
 
@@ -467,7 +482,13 @@ export default function HomePage() {
           <p className="mt-3 text-slate-500">From parsing to decision in seconds. Monitor your entire pipeline.</p>
         </div>
 
-        <div className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/80 to-indigo-50/80 p-4 shadow-xl shadow-indigo-100/60 md:p-6">
+        <motion.div 
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={fadeInUp}
+          className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/80 to-indigo-50/80 p-4 shadow-xl shadow-indigo-100/60 md:p-6"
+        >
           <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
             {/* Mock header */}
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
@@ -520,12 +541,18 @@ export default function HomePage() {
               </div>
             </div>
           </div>
-        </div>
+        </motion.div>
       </section>
 
       {/* ── CTA BANNER (Dark gradient) ── */}
       <section className="mx-auto w-full max-w-6xl px-5 pb-24 md:px-8">
-        <div className="plus-pattern relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-700 px-6 py-16 text-center text-white md:px-10">
+        <motion.div 
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={fadeInUp}
+          className="plus-pattern relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-700 via-indigo-600 to-purple-700 px-6 py-16 text-center text-white md:px-10"
+        >
           <h3 className="text-balance text-4xl font-bold md:text-5xl">
             Ready to elevate your code quality?
           </h3>
@@ -538,7 +565,7 @@ export default function HomePage() {
             Get Started Now
           </Button>
           <p className="mt-5 text-sm text-indigo-200">Free for open source projects.</p>
-        </div>
+        </motion.div>
       </section>
 
       {/* ── PRICING ── */}
@@ -548,9 +575,16 @@ export default function HomePage() {
           <p className="mt-3 text-slate-500">Start for free, upgrade when you need more.</p>
         </div>
 
-        <div className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2">
+        <motion.div 
+          initial="hidden"
+          whileInView="show"
+          viewport={{ once: true, margin: "-50px" }}
+          variants={stagger}
+          className="mx-auto grid max-w-4xl gap-6 md:grid-cols-2"
+        >
           {/* Community — Free */}
-          <Card className="relative overflow-hidden rounded-3xl border-0 bg-gradient-to-br from-indigo-500 via-indigo-400 to-sky-400 text-white shadow-xl shadow-indigo-200">
+          <motion.div variants={fadeInUp} className="h-full">
+            <Card className="relative h-full overflow-hidden rounded-3xl border-0 bg-gradient-to-br from-indigo-500 via-indigo-400 to-sky-400 text-white shadow-xl shadow-indigo-200">
             <div className="absolute left-1/2 top-0 -translate-x-1/2 rounded-b-xl bg-sky-300/80 px-3 py-1 text-xs font-medium text-white">
               Most popular
             </div>
@@ -575,9 +609,11 @@ export default function HomePage() {
               </Button>
             </CardContent>
           </Card>
+          </motion.div>
 
           {/* Team — Coming soon */}
-          <Card className="rounded-3xl border-slate-200 shadow-sm">
+          <motion.div variants={fadeInUp} className="h-full">
+            <Card className="h-full rounded-3xl border-slate-200 shadow-sm">
             <CardHeader>
               <CardTitle className="text-3xl">Team</CardTitle>
               <CardDescription>For teams that need advanced features</CardDescription>
