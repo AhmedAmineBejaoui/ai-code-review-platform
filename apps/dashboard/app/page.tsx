@@ -240,31 +240,44 @@ export default function HomePage() {
 
         <div className="relative mx-auto grid w-full max-w-6xl gap-14 px-5 pb-14 pt-16 md:px-8 lg:grid-cols-2 lg:items-center lg:py-24">
           {/* Left – text */}
-          <div className="space-y-7">
-            <Badge
-              variant="secondary"
-              className="w-fit rounded-full border-blue-100 bg-blue-50 px-3.5 py-1 text-blue-700"
-            >
-              <Sparkles className="mr-1.5 h-3.5 w-3.5" />
-              AI-Powered Code Intelligence
-            </Badge>
+          <motion.div 
+            className="space-y-7"
+            initial="hidden"
+            animate="show"
+            variants={stagger}
+          >
+            <motion.div variants={fadeInUp}>
+              <Badge
+                variant="secondary"
+                className="w-fit rounded-full border-blue-100 bg-blue-50 px-3.5 py-1 text-blue-700"
+              >
+                <Sparkles className="mr-1.5 h-3.5 w-3.5" />
+                AI-Powered Code Intelligence
+              </Badge>
+            </motion.div>
 
-            <h1 className="max-w-xl text-balance text-5xl font-extrabold leading-[1.04] text-slate-900 md:text-[4.25rem]">
+            <motion.h1 
+              variants={fadeInUp}
+              className="max-w-xl text-balance text-5xl font-extrabold leading-[1.04] text-slate-900 md:text-[4.25rem]"
+            >
               Ship code with
               <br />
               absolute
               <br />
               confidence.
-            </h1>
+            </motion.h1>
 
-            <p className="max-w-lg text-lg leading-relaxed text-slate-500">
+            <motion.p 
+              variants={fadeInUp}
+              className="max-w-lg text-lg leading-relaxed text-slate-500"
+            >
               The enterprise-grade AI code review assistant that detects{" "}
               <strong className="text-slate-700">bugs</strong>,{" "}
               <strong className="text-slate-700">security flaws</strong>, and{" "}
               <strong className="text-slate-700">performance issues</strong> before you merge.
-            </p>
+            </motion.p>
 
-            <div className="flex flex-wrap items-center gap-3">
+            <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-3">
               <Button
                 asChild
                 className="h-12 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700"
@@ -277,10 +290,10 @@ export default function HomePage() {
               <Button variant="outline" className="h-12 rounded-2xl border-slate-300 px-7 text-base text-slate-800">
                 View Demo
               </Button>
-            </div>
+            </motion.div>
 
             {/* Social proof */}
-            <div className="flex items-center gap-4">
+            <motion.div variants={fadeInUp} className="flex items-center gap-4">
               <div className="flex -space-x-2">
                 {[
                   { initials: "AL", color: "from-cyan-400 to-blue-500" },
@@ -298,8 +311,8 @@ export default function HomePage() {
               <p className="text-sm text-slate-600">
                 <span className="font-semibold text-slate-900">4.9/5</span> from 10k+ engineers
               </p>
-            </div>
-          </div>
+            </motion.div>
+          </motion.div>
 
           {/* Right – Abstract 3D illustration */}
           <div className="relative mx-auto w-full max-w-[560px]">
