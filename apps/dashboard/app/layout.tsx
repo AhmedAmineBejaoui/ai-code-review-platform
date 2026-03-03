@@ -1,16 +1,11 @@
 import type { Metadata } from "next"
-import { Manrope, Sora } from "next/font/google"
+import { Inter } from "next/font/google"
 
 import "./globals.css"
 
-const manrope = Manrope({
+const inter = Inter({
   subsets: ["latin"],
-  variable: "--font-manrope",
-})
-
-const sora = Sora({
-  subsets: ["latin"],
-  variable: "--font-sora",
+  variable: "--font-inter",
 })
 
 export const metadata: Metadata = {
@@ -23,7 +18,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${manrope.variable} ${sora.variable} antialiased`}>
+      <body className={`${inter.variable} antialiased`}>
         {children}
       </body>
     </html>
