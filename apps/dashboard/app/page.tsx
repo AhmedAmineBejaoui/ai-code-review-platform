@@ -1,5 +1,6 @@
 "use client"
 
+import { useState } from "react"
 import { motion } from "framer-motion"
 import Link from "next/link"
 import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
@@ -8,6 +9,7 @@ import {
   BookOpen,
   Box,
   Check,
+  ChevronDown,
   Circle,
   Cloud,
   Cpu,
@@ -18,6 +20,7 @@ import {
   Hexagon,
   Linkedin,
   Lock,
+  Menu,
   Quote,
   Search,
   Shield,
@@ -29,6 +32,7 @@ import {
   Twitter,
   User,
   Users,
+  X,
   Zap,
 } from "lucide-react"
 
@@ -94,19 +98,19 @@ const trustLayerCards = [
 ]
 
 const pendingReviews = [
-  { project: "Payment API", file: "1.5", changes: "Change Requested", author: "206.90", lastUpdated: "Approved", status: "Approved" },
-  { project: "Auth Service", file: "1.85", changes: "Approved", author: "200.50", lastUpdated: "Approved", status: "Approved" },
-  { project: "Web Dashboard", file: "1.67", changes: "Advising", author: "205.80", lastUpdated: "Approved", status: "Changed" },
-  { project: "School Rosik", file: "3.10", changes: "Adprening", author: "255.80", lastUpdated: "Awaiting", status: "Pending" },
+  { project: "Project",     file: "2.5",  changes: "Changes Requested", author: "206.90", lastUpdated: "Approved", status1: "Approved", status2: "Approved" },
+  { project: "Tronjet",    file: "1.85", changes: "Approved",          author: "200.90", lastUpdated: "Approved", status1: "Approved", status2: "Approved" },
+  { project: "Morescat",   file: "1.67", changes: "Advising",          author: "205.80", lastUpdated: "Approved", status1: "Charged",  status2: "Pending" },
+  { project: "School Rosik",file: "3.10",changes: "Adprening",         author: "255.80", lastUpdated: "Awaiting", status1: "Pending",  status2: "Pending" },
 ]
 
 const completedReviews = [
-  { project: "SDK Client", file: "2.5", changes: "Change Requested", author: "204.60", lastUpdated: "Approved", status: "Approved" },
-  { project: "Worker Queue", file: "1.86", changes: "Approved", author: "204.60", lastUpdated: "Approved", status: "Approved" },
-  { project: "Knowledge Base", file: "1.88", changes: "Rest.Int", author: "158.80", lastUpdated: "Approved", status: "Changed" },
-  { project: "Rebuad Davis", file: "3.85", changes: "Change Requested", author: "158.80", lastUpdated: "Approved", status: "Pending" },
-  { project: "Interbid Data", file: "4.55", changes: "Rest.Int", author: "135.80", lastUpdated: "Approved", status: "Pending" },
-  { project: "Printed Data", file: "5.85", changes: "Rest.Int", author: "158.80", lastUpdated: "Approved", status: "Pending" },
+  { project: "Project",      file: "2.5",  changes: "Changes Requested", author: "204.60", lastUpdated: "Approved", status1: "Approved", status2: "Approved" },
+  { project: "Tronjet",      file: "1.99", changes: "Approved",          author: "204.80", lastUpdated: "Approved", status1: "Approved", status2: "Approved" },
+  { project: "CybeerTon",    file: "1.88", changes: "Rest.Int",          author: "150.90", lastUpdated: "Approved", status1: "Charged",  status2: "Charged" },
+  { project: "Rebuad Daus",  file: "3.85", changes: "Changes Requested", author: "158.80", lastUpdated: "Approved", status1: "Approved", status2: "Pending" },
+  { project: "Interbid Daus",file: "4.55", changes: "Rest.Int",          author: "105.80", lastUpdated: "Approved", status1: "Approved", status2: "Pending" },
+  { project: "Printed Daus", file: "5.85", changes: "Rest.Int",          author: "138.80", lastUpdated: "Approved", status1: "Approved", status2: "Charged" },
 ]
 
 const communityFeatures = [
@@ -130,10 +134,11 @@ const teamFeatures = [
 /* ─── HELPERS ─── */
 
 function statusClass(status: string): string {
-  if (status === "Approved") return "bg-emerald-100 text-emerald-700"
-  if (status === "Pending") return "bg-amber-100 text-amber-700"
-  if (status === "Changed") return "bg-violet-100 text-violet-700"
-  return "bg-slate-100 text-slate-600"
+  if (status === "Approved") return "bg-emerald-400 text-white"
+  if (status === "Pending")  return "bg-amber-400 text-white"
+  if (status === "Charged")  return "bg-violet-500 text-white"
+  if (status === "Awaiting") return "bg-slate-300 text-slate-700"
+  return "bg-slate-200 text-slate-600"
 }
 
 /* ─── SUB-COMPONENTS ─── */
@@ -142,38 +147,47 @@ function ReviewsTable({
   title,
   rows,
 }: {
-  title: string
-  rows: typeof pendingReviews
+  readonly title: string
+  readonly rows: typeof pendingReviews
 }) {
   return (
-    <div className="rounded-2xl border border-violet-200/70 bg-white p-3 shadow-sm">
-      <h4 className="mb-2 text-sm font-semibold text-slate-800">{title}</h4>
+    <div className="overflow-hidden rounded-xl border border-violet-200/60 bg-white shadow-sm">
+      <div className="border-b border-violet-100 px-4 py-2.5">
+        <h4 className="text-sm font-semibold text-slate-800">{title}</h4>
+      </div>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[520px] text-xs">
-          <thead className="text-slate-400">
+        <table className="w-full min-w-[580px] text-xs">
+          <thead className="bg-slate-50/70">
             <tr>
-              <th className="px-2 py-1.5 text-left font-medium">Project</th>
-              <th className="px-2 py-1.5 text-left font-medium">File</th>
-              <th className="px-2 py-1.5 text-left font-medium">Author</th>
-              <th className="px-2 py-1.5 text-left font-medium">Last Updated</th>
-              <th className="px-2 py-1.5 text-left font-medium">Status</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">Project</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">File</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">Author</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">Last Updated</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">Last Updated</th>
+              <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-400">Status</th>
             </tr>
           </thead>
-          <tbody>
+          <tbody className="divide-y divide-slate-100">
             {rows.map((row, i) => (
-              <tr key={`${title}-${i}`} className="border-t border-slate-100">
-                <td className="px-2 py-1.5 text-slate-700">{row.project}</td>
-                <td className="px-2 py-1.5 text-slate-600">{row.file}</td>
-                <td className="px-2 py-1.5 text-slate-600">{row.author}</td>
-                <td className="px-2 py-1.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusClass(row.lastUpdated)}`}>
+              <tr key={`${title}-${i}`} className="hover:bg-violet-50/40 transition-colors">
+                <td className="px-3 py-2 font-medium text-slate-700">{row.project}</td>
+                <td className="px-3 py-2 text-slate-500">{row.file}</td>
+                <td className="px-3 py-2 text-slate-500">{row.author}</td>
+                <td className="px-3 py-2 text-slate-500">{row.changes}</td>
+                <td className="px-3 py-2">
+                  <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusClass(row.lastUpdated)}`}>
                     {row.lastUpdated}
                   </span>
                 </td>
-                <td className="px-2 py-1.5">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusClass(row.status)}`}>
-                    {row.status}
-                  </span>
+                <td className="px-3 py-2">
+                  <div className="flex gap-1">
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusClass(row.status1)}`}>
+                      {row.status1}
+                    </span>
+                    <span className={`inline-block rounded-full px-2.5 py-0.5 text-[11px] font-semibold ${statusClass(row.status2)}`}>
+                      {row.status2}
+                    </span>
+                  </div>
                 </td>
               </tr>
             ))}
@@ -186,7 +200,16 @@ function ReviewsTable({
 
 /* ━━━━━━━━━━━━━━━━━ LANDING PAGE ━━━━━━━━━━━━━━━━━ */
 
+const NAV_LINKS = [
+  { label: "Features", href: "#features", hasDropdown: true },
+  { label: "Product", href: "#preview", hasDropdown: true },
+  { label: "Changelog", href: "#changelog", hasDropdown: false },
+  { label: "Docs", href: "https://docs.trustreview.ai", hasDropdown: false },
+  { label: "Pricing", href: "#pricing", hasDropdown: false },
+]
+
 export default function HomePage() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const fadeInUp = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -199,45 +222,120 @@ export default function HomePage() {
   return (
     <main className="min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* ── NAVBAR ── */}
-      <motion.header 
-        initial={{ opacity: 0, y: -20 }}
+      <motion.header
+        initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.5 }}
-        className="sticky top-0 z-50 border-b border-border/40 bg-background/80 backdrop-blur-lg supports-[backdrop-filter]:bg-background/60"
+        transition={{ duration: 0.45, ease: "easeOut" }}
+        className="sticky top-0 z-50 border-b border-border/30 bg-background/90 backdrop-blur-xl"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-4 md:px-8">
-          <div className="flex items-center gap-2.5">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3 md:px-8">
+
+          {/* ── Logo ── */}
+          <Link href="/" className="flex items-center gap-2.5 shrink-0">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="text-xl font-semibold tracking-tight">TrustReview</span>
-          </div>
+            <span className="text-[1.05rem] font-semibold tracking-tight text-foreground">TrustReview</span>
+          </Link>
 
-          <nav className="hidden items-center gap-8 text-sm font-medium text-slate-600 md:flex">
-            <a href="#features" className="transition hover:text-slate-900">Features</a>
-            <a href="#preview" className="transition hover:text-slate-900">Product</a>
-            <a href="#pricing" className="transition hover:text-slate-900">Pricing</a>
-            <a href="https://docs.trustreview.ai" className="transition hover:text-slate-900">Docs</a>
+          {/* ── Center nav – desktop ── */}
+          <nav className="hidden items-center gap-1 md:flex">
+            {NAV_LINKS.map((link) => (
+              <a
+                key={link.label}
+                href={link.href}
+                className="group inline-flex items-center gap-0.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              >
+                {link.label}
+                {link.hasDropdown && (
+                  <ChevronDown className="h-3.5 w-3.5 opacity-60 transition-transform duration-200 group-hover:rotate-180" />
+                )}
+              </a>
+            ))}
           </nav>
 
-          <div className="flex items-center gap-4">
+          {/* ── Right side ── */}
+          <div className="flex items-center gap-2">
             <SignedOut>
               <SignInButton mode="redirect">
-                <button className="hidden text-sm font-medium text-slate-700 transition hover:text-slate-900 sm:inline">
-                  Sign In
+                <button className="hidden px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex">
+                  Sign in
                 </button>
               </SignInButton>
               <SignUpButton mode="redirect">
-                <Button className="rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-5 text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700">
-                  Start Free Trial
-                </Button>
+                <button className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-85 active:scale-95">
+                  Dashboard
+                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
+                    <ArrowRight className="h-2.5 w-2.5" />
+                  </span>
+                </button>
               </SignUpButton>
             </SignedOut>
             <SignedIn>
+              <Link
+                href="/dashboard"
+                className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-85 active:scale-95"
+              >
+                Dashboard
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
+                  <ArrowRight className="h-2.5 w-2.5" />
+                </span>
+              </Link>
               <UserButton afterSignOutUrl="/" />
             </SignedIn>
+
+            {/* Mobile hamburger */}
+            <button
+              onClick={() => setMobileMenuOpen((v) => !v)}
+              className="ml-1 inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground md:hidden"
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
           </div>
         </div>
+
+        {/* ── Mobile menu ── */}
+        {mobileMenuOpen && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={{ duration: 0.2 }}
+            className="border-t border-border/30 bg-background px-5 pb-4 md:hidden"
+          >
+            <nav className="flex flex-col gap-1 pt-3">
+              {NAV_LINKS.map((link) => (
+                <a
+                  key={link.label}
+                  href={link.href}
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                >
+                  {link.label}
+                  {link.hasDropdown && <ChevronDown className="h-4 w-4 opacity-50" />}
+                </a>
+              ))}
+            </nav>
+            <div className="mt-4 flex flex-col gap-2 border-t border-border/30 pt-4">
+              <SignedOut>
+                <SignInButton mode="redirect">
+                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+                    Sign in
+                  </button>
+                </SignInButton>
+                <SignUpButton mode="redirect">
+                  <button className="w-full rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:opacity-85">
+                    Get Started Free
+                  </button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <UserButton afterSignOutUrl="/" />
+              </SignedIn>
+            </div>
+          </motion.div>
+        )}
       </motion.header>
 
       {/* ── HERO ── */}
@@ -499,61 +597,72 @@ export default function HomePage() {
           <p className="mt-3 text-slate-500">From parsing to decision in seconds. Monitor your entire pipeline.</p>
         </div>
 
-        <motion.div 
+        <motion.div
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, margin: "-50px" }}
           variants={fadeInUp}
-          className="rounded-2xl border border-violet-100 bg-gradient-to-br from-violet-50/80 to-indigo-50/80 p-4 shadow-xl shadow-indigo-100/60 md:p-6"
+          className="rounded-3xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-indigo-50/60 to-white p-4 shadow-2xl shadow-violet-200/50 md:p-6"
         >
-          <div className="overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-sm">
-            {/* Mock header */}
-            <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-              <div className="flex items-center gap-2">
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 text-white">
-                  <Hexagon className="h-4 w-4" />
+          {/* Outer card with subtle border */}
+          <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-lg">
+
+            {/* ── App Header ── */}
+            <div className="flex items-center justify-between border-b border-slate-100 bg-white px-5 py-3">
+              <div className="flex items-center gap-2.5">
+                {/* Purple hexagon icon */}
+                <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500 to-indigo-600 text-white shadow-md shadow-violet-300/40">
+                  <Hexagon className="h-4.5 w-4.5" />
                 </span>
-                <span className="font-semibold text-slate-800">CODEFLOW AI</span>
+                <span className="text-sm font-bold tracking-widest text-slate-800">CODEFLOW AI</span>
               </div>
-              <div className="flex items-center gap-3">
-                <div className="hidden items-center gap-2 rounded-lg border border-slate-200 px-2 py-1 text-xs text-slate-400 sm:flex">
-                  <Search className="h-3.5 w-3.5" />
-                  Search
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs text-slate-400">
+                  <Search className="h-3 w-3" />
+                  <span>Search</span>
                 </div>
-                <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-100 text-slate-500">
-                  <User className="h-4 w-4" />
-                </span>
+                {/* User avatar with notification dot */}
+                <div className="relative">
+                  <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-violet-100 text-violet-500">
+                    <User className="h-4 w-4" />
+                  </span>
+                  <span className="absolute right-0 top-0 h-2 w-2 rounded-full bg-violet-500 ring-2 ring-white" />
+                </div>
               </div>
             </div>
 
-            <div className="grid md:grid-cols-[170px_1fr]">
-              <aside className="border-r border-slate-100 bg-slate-50/80 p-3">
-                <ul className="space-y-1.5 text-sm">
+            {/* ── Layout: sidebar + content ── */}
+            <div className="grid md:grid-cols-[160px_1fr]">
+
+              {/* Sidebar */}
+              <aside className="border-r border-slate-100 bg-slate-50/60 px-2 py-4">
+                <ul className="space-y-0.5 text-[13px]">
                   {[
                     { label: "Dashboard", icon: BookOpen },
-                    { label: "Projects", icon: Box },
-                    { label: "Users", icon: Users },
-                    { label: "Settings", icon: Cpu },
-                    { label: "Code Review", icon: Sparkles, active: true },
+                    { label: "Projects",  icon: Box },
+                    { label: "Users",     icon: Users },
+                    { label: "Settings",  icon: Cpu },
                   ].map((item) => (
                     <li key={item.label}>
-                      <span
-                        className={`flex items-center gap-2 rounded-lg px-3 py-2 ${
-                          item.active
-                            ? "bg-gradient-to-r from-indigo-500 to-purple-600 text-white"
-                            : "text-slate-600 hover:bg-slate-100"
-                        }`}
-                      >
+                      <span className="flex cursor-default items-center gap-2.5 rounded-lg px-3 py-2 text-slate-500 hover:bg-slate-100">
                         <item.icon className="h-4 w-4" />
                         {item.label}
                       </span>
                     </li>
                   ))}
+                  {/* Active item */}
+                  <li>
+                    <span className="flex cursor-default items-center gap-2.5 rounded-lg bg-gradient-to-r from-violet-500 to-indigo-500 px-3 py-2 font-semibold text-white shadow-sm shadow-violet-300/40">
+                      <Sparkles className="h-4 w-4" />
+                      Code Review
+                    </span>
+                  </li>
                 </ul>
               </aside>
 
-              <div className="space-y-4 p-3 md:p-4">
-                <ReviewsTable title="Pending Reviews" rows={pendingReviews} />
+              {/* Main content */}
+              <div className="space-y-5 p-4 md:p-5">
+                <ReviewsTable title="Pending Reviews"   rows={pendingReviews} />
                 <ReviewsTable title="Completed Reviews" rows={completedReviews} />
               </div>
             </div>
