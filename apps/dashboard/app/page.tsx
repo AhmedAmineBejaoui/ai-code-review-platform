@@ -226,44 +226,44 @@ export default function HomePage() {
         initial={{ opacity: 0, y: -16 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="sticky top-0 z-50 border-b border-border/30 bg-background/90 backdrop-blur-xl"
+        className="navbar-notch sticky top-0 z-50 border-b border-border/40 bg-background/95 shadow-sm backdrop-blur-xl dark:shadow-none"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3 md:px-8">
+        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3.5 md:px-8">
 
           {/* ── Logo ── */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-sm">
+          <Link href="/" className="flex items-center gap-2.5 shrink-0 transition-opacity hover:opacity-80">
+            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 transition-transform hover:scale-105">
               <ShieldCheck className="h-4 w-4" />
             </span>
-            <span className="text-[1.05rem] font-semibold tracking-tight text-foreground">TrustReview</span>
+            <span className="text-[1.05rem] font-bold tracking-tight text-foreground">TrustReview</span>
           </Link>
 
           {/* ── Center nav – desktop ── */}
-          <nav className="hidden items-center gap-1 md:flex">
+          <nav className="hidden items-center gap-0.5 md:flex">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="group inline-flex items-center gap-0.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                className="group inline-flex items-center gap-0.5 rounded-lg px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground active:scale-95"
               >
                 {link.label}
                 {link.hasDropdown && (
-                  <ChevronDown className="h-3.5 w-3.5 opacity-60 transition-transform duration-200 group-hover:rotate-180" />
+                  <ChevronDown className="h-3.5 w-3.5 opacity-50 transition-all duration-200 group-hover:rotate-180 group-hover:opacity-70" />
                 )}
               </a>
             ))}
           </nav>
 
           {/* ── Right side ── */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <SignedOut>
               <SignInButton mode="redirect">
-                <button className="hidden px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground sm:inline-flex">
+                <button className="hidden rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-95 sm:inline-flex">
                   Sign in
                 </button>
               </SignInButton>
               <SignUpButton mode="redirect">
-                <button className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-85 active:scale-95">
+                <button className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-[13px] font-semibold text-background shadow-md transition-all hover:shadow-lg hover:opacity-90 active:scale-95 dark:shadow-white/10">
                   Dashboard
                   <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
                     <ArrowRight className="h-2.5 w-2.5" />
@@ -274,7 +274,7 @@ export default function HomePage() {
             <SignedIn>
               <Link
                 href="/dashboard"
-                className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-sm font-semibold text-background shadow-sm transition-all hover:opacity-85 active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-[13px] font-semibold text-background shadow-md transition-all hover:shadow-lg hover:opacity-90 active:scale-95 dark:shadow-white/10"
               >
                 Dashboard
                 <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
@@ -287,7 +287,7 @@ export default function HomePage() {
             {/* Mobile hamburger */}
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="ml-1 inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition hover:bg-accent hover:text-foreground md:hidden"
+              className="ml-2 inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-95 md:hidden"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -302,7 +302,7 @@ export default function HomePage() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="border-t border-border/30 bg-background px-5 pb-4 md:hidden"
+            className="border-t border-border/40 bg-background/98 backdrop-blur-xl px-5 pb-4 shadow-md md:hidden"
           >
             <nav className="flex flex-col gap-1 pt-3">
               {NAV_LINKS.map((link) => (
