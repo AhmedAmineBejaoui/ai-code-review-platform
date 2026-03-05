@@ -38,6 +38,8 @@ export default function RoleRedirectPage() {
         if (response.ok) {
           const payload = (await response.json()) as SyncResponse
           role = normalizeRole(payload.roles ?? [])
+        } else {
+          await response.json().catch(() => ({}))
         }
       } catch {
         // Continue with developer default route if sync call fails.
@@ -61,4 +63,3 @@ export default function RoleRedirectPage() {
     </main>
   )
 }
-

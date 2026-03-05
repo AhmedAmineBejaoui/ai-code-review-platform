@@ -4,6 +4,7 @@ import asyncio
 
 import pytest
 from fastapi import HTTPException
+from fastapi.security import HTTPAuthorizationCredentials
 
 from app.api.middleware import auth as auth_middleware
 from app.data.models.rbac import RBACUser
@@ -56,6 +57,35 @@ def test_require_permission_is_noop_when_auth_not_enforced(monkeypatch: pytest.M
     dependency = auth_middleware.require_permission("analyses.read")
     result = asyncio.run(dependency(principal=None))
     assert result is None
+
+
+def test_get_current_principal_uses_bearer_even_if_clerk_flag_is_false(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_middleware.settings, "CLERK_AUTH_ENABLED", False)
+    monkeypatch.setattr(auth_middleware.settings, "RBAC_ENFORCEMENT_ENABLED", False)
+
+    expected_principal = auth_middleware.AuthenticatedPrincipal(
+        user_id="user_bearer_1",
+        email="bearer@example.com",
+        display_name="Bearer User",
+        roles=["developer"],
+        permissions=["analyses.read", "analyses.create"],
+    )
+
+    async def _fake_build(token: str, repo: object) -> auth_middleware.AuthenticatedPrincipal:  # noqa: ARG001
+        assert token == "token_abc"
+        return expected_principal
+
+    monkeypatch.setattr(auth_middleware, "_build_principal_from_clerk_token", _fake_build)
+
+    principal = asyncio.run(
+        auth_middleware.get_current_principal(
+            authorization=HTTPAuthorizationCredentials(scheme="Bearer", credentials="token_abc"),
+            x_user_id=None,
+            repo=object(),  # type: ignore[arg-type]
+        )
+    )
+
+    assert principal == expected_principal
 
 
 def test_build_principal_from_clerk_token_upserts_local_user(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import Any, Literal
 
@@ -8,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_analysis_service
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, get_rbac_repo, require_permission
 from app.core.services.analysis_service import (
     AnalysisService,
     CreateAnalysisCommand,
@@ -20,6 +21,7 @@ from app.data.models.analysis import Analysis
 from app.data.models.finding import Finding
 from app.data.models.parsed_diff import AnalysisFileData, AnalysisHunkData, AnalysisHunkLineData
 from app.data.models.tool_run import ToolRun
+from app.data.repos.rbac_repo import RBACRepo
 from app.settings import settings
 from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 
@@ -192,6 +194,14 @@ class AuthSyncResponse(BaseModel):
     roles: list[str]
 
 
+class AuthSyncPayload(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    email: str | None = None
+    display_name: str | None = None
+    role: str | None = None
+
+
 def _raise_api_error(exc: ServiceError) -> None:
     raise ApiError(
         status_code=exc.status_code,
@@ -203,7 +213,9 @@ def _raise_api_error(exc: ServiceError) -> None:
 
 @router.post("/auth/sync", response_model=AuthSyncResponse)
 async def sync_authenticated_user(
+    payload: AuthSyncPayload | None = None,
     principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+    repo: RBACRepo = Depends(get_rbac_repo),
 ) -> AuthSyncResponse:
     if principal is None:
         raise ApiError(
@@ -212,10 +224,35 @@ async def sync_authenticated_user(
             message="Missing authentication credentials",
         )
 
+    email = principal.email
+    if payload is not None and isinstance(payload.email, str) and payload.email.strip():
+        email = payload.email.strip().lower()
+
+    display_name = principal.display_name
+    if payload is not None and isinstance(payload.display_name, str) and payload.display_name.strip():
+        display_name = payload.display_name.strip()
+
+    role_to_sync = principal.roles[0] if principal.roles else "developer"
+    if payload is not None and isinstance(payload.role, str) and payload.role.strip():
+        requested_role = payload.role.strip().lower()
+        principal_roles = {item.strip().lower() for item in principal.roles}
+        if requested_role in principal_roles:
+            role_to_sync = requested_role
+
+    await asyncio.to_thread(repo.upsert_clerk_user, principal.user_id, email, display_name, role_to_sync)
+    synced_user = await asyncio.to_thread(repo.get_user, principal.user_id)
+    if synced_user is not None:
+        return AuthSyncResponse(
+            user_id=synced_user.id,
+            email=synced_user.email,
+            display_name=synced_user.display_name,
+            roles=synced_user.roles,
+        )
+
     return AuthSyncResponse(
         user_id=principal.user_id,
-        email=principal.email,
-        display_name=principal.display_name,
+        email=email,
+        display_name=display_name,
         roles=principal.roles,
     )
 

@@ -223,7 +223,7 @@ async def get_current_principal(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     repo: RBACRepo = Depends(get_rbac_repo),
 ) -> AuthenticatedPrincipal | None:
-    if settings.CLERK_AUTH_ENABLED and authorization is not None:
+    if authorization is not None:
         if authorization.scheme.lower() != "bearer":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unsupported authorization scheme")
         token = authorization.credentials.strip()

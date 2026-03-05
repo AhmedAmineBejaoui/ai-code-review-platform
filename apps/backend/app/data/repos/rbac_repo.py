@@ -46,8 +46,14 @@ class RBACRepo:
                             INSERT INTO users (id, email, display_name, is_active)
                             VALUES (:user_id, :email, :display_name, TRUE)
                             ON CONFLICT (id) DO UPDATE
-                            SET email = EXCLUDED.email,
-                                display_name = EXCLUDED.display_name,
+                            SET email = CASE
+                                    WHEN EXCLUDED.email LIKE '%@clerk.local'
+                                         AND users.email IS NOT NULL
+                                         AND users.email NOT LIKE '%@clerk.local'
+                                    THEN users.email
+                                    ELSE EXCLUDED.email
+                                END,
+                                display_name = COALESCE(EXCLUDED.display_name, users.display_name),
                                 is_active = TRUE
                             """
                         ),
@@ -62,7 +68,7 @@ class RBACRepo:
                             INSERT INTO users (id, email, display_name, is_active)
                             VALUES (:user_id, :fallback_email, :display_name, TRUE)
                             ON CONFLICT (id) DO UPDATE
-                            SET display_name = EXCLUDED.display_name,
+                            SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
                                 is_active = TRUE
                             """
                         ),

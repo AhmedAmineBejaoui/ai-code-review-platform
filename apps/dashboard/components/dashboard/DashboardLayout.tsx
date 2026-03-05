@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import type { ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -36,7 +36,12 @@ import { formatRoleLabel } from "@/lib/roles";
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const currentUser = useDashboardUser();
   const pathname = usePathname();
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-cyan-500' },
@@ -57,6 +62,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   };
 
   const isAdmin = currentUser.role === 'admin';
+  const isDark = mounted && resolvedTheme === "dark";
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 dark:from-gray-950 dark:via-blue-950/30 dark:to-purple-950/20">
@@ -231,7 +237,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
           >
             {/* Theme Toggle */}
             <motion.button
-              onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+              onClick={() => setTheme(isDark ? "light" : "dark")}
               className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
               whileHover={{ x: 4 }}
               whileTap={{ scale: 0.98 }}
@@ -241,14 +247,14 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 whileHover={{ scale: 1.1, rotate: 180 }}
                 transition={{ duration: 0.3 }}
               >
-                {theme === 'dark' ? (
+                {isDark ? (
                   <Sun className="h-4 w-4" />
                 ) : (
                   <Moon className="h-4 w-4" />
                 )}
               </motion.div>
               <span className="font-medium text-sm">
-                {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
+                {isDark ? "Light Mode" : "Dark Mode"}
               </span>
             </motion.button>
 

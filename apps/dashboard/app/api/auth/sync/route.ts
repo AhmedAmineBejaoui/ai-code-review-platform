@@ -1,8 +1,17 @@
-import { auth } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+
+function firstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
+  for (const value of values) {
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+  return undefined
+}
 
 export async function POST() {
   const { userId, getToken } = await auth()
@@ -10,10 +19,24 @@ export async function POST() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const token = await getToken()
+  const [token, user] = await Promise.all([getToken(), currentUser()])
   if (!token) {
     return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
   }
+
+  const primaryEmail =
+    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses[0]?.emailAddress
+  const displayName = firstNonEmpty(
+    [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+    user?.fullName ?? undefined,
+    user?.username ?? undefined,
+  )
+  const roleCandidate = firstNonEmpty(
+    typeof user?.publicMetadata?.role === "string" ? user.publicMetadata.role : undefined,
+    typeof user?.unsafeMetadata?.role === "string" ? user.unsafeMetadata.role : undefined,
+    typeof user?.privateMetadata?.role === "string" ? user.privateMetadata.role : undefined,
+  )
 
   const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/auth/sync`, {
     method: "POST",
@@ -21,6 +44,11 @@ export async function POST() {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
     },
+    body: JSON.stringify({
+      email: primaryEmail,
+      display_name: displayName,
+      role: roleCandidate,
+    }),
     cache: "no-store",
   })
 
@@ -48,4 +76,3 @@ export async function POST() {
 
   return NextResponse.json(parsedBody, { status: 200 })
 }
-

@@ -19,7 +19,10 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <ClerkProvider>
+    <ClerkProvider
+      signInFallbackRedirectUrl="/auth/role-redirect"
+      signUpFallbackRedirectUrl="/auth/role-redirect"
+    >
       <html lang="en" suppressHydrationWarning>
         <body className={`${inter.variable} antialiased`}>
           <ThemeProvider>{children}</ThemeProvider>
