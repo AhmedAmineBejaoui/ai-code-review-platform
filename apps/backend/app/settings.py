@@ -48,6 +48,11 @@ class Settings(BaseSettings):
     SECRETS_ENCRYPTION_KEY: str | None = None
     SECRETS_BOOTSTRAP_FROM_ENV: bool = True
     RBAC_ENFORCEMENT_ENABLED: bool = False
+    CLERK_AUTH_ENABLED: bool = False
+    CLERK_ISSUER_URL: str | None = None
+    CLERK_JWKS_URL: str | None = None
+    CLERK_AUDIENCE: str | None = None
+    CLERK_JWT_LEEWAY_SECONDS: int = 10
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100
 

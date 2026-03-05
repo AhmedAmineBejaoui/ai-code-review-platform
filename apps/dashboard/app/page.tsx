@@ -273,7 +273,7 @@ export default function HomePage() {
             </SignedOut>
             <SignedIn>
               <Link
-                href="/dashboard"
+                href="/auth/role-redirect"
                 className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-[13px] font-semibold text-background shadow-md transition-all hover:shadow-lg hover:opacity-90 active:scale-95 dark:shadow-white/10"
               >
                 Dashboard

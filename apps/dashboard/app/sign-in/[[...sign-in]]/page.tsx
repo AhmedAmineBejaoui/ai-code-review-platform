@@ -12,8 +12,9 @@ export default function SignInPage() {
         <SignIn
           path="/sign-in"
           routing="path"
-          forceRedirectUrl="/"
-          signUpUrl="/sign-in"
+          forceRedirectUrl="/auth/role-redirect"
+          fallbackRedirectUrl="/auth/role-redirect"
+          signUpUrl="/sign-up"
           appearance={{
             elements: {
               card: "rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-800 dark:bg-slate-900",
