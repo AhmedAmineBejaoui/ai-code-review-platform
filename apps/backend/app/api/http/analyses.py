@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_analysis_service
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
 from app.core.services.analysis_service import (
     AnalysisService,
     CreateAnalysisCommand,
@@ -185,6 +185,13 @@ class ToolRunResponse(BaseModel):
 AnalysisResponse.model_rebuild()
 
 
+class AuthSyncResponse(BaseModel):
+    user_id: str
+    email: str
+    display_name: str | None
+    roles: list[str]
+
+
 def _raise_api_error(exc: ServiceError) -> None:
     raise ApiError(
         status_code=exc.status_code,
@@ -192,6 +199,25 @@ def _raise_api_error(exc: ServiceError) -> None:
         message=exc.message,
         details=exc.details,
     ) from exc
+
+
+@router.post("/auth/sync", response_model=AuthSyncResponse)
+async def sync_authenticated_user(
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+) -> AuthSyncResponse:
+    if principal is None:
+        raise ApiError(
+            status_code=401,
+            code="UNAUTHORIZED",
+            message="Missing authentication credentials",
+        )
+
+    return AuthSyncResponse(
+        user_id=principal.user_id,
+        email=principal.email,
+        display_name=principal.display_name,
+        roles=principal.roles,
+    )
 
 
 def _parse_metadata_query(raw: str | None) -> dict[str, Any]:

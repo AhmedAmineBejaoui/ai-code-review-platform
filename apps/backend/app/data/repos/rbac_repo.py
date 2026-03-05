@@ -4,17 +4,140 @@ from threading import Lock
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
+from sqlalchemy.exc import IntegrityError
 
 from app.data.database import get_engine
 from app.data.models.rbac import RBACUser
 
 
 _RBAC_LOCK = Lock()
+_CLERK_ROLE_TO_DB_ROLE: dict[str, str] = {
+    "admin": "admin",
+    "reviewer": "reviewer",
+    "developer": "viewer",
+}
 
 
 class RBACRepo:
     def __init__(self) -> None:
         self._engine: Engine = get_engine()
+
+    @staticmethod
+    def _normalize_email(user_id: str, email: str) -> str:
+        cleaned = email.strip().lower()
+        if "@" in cleaned:
+            return cleaned
+        return f"{user_id}@clerk.local"
+
+    @staticmethod
+    def _role_for_db(clerk_role: str) -> str:
+        return _CLERK_ROLE_TO_DB_ROLE.get(clerk_role.strip().lower(), "viewer")
+
+    def upsert_clerk_user(self, user_id: str, email: str, display_name: str | None, clerk_role: str) -> None:
+        normalized_email = self._normalize_email(user_id=user_id, email=email)
+        normalized_role = self._role_for_db(clerk_role)
+
+        with _RBAC_LOCK:
+            with self._engine.begin() as conn:
+                try:
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO users (id, email, display_name, is_active)
+                            VALUES (:user_id, :email, :display_name, TRUE)
+                            ON CONFLICT (id) DO UPDATE
+                            SET email = EXCLUDED.email,
+                                display_name = EXCLUDED.display_name,
+                                is_active = TRUE
+                            """
+                        ),
+                        {"user_id": user_id, "email": normalized_email, "display_name": display_name},
+                    )
+                except IntegrityError:
+                    # If email uniqueness conflicts with pre-existing local data, keep the local email,
+                    # but still make sure the Clerk user is active and display_name is refreshed.
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO users (id, email, display_name, is_active)
+                            VALUES (:user_id, :fallback_email, :display_name, TRUE)
+                            ON CONFLICT (id) DO UPDATE
+                            SET display_name = EXCLUDED.display_name,
+                                is_active = TRUE
+                            """
+                        ),
+                        {
+                            "user_id": user_id,
+                            "fallback_email": f"{user_id}@clerk.local",
+                            "display_name": display_name,
+                        },
+                    )
+
+                role_row = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT id
+                            FROM roles
+                            WHERE code = :role_code
+                            LIMIT 1
+                            """
+                        ),
+                        {"role_code": normalized_role},
+                    )
+                    .mappings()
+                    .first()
+                )
+                if role_row is None:
+                    role_row = (
+                        conn.execute(
+                            text(
+                                """
+                                SELECT id
+                                FROM roles
+                                WHERE code = 'viewer'
+                                LIMIT 1
+                                """
+                            )
+                        )
+                        .mappings()
+                        .first()
+                    )
+
+                if role_row is None:
+                    return
+
+                current_roles_count = int(
+                    conn.execute(
+                        text(
+                            """
+                            SELECT COUNT(*) AS count
+                            FROM user_roles
+                            WHERE user_id = :user_id
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .first()["count"]
+                )
+
+                if current_roles_count == 0:
+                    role_id = str(role_row["id"])
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO user_roles (id, user_id, role_id)
+                            VALUES (:id, :user_id, :role_id)
+                            ON CONFLICT (user_id, role_id) DO NOTHING
+                            """
+                        ),
+                        {
+                            "id": f"ur_{user_id}_{role_id}",
+                            "user_id": user_id,
+                            "role_id": role_id,
+                        },
+                    )
 
     def get_user(self, user_id: str) -> RBACUser | None:
         with _RBAC_LOCK:

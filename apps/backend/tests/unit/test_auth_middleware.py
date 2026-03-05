@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from app.api.middleware import auth as auth_middleware
+from app.data.models.rbac import RBACUser
 
 
 def test_extract_roles_defaults_to_developer() -> None:
@@ -56,3 +57,39 @@ def test_require_permission_is_noop_when_auth_not_enforced(monkeypatch: pytest.M
     result = asyncio.run(dependency(principal=None))
     assert result is None
 
+
+def test_build_principal_from_clerk_token_upserts_local_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    claims = {
+        "sub": "user_test_123",
+        "email": "new.user@example.com",
+        "name": "New User",
+        "role": "reviewer",
+    }
+
+    class _Repo:
+        def __init__(self) -> None:
+            self.upsert_calls: list[tuple[str, str, str | None, str]] = []
+
+        def upsert_clerk_user(self, user_id: str, email: str, display_name: str | None, clerk_role: str) -> None:
+            self.upsert_calls.append((user_id, email, display_name, clerk_role))
+
+        def get_user(self, user_id: str) -> RBACUser | None:
+            assert user_id == "user_test_123"
+            return RBACUser(
+                id=user_id,
+                email="new.user@example.com",
+                display_name="New User",
+                is_active=True,
+                roles=["reviewer"],
+                permissions=["analyses.read", "analyses.create", "analyses.write"],
+            )
+
+    repo = _Repo()
+
+    monkeypatch.setattr(auth_middleware, "_decode_clerk_jwt", lambda token: claims)
+
+    principal = asyncio.run(auth_middleware._build_principal_from_clerk_token("token", repo))  # type: ignore[arg-type]
+
+    assert repo.upsert_calls == [("user_test_123", "new.user@example.com", "New User", "reviewer")]
+    assert principal.user_id == "user_test_123"
+    assert principal.roles == ["reviewer"]

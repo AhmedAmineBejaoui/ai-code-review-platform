@@ -188,8 +188,13 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clerk token missing subject")
 
     email = _extract_email_from_claims(claims)
+    if email == "unknown@example.local":
+        email = f"{user_id}@clerk.local"
     display_name = _extract_display_name_from_claims(claims)
+    roles = _extract_roles(claims)
+    primary_role = roles[0] if roles else "developer"
 
+    await asyncio.to_thread(repo.upsert_clerk_user, user_id, email, display_name, primary_role)
     user = await asyncio.to_thread(repo.get_user, user_id)
     if user is not None:
         if not user.is_active:
@@ -203,7 +208,6 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             permissions=user.permissions,
         )
 
-    roles = _extract_roles(claims)
     permissions = _permissions_for_roles(roles)
     return AuthenticatedPrincipal(
         user_id=user_id,
