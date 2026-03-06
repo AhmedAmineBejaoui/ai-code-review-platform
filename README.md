@@ -1,6 +1,6 @@
 # AI Code Review Platform
 
-Plateforme de revue de code automatisée orientée sécurité et qualité, basée sur FastAPI + Celery, avec pipeline asynchrone, scan de secrets, analyse statique (Ruff + Semgrep), catégorisation de changement (bugfix/feature/refactor), observabilité (Prometheus/Grafana) et intégrations optionnelles (OpenAI, Qdrant, MinIO).
+Plateforme de revue de code automatisée orientée sécurité et qualité, basée sur FastAPI + Celery + Next.js, avec pipeline asynchrone, scan de secrets, analyse statique (Ruff + Semgrep), catégorisation de changement (bugfix/feature/refactor), dashboard web avec authentification (Clerk), gestion d'organisations, observabilité (Prometheus/Grafana) et intégrations optionnelles (OpenAI, Qdrant, MinIO).
 
 ---
 
@@ -15,15 +15,16 @@ Plateforme de revue de code automatisée orientée sécurité et qualité, basé
 7. [Configuration `.env`](#7-configuration-env)
 8. [Exécution en local avec Docker (recommandé)](#8-exécution-en-local-avec-docker-recommandé)
 9. [Exécution locale hybride (API/Worker sur host)](#9-exécution-locale-hybride-apiworker-sur-host)
-10. [Commandes complètes](#10-commandes-complètes)
-11. [API HTTP (contrat d'usage)](#11-api-http-contrat-dusage)
-12. [Migrations base de données](#12-migrations-base-de-données)
-13. [Tests, qualité et CI/CD](#13-tests-qualité-et-cicd)
-14. [Observabilité et supervision](#14-observabilité-et-supervision)
-15. [Déploiement cloud](#15-déploiement-cloud)
-16. [Troubleshooting (Windows/Linux)](#16-troubleshooting-windowslinux)
-17. [Sécurité](#17-sécurité)
-18. [État courant des modules](#18-état-courant-des-modules)
+10. [Dashboard et prototypage](#10-dashboard-et-prototypage)
+11. [Commandes complètes](#11-commandes-complètes)
+12. [API HTTP (contrat d'usage)](#12-api-http-contrat-dusage)
+13. [Migrations base de données](#13-migrations-base-de-données)
+14. [Tests, qualité et CI/CD](#14-tests-qualité-et-cicd)
+15. [Observabilité et supervision](#15-observabilité-et-supervision)
+16. [Déploiement cloud](#16-déploiement-cloud)
+17. [Troubleshooting (Windows/Linux)](#17-troubleshooting-windowslinux)
+18. [Sécurité](#18-sécurité)
+19. [État courant des modules](#19-état-courant-des-modules)
 
 ---
 
@@ -37,7 +38,7 @@ Le projet reçoit des diffs (via API ou webhook GitHub), les pousse en file Redi
 - classification du changement (F4 : bugfix/feature/refactor),
 - persistance des résultats et métriques.
 
-Le backend API est fonctionnel et documenté. Les modules `apps/cli`, `apps/dashboard/src` et `libs/contracts/*` sont présents mais actuellement squelettiques (dossiers sans implémentation active).
+Le backend API est fonctionnel et documenté. Le dashboard Next.js (`apps/dashboard`) est actif avec authentification Clerk, gestion multi-organisations, pages d'analyse, historique et rapports. Les modules `apps/cli` et `libs/contracts/*` sont présents mais actuellement squelettiques (dossiers sans implémentation active).
 
 ---
 
@@ -65,6 +66,39 @@ Un objet d'analyse complet contient notamment :
 - findings sécurité + qualité,
 - classification du changement (`bugfix|feature|refactor`),
 - traces d'exécution outils.
+
+### 2.3 Dashboard web
+
+Le dashboard Next.js (`apps/dashboard`) offre une interface utilisateur complète :
+
+#### Fonctionnalités principales
+
+- **Authentification** : Intégration Clerk avec sign-in/sign-up, gestion de sessions
+- **Gestion d'organisations** : Support multi-organisations avec rôles et permissions
+- **Analyses** : Visualisation des analyses de code, détails des findings, statuts en temps réel
+- **Historique** : Consultation de l'historique complet des analyses
+- **Différentiels** : Affichage enrichi des diffs avec annotations de sécurité
+- **Rapports** : Génération et export de rapports d'analyse
+- **RAG** : Interface pour recherche vectorielle (si Qdrant activé)
+- **Administration** : Panel admin pour gestion utilisateurs et configurations
+
+#### Démarrage
+
+```bash
+cd apps/dashboard
+npm install
+npm run dev
+```
+
+Le dashboard sera accessible sur http://localhost:3001
+
+#### Configuration
+
+Variables d'environnement dans `apps/dashboard/.env.local` :
+
+- `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` : Clé publique Clerk
+- `CLERK_SECRET_KEY` : Clé secrète Clerk
+- `NEXT_PUBLIC_API_URL` : URL backend (défaut: http://localhost:8000)
 
 ---
 
@@ -109,6 +143,24 @@ Sortie stockée dans `analyses` :
 
 Migration associée : `20260301_0009_f4_change_classification.py`.
 
+### 3.4 Organisations et multi-tenancy
+
+Support organisations multi-tenant intégré (migration `20260306_0011_organizations.py`) :
+
+- **Organizations** : Entités principales pour regrouper utilisateurs et analyses
+  - `id` : Identifiant unique (synchronisé avec Clerk)
+  - `slug` : Slug unique pour URLs
+  - `name` : Nom de l'organisation
+  - `is_active` : Statut activation
+
+- **Memberships** : Relation utilisateurs-organisations avec rôles
+  - Rôles supportés : `owner`, `admin`, `member`, `viewer`
+  - Permissions RBAC configurables
+
+- **Isolation des données** : Analyses et ressources isolées par organisation
+
+Les dashboards et APIs respectent automatiquement le contexte organisationnel.
+
 ---
 
 ## 4. Schémas high-level
@@ -116,7 +168,10 @@ Migration associée : `20260301_0009_f4_change_classification.py`.
 ### 4.1 Architecture globale (runtime local)
 
 ```text
-Clients (Webhook GitHub / REST)
+Utilisateurs Web → Dashboard Next.js :3001 (Clerk Auth)
+                          │
+                          ▼
+Clients (Webhook GitHub / REST API)
               │
               ▼
         FastAPI :8000
@@ -130,6 +185,8 @@ Clients (Webhook GitHub / REST)
       ▼        ▼        ▼
   PostgreSQL  Qdrant   MinIO
    (core DB) (opt.)   (opt.)
+      │
+      └─► Organizations & Memberships
 
 Observabilité:
 Prometheus :9090 -> scrape FastAPI/Flower/exporters/MinIO
@@ -156,6 +213,9 @@ flowchart LR
 
 ```mermaid
 graph TD
+  subgraph Frontend
+    DASH[Dashboard Next.js + Clerk]
+  end
   subgraph App
     API[FastAPI]
     W[Celery Worker]
@@ -171,6 +231,7 @@ graph TD
     GF[Grafana]
     FL[Flower]
   end
+  DASH --> API
   API --> RD
   W --> RD
   W --> PG
@@ -200,8 +261,13 @@ ai-code-review-platform/
 │  │  ├─ alembic/
 │  │  │  └─ versions/          # Migrations SQL
 │  │  └─ tests/unit/
-│  ├─ dashboard/               # Placeholder (package minimal)
+│  ├─ dashboard/               # Application Next.js (dashboard web complet)
+│  │  ├─ app/                  # Pages Next.js (auth, dashboard, analyses, etc.)
+│  │  ├─ components/           # Composants React/UI (Radix UI)
+│  │  ├─ lib/                  # Utilitaires (auth, roles, etc.)
+│  │  └─ clerk-nextjs/         # Configuration Clerk
 │  └─ cli/                     # Placeholder (src vide)
+├─ Developer Dashboard Features/ # Prototype dashboard (Vite/React, référence Figma)
 ├─ infra/
 │  ├─ local/docker-compose.yml # Stack locale complète
 │  ├─ observability/           # Prometheus + dashboards Grafana
@@ -310,6 +376,7 @@ Réponse attendue:
 |---:|---|---|
 | 8000 | FastAPI + docs | http://localhost:8000/docs |
 | 8000 | Metrics API | http://localhost:8000/metrics |
+| 3001 | Dashboard Next.js | http://localhost:3001 |
 | 5555 | Flower | http://localhost:5555 |
 | 5432 | PostgreSQL | TCP |
 | 6380 | Redis (host) | `redis://localhost:6380` |
@@ -362,9 +429,45 @@ poetry run celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q
 
 ---
 
-## 10. Commandes complètes
+## 10. Dashboard et prototypage
 
-### 10.1 Makefile
+### 10.1 Dashboard principal (Next.js)
+
+Le dashboard de production se trouve dans `apps/dashboard` :
+
+```bash
+cd apps/dashboard
+npm install
+cp .env.example .env.local  # Configurer les clés Clerk et API URL
+npm run dev
+```
+
+Accessible sur http://localhost:3001
+
+Technologies :
+- Next.js 14+ (App Router)
+- Clerk (authentification)
+- Radix UI (composants)
+- Tailwind CSS
+- TypeScript
+
+### 10.2 Dashboard Features (Prototype Figma)
+
+Le dossier `Developer Dashboard Features` contient un prototype standalone basé sur un design Figma :
+
+```bash
+cd "Developer Dashboard Features"
+npm install
+npm run dev
+```
+
+Ce prototype sert de référence de design et n'est pas utilisé en production. Il utilise Vite/React.
+
+---
+
+## 11. Commandes complètes
+
+### 11.1 Makefile
 
 ```bash
 make help
@@ -407,7 +510,7 @@ make test
 make test-ci
 ```
 
-### 10.2 Sans Make
+### 11.2 Sans Make
 
 ```bash
 docker compose -f infra/local/docker-compose.yml build
@@ -419,11 +522,11 @@ docker compose -f infra/local/docker-compose.yml exec api alembic -c /app/alembi
 
 ---
 
-## 11. API HTTP (contrat d'usage)
+## 12. API HTTP (contrat d'usage)
 
 Préfixe principal: `/v1`
 
-### 11.1 Endpoints
+### 12.1 Endpoints
 
 | Méthode | Endpoint | Description |
 |---|---|---|
@@ -439,7 +542,7 @@ Préfixe principal: `/v1`
 | `GET` | `/healthz` | Health check |
 | `GET` | `/metrics` | Metrics Prometheus |
 
-### 11.2 Exemple JSON (création d'analyse)
+### 12.2 Exemple JSON (création d'analyse)
 
 ```json
 {
@@ -455,7 +558,7 @@ Préfixe principal: `/v1`
 }
 ```
 
-### 11.3 Test manuel PowerShell
+### 12.3 Test manuel PowerShell
 
 Guide complet: `docs/manual-test-windows.md`.
 
@@ -488,9 +591,9 @@ Invoke-RestMethod -Uri "http://localhost:8000/v1/analyses/$id" -Method Get
 
 ---
 
-## 12. Migrations base de données
+## 13. Migrations base de données
 
-### 12.1 État actuel
+### 13.1 État actuel
 
 Migrations présentes (ordre):
 
@@ -504,8 +607,9 @@ Migrations présentes (ordre):
 - `20260228_0008_rbac_and_encrypted_secrets.py`
 - `20260301_0009_f4_change_classification.py`
 - `20260301_0010_f3_analysis_summary.py`
+- `20260306_0011_organizations.py`
 
-### 12.2 Commandes utiles
+### 13.2 Commandes utiles
 
 ```bash
 # Docker
@@ -521,9 +625,9 @@ poetry run alembic -c alembic.ini upgrade head
 
 ---
 
-## 13. Tests, qualité et CI/CD
+## 14. Tests, qualité et CI/CD
 
-### 13.1 Local
+### 14.1 Local
 
 ```bash
 cd apps/backend
@@ -533,7 +637,7 @@ poetry run ruff check .
 poetry run ruff format --check .
 ```
 
-### 13.2 CI (GitHub Actions)
+### 14.2 CI (GitHub Actions)
 
 Workflow `ci.yml`:
 
@@ -541,7 +645,7 @@ Workflow `ci.yml`:
 2. tests pytest avec services PostgreSQL+Redis,
 3. smoke build Docker backend.
 
-### 13.3 CD (GitHub Actions)
+### 14.3 CD (GitHub Actions)
 
 Workflow `cd.yml`:
 
@@ -552,14 +656,14 @@ Workflow `cd.yml`:
 
 ---
 
-## 14. Observabilité et supervision
+## 15. Observabilité et supervision
 
-### 14.1 Prometheus
+### 15.1 Prometheus
 
 - Config: `infra/observability/prometheus.yml`
 - Cibles: API `/metrics`, Flower, exporters, MinIO.
 
-### 14.2 Grafana
+### 15.2 Grafana
 
 Dashboards provisionnés:
 
@@ -572,7 +676,7 @@ Credentials locales par défaut : `admin / admin`.
 
 ---
 
-## 15. Déploiement cloud
+## 16. Déploiement cloud
 
 Guide complet: `infra/cloud/README.md`.
 
@@ -592,9 +696,9 @@ flyctl deploy --config infra/cloud/fly/fly-worker.toml
 
 ---
 
-## 16. Troubleshooting (Windows/Linux)
+## 17. Troubleshooting (Windows/Linux)
 
-### 16.1 `alembic upgrade head` échoue
+### 17.1 `alembic upgrade head` échoue
 
 Causes fréquentes:
 
@@ -616,19 +720,19 @@ ou (Docker)
 docker compose -f infra/local/docker-compose.yml exec api alembic -c /app/alembic.ini upgrade head
 ```
 
-### 16.2 Chemins Windows avec espaces
+### 17.2 Chemins Windows avec espaces
 
 ```powershell
 cd "C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\backend"
 ```
 
-### 16.3 `celery: command not found`
+### 17.3 `celery: command not found`
 
 ```bash
 python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
 ```
 
-### 16.4 Analyse bloquée à `QUEUED`
+### 17.4 Analyse bloquée à `QUEUED`
 
 Vérifier:
 
@@ -639,7 +743,7 @@ Vérifier:
 
 ---
 
-## 17. Sécurité
+## 18. Sécurité
 
 - Ne jamais committer `.env` réel.
 - `diff_redacted` est utilisé pour éviter l'exposition de secrets.
@@ -650,16 +754,17 @@ Vérifier:
 
 ---
 
-## 18. État courant des modules
+## 19. État courant des modules
 
 | Module | État |
 |---|---|
-| `apps/backend` | Actif, fonctionnel, cœur du produit |
-| `apps/dashboard` | Initialisé (`package.json`) mais sans source front active |
-| `apps/cli` | Dossier présent, source vide |
-| `libs/contracts/pydantic` | Dossier présent, vide |
-| `libs/contracts/typescript` | Dossier présent, vide |
-| `scripts` | Dossier présent, vide |
+| `apps/backend` | ✅ Actif et fonctionnel - API FastAPI + Celery + Alembic |
+| `apps/dashboard` | ✅ Actif et fonctionnel - Dashboard Next.js avec Clerk (auth), pages analyses, organisations, rapports |
+| `Developer Dashboard Features` | 📦 Prototype de référence - Bundle Vite/React basé sur design Figma |
+| `apps/cli` | ⏸️ Placeholder - Dossier présent, source vide |
+| `libs/contracts/pydantic` | ⏸️ Placeholder - Dossier présent, vide |
+| `libs/contracts/typescript` | ⏸️ Placeholder - Dossier présent, vide |
+| `scripts` | ⏸️ Placeholder - Dossier présent, vide |
 
 ---
 

@@ -209,3 +209,183 @@
 .dark .hover-lift:hover {
   box-shadow: 0 10px 30px -10px rgba(255, 255, 255, 0.1);
 }
+
+@keyframes trustedMarqueeLeftToRight {
+  from {
+    transform: translate3d(-50%, 0, 0);
+  }
+  to {
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+.trusted-marquee {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+}
+
+.trusted-marquee-track {
+  display: flex;
+  align-items: center;
+  width: max-content;
+  transform: translate3d(-50%, 0, 0);
+  will-change: transform;
+  animation: trustedMarqueeLeftToRight 14s linear infinite;
+}
+
+.trusted-marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .trusted-marquee-track {
+    animation: none;
+    transform: translate3d(0, 0, 0);
+  }
+}
+
+@keyframes heroBlobFloat {
+  0%,
+  100% {
+    transform: translate3d(0, 0, 0) rotate(0deg);
+  }
+  50% {
+    transform: translate3d(0, -10px, 0) rotate(-2deg);
+  }
+}
+
+@keyframes heroBlobMorph {
+  0%,
+  100% {
+    border-radius: 58% 42% 55% 45% / 42% 58% 44% 56%;
+    transform: rotate(0deg) scale(1);
+  }
+  35% {
+    border-radius: 46% 54% 41% 59% / 58% 41% 59% 42%;
+    transform: rotate(8deg) scale(1.03);
+  }
+  70% {
+    border-radius: 62% 38% 61% 39% / 46% 56% 44% 54%;
+    transform: rotate(-6deg) scale(0.98);
+  }
+}
+
+@keyframes heroBlobHue {
+  from {
+    filter: hue-rotate(0deg) saturate(1.14);
+  }
+  to {
+    filter: hue-rotate(360deg) saturate(1.14);
+  }
+}
+
+@keyframes heroBlobPulse {
+  0%,
+  100% {
+    opacity: 0.72;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.95;
+    transform: scale(1.1);
+  }
+}
+
+.hero-blob-wrap {
+  pointer-events: none;
+  position: relative;
+  width: min(360px, 74vw);
+  aspect-ratio: 1 / 1;
+  animation: heroBlobFloat 8s ease-in-out infinite;
+  filter: drop-shadow(0 28px 58px rgba(38, 99, 235, 0.22));
+}
+
+@media (min-width: 768px) {
+  .hero-blob-wrap {
+    width: min(420px, 94%);
+  }
+}
+
+.hero-blob {
+  position: absolute;
+  inset: 11%;
+  border-radius: 58% 42% 55% 45% / 42% 58% 44% 56%;
+  background:
+    radial-gradient(circle at 26% 26%, rgba(255, 255, 255, 0.85), rgba(255, 255, 255, 0) 28%),
+    radial-gradient(circle at 78% 24%, rgba(34, 211, 238, 0.72), rgba(34, 211, 238, 0) 44%),
+    radial-gradient(circle at 35% 78%, rgba(168, 85, 247, 0.68), rgba(168, 85, 247, 0) 48%),
+    radial-gradient(circle at 78% 76%, rgba(20, 184, 166, 0.68), rgba(20, 184, 166, 0) 40%),
+    conic-gradient(
+      from 120deg at 50% 50%,
+      rgba(30, 64, 175, 0.85),
+      rgba(8, 145, 178, 0.88),
+      rgba(76, 29, 149, 0.86),
+      rgba(52, 211, 153, 0.86),
+      rgba(30, 64, 175, 0.85)
+    );
+  box-shadow:
+    inset -20px -18px 30px rgba(255, 255, 255, 0.22),
+    inset 18px 16px 30px rgba(15, 23, 42, 0.28),
+    0 26px 56px rgba(79, 70, 229, 0.28);
+  animation:
+    heroBlobMorph 9s ease-in-out infinite,
+    heroBlobHue 24s linear infinite;
+}
+
+.hero-blob::before {
+  content: "";
+  position: absolute;
+  inset: 18%;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.58), rgba(255, 255, 255, 0.08) 55%, rgba(255, 255, 255, 0) 70%);
+  filter: blur(0.4px);
+}
+
+.hero-blob::after {
+  content: "";
+  position: absolute;
+  inset: 8%;
+  border-radius: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.24);
+  mix-blend-mode: screen;
+}
+
+.hero-blob-highlight-1,
+.hero-blob-highlight-2 {
+  position: absolute;
+  border-radius: 9999px;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.14) 55%, rgba(255, 255, 255, 0) 100%);
+  animation: heroBlobPulse 6.4s ease-in-out infinite;
+}
+
+.hero-blob-highlight-1 {
+  top: 18%;
+  left: 25%;
+  width: 28%;
+  aspect-ratio: 1 / 1;
+}
+
+.hero-blob-highlight-2 {
+  right: 18%;
+  bottom: 16%;
+  width: 24%;
+  aspect-ratio: 1 / 1;
+  animation-delay: 1.2s;
+}
+
+.bg-dots {
+  background-image: radial-gradient(rgba(15, 23, 42, 0.07) 1px, transparent 1px);
+}
+
+.dark .bg-dots {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.24) 1px, transparent 1px);
+}
+
+.plus-pattern {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.14) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.14) 1px, transparent 1px);
+  background-size: 22px 22px;
+  background-position: center;
+}
