@@ -14,7 +14,7 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
 }
 
 export async function POST() {
-  const { userId, getToken } = await auth()
+  const { userId, getToken, orgId, orgRole, orgSlug, sessionClaims } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
@@ -37,6 +37,11 @@ export async function POST() {
     typeof user?.unsafeMetadata?.role === "string" ? user.unsafeMetadata.role : undefined,
     typeof user?.privateMetadata?.role === "string" ? user.privateMetadata.role : undefined,
   )
+  const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
+  const orgNameCandidate = firstNonEmpty(
+    typeof claims.org_name === "string" ? claims.org_name : undefined,
+    typeof claims.organization_name === "string" ? claims.organization_name : undefined,
+  )
 
   const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/auth/sync`, {
     method: "POST",
@@ -48,6 +53,10 @@ export async function POST() {
       email: primaryEmail,
       display_name: displayName,
       role: roleCandidate,
+      org_id: orgId,
+      org_slug: orgSlug,
+      org_name: orgNameCandidate,
+      org_role: orgRole,
     }),
     cache: "no-store",
   })

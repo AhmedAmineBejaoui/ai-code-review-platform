@@ -192,6 +192,10 @@ class AuthSyncResponse(BaseModel):
     email: str
     display_name: str | None
     roles: list[str]
+    org_id: str | None = None
+    org_slug: str | None = None
+    org_name: str | None = None
+    org_role: str | None = None
 
 
 class AuthSyncPayload(BaseModel):
@@ -200,6 +204,10 @@ class AuthSyncPayload(BaseModel):
     email: str | None = None
     display_name: str | None = None
     role: str | None = None
+    org_id: str | None = None
+    org_slug: str | None = None
+    org_name: str | None = None
+    org_role: str | None = None
 
 
 def _raise_api_error(exc: ServiceError) -> None:
@@ -239,7 +247,31 @@ async def sync_authenticated_user(
         if requested_role in principal_roles:
             role_to_sync = requested_role
 
+    org_id = principal.org_id
+    if payload is not None and isinstance(payload.org_id, str) and payload.org_id.strip():
+        org_id = payload.org_id.strip()
+    org_slug = principal.org_slug
+    if payload is not None and isinstance(payload.org_slug, str) and payload.org_slug.strip():
+        org_slug = payload.org_slug.strip().lower()
+    org_name = principal.org_name
+    if payload is not None and isinstance(payload.org_name, str) and payload.org_name.strip():
+        org_name = payload.org_name.strip()
+    org_role = principal.org_role
+    if payload is not None and isinstance(payload.org_role, str) and payload.org_role.strip():
+        normalized_org_role = payload.org_role.strip().lower()
+        org_role = normalized_org_role.removeprefix("org:") if normalized_org_role.startswith("org:") else normalized_org_role
+
     await asyncio.to_thread(repo.upsert_clerk_user, principal.user_id, email, display_name, role_to_sync)
+    if org_id:
+        await asyncio.to_thread(
+            repo.upsert_organization_membership,
+            principal.user_id,
+            org_id,
+            org_name or org_id,
+            org_slug,
+            org_role,
+        )
+
     synced_user = await asyncio.to_thread(repo.get_user, principal.user_id)
     if synced_user is not None:
         return AuthSyncResponse(
@@ -247,6 +279,10 @@ async def sync_authenticated_user(
             email=synced_user.email,
             display_name=synced_user.display_name,
             roles=synced_user.roles,
+            org_id=org_id,
+            org_slug=org_slug,
+            org_name=org_name,
+            org_role=org_role,
         )
 
     return AuthSyncResponse(
@@ -254,6 +290,10 @@ async def sync_authenticated_user(
         email=email,
         display_name=display_name,
         roles=principal.roles,
+        org_id=org_id,
+        org_slug=org_slug,
+        org_name=org_name,
+        org_role=org_role,
     )
 
 

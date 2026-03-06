@@ -12,6 +12,7 @@ import {
   List, 
   Shield, 
   Database,
+  Building2,
   Users,
   Activity,
   Plug,
@@ -46,12 +47,14 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-cyan-500' },
     { name: 'Analyses', href: '/dashboard/analyses', icon: List, gradient: 'from-purple-500 to-pink-500' },
+    { name: 'Workspace', href: '/dashboard/organization', icon: Building2, gradient: 'from-emerald-500 to-teal-500' },
   ];
 
   const adminNavigation = [
     { name: 'Base de Connaissance', href: '/dashboard/admin/knowledge-base', icon: Database, gradient: 'from-emerald-500 to-teal-500' },
     { name: 'Policies & Rules', href: '/dashboard/admin/policies', icon: Shield, gradient: 'from-orange-500 to-red-500' },
     { name: 'Utilisateurs', href: '/dashboard/admin/users', icon: Users, gradient: 'from-indigo-500 to-purple-500' },
+    { name: 'Organizations', href: '/dashboard/admin/organization', icon: Building2, gradient: 'from-blue-500 to-indigo-500' },
     { name: 'ObservabilitÃ©', href: '/dashboard/admin/observability', icon: Activity, gradient: 'from-pink-500 to-rose-500' },
     { name: 'IntÃ©grations', href: '/dashboard/admin/integrations', icon: Plug, gradient: 'from-cyan-500 to-blue-500' },
   ];
@@ -235,6 +238,16 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
+            <div className="rounded-xl border border-gray-200/70 bg-white/70 px-4 py-3 text-left dark:border-gray-800/70 dark:bg-gray-900/70">
+              <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Workspace</p>
+              <p className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
+                {currentUser.organization?.name ?? currentUser.organization?.slug ?? "Personal"}
+              </p>
+              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                {currentUser.organization?.role ? `Role: ${currentUser.organization.role}` : "Mode personnel"}
+              </p>
+            </div>
+
             {/* Theme Toggle */}
             <motion.button
               onClick={() => setTheme(isDark ? "light" : "dark")}
@@ -287,6 +300,13 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                   <div className="flex flex-col">
                     <span>{currentUser.name}</span>
                     <span className="text-xs text-gray-500">{currentUser.email}</span>
+                    {currentUser.organization?.id ? (
+                      <span className="text-xs text-gray-500">
+                        {currentUser.organization.name ?? currentUser.organization.slug ?? currentUser.organization.id}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-500">Personal workspace</span>
+                    )}
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />

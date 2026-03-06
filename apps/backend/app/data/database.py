@@ -286,6 +286,85 @@ def init_db() -> None:
         conn.execute(
             text(
                 """
+                CREATE TABLE IF NOT EXISTS organizations (
+                    id TEXT PRIMARY KEY,
+                    slug TEXT NULL UNIQUE,
+                    name TEXT NOT NULL,
+                    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_organizations_is_active ON organizations(is_active)"))
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS organization_memberships (
+                    id TEXT PRIMARY KEY,
+                    organization_id TEXT NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    role TEXT NOT NULL DEFAULT 'member',
+                    status TEXT NOT NULL DEFAULT 'active',
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(organization_id, user_id)
+                )
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE organization_memberships
+                DROP CONSTRAINT IF EXISTS ck_organization_memberships_role
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE organization_memberships
+                DROP CONSTRAINT IF EXISTS ck_organization_memberships_status
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE organization_memberships
+                ADD CONSTRAINT ck_organization_memberships_role
+                CHECK (role IN ('owner', 'admin', 'member'))
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                ALTER TABLE organization_memberships
+                ADD CONSTRAINT ck_organization_memberships_status
+                CHECK (status IN ('active', 'invited', 'revoked'))
+                """
+            )
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_organization_memberships_org_id ON organization_memberships(organization_id)"
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_organization_memberships_user_id ON organization_memberships(user_id)")
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_organization_memberships_role ON organization_memberships(role)")
+        )
+
+        conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS roles (
                     id TEXT PRIMARY KEY,
                     code TEXT NOT NULL UNIQUE,

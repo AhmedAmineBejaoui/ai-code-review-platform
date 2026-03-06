@@ -319,6 +319,42 @@ class UserORM(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
+class OrganizationORM(Base):
+    __tablename__ = "organizations"
+    __table_args__ = (
+        UniqueConstraint("slug", name="uq_organizations_slug"),
+        Index("idx_organizations_slug", "slug"),
+        Index("idx_organizations_is_active", "is_active"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    slug: Mapped[str | None] = mapped_column(Text, nullable=True)
+    name: Mapped[str] = mapped_column(Text, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class OrganizationMembershipORM(Base):
+    __tablename__ = "organization_memberships"
+    __table_args__ = (
+        UniqueConstraint("organization_id", "user_id", name="uq_organization_memberships_org_user"),
+        CheckConstraint("role IN ('owner', 'admin', 'member')", name="ck_organization_memberships_role"),
+        CheckConstraint("status IN ('active', 'invited', 'revoked')", name="ck_organization_memberships_status"),
+        Index("idx_organization_memberships_org_id", "organization_id"),
+        Index("idx_organization_memberships_user_id", "user_id"),
+        Index("idx_organization_memberships_role", "role"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    organization_id: Mapped[str] = mapped_column(Text, ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False)
+    user_id: Mapped[str] = mapped_column(Text, ForeignKey("users.id", ondelete="CASCADE"), nullable=False)
+    role: Mapped[str] = mapped_column(Text, nullable=False, server_default="member")
+    status: Mapped[str] = mapped_column(Text, nullable=False, server_default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class RoleORM(Base):
     __tablename__ = "roles"
     __table_args__ = (

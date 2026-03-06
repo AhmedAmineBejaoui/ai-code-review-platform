@@ -31,6 +31,22 @@ def test_permissions_for_roles_union() -> None:
     assert permissions == ["analyses.create", "analyses.read", "analyses.write"]
 
 
+def test_extract_org_context_from_claims() -> None:
+    claims = {
+        "org_id": "org_123",
+        "org_slug": "acme",
+        "org_name": "Acme Inc",
+        "org_role": "org:admin",
+    }
+
+    org_id, org_slug, org_name, org_role = auth_middleware._extract_org_context_from_claims(claims)
+
+    assert org_id == "org_123"
+    assert org_slug == "acme"
+    assert org_name == "Acme Inc"
+    assert org_role == "admin"
+
+
 def test_require_permission_rejects_missing_permission_when_auth_enabled(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(auth_middleware.settings, "RBAC_ENFORCEMENT_ENABLED", False)
     monkeypatch.setattr(auth_middleware.settings, "CLERK_AUTH_ENABLED", True)

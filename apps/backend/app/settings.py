@@ -53,6 +53,7 @@ class Settings(BaseSettings):
     CLERK_JWKS_URL: str | None = None
     CLERK_AUDIENCE: str | None = None
     CLERK_JWT_LEEWAY_SECONDS: int = 10
+    CLERK_ORGANIZATIONS_ENFORCED: bool = False
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100
 

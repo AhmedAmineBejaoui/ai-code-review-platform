@@ -20,6 +20,10 @@ class AuthenticatedPrincipal(BaseModel):
     display_name: str | None = None
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
+    org_id: str | None = None
+    org_slug: str | None = None
+    org_name: str | None = None
+    org_role: str | None = None
 
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -117,6 +121,50 @@ def _extract_roles(claims: dict[str, Any]) -> list[str]:
     return roles or ["developer"]
 
 
+def _normalize_org_role(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip().lower()
+    if not normalized:
+        return None
+    if normalized.startswith("org:"):
+        normalized = normalized.removeprefix("org:")
+    if normalized in {"owner", "admin", "member"}:
+        return normalized
+    if normalized in {"basic_member", "basic-member", "contributor", "developer", "dev"}:
+        return "member"
+    return None
+
+
+def _extract_org_context_from_claims(claims: dict[str, Any]) -> tuple[str | None, str | None, str | None, str | None]:
+    org_block = _extract_dict(claims, "organization", "org", "org_data")
+    org_id = _first_non_empty_string(
+        claims.get("org_id"),
+        claims.get("organization_id"),
+        org_block.get("id"),
+    )
+    org_slug = _first_non_empty_string(
+        claims.get("org_slug"),
+        claims.get("organization_slug"),
+        org_block.get("slug"),
+    )
+    org_name = _first_non_empty_string(
+        claims.get("org_name"),
+        claims.get("organization_name"),
+        org_block.get("name"),
+        org_slug,
+        org_id,
+    )
+    org_role = _normalize_org_role(
+        _first_non_empty_string(
+            claims.get("org_role"),
+            claims.get("organization_role"),
+            org_block.get("role"),
+        )
+    )
+    return org_id, org_slug, org_name, org_role
+
+
 def _permissions_for_roles(roles: list[str]) -> list[str]:
     permissions: set[str] = set()
     for role in roles:
@@ -193,12 +241,32 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
     display_name = _extract_display_name_from_claims(claims)
     roles = _extract_roles(claims)
     primary_role = roles[0] if roles else "developer"
+    org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
 
     await asyncio.to_thread(repo.upsert_clerk_user, user_id, email, display_name, primary_role)
+    if org_id:
+        await asyncio.to_thread(
+            repo.upsert_organization_membership,
+            user_id,
+            org_id,
+            org_name or org_id,
+            org_slug,
+            org_role,
+        )
+
     user = await asyncio.to_thread(repo.get_user, user_id)
     if user is not None:
         if not user.is_active:
             raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
+
+        resolved_org_name = org_name
+        if org_id and not resolved_org_name:
+            membership = next(
+                (item for item in user.organization_memberships if item.organization_id == org_id and item.status == "active"),
+                None,
+            )
+            if membership is not None:
+                resolved_org_name = membership.organization_name
 
         return AuthenticatedPrincipal(
             user_id=user.id,
@@ -206,6 +274,10 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             display_name=user.display_name or display_name,
             roles=user.roles,
             permissions=user.permissions,
+            org_id=org_id,
+            org_slug=org_slug,
+            org_name=resolved_org_name,
+            org_role=org_role,
         )
 
     permissions = _permissions_for_roles(roles)
@@ -215,6 +287,10 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         display_name=display_name,
         roles=roles,
         permissions=permissions,
+        org_id=org_id,
+        org_slug=org_slug,
+        org_name=org_name,
+        org_role=org_role,
     )
 
 
@@ -247,6 +323,10 @@ async def get_current_principal(
         display_name=user.display_name,
         roles=user.roles,
         permissions=user.permissions,
+        org_id=None,
+        org_slug=None,
+        org_name=None,
+        org_role=None,
     )
 
 
@@ -257,6 +337,12 @@ def require_permission(permission_code: str):
 
         if principal is None:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+
+        if settings.CLERK_ORGANIZATIONS_ENFORCED and not principal.org_id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Organization context is required for this action",
+            )
 
         if permission_code not in principal.permissions:
             raise HTTPException(

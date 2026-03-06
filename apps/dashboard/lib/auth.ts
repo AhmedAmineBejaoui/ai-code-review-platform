@@ -32,7 +32,7 @@ function initials(name: string, email: string): string {
 }
 
 export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser | null> {
-  const { userId, sessionClaims } = await auth()
+  const { userId, sessionClaims, orgId, orgRole, orgSlug } = await auth()
   if (!userId) {
     return null
   }
@@ -63,11 +63,34 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
       (sessionClaims as Record<string, unknown> | null | undefined)?.email_address,
     ) ?? "unknown@example.local"
 
+  const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
+  const orgNameCandidate =
+    (typeof claims.org_name === "string" ? claims.org_name : undefined) ??
+    (typeof claims.organization_name === "string" ? claims.organization_name : undefined)
+  const normalizedOrgRole = (() => {
+    if (typeof orgRole !== "string" || orgRole.trim().length === 0) {
+      return undefined
+    }
+    const raw = orgRole.trim().toLowerCase()
+    return raw.startsWith("org:") ? raw.slice(4) : raw
+  })()
+
+  const organization =
+    orgId != null
+      ? {
+          id: orgId,
+          slug: orgSlug ?? undefined,
+          name: orgNameCandidate ?? undefined,
+          role: normalizedOrgRole,
+        }
+      : null
+
   return {
     id: userId,
     name,
     email,
     role,
     avatar: initials(name, email),
+    organization,
   }
 }
