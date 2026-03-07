@@ -1,9 +1,9 @@
 "use client"
 
-import { useState } from "react"
-import { motion } from "framer-motion"
+import { useRef, useState } from "react"
+import { motion, useScroll, useSpring, useTransform } from "framer-motion"
 import Link from "next/link"
-import { SignInButton, SignUpButton, SignedIn, SignedOut, UserButton } from "@clerk/nextjs"
+import { SignInButton, SignOutButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs"
 import {
   ArrowRight,
   BookOpen,
@@ -210,6 +210,32 @@ const NAV_LINKS = [
 
 export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { scrollY } = useScroll()
+  const navbarY = useSpring(useTransform(scrollY, [0, 260], [0, -34]), {
+    stiffness: 140,
+    damping: 26,
+    mass: 0.28,
+  })
+  const navbarScale = useSpring(useTransform(scrollY, [0, 260], [1, 0.985]), {
+    stiffness: 140,
+    damping: 26,
+    mass: 0.28,
+  })
+  const previewRef = useRef<HTMLDivElement | null>(null)
+  const { scrollYProgress: previewProgressRaw } = useScroll({
+    target: previewRef,
+    offset: ["start end", "center center"],
+  })
+  const previewProgress = useSpring(previewProgressRaw, {
+    stiffness: 120,
+    damping: 24,
+    mass: 0.35,
+  })
+  const previewRotateX = useTransform(previewProgress, [0, 1], [76, 0])
+  const previewTranslateY = useTransform(previewProgress, [0, 1], [170, 0])
+  const previewOpacity = useTransform(previewProgress, [0, 0.15, 1], [0.12, 0.75, 1])
+  const previewScale = useTransform(previewProgress, [0, 1], [0.86, 1])
+
   const fadeInUp = {
     hidden: { opacity: 0, y: 20 },
     show: { opacity: 1, y: 0, transition: { duration: 0.5 } },
@@ -223,32 +249,33 @@ export default function HomePage() {
     <main className="min-h-screen bg-background text-foreground transition-colors duration-300">
       {/* ── NAVBAR ── */}
       <motion.header
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        className="navbar-notch sticky top-0 z-50 border-b border-border/40 bg-background/95 shadow-sm backdrop-blur-xl dark:shadow-none"
+        style={{ y: navbarY, scale: navbarScale, transformOrigin: "center top" }}
+        className="navbar-notch relative z-40 w-full px-4 pt-3 sm:px-6 lg:px-10"
       >
-        <div className="mx-auto flex w-full max-w-6xl items-center justify-between px-5 py-3.5 md:px-8">
+        <div className="mx-auto flex w-full max-w-[1240px] items-center justify-between overflow-hidden rounded-[16px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] md:px-5">
 
           {/* ── Logo ── */}
-          <Link href="/" className="flex items-center gap-2.5 shrink-0 transition-opacity hover:opacity-80">
-            <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md shadow-indigo-500/30 transition-transform hover:scale-105">
-              <ShieldCheck className="h-4 w-4" />
+          <Link href="/" className="flex shrink-0 items-center gap-2.5">
+            <span className="inline-flex h-7 w-7 items-center justify-center rounded-lg bg-slate-900 text-white">
+              <ShieldCheck className="h-3.5 w-3.5" />
             </span>
-            <span className="text-[1.05rem] font-bold tracking-tight text-foreground">TrustReview</span>
+            <span className="text-base font-semibold tracking-tight text-slate-900">TrustReview</span>
           </Link>
 
           {/* ── Center nav – desktop ── */}
-          <nav className="hidden items-center gap-0.5 md:flex">
+          <nav className="hidden items-center gap-6 md:flex">
             {NAV_LINKS.map((link) => (
               <a
                 key={link.label}
                 href={link.href}
-                className="group inline-flex items-center gap-0.5 rounded-lg px-3.5 py-2 text-[13px] font-medium text-muted-foreground transition-all duration-200 hover:bg-accent hover:text-foreground active:scale-95"
+                className="group inline-flex items-center gap-1 text-sm font-normal text-slate-800 transition-colors hover:text-black"
               >
                 {link.label}
                 {link.hasDropdown && (
-                  <ChevronDown className="h-3.5 w-3.5 opacity-50 transition-all duration-200 group-hover:rotate-180 group-hover:opacity-70" />
+                  <ChevronDown className="h-3 w-3 text-slate-500 transition-transform duration-200 group-hover:rotate-180" />
                 )}
               </a>
             ))}
@@ -258,36 +285,36 @@ export default function HomePage() {
           <div className="flex items-center gap-3">
             <SignedOut>
               <SignInButton mode="redirect">
-                <button className="hidden rounded-lg px-3 py-1.5 text-[13px] font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-95 sm:inline-flex">
+                <button className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex">
                   Sign in
                 </button>
               </SignInButton>
               <SignUpButton mode="redirect">
-                <button className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-[13px] font-semibold text-background shadow-md transition-all hover:shadow-lg hover:opacity-90 active:scale-95 dark:shadow-white/10">
+                <button className="inline-flex items-center gap-1 rounded-[10px] border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
                   Dashboard
-                  <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
-                    <ArrowRight className="h-2.5 w-2.5" />
-                  </span>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
                 </button>
               </SignUpButton>
             </SignedOut>
             <SignedIn>
+              <SignOutButton>
+                <button className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex">
+                  Sign out
+                </button>
+              </SignOutButton>
               <Link
                 href="/auth/role-redirect"
-                className="inline-flex items-center gap-1.5 rounded-full bg-foreground px-4 py-2 text-[13px] font-semibold text-background shadow-md transition-all hover:shadow-lg hover:opacity-90 active:scale-95 dark:shadow-white/10"
+                className="inline-flex items-center gap-1 rounded-[10px] border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
               >
                 Dashboard
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded-full bg-background/20">
-                  <ArrowRight className="h-2.5 w-2.5" />
-                </span>
+                <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
               </Link>
-              <UserButton afterSignOutUrl="/" />
             </SignedIn>
 
             {/* Mobile hamburger */}
             <button
               onClick={() => setMobileMenuOpen((v) => !v)}
-              className="ml-2 inline-flex items-center justify-center rounded-lg p-2 text-muted-foreground transition-all hover:bg-accent hover:text-foreground active:scale-95 md:hidden"
+              className="ml-1 inline-flex items-center justify-center rounded-md p-1.5 text-slate-700 transition-colors hover:bg-slate-100 md:hidden"
               aria-label="Toggle menu"
             >
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
@@ -302,7 +329,7 @@ export default function HomePage() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="border-t border-border/40 bg-background/98 backdrop-blur-xl px-5 pb-4 shadow-md md:hidden"
+            className="border-t border-slate-200 bg-white px-4 pb-4 md:hidden"
           >
             <nav className="flex flex-col gap-1 pt-3">
               {NAV_LINKS.map((link) => (
@@ -310,28 +337,39 @@ export default function HomePage() {
                   key={link.label}
                   href={link.href}
                   onClick={() => setMobileMenuOpen(false)}
-                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground"
+                  className="flex items-center justify-between rounded-lg px-3 py-2.5 text-sm font-normal text-slate-800 hover:bg-slate-50"
                 >
                   {link.label}
-                  {link.hasDropdown && <ChevronDown className="h-4 w-4 opacity-50" />}
+                  {link.hasDropdown && <ChevronDown className="h-4 w-4 text-slate-500" />}
                 </a>
               ))}
             </nav>
-            <div className="mt-4 flex flex-col gap-2 border-t border-border/30 pt-4">
+            <div className="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-4">
               <SignedOut>
                 <SignInButton mode="redirect">
-                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-medium text-muted-foreground hover:bg-accent hover:text-foreground">
+                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50">
                     Sign in
                   </button>
                 </SignInButton>
                 <SignUpButton mode="redirect">
-                  <button className="w-full rounded-full bg-foreground px-4 py-2.5 text-sm font-semibold text-background transition hover:opacity-85">
-                    Get Started Free
+                  <button className="w-full rounded-[10px] border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
+                    Dashboard
                   </button>
                 </SignUpButton>
               </SignedOut>
               <SignedIn>
-                <UserButton afterSignOutUrl="/" />
+                <Link
+                  href="/auth/role-redirect"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="w-full rounded-[10px] border border-slate-300 bg-white px-4 py-2.5 text-center text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
+                >
+                  Dashboard
+                </Link>
+                <SignOutButton>
+                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50">
+                    Sign out
+                  </button>
+                </SignOutButton>
               </SignedIn>
             </div>
           </motion.div>
@@ -589,7 +627,7 @@ export default function HomePage() {
       </section>
 
       {/* ── DASHBOARD PREVIEW ── */}
-      <section id="preview" className="mx-auto w-full max-w-6xl px-5 py-24 md:px-8">
+      <section id="preview" className="mx-auto w-full max-w-6xl px-5 py-24 [perspective:1600px] md:px-8">
         <div className="mx-auto mb-10 max-w-2xl text-center">
           <h2 className="text-4xl font-bold tracking-tight text-slate-900">
             See every analysis, at a glance
@@ -598,11 +636,15 @@ export default function HomePage() {
         </div>
 
         <motion.div
-          initial="hidden"
-          whileInView="show"
-          viewport={{ once: true, margin: "-50px" }}
-          variants={fadeInUp}
-          className="rounded-3xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-indigo-50/60 to-white p-4 shadow-2xl shadow-violet-200/50 md:p-6"
+          ref={previewRef}
+          style={{
+            rotateX: previewRotateX,
+            y: previewTranslateY,
+            opacity: previewOpacity,
+            scale: previewScale,
+            transformOrigin: "center bottom",
+          }}
+          className="rounded-3xl border border-violet-200/70 bg-gradient-to-br from-violet-50 via-indigo-50/60 to-white p-4 [transform-style:preserve-3d] shadow-2xl shadow-violet-200/50 md:p-6"
         >
           {/* Outer card with subtle border */}
           <div className="overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-lg">
