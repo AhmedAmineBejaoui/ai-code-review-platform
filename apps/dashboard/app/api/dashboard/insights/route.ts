@@ -138,6 +138,23 @@ function isOwnedByUser(
   return false
 }
 
+function hasOwnerIdentity(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) {
+    return false
+  }
+  const identityCandidates = [
+    metadata.author_id,
+    metadata.user_id,
+    metadata.actor_id,
+    metadata.clerk_user_id,
+    metadata.github_actor_id,
+    metadata.author_email,
+    metadata.user_email,
+    metadata.actor_email,
+  ]
+  return identityCandidates.some((candidate) => typeof candidate === "string" && candidate.trim().length > 0)
+}
+
 function toPrSummaries(
   payload: BackendAnalysisListResponse | null,
   role: AppRole,
@@ -167,11 +184,12 @@ function toPrSummaries(
     return mapped.map(({ metadata: _metadata, ...value }) => value).slice(0, 25)
   }
 
-  const own = mapped.filter((item) =>
-    isOwnedByUser(item.metadata ?? undefined, {
-      userId,
-      email,
-    }),
+  const own = mapped.filter(
+    (item) =>
+      isOwnedByUser(item.metadata ?? undefined, {
+        userId,
+        email,
+      }) || !hasOwnerIdentity(item.metadata ?? undefined),
   )
   const selected = own.length > 0 ? own : mapped.slice(0, 10)
   return selected.map(({ metadata: _metadata, ...value }) => value).slice(0, 10)

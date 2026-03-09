@@ -196,6 +196,23 @@ function isOwnedByUser(
   return false
 }
 
+function hasOwnerIdentity(metadata: Record<string, unknown> | undefined): boolean {
+  if (!metadata) {
+    return false
+  }
+  const identityCandidates = [
+    metadata.author_id,
+    metadata.user_id,
+    metadata.actor_id,
+    metadata.clerk_user_id,
+    metadata.github_actor_id,
+    metadata.author_email,
+    metadata.user_email,
+    metadata.actor_email,
+  ]
+  return identityCandidates.some((candidate) => typeof candidate === "string" && candidate.trim().length > 0)
+}
+
 function normalizeAnalysisStatus(status: string | undefined): string {
   const raw = (status ?? "").trim().toUpperCase()
   if (raw === "DONE") {
@@ -360,7 +377,7 @@ export async function GET() {
           isOwnedByUser(item.metadata, {
             userId,
             email: email ?? undefined,
-          }),
+          }) || !hasOwnerIdentity(item.metadata),
         )
       : baseItems
 
