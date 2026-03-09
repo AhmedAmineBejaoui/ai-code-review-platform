@@ -65,6 +65,7 @@ export function DeveloperDashboard() {
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [isImportingDiff, setIsImportingDiff] = useState(false);
   const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
+  const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const diffFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const ownAnalyses = mockAnalyses.filter((analysis) => analysis.author === currentUser.name);
@@ -171,6 +172,7 @@ export function DeveloperDashboard() {
       }
 
       setDiffInput(importedText);
+      setImportedFileName(selectedFile.name);
 
       if (!repoInput.trim()) {
         const inferredRepo = selectedFile.name.replace(/\.(diff|patch|txt)$/i, "").replace(/\s+/g, "-");
@@ -238,6 +240,7 @@ export function DeveloperDashboard() {
           metadata: {
             triggered_from: "developer_dashboard",
             imported_diff: true,
+            imported_file_name: importedFileName,
           },
         }),
       });
@@ -261,6 +264,7 @@ export function DeveloperDashboard() {
       setAnalysisDialogOpen(false);
       setPrNumberInput("");
       setCommitShaInput("");
+      setImportedFileName(null);
       await refreshInsights();
       router.refresh();
     } catch (error) {
