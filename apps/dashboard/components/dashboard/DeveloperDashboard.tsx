@@ -19,9 +19,9 @@ import {
   ArrowRight,
   Loader2,
 } from "lucide-react";
-import { mockAnalyses } from "@/data/mockData";
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
+import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "@/lib/dashboard-analyses";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,7 @@ export function DeveloperDashboard() {
   const [severityFilter, setSeverityFilter] = useState("all");
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [insights, setInsights] = useState(() => emptyDashboardInsights(currentUser.role));
+  const [analysisRows, setAnalysisRows] = useState<DashboardAnalysisItem[]>([]);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
   const [prNumberInput, setPrNumberInput] = useState("");
@@ -68,22 +69,20 @@ export function DeveloperDashboard() {
   const [importedFileName, setImportedFileName] = useState<string | null>(null);
   const diffFileInputRef = useRef<HTMLInputElement | null>(null);
 
-  const ownAnalyses = mockAnalyses.filter((analysis) => analysis.author === currentUser.name);
-  const recentAnalyses =
-    currentUser.role === "developer" && ownAnalyses.length > 0 ? ownAnalyses.slice(0, 5) : mockAnalyses.slice(0, 5);
-
-  const atRiskPRs = mockAnalyses.filter(a => a.blockerCount > 0);
+  const recentAnalyses = analysisRows.slice(0, 5);
+  const atRiskPRs = analysisRows.filter((analysis) => analysis.blockerCount > 0);
   const recentPrSummaries = insights.prSummaries.slice(0, currentUser.role === "developer" ? 5 : 8);
 
   useEffect(() => {
     let cancelled = false;
     setInsightsLoading(true);
-    fetchDashboardInsights()
-      .then((payload) => {
+    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses()])
+      .then(([insightsPayload, analysesPayload]) => {
         if (cancelled) {
           return;
         }
-        setInsights(payload);
+        setInsights(insightsPayload);
+        setAnalysisRows(analysesPayload);
       })
       .finally(() => {
         if (!cancelled) {
@@ -95,13 +94,40 @@ export function DeveloperDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    const interval = setInterval(async () => {
+      const analysesPayload = await fetchDashboardAnalyses();
+      if (!cancelled) {
+        setAnalysisRows(analysesPayload);
+      }
+    }, 8000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const normalizeStatus = (status: string) => {
+    const raw = status.trim().toUpperCase();
+    if (raw === "DONE") {
+      return "COMPLETED";
+    }
+    if (raw === "RUNNING" || raw === "FAILED" || raw === "QUEUED" || raw === "RECEIVED" || raw === "COMPLETED") {
+      return raw;
+    }
+    return "QUEUED";
+  };
+
   const getStatusIcon = (status: string) => {
-    switch (status) {
-      case 'done':
+    const normalized = normalizeStatus(status);
+    switch (normalized) {
+      case "COMPLETED":
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
-      case 'running':
+      case "RUNNING":
         return <Clock className="h-4 w-4 text-blue-500 animate-spin" />;
-      case 'failed':
+      case "FAILED":
         return <AlertCircle className="h-4 w-4 text-red-500" />;
       default:
         return <Clock className="h-4 w-4 text-gray-400" />;
@@ -109,13 +135,15 @@ export function DeveloperDashboard() {
   };
 
   const getStatusBadge = (status: string) => {
-    const variants: Record<string, any> = {
-      done: 'default',
-      running: 'secondary',
-      failed: 'destructive',
-      queued: 'outline',
+    const normalized = normalizeStatus(status);
+    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
+      COMPLETED: 'default',
+      RUNNING: 'secondary',
+      FAILED: 'destructive',
+      QUEUED: 'outline',
+      RECEIVED: 'outline',
     };
-    return <Badge variant={variants[status] || 'outline'}>{status}</Badge>;
+    return <Badge variant={variants[normalized] || 'outline'}>{normalized}</Badge>;
   };
 
   const container = {
@@ -133,11 +161,15 @@ export function DeveloperDashboard() {
     show: { opacity: 1, y: 0 }
   };
 
-  const refreshInsights = async () => {
+  const refreshDashboardData = async () => {
     setInsightsLoading(true);
     try {
-      const payload = await fetchDashboardInsights();
-      setInsights(payload);
+      const [insightsPayload, analysesPayload] = await Promise.all([
+        fetchDashboardInsights(),
+        fetchDashboardAnalyses(),
+      ]);
+      setInsights(insightsPayload);
+      setAnalysisRows(analysesPayload);
     } finally {
       setInsightsLoading(false);
     }
@@ -265,7 +297,7 @@ export function DeveloperDashboard() {
       setPrNumberInput("");
       setCommitShaInput("");
       setImportedFileName(null);
-      await refreshInsights();
+      await refreshDashboardData();
       router.refresh();
     } catch (error) {
       const message = error instanceof Error ? error.message : "Impossible de lancer l'analyse.";
@@ -456,7 +488,7 @@ export function DeveloperDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold bg-gradient-to-br from-orange-600 to-yellow-600 dark:from-orange-400 dark:to-yellow-400 bg-clip-text text-transparent">
-                {mockAnalyses.reduce((acc, a) => acc + a.warnCount, 0)}
+                {analysisRows.reduce((acc, analysis) => acc + analysis.warnCount, 0)}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
                 Warnings dÃ©tectÃ©s
@@ -479,10 +511,10 @@ export function DeveloperDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-4xl font-bold bg-gradient-to-br from-green-600 to-emerald-600 dark:from-green-400 dark:to-emerald-400 bg-clip-text text-transparent">
-                {mockAnalyses.filter(a => a.status === 'done').length}
+                {analysisRows.filter((analysis) => normalizeStatus(analysis.status) === "COMPLETED").length}
               </div>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
-                Sur {mockAnalyses.length} analyses
+                Sur {analysisRows.length} analyses
               </p>
             </CardContent>
           </Card>
@@ -624,20 +656,20 @@ export function DeveloperDashboard() {
                       <div className="flex items-center gap-2 mb-1">
                         <span className="font-semibold text-gray-900 dark:text-white">{analysis.repo}</span>
                         <span className="text-gray-400">â€¢</span>
-                        <span className="text-sm text-blue-600 dark:text-blue-400">{analysis.pr}</span>
+                        <span className="text-sm text-blue-600 dark:text-blue-400">{analysis.prLabel}</span>
                         {getStatusBadge(analysis.status)}
                       </div>
                       <div className="flex items-center gap-4 text-sm text-gray-600 dark:text-gray-400">
                         <span>{analysis.author}</span>
                         <span>â€¢</span>
-                        <span>{new Date(analysis.date).toLocaleString('fr-FR', { 
+                        <span>{new Date(analysis.createdAt).toLocaleString('fr-FR', { 
                           month: 'short', 
                           day: 'numeric', 
                           hour: '2-digit', 
                           minute: '2-digit' 
                         })}</span>
                         <span>â€¢</span>
-                        <span>{analysis.duration}</span>
+                        <span>{analysis.durationLabel}</span>
                       </div>
                     </div>
                     <div className="flex gap-2">
@@ -661,7 +693,8 @@ export function DeveloperDashboard() {
                       )}
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {analysis.status === 'done' && analysis.findings.length > 0 && (
+                      {normalizeStatus(analysis.status) === "COMPLETED" &&
+                        analysis.blockerCount + analysis.warnCount + analysis.infoCount > 0 && (
                         <>
                           <Link href={`/dashboard/report/${analysis.id}`}>
                             <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>

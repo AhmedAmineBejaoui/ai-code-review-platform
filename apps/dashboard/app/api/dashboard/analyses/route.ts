@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse, type NextRequest } from "next/server"
 import { createHash } from "node:crypto"
+import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -14,6 +15,42 @@ type CreateAnalysisBody = {
   commit_sha?: unknown
   diff_text?: unknown
   metadata?: unknown
+}
+
+type BackendAnalysisListItem = {
+  analysis_id?: string
+  repo?: string
+  pr_number?: number | null
+  commit_sha?: string | null
+  status?: string
+  created_at?: string
+  updated_at?: string
+  metadata?: Record<string, unknown>
+}
+
+type BackendAnalysisListResponse = {
+  items?: BackendAnalysisListItem[]
+}
+
+type BackendAnalysisDetailsResponse = {
+  findings?: Array<{
+    severity?: string
+  }>
+}
+
+type DashboardAnalysisListItem = {
+  id: string
+  repo: string
+  prLabel: string
+  commitSha: string | null
+  author: string
+  status: string
+  createdAt: string
+  updatedAt: string
+  durationLabel: string
+  blockerCount: number
+  warnCount: number
+  infoCount: number
 }
 
 type ParsedCreateAnalysisBody = {
@@ -101,6 +138,131 @@ function normalizeOptionalObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function resolveUserRole(user: Awaited<ReturnType<typeof currentUser>>, claims: unknown): AppRole {
+  const roleCandidate = user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
+  if (typeof roleCandidate === "string" && roleCandidate.trim().length > 0) {
+    return normalizeRole(roleCandidate)
+  }
+  return extractRoleFromClaims(claims)
+}
+
+function extractAuthorLabel(metadata: Record<string, unknown> | undefined): string | null {
+  if (!metadata) {
+    return null
+  }
+  const candidates = [
+    metadata.author_name,
+    metadata.author,
+    metadata.author_login,
+    metadata.actor,
+    metadata.user_name,
+  ]
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate.trim()
+    }
+  }
+  return null
+}
+
+function isOwnedByUser(
+  metadata: Record<string, unknown> | undefined,
+  options: { userId: string; email: string | undefined },
+): boolean {
+  const { userId, email } = options
+  if (!metadata) {
+    return false
+  }
+  const idCandidates = [
+    metadata.author_id,
+    metadata.user_id,
+    metadata.actor_id,
+    metadata.clerk_user_id,
+    metadata.github_actor_id,
+  ]
+  for (const candidate of idCandidates) {
+    if (typeof candidate === "string" && candidate.trim() === userId) {
+      return true
+    }
+  }
+  if (email) {
+    const emailCandidates = [metadata.author_email, metadata.user_email, metadata.actor_email]
+    for (const candidate of emailCandidates) {
+      if (typeof candidate === "string" && candidate.trim().toLowerCase() === email.toLowerCase()) {
+        return true
+      }
+    }
+  }
+  return false
+}
+
+function normalizeAnalysisStatus(status: string | undefined): string {
+  const raw = (status ?? "").trim().toUpperCase()
+  if (raw === "DONE") {
+    return "COMPLETED"
+  }
+  if (raw === "RUNNING" || raw === "FAILED" || raw === "QUEUED" || raw === "RECEIVED" || raw === "COMPLETED") {
+    return raw
+  }
+  return "QUEUED"
+}
+
+function safeDateValue(input: string | undefined): Date | null {
+  if (!input) {
+    return null
+  }
+  const candidate = new Date(input)
+  if (Number.isNaN(candidate.getTime())) {
+    return null
+  }
+  return candidate
+}
+
+function formatDurationMs(ms: number): string {
+  const totalSeconds = Math.max(0, Math.round(ms / 1000))
+  const minutes = Math.floor(totalSeconds / 60)
+  const seconds = totalSeconds % 60
+  if (minutes <= 0) {
+    return `${seconds}s`
+  }
+  return `${minutes}m ${seconds}s`
+}
+
+function resolveDurationLabel(createdAt: string | undefined, updatedAt: string | undefined, status: string): string {
+  const created = safeDateValue(createdAt)
+  if (!created) {
+    return "-"
+  }
+  const updated = safeDateValue(updatedAt)
+  const now = new Date()
+  const terminal = status === "FAILED" || status === "COMPLETED"
+  const end = terminal && updated ? updated : now
+  return formatDurationMs(end.getTime() - created.getTime())
+}
+
+async function fetchBackendJSON<T>(path: string, token: string | null, userId: string): Promise<T | null> {
+  const headers: Record<string, string> = {}
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  if (userId) {
+    headers["X-User-Id"] = userId
+  }
+  try {
+    const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+    if (!response.ok) {
+      return null
+    }
+    return (await response.json()) as T
+  } catch {
+    return null
+  }
+}
+
 function parseCreateAnalysisBody(rawBody: CreateAnalysisBody) {
   const repo = asNonEmptyString(rawBody.repo)
   const diffText = asNonEmptyString(rawBody.diff_text)
@@ -152,6 +314,96 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
     }
   }
   return undefined
+}
+
+export async function GET() {
+  const { userId, getToken, sessionClaims } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const [token, user] = await Promise.all([getToken(), currentUser()])
+  const role = resolveUserRole(user, sessionClaims)
+  const email =
+    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses[0]?.emailAddress
+
+  const listPayload = await fetchBackendJSON<BackendAnalysisListResponse>("/v1/analyses?page=1&size=100", token, userId)
+  if (!listPayload || !Array.isArray(listPayload.items)) {
+    return NextResponse.json({ items: [] }, { status: 200 })
+  }
+
+  const baseItems = listPayload.items
+    .filter((item) => typeof item.analysis_id === "string" && typeof item.repo === "string")
+    .map((item) => {
+      const metadata = normalizeOptionalObject(item.metadata)
+      const author = extractAuthorLabel(metadata) ?? "Unknown"
+      const status = normalizeAnalysisStatus(item.status)
+      return {
+        id: item.analysis_id as string,
+        repo: item.repo as string,
+        prLabel: typeof item.pr_number === "number" ? `PR #${item.pr_number}` : "Commit",
+        commitSha: typeof item.commit_sha === "string" ? item.commit_sha : null,
+        author,
+        status,
+        createdAt: typeof item.created_at === "string" ? item.created_at : "",
+        updatedAt: typeof item.updated_at === "string" ? item.updated_at : "",
+        durationLabel: resolveDurationLabel(item.created_at, item.updated_at, status),
+        metadata,
+      }
+    })
+    .sort((left, right) => (right.createdAt || "").localeCompare(left.createdAt || ""))
+
+  const scopedItems =
+    role === "developer"
+      ? baseItems.filter((item) =>
+          isOwnedByUser(item.metadata, {
+            userId,
+            email: email ?? undefined,
+          }),
+        )
+      : baseItems
+
+  const selectedItems = scopedItems.slice(0, 100)
+  const enrichedItems = await Promise.all(
+    selectedItems.map(async (item) => {
+      const shouldFetchFindings = item.status === "COMPLETED" || item.status === "FAILED"
+      const details = shouldFetchFindings
+        ? await fetchBackendJSON<BackendAnalysisDetailsResponse>(`/v1/analyses/${item.id}`, token, userId)
+        : null
+      const findings = Array.isArray(details?.findings) ? details.findings : []
+      let blockerCount = 0
+      let warnCount = 0
+      let infoCount = 0
+      for (const finding of findings) {
+        const severity = (finding?.severity ?? "").toUpperCase()
+        if (severity === "BLOCKER") {
+          blockerCount += 1
+        } else if (severity === "WARN") {
+          warnCount += 1
+        } else if (severity === "INFO") {
+          infoCount += 1
+        }
+      }
+      const responseItem: DashboardAnalysisListItem = {
+        id: item.id,
+        repo: item.repo,
+        prLabel: item.prLabel,
+        commitSha: item.commitSha,
+        author: item.author,
+        status: item.status,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        durationLabel: item.durationLabel,
+        blockerCount,
+        warnCount,
+        infoCount,
+      }
+      return responseItem
+    }),
+  )
+
+  return NextResponse.json({ items: enrichedItems }, { status: 200 })
 }
 
 export async function POST(request: NextRequest) {
