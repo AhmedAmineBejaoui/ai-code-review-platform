@@ -286,6 +286,23 @@ def init_db() -> None:
         conn.execute(
             text(
                 """
+                CREATE TABLE IF NOT EXISTS repo_profiles (
+                    repo_id TEXT PRIMARY KEY,
+                    repo_path TEXT NULL,
+                    indexed_commit TEXT NULL,
+                    default_branch TEXT NULL,
+                    profile_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    overview_context TEXT NULL,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_repo_profiles_updated_at ON repo_profiles(updated_at DESC)"))
+
+        conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS organizations (
                     id TEXT PRIMARY KEY,
                     slug TEXT NULL UNIQUE,

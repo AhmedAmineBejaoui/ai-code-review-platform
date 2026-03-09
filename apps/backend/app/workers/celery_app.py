@@ -24,7 +24,10 @@ def configure_celery_app() -> None:
     elif sys.platform.startswith("win"):
         # Celery prefork is unstable on Windows; default to solo unless overridden.
         celery_app.conf.worker_pool = "solo"
-    celery_app.conf.imports = ("app.workers.tasks.analyze_pr",)
+    celery_app.conf.imports = (
+        "app.workers.tasks.analyze_pr",
+        "app.workers.tasks.ingest_kb",
+    )
 
 
 configure_celery_app()

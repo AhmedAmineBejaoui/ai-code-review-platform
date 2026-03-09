@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from app.core.knowledge_base.retriever import _build_query_from_diff, _extract_paths_from_diff
+from app.core.knowledge_base.retriever import (
+    _build_query_from_diff,
+    _extract_added_lines_from_diff,
+    _extract_paths_from_diff,
+    _extract_symbols_from_diff,
+)
 
 
 def test_extract_paths_from_valid_diff() -> None:
@@ -33,4 +38,28 @@ def test_build_query_contains_files_and_excerpt() -> None:
     query = _build_query_from_diff(diff_text=diff_text, changed_files=["x.py"])
 
     assert "Changed files: x.py" in query
-    assert "Diff excerpt:" in query
+    assert "Raw diff excerpt:" in query
+
+
+def test_extract_symbols_from_diff_detects_function_and_class() -> None:
+    diff_text = """diff --git a/app/main.py b/app/main.py
++def login_user(payload):
++    return payload
++class AuthService:
++    pass
+"""
+
+    symbols = _extract_symbols_from_diff(diff_text)
+    assert "login_user" in symbols
+    assert "AuthService" in symbols
+
+
+def test_extract_added_lines_from_diff_cleans_comments() -> None:
+    diff_text = """diff --git a/a.py b/a.py
++value = compute()  # inline comment
++// js comment
++keep_me = 1
+"""
+    lines = _extract_added_lines_from_diff(diff_text)
+    assert "value = compute()" in lines
+    assert "keep_me = 1" in lines

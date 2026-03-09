@@ -802,6 +802,9 @@ Ce module ajoute une methode robuste pour eviter de relire tout le repository a 
 | `GET` | `/v1/kb/repos/{repo_id}/profile` | Lire le profil global du repo |
 | `POST` | `/v1/kb/context/query` | Recuperer du contexte pour une requete libre |
 | `POST` | `/v1/kb/context/diff` | Recuperer du contexte pertinent pour un diff |
+| `POST` | `/v1/kb/context/bootstrap` | Recuperer le contexte "decouverte" d'un nouveau repo |
+| `POST` | `/v1/kb/automation/onboard` | Lancer l'onboarding auto en tache Celery |
+| `POST` | `/v1/kb/automation/diff` | Lancer update+retrieval diff auto en tache Celery |
 
 ### 20.2 Payloads exemples
 
@@ -858,9 +861,23 @@ REPO_CONTEXT_CHUNK_OVERLAP=200
 REPO_CONTEXT_MAX_FILE_BYTES=250000
 REPO_CONTEXT_MAX_FILES_PER_RUN=5000
 REPO_CONTEXT_ALLOWED_ROOTS=
+# map JSON optionnelle repo->path local, utilisee par webhook/automation
+REPO_CONTEXT_REPO_PATH_MAP={"owner/repo":"/workspace/owner-repo"}
 ```
 
 Si `REPO_CONTEXT_ALLOWED_ROOTS` est rempli, le backend refusera toute indexation en dehors des chemins autorises.
+
+### 20.3.1 Mode evenementiel automatique (sans question utilisateur)
+
+Le systeme supporte maintenant les deux triggers automatiques:
+
+1. **Nouveau Repo** -> `kb.onboard_repo` (scan complet + bootstrap context).
+2. **Nouveau Diff** -> `kb.process_diff` (update incremental + retrieval hybride diff).
+
+Declenchement possible via:
+
+- Webhook GitHub `/webhooks/github` (si `REPO_CONTEXT_REPO_PATH_MAP` configure),
+- ou endpoints `/v1/kb/automation/*`.
 
 ### 20.4 Outils externes a installer (hors code)
 

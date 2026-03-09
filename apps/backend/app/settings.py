@@ -1,5 +1,7 @@
-from pydantic_settings import BaseSettings, SettingsConfigDict
 from pathlib import Path
+import json
+
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 _SETTINGS_PATH = Path(__file__).resolve()
@@ -80,6 +82,7 @@ class Settings(BaseSettings):
     REPO_CONTEXT_MAX_FILE_BYTES: int = 250_000
     REPO_CONTEXT_MAX_FILES_PER_RUN: int = 5000
     REPO_CONTEXT_ALLOWED_ROOTS: str | None = None
+    REPO_CONTEXT_REPO_PATH_MAP: str | None = None
 
     # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
     OBJECT_STORAGE_ENABLED: bool = False
@@ -116,6 +119,29 @@ class Settings(BaseSettings):
                 continue
             roots.append(Path(cleaned).expanduser().resolve())
         return roots
+
+    @property
+    def repo_context_repo_path_map(self) -> dict[str, str]:
+        raw = self.REPO_CONTEXT_REPO_PATH_MAP
+        if raw is None or not raw.strip():
+            return {}
+        try:
+            parsed = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+
+        normalized: dict[str, str] = {}
+        for key, value in parsed.items():
+            if not isinstance(key, str) or not isinstance(value, str):
+                continue
+            repo_key = key.strip().lower()
+            repo_path = value.strip()
+            if not repo_key or not repo_path:
+                continue
+            normalized[repo_key] = repo_path
+        return normalized
 
 
 settings = Settings()

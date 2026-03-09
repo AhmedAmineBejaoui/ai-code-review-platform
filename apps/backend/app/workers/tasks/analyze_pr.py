@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import time
 import uuid
@@ -7,6 +8,8 @@ from datetime import datetime, timezone
 from typing import Any
 
 from app.core.change_classification import ChangeClassifier
+from app.core.knowledge_base.ingestor import RepoContextIngestor
+from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
 from app.core.security.secret_store import get_secret_store
@@ -15,7 +18,9 @@ from app.core.static_analysis.base import StaticAnalysisResult
 from app.core.static_analysis.workspace import prepare_workspace
 from app.core.summarization import SummaryService
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, CreateToolRunInput
+from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.llm_providers.ollama_client import OllamaClient
+from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
@@ -65,6 +70,13 @@ def _static_fingerprint(
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+
+def _resolve_repo_path_for_kb(*, repo: str, metadata: dict[str, Any]) -> str | None:
+    raw_repo_path = metadata.get("repo_path")
+    if isinstance(raw_repo_path, str) and raw_repo_path.strip():
+        return raw_repo_path.strip()
+    return settings.repo_context_repo_path_map.get(repo.strip().lower())
 
 
 def run_static_analysis_stage(parsed: Any, *, repo_name: str, commit_sha: str | None) -> StaticAnalysisResult:
@@ -145,6 +157,52 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         parsed = parse_unified_diff(analysis.diff_raw)
         files_count, additions_total, deletions_total = repo.replace_parsed_diff(analysis_id, parsed)
+
+        kb_context_preview: str | None = None
+        kb_context_chunks_count = 0
+        kb_retrieval_mode = "disabled"
+        if settings.QDRANT_ENABLED:
+            try:
+                qdrant_client = QdrantClient()
+                retriever = RepoContextRetriever(vector_store=qdrant_client)
+                repo_path = _resolve_repo_path_for_kb(repo=analysis.repo, metadata=analysis.metadata)
+
+                if repo_path:
+                    ingestor = RepoContextIngestor(vector_store=qdrant_client)
+                    asyncio.run(
+                        ingestor.update_repo_incremental(
+                            repo_id=analysis.repo,
+                            repo_path=repo_path,
+                            base_ref=None,
+                            head_ref=analysis.commit_sha or "HEAD",
+                            source="analysis_pipeline",
+                        )
+                    )
+                    kb_retrieval_mode = "diff_with_incremental_update"
+                else:
+                    kb_retrieval_mode = "diff_retrieval_only"
+
+                kb_chunks, kb_profile = asyncio.run(
+                    retriever.retrieve_for_diff(
+                        repo_id=analysis.repo,
+                        diff_text=analysis.diff_raw,
+                        limit=12,
+                    )
+                )
+                kb_context_chunks_count = len(kb_chunks)
+                kb_context_preview = build_llm_context(kb_chunks)[:4000] if kb_chunks else None
+
+                if kb_profile and repo_path:
+                    RepoProfilesRepo().upsert_profile(
+                        repo_id=analysis.repo,
+                        repo_path=repo_path,
+                        indexed_commit=str(kb_profile.get("indexed_commit") or "") or None,
+                        default_branch=str(kb_profile.get("default_branch") or "") or None,
+                        profile=kb_profile,
+                        overview_context=kb_context_preview,
+                    )
+            except Exception:
+                kb_retrieval_mode = "failed"
 
         security_findings_count = 0
         scan_failed = False
@@ -408,6 +466,11 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "security_findings_count": security_findings_count,
             "static_findings_count": static_findings_count,
             "duration_ms": duration_ms,
+            "kb_retrieval": {
+                "mode": kb_retrieval_mode,
+                "context_chunks": kb_context_chunks_count,
+                "context_preview": kb_context_preview,
+            },
         }
         if scan_disabled:
             metrics["security_scan"] = {"scan_disabled": True}
