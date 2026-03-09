@@ -14,7 +14,7 @@ _RBAC_LOCK = Lock()
 _CLERK_ROLE_TO_DB_ROLE: dict[str, str] = {
     "admin": "admin",
     "reviewer": "reviewer",
-    "developer": "viewer",
+    "developer": "developer",
 }
 
 
@@ -120,7 +120,8 @@ class RBACRepo:
                                 """
                                 SELECT id
                                 FROM roles
-                                WHERE code = 'viewer'
+                                WHERE code IN ('developer', 'viewer')
+                                ORDER BY CASE WHEN code = 'developer' THEN 0 ELSE 1 END
                                 LIMIT 1
                                 """
                             )
@@ -132,37 +133,36 @@ class RBACRepo:
                 if role_row is None:
                     return
 
-                current_roles_count = int(
-                    conn.execute(
-                        text(
-                            """
-                            SELECT COUNT(*) AS count
-                            FROM user_roles
-                            WHERE user_id = :user_id
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .first()["count"]
+                role_id = str(role_row["id"])
+                # Clerk is the source of truth for system roles.
+                conn.execute(
+                    text(
+                        """
+                        DELETE FROM user_roles
+                        WHERE user_id = :user_id
+                          AND role_id IN (
+                            SELECT id
+                            FROM roles
+                            WHERE is_system = TRUE
+                          )
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
-
-                if current_roles_count == 0:
-                    role_id = str(role_row["id"])
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO user_roles (id, user_id, role_id)
-                            VALUES (:id, :user_id, :role_id)
-                            ON CONFLICT (user_id, role_id) DO NOTHING
-                            """
-                        ),
-                        {
-                            "id": f"ur_{user_id}_{role_id}",
-                            "user_id": user_id,
-                            "role_id": role_id,
-                        },
-                    )
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO user_roles (id, user_id, role_id)
+                        VALUES (:id, :user_id, :role_id)
+                        ON CONFLICT (user_id, role_id) DO NOTHING
+                        """
+                    ),
+                    {
+                        "id": f"ur_{user_id}_{role_id}",
+                        "user_id": user_id,
+                        "role_id": role_id,
+                    },
+                )
 
     def upsert_organization_membership(
         self,

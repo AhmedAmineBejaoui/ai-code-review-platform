@@ -1,8 +1,9 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { 
   AlertCircle, 
@@ -16,6 +17,7 @@ import {
   TrendingUp,
   Sparkles,
   ArrowRight,
+  Loader2,
 } from "lucide-react";
 import { mockAnalyses } from "@/data/mockData";
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
@@ -23,14 +25,47 @@ import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
+type LaunchAnalysisResponse = {
+  analysis_id?: string;
+  status?: string;
+  task_id?: string | null;
+  error?: string;
+  backend_response?: {
+    message?: string;
+    detail?: string;
+  };
+};
+
 export function DeveloperDashboard() {
+  const router = useRouter();
   const currentUser = useDashboardUser();
   const [timeFilter, setTimeFilter] = useState("7");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [insights, setInsights] = useState(() => emptyDashboardInsights(currentUser.role));
+  const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
+  const [repoInput, setRepoInput] = useState("");
+  const [prNumberInput, setPrNumberInput] = useState("");
+  const [commitShaInput, setCommitShaInput] = useState("");
+  const [diffInput, setDiffInput] = useState("");
+  const [formError, setFormError] = useState<string | null>(null);
+  const [actionMessage, setActionMessage] = useState<string | null>(null);
+  const [isImportingDiff, setIsImportingDiff] = useState(false);
+  const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
+  const diffFileInputRef = useRef<HTMLInputElement | null>(null);
 
   const ownAnalyses = mockAnalyses.filter((analysis) => analysis.author === currentUser.name);
   const recentAnalyses =
@@ -97,6 +132,145 @@ export function DeveloperDashboard() {
     show: { opacity: 1, y: 0 }
   };
 
+  const refreshInsights = async () => {
+    setInsightsLoading(true);
+    try {
+      const payload = await fetchDashboardInsights();
+      setInsights(payload);
+    } finally {
+      setInsightsLoading(false);
+    }
+  };
+
+  const openLaunchDialog = () => {
+    setFormError(null);
+    setActionMessage(null);
+    setAnalysisDialogOpen(true);
+  };
+
+  const openImportDialog = () => {
+    setFormError(null);
+    setActionMessage(null);
+    diffFileInputRef.current?.click();
+  };
+
+  const handleDiffFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0];
+    event.target.value = "";
+    if (!selectedFile) {
+      return;
+    }
+
+    setIsImportingDiff(true);
+    setFormError(null);
+
+    try {
+      const importedText = await selectedFile.text();
+      if (!importedText.trim()) {
+        throw new Error("Le fichier diff importe est vide.");
+      }
+
+      setDiffInput(importedText);
+
+      if (!repoInput.trim()) {
+        const inferredRepo = selectedFile.name.replace(/\.(diff|patch|txt)$/i, "").replace(/\s+/g, "-");
+        if (inferredRepo.trim()) {
+          setRepoInput(inferredRepo.trim());
+        }
+      }
+
+      setAnalysisDialogOpen(true);
+      setActionMessage(`Diff importe: ${selectedFile.name}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Import du diff impossible.";
+      setFormError(message);
+    } finally {
+      setIsImportingDiff(false);
+    }
+  };
+
+  const handleLaunchAnalysis = async () => {
+    setFormError(null);
+    setActionMessage(null);
+
+    const normalizedRepo = repoInput.trim();
+    const normalizedDiff = diffInput.trim();
+    const normalizedPrNumber = prNumberInput.trim();
+    const normalizedCommitSha = commitShaInput.trim();
+
+    if (!normalizedRepo) {
+      setFormError("Le repository est obligatoire.");
+      return;
+    }
+    if (!normalizedDiff) {
+      setFormError("Importez un diff ou collez son contenu avant de lancer l'analyse.");
+      return;
+    }
+
+    let parsedPrNumber: number | null = null;
+    if (normalizedPrNumber.length > 0) {
+      const asNumber = Number(normalizedPrNumber);
+      if (!Number.isInteger(asNumber) || asNumber < 1) {
+        setFormError("Le numero de PR doit etre un entier positif.");
+        return;
+      }
+      parsedPrNumber = asNumber;
+    }
+
+    if (normalizedCommitSha.length > 0 && !/^[0-9a-fA-F]{6,64}$/.test(normalizedCommitSha)) {
+      setFormError("Le commit SHA doit contenir 6 a 64 caracteres hexadecimaux.");
+      return;
+    }
+
+    setIsSubmittingAnalysis(true);
+    try {
+      const response = await fetch("/api/dashboard/analyses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          repo: normalizedRepo,
+          pr_number: parsedPrNumber,
+          commit_sha: normalizedCommitSha.length > 0 ? normalizedCommitSha : null,
+          diff_text: normalizedDiff,
+          metadata: {
+            triggered_from: "developer_dashboard",
+            imported_diff: true,
+          },
+        }),
+      });
+
+      const payload = (await response.json().catch(() => ({}))) as LaunchAnalysisResponse;
+      if (!response.ok) {
+        const backendMessage =
+          payload?.backend_response?.message ??
+          payload?.backend_response?.detail ??
+          payload?.error ??
+          "Le backend a refuse la creation de l'analyse.";
+        throw new Error(backendMessage);
+      }
+
+      const analysisId = typeof payload.analysis_id === "string" ? payload.analysis_id : null;
+      setActionMessage(
+        analysisId
+          ? `Analyse lancee avec succes. ID: ${analysisId}`
+          : "Analyse lancee avec succes.",
+      );
+      setAnalysisDialogOpen(false);
+      setPrNumberInput("");
+      setCommitShaInput("");
+      await refreshInsights();
+      router.refresh();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Impossible de lancer l'analyse.";
+      setFormError(message);
+    } finally {
+      setIsSubmittingAnalysis(false);
+    }
+  };
+
   return (
     <motion.div 
       className="max-w-7xl mx-auto space-y-8"
@@ -127,19 +301,116 @@ export function DeveloperDashboard() {
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600">
-              <Upload className="h-4 w-4" />
-              Importer
+            <Button
+              variant="outline"
+              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600"
+              onClick={openImportDialog}
+              disabled={isImportingDiff || isSubmittingAnalysis}
+            >
+              {isImportingDiff ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingDiff ? "Import..." : "Importer"}
             </Button>
+            <input
+              ref={diffFileInputRef}
+              type="file"
+              accept=".diff,.patch,.txt"
+              className="hidden"
+              onChange={handleDiffFileImport}
+            />
           </motion.div>
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25">
-              <Play className="h-4 w-4" />
+            <Button
+              className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-lg shadow-blue-500/25"
+              onClick={openLaunchDialog}
+              disabled={isSubmittingAnalysis}
+            >
+              {isSubmittingAnalysis ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               Lancer une analyse
             </Button>
           </motion.div>
         </div>
       </motion.div>
+
+      {(formError || actionMessage) && (
+        <motion.div variants={item}>
+          <Card className={formError ? "border-red-200 bg-red-50/70 dark:border-red-900/50 dark:bg-red-950/20" : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20"}>
+            <CardContent className="pt-4">
+              {formError ? (
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">{formError}</p>
+              ) : (
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{actionMessage}</p>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
+
+      <Dialog open={analysisDialogOpen} onOpenChange={setAnalysisDialogOpen}>
+        <DialogContent className="sm:max-w-3xl">
+          <DialogHeader>
+            <DialogTitle>Lancer une nouvelle analyse</DialogTitle>
+            <DialogDescription>
+              Importez un fichier diff puis completez les informations du repository avant de lancer l'analyse.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-2">
+            <div className="grid gap-2">
+              <Label htmlFor="analysis-repo">Repository</Label>
+              <Input
+                id="analysis-repo"
+                placeholder="ex: backend-api"
+                value={repoInput}
+                onChange={(event) => setRepoInput(event.target.value)}
+              />
+            </div>
+            <div className="grid gap-2 md:grid-cols-2 md:gap-4">
+              <div className="grid gap-2">
+                <Label htmlFor="analysis-pr">Numero PR (optionnel)</Label>
+                <Input
+                  id="analysis-pr"
+                  placeholder="ex: 456"
+                  value={prNumberInput}
+                  onChange={(event) => setPrNumberInput(event.target.value)}
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="analysis-commit">Commit SHA (optionnel)</Label>
+                <Input
+                  id="analysis-commit"
+                  placeholder="ex: a1b2c3d4"
+                  value={commitShaInput}
+                  onChange={(event) => setCommitShaInput(event.target.value)}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="analysis-diff">Diff a analyser</Label>
+              <Textarea
+                id="analysis-diff"
+                value={diffInput}
+                onChange={(event) => setDiffInput(event.target.value)}
+                placeholder="Collez ici le contenu du diff (.patch/.diff)"
+                className="min-h-[220px] font-mono text-xs"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openImportDialog}
+              disabled={isImportingDiff || isSubmittingAnalysis}
+            >
+              <Upload className="h-4 w-4" />
+              Importer un diff
+            </Button>
+            <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis || isImportingDiff}>
+              {isSubmittingAnalysis ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
+              {isSubmittingAnalysis ? "Lancement..." : "Lancer une analyse"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats Cards */}
       <motion.div className="grid md:grid-cols-3 gap-6" variants={item}>

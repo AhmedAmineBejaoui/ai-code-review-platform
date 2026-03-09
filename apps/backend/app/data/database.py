@@ -447,6 +447,7 @@ def init_db() -> None:
                 VALUES
                     ('role_admin', 'admin', 'Administrator', TRUE),
                     ('role_reviewer', 'reviewer', 'Reviewer', TRUE),
+                    ('role_developer', 'developer', 'Developer', TRUE),
                     ('role_viewer', 'viewer', 'Viewer', TRUE)
                 ON CONFLICT (code) DO NOTHING
                 """
@@ -477,6 +478,8 @@ def init_db() -> None:
                     ('rp_reviewer_read', 'role_reviewer', 'perm_analyses_read'),
                     ('rp_reviewer_create', 'role_reviewer', 'perm_analyses_create'),
                     ('rp_reviewer_write', 'role_reviewer', 'perm_analyses_write'),
+                    ('rp_developer_read', 'role_developer', 'perm_analyses_read'),
+                    ('rp_developer_create', 'role_developer', 'perm_analyses_create'),
                     ('rp_viewer_read', 'role_viewer', 'perm_analyses_read')
                 ON CONFLICT (role_id, permission_id) DO NOTHING
                 """
