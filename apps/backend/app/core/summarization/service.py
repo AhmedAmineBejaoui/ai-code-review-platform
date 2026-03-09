@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import re
-from typing import Protocol
+from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError, constr
 
@@ -15,6 +15,14 @@ class SummaryLLMClient(Protocol):
 
 class SummaryOutput(BaseModel):
     summary: constr(min_length=10, max_length=1500) = Field(...)
+
+
+class RepoOverviewOutput(BaseModel):
+    summary: constr(min_length=20, max_length=2500) = Field(...)
+    highlights: list[constr(min_length=4, max_length=220)] = Field(default_factory=list, max_length=8)
+
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 
 class SummaryService:
@@ -58,11 +66,72 @@ diff_excerpt:
 Return JSON now:
 """.strip()
 
+    def _build_repo_overview_prompt(
+        self,
+        *,
+        repo_id: str,
+        repo_profile: dict[str, Any],
+        context_excerpt: str,
+    ) -> str:
+        serialized_profile = json.dumps(repo_profile or {}, ensure_ascii=False, indent=2)[:3500]
+        clipped_context = context_excerpt[:9000]
+
+        return f"""
+You are a senior software architect. Your task: provide a first-time overview of a repository.
+Rules:
+- Be factual and grounded only in the provided context.
+- Do NOT invent frameworks or modules that are not present.
+- Keep the overview concise and actionable for onboarding.
+- Output ONLY valid JSON (no markdown, no extra text).
+Schema:
+{{"summary":"string","highlights":["string"]}}
+
+Context:
+repo_id: {repo_id}
+repo_profile_json:
+{serialized_profile}
+
+retrieved_repo_context:
+{clipped_context}
+
+Return JSON now:
+""".strip()
+
     def _extract_json(self, text: str) -> str:
         match = re.search(r"\{.*?\}", text, re.DOTALL)
         if not match:
             raise ValueError("No JSON object found in LLM output")
         return match.group(0)
+
+    def _generate_structured_output(
+        self,
+        *,
+        prompt: str,
+        model_type: type[_ModelT],
+        schema_hint: str,
+    ) -> _ModelT:
+        response = self.llm.generate(prompt)
+        raw = response.text.strip()
+
+        try:
+            json_str = self._extract_json(raw)
+            data = json.loads(json_str)
+            return model_type(**data)
+        except Exception:
+            repair_prompt = f"""
+Fix the following output to be valid JSON EXACTLY matching:
+{schema_hint}
+Return ONLY JSON, no extra text.
+
+Bad output:
+{raw}
+""".strip()
+
+            repaired = self.llm.generate(repair_prompt)
+            raw_repaired = repaired.text.strip()
+            json_str_repaired = self._extract_json(raw_repaired)
+            data_repaired = json.loads(json_str_repaired)
+            return model_type(**data_repaired)
 
     def generate_summary(
         self,
@@ -80,29 +149,29 @@ Return JSON now:
             diff_redacted=diff_redacted,
             files_changed=files_changed,
         )
+        return self._generate_structured_output(
+            prompt=prompt,
+            model_type=SummaryOutput,
+            schema_hint='{"summary":"string"}',
+        )
 
-        response = self.llm.generate(prompt)
-        raw = response.text.strip()
-
-        try:
-            json_str = self._extract_json(raw)
-            data = json.loads(json_str)
-            return SummaryOutput(**data)
-        except Exception:
-            repair_prompt = f"""
-Fix the following output to be valid JSON EXACTLY matching:
-{{"summary":"string"}}
-Return ONLY JSON, no extra text.
-
-Bad output:
-{raw}
-""".strip()
-
-            repaired = self.llm.generate(repair_prompt)
-            raw_repaired = repaired.text.strip()
-            json_str_repaired = self._extract_json(raw_repaired)
-            data_repaired = json.loads(json_str_repaired)
-            return SummaryOutput(**data_repaired)
+    def generate_repo_overview(
+        self,
+        *,
+        repo_id: str,
+        repo_profile: dict[str, Any],
+        context_excerpt: str,
+    ) -> RepoOverviewOutput:
+        prompt = self._build_repo_overview_prompt(
+            repo_id=repo_id,
+            repo_profile=repo_profile,
+            context_excerpt=context_excerpt,
+        )
+        return self._generate_structured_output(
+            prompt=prompt,
+            model_type=RepoOverviewOutput,
+            schema_hint='{"summary":"string","highlights":["string"]}',
+        )
 
     @staticmethod
     def fallback_summary(
@@ -133,3 +202,34 @@ Bad output:
         except ValidationError:
             return None
         return parsed.summary
+
+    @staticmethod
+    def fallback_repo_overview(*, repo_id: str, repo_profile: dict[str, Any]) -> RepoOverviewOutput:
+        top_directories = repo_profile.get("top_directories")
+        key_files = repo_profile.get("key_files")
+        languages = repo_profile.get("languages")
+
+        dirs_txt = ", ".join(top_directories[:5]) if isinstance(top_directories, list) and top_directories else "n/a"
+        files_txt = ", ".join(key_files[:5]) if isinstance(key_files, list) and key_files else "n/a"
+        if isinstance(languages, dict) and languages:
+            language_pairs = sorted(
+                ((str(name), int(count)) for name, count in languages.items()),
+                key=lambda item: item[1],
+                reverse=True,
+            )
+            language_txt = ", ".join(f"{name}:{count}" for name, count in language_pairs[:5])
+        else:
+            language_txt = "n/a"
+
+        summary = (
+            f"Repository {repo_id} indexed successfully. "
+            f"Main directories: {dirs_txt}. "
+            f"Key files: {files_txt}. "
+            f"Language distribution: {language_txt}."
+        )
+        highlights = [
+            f"Top directories: {dirs_txt}",
+            f"Key files: {files_txt}",
+            f"Languages: {language_txt}",
+        ]
+        return RepoOverviewOutput(summary=summary, highlights=highlights)

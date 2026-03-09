@@ -1,7 +1,7 @@
 ﻿"use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { 
   Database, 
@@ -33,9 +33,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
 
 export function KnowledgeBase() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [repoOverviews, setRepoOverviews] = useState(() => emptyDashboardInsights("admin").repoOverviews);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInsightsLoading(true);
+    fetchDashboardInsights()
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setRepoOverviews(payload.repoOverviews);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setInsightsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const stats = [
     { label: 'Documents', value: mockKbDocuments.length, icon: Database, gradient: 'from-blue-500 to-cyan-500' },
@@ -158,6 +181,52 @@ export function KnowledgeBase() {
                 </motion.div>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
+      {/* LLM Repo Overviews */}
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.35 }}
+      >
+        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+          <CardHeader>
+            <CardTitle>Apercu initial des repos (Ollama)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {insightsLoading ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Chargement des apercus...</p>
+            ) : repoOverviews.length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Aucun apercu de repo disponible.</p>
+            ) : (
+              <div className="space-y-3">
+                {repoOverviews.slice(0, 8).map((overview) => (
+                  <div
+                    key={overview.repoId}
+                    className="rounded-xl border border-gray-200/60 bg-white/70 p-4 dark:border-gray-700/60 dark:bg-gray-900/60"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{overview.repoId}</Badge>
+                      <Badge variant={overview.fallbackUsed ? "secondary" : "default"}>
+                        {overview.source}
+                      </Badge>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{overview.summary}</p>
+                    {overview.highlights.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {overview.highlights.slice(0, 4).map((highlight, index) => (
+                          <Badge key={`${overview.repoId}-${index}`} variant="secondary">
+                            {highlight}
+                          </Badge>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </motion.div>

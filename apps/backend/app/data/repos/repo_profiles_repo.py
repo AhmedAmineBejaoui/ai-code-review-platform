@@ -86,6 +86,27 @@ class RepoProfilesRepo:
             return None
         return _row_to_model(row)
 
+    def list_profiles(self, limit: int = 50) -> list[RepoProfile]:
+        safe_limit = min(max(int(limit), 1), 200)
+        with _REPO_PROFILE_LOCK:
+            with self._engine.connect() as conn:
+                rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT *
+                            FROM repo_profiles
+                            ORDER BY updated_at DESC
+                            LIMIT :limit
+                            """
+                        ),
+                        {"limit": safe_limit},
+                    )
+                    .mappings()
+                    .all()
+                )
+        return [_row_to_model(row) for row in rows]
+
 
 def _row_to_model(row: RowMapping) -> RepoProfile:
     raw_profile = row.get("profile_json")

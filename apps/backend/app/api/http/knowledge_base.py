@@ -12,6 +12,8 @@ from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
+from app.core.summarization import SummaryService
+from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.settings import settings
@@ -20,6 +22,14 @@ from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboa
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/v1/kb", tags=["knowledge-base"])
+
+_SUMMARY_SERVICE = SummaryService(
+    llm_client=OllamaClient(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.OLLAMA_MODEL,
+        timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+    )
+)
 
 
 class RepoOnboardRequest(BaseModel):
@@ -135,6 +145,20 @@ class AutomationTaskResponse(BaseModel):
     status: str = "QUEUED"
 
 
+class RepoProfileListItemResponse(BaseModel):
+    repo_id: str
+    repo_path: str | None = None
+    indexed_commit: str | None = None
+    default_branch: str | None = None
+    profile: dict[str, Any] = Field(default_factory=dict)
+    overview_context: str | None = None
+    updated_at: str | None = None
+
+
+class RepoProfileListResponse(BaseModel):
+    items: list[RepoProfileListItemResponse]
+
+
 def _map_index_result(result: RepoIndexResult) -> RepoIndexResponse:
     return RepoIndexResponse(
         repo_id=result.repo_id,
@@ -197,14 +221,40 @@ async def onboard_repo(
         retriever = RepoContextRetriever(vector_store=vector_store)
         bootstrap_chunks, profile = await retriever.retrieve_for_repo_bootstrap(repo_id=payload.repo_id, limit=16)
         if profile:
+            overview_context = build_llm_context(bootstrap_chunks)
+            try:
+                generated = _SUMMARY_SERVICE.generate_repo_overview(
+                    repo_id=payload.repo_id,
+                    repo_profile=profile,
+                    context_excerpt=overview_context,
+                )
+                llm_summary = generated.summary
+                llm_highlights = generated.highlights
+                llm_source = "ollama"
+                llm_fallback = False
+            except Exception:
+                fallback = SummaryService.fallback_repo_overview(repo_id=payload.repo_id, repo_profile=profile)
+                llm_summary = fallback.summary
+                llm_highlights = fallback.highlights
+                llm_source = "heuristic"
+                llm_fallback = True
+
+            enriched_profile = dict(profile)
+            enriched_profile["llm_overview"] = {
+                "summary": llm_summary,
+                "highlights": llm_highlights,
+                "source": llm_source,
+                "fallback_used": llm_fallback,
+                "model": settings.OLLAMA_MODEL,
+            }
             await asyncio.to_thread(
                 RepoProfilesRepo().upsert_profile,
                 repo_id=payload.repo_id,
                 repo_path=payload.repo_path,
                 indexed_commit=str(profile.get("indexed_commit") or "") or None,
                 default_branch=str(profile.get("default_branch") or "") or None,
-                profile=profile,
-                overview_context=build_llm_context(bootstrap_chunks),
+                profile=enriched_profile,
+                overview_context=overview_context,
             )
         return _map_index_result(result)
     except Exception as exc:  # noqa: BLE001
@@ -246,6 +296,32 @@ async def get_repo_profile(
             profile=profile,
             sql_profile=sql_profile.profile if sql_profile else None,
             overview_context=sql_profile.overview_context if sql_profile else None,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise _to_api_error(exc) from exc
+
+
+@router.get("/repos/profiles", response_model=RepoProfileListResponse)
+async def list_repo_profiles(
+    limit: int = 50,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+) -> RepoProfileListResponse:
+    try:
+        safe_limit = min(max(limit, 1), 200)
+        profiles = await asyncio.to_thread(RepoProfilesRepo().list_profiles, safe_limit)
+        return RepoProfileListResponse(
+            items=[
+                RepoProfileListItemResponse(
+                    repo_id=item.repo_id,
+                    repo_path=item.repo_path,
+                    indexed_commit=item.indexed_commit,
+                    default_branch=item.default_branch,
+                    profile=item.profile,
+                    overview_context=item.overview_context,
+                    updated_at=item.updated_at,
+                )
+                for item in profiles
+            ]
         )
     except Exception as exc:  # noqa: BLE001
         raise _to_api_error(exc) from exc

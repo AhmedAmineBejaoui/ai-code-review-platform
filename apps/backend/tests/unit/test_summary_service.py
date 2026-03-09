@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 from pydantic import ValidationError
 
-from app.core.summarization import SummaryOutput, SummaryService
+from app.core.summarization import RepoOverviewOutput, SummaryOutput, SummaryService
 
 
 class _FakeLLM:
@@ -57,3 +57,47 @@ def test_generate_summary_with_repair() -> None:
         files_changed=["app/auth.py"],
     )
     assert "improves auth validation" in out.summary
+
+
+def test_repo_overview_schema() -> None:
+    parsed = RepoOverviewOutput(
+        summary="This repository contains a FastAPI backend and a Next.js dashboard with role-aware workflows.",
+        highlights=["FastAPI backend", "Next.js dashboard"],
+    )
+    assert parsed.highlights[0] == "FastAPI backend"
+
+
+def test_generate_repo_overview_with_repair() -> None:
+    service = SummaryService(
+        llm_client=_FakeLLM(
+            [
+                "invalid output",
+                (
+                    '{"summary":"This repository orchestrates diff analysis with security scanning, '
+                    'static checks, and role-based dashboards.",'
+                    '"highlights":["Diff parsing and findings persistence","Role-based dashboard surfaces"]}'
+                ),
+            ]
+        )
+    )
+
+    out = service.generate_repo_overview(
+        repo_id="acme/repo",
+        repo_profile={"languages": {"python": 24}},
+        context_excerpt="[FILE: README.md]\nArchitecture overview",
+    )
+    assert "diff analysis" in out.summary.lower()
+    assert len(out.highlights) == 2
+
+
+def test_fallback_repo_overview() -> None:
+    out = SummaryService.fallback_repo_overview(
+        repo_id="acme/repo",
+        repo_profile={
+            "top_directories": ["apps", "libs"],
+            "key_files": ["README.md", "pyproject.toml"],
+            "languages": {"python": 10},
+        },
+    )
+    assert "acme/repo" in out.summary
+    assert out.highlights

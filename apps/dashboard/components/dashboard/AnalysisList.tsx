@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { 
@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
 import {
   Table,
   TableBody,
@@ -31,6 +32,8 @@ import {
 
 export function AnalysisList() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insights, setInsights] = useState(() => emptyDashboardInsights());
 
   const filteredAnalyses = mockAnalyses.filter(a => 
     a.repo.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -48,6 +51,26 @@ export function AnalysisList() {
     return <Badge variant={variants[status] || 'outline'}>{status}</Badge>;
   };
 
+  useEffect(() => {
+    let cancelled = false;
+    setInsightsLoading(true);
+    fetchDashboardInsights()
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setInsights(payload);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setInsightsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   return (
     <motion.div 
       className="max-w-7xl mx-auto space-y-6"
@@ -64,6 +87,43 @@ export function AnalysisList() {
         <p className="text-gray-600 dark:text-gray-400">
           Retrouvez toutes les analyses associÃ©es aux PRs et commits
         </p>
+      </motion.div>
+
+      <motion.div
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ delay: 0.05 }}
+      >
+        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+          <CardHeader>
+            <CardTitle>Descriptions PR generees par Ollama</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {insightsLoading ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Chargement...</p>
+            ) : insights.prSummaries.length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Aucune description PR disponible.</p>
+            ) : (
+              <div className="space-y-3">
+                {insights.prSummaries.map((item) => (
+                  <div
+                    key={item.analysisId}
+                    className="rounded-xl border border-gray-200/60 bg-white/70 p-4 dark:border-gray-700/60 dark:bg-gray-900/60"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{item.repo}</Badge>
+                      <Badge variant="secondary">
+                        {item.prNumber ? `PR #${item.prNumber}` : (item.commitSha ?? "Commit")}
+                      </Badge>
+                      <Badge variant="outline">{item.status}</Badge>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{item.summary}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       <motion.div

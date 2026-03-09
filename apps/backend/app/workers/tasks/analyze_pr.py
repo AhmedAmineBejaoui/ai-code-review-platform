@@ -193,12 +193,18 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 kb_context_preview = build_llm_context(kb_chunks)[:4000] if kb_chunks else None
 
                 if kb_profile and repo_path:
+                    existing_profile = RepoProfilesRepo().get_profile(analysis.repo)
+                    enriched_profile = dict(kb_profile)
+                    if existing_profile and isinstance(existing_profile.profile, dict):
+                        previous_overview = existing_profile.profile.get("llm_overview")
+                        if isinstance(previous_overview, dict):
+                            enriched_profile["llm_overview"] = previous_overview
                     RepoProfilesRepo().upsert_profile(
                         repo_id=analysis.repo,
                         repo_path=repo_path,
                         indexed_commit=str(kb_profile.get("indexed_commit") or "") or None,
                         default_branch=str(kb_profile.get("default_branch") or "") or None,
-                        profile=kb_profile,
+                        profile=enriched_profile,
                         overview_context=kb_context_preview,
                     )
             except Exception:
@@ -490,6 +496,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         metrics["summary"] = {
             "source": summary_source,
             "fallback_used": summary_fallback,
+            "model": settings.OLLAMA_MODEL if summary_source == "ollama" else None,
             "preview": summary_text[:180],
         }
 

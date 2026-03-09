@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import { 
@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { mockAnalyses } from "@/data/mockData";
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
+import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -28,12 +29,35 @@ export function DeveloperDashboard() {
   const currentUser = useDashboardUser();
   const [timeFilter, setTimeFilter] = useState("7");
   const [severityFilter, setSeverityFilter] = useState("all");
+  const [insightsLoading, setInsightsLoading] = useState(true);
+  const [insights, setInsights] = useState(() => emptyDashboardInsights(currentUser.role));
 
   const ownAnalyses = mockAnalyses.filter((analysis) => analysis.author === currentUser.name);
   const recentAnalyses =
     currentUser.role === "developer" && ownAnalyses.length > 0 ? ownAnalyses.slice(0, 5) : mockAnalyses.slice(0, 5);
 
   const atRiskPRs = mockAnalyses.filter(a => a.blockerCount > 0);
+  const recentPrSummaries = insights.prSummaries.slice(0, currentUser.role === "developer" ? 5 : 8);
+
+  useEffect(() => {
+    let cancelled = false;
+    setInsightsLoading(true);
+    fetchDashboardInsights()
+      .then((payload) => {
+        if (cancelled) {
+          return;
+        }
+        setInsights(payload);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setInsightsLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const getStatusIcon = (status: string) => {
     switch (status) {
@@ -188,6 +212,49 @@ export function DeveloperDashboard() {
             </CardContent>
           </Card>
         </motion.div>
+      </motion.div>
+
+      {/* LLM PR Summaries */}
+      <motion.div variants={item}>
+        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-blue-500" />
+              {currentUser.role === "developer"
+                ? "Descriptions LLM de vos PRs"
+                : "Descriptions LLM des PRs recentes"}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {insightsLoading ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Chargement des descriptions...</p>
+            ) : recentPrSummaries.length === 0 ? (
+              <p className="text-sm text-gray-600 dark:text-gray-400">Aucune description PR disponible pour le moment.</p>
+            ) : (
+              <div className="space-y-3">
+                {recentPrSummaries.map((summary) => (
+                  <div
+                    key={summary.analysisId}
+                    className="rounded-xl border border-gray-200/60 bg-white/60 p-4 dark:border-gray-700/60 dark:bg-gray-900/50"
+                  >
+                    <div className="mb-2 flex flex-wrap items-center gap-2">
+                      <Badge variant="outline">{summary.repo}</Badge>
+                      <Badge variant="secondary">
+                        {summary.prNumber ? `PR #${summary.prNumber}` : (summary.commitSha ?? "Commit")}
+                      </Badge>
+                      <Badge variant="outline">{summary.status}</Badge>
+                    </div>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{summary.summary}</p>
+                    <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+                      {summary.authorLabel ? `${summary.authorLabel} · ` : ""}
+                      {summary.createdAt ? new Date(summary.createdAt).toLocaleString("fr-FR") : ""}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </motion.div>
 
       {/* Filters */}
