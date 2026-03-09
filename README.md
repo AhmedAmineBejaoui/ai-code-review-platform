@@ -782,3 +782,110 @@ Vérifier:
 ## Licence
 
 Ce projet est distribué sous licence MIT. Voir `LICENSE`.
+
+---
+
+## 20. RepoContext (onboarding initial + diff context)
+
+Ce module ajoute une methode robuste pour eviter de relire tout le repository a chaque diff:
+
+1. Onboarding initial (une seule fois): indexation complete du repo dans Qdrant.
+2. Ensuite, par diff/PR: recuperation de contexte cible depuis l'index.
+3. Mise a jour incrementale: reindex uniquement les fichiers modifies.
+
+### 20.1 Endpoints API
+
+| Methode | Endpoint | Usage |
+|---|---|---|
+| `POST` | `/v1/kb/onboard` | Indexation complete initiale |
+| `POST` | `/v1/kb/update` | Indexation incrementale depuis git diff |
+| `GET` | `/v1/kb/repos/{repo_id}/profile` | Lire le profil global du repo |
+| `POST` | `/v1/kb/context/query` | Recuperer du contexte pour une requete libre |
+| `POST` | `/v1/kb/context/diff` | Recuperer du contexte pertinent pour un diff |
+
+### 20.2 Payloads exemples
+
+Onboarding initial:
+
+```json
+{
+  "repo_id": "ai-code-review-platform",
+  "repo_path": "C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform",
+  "source": "manual",
+  "force_full": true
+}
+```
+
+Update incremental:
+
+```json
+{
+  "repo_id": "ai-code-review-platform",
+  "repo_path": "C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform",
+  "base_ref": "HEAD~1",
+  "head_ref": "HEAD",
+  "source": "manual"
+}
+```
+
+Contexte pour diff:
+
+```json
+{
+  "repo_id": "ai-code-review-platform",
+  "diff_text": "diff --git a/app/main.py b/app/main.py\n...",
+  "changed_files": [],
+  "limit": 8
+}
+```
+
+Si l'API tourne dans Docker compose, utilise plutot un chemin interne container:
+
+- `/workspace` (repo complet)
+- `/workspace/apps/backend` (backend seulement)
+
+### 20.3 Variables d'environnement requises
+
+Activer Qdrant + RepoContext dans `.env`:
+
+```bash
+QDRANT_ENABLED=true
+QDRANT_URL=http://localhost:6333
+QDRANT_REPO_CONTEXT_COLLECTION=repo_context
+REPO_CONTEXT_VECTOR_SIZE=256
+REPO_CONTEXT_CHUNK_SIZE=1400
+REPO_CONTEXT_CHUNK_OVERLAP=200
+REPO_CONTEXT_MAX_FILE_BYTES=250000
+REPO_CONTEXT_MAX_FILES_PER_RUN=5000
+REPO_CONTEXT_ALLOWED_ROOTS=
+```
+
+Si `REPO_CONTEXT_ALLOWED_ROOTS` est rempli, le backend refusera toute indexation en dehors des chemins autorises.
+
+### 20.4 Outils externes a installer (hors code)
+
+Minimum:
+
+- Git
+- Docker Desktop
+- Python 3.11+
+- VS Code
+
+Recommande:
+
+- `rg` (ripgrep), `fd`, `tree`, `jq`
+- Extensions VS Code: GitLens, Python, Pylance, YAML, Markdown All in One
+
+### 20.5 Local puis Cloud Qdrant
+
+Oui, le workflow est prevu pour:
+
+1. demarrer localement avec Qdrant Docker (`localhost:6333`);
+2. migrer ensuite vers Qdrant Cloud en changeant seulement `QDRANT_URL` et `QDRANT_API_KEY`.
+
+Pour migration de donnees:
+
+- Snapshot/restore Qdrant, ou
+- outil de migration Qdrant.
+
+La logique backend reste la meme (meme endpoints et meme schema de payloads).

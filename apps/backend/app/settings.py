@@ -72,7 +72,14 @@ class Settings(BaseSettings):
     QDRANT_ENABLED: bool = False
     QDRANT_URL: str = "http://localhost:6333"
     QDRANT_COLLECTION: str = "code_review_rules"
+    QDRANT_REPO_CONTEXT_COLLECTION: str = "repo_context"
     QDRANT_API_KEY: str | None = None
+    REPO_CONTEXT_VECTOR_SIZE: int = 256
+    REPO_CONTEXT_CHUNK_SIZE: int = 1400
+    REPO_CONTEXT_CHUNK_OVERLAP: int = 200
+    REPO_CONTEXT_MAX_FILE_BYTES: int = 250_000
+    REPO_CONTEXT_MAX_FILES_PER_RUN: int = 5000
+    REPO_CONTEXT_ALLOWED_ROOTS: str | None = None
 
     # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
     OBJECT_STORAGE_ENABLED: bool = False
@@ -95,6 +102,20 @@ class Settings(BaseSettings):
         if self.CELERY_TASK_ALWAYS_EAGER:
             return "cache+memory://"
         return self.CELERY_RESULT_BACKEND or self.REDIS_URL
+
+    @property
+    def repo_context_allowed_roots(self) -> list[Path]:
+        raw = self.REPO_CONTEXT_ALLOWED_ROOTS
+        if raw is None or not raw.strip():
+            return []
+
+        roots: list[Path] = []
+        for item in raw.split(","):
+            cleaned = item.strip()
+            if not cleaned:
+                continue
+            roots.append(Path(cleaned).expanduser().resolve())
+        return roots
 
 
 settings = Settings()

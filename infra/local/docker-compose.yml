@@ -166,6 +166,8 @@ services:
       MINIO_SECURE: "false"
     ports:
       - "8000:8000"
+    volumes:
+      - ../../:/workspace:ro
     depends_on:
       db:
         condition: service_healthy
@@ -212,6 +214,8 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_SECURE: "false"
+    volumes:
+      - ../../:/workspace:ro
     depends_on:
       db:
         condition: service_healthy

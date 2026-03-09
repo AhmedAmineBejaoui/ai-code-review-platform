@@ -1,0 +1,36 @@
+from __future__ import annotations
+
+from app.core.knowledge_base.retriever import _build_query_from_diff, _extract_paths_from_diff
+
+
+def test_extract_paths_from_valid_diff() -> None:
+    diff_text = """diff --git a/app/main.py b/app/main.py
+index 123..456 100644
+--- a/app/main.py
++++ b/app/main.py
+@@ -1 +1 @@
+-print("old")
++print("new")
+"""
+
+    paths = _extract_paths_from_diff(diff_text)
+    assert paths == ["app/main.py"]
+
+
+def test_extract_paths_fallback_on_partial_diff() -> None:
+    diff_text = """something else
+diff --git a/apps/a.py b/apps/a.py
+random
+diff --git a/apps/b.py b/apps/b.py
+"""
+
+    paths = _extract_paths_from_diff(diff_text)
+    assert paths == ["apps/a.py", "apps/b.py"]
+
+
+def test_build_query_contains_files_and_excerpt() -> None:
+    diff_text = "diff --git a/x.py b/x.py\n+print('hello')"
+    query = _build_query_from_diff(diff_text=diff_text, changed_files=["x.py"])
+
+    assert "Changed files: x.py" in query
+    assert "Diff excerpt:" in query
