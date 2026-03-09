@@ -1,12 +1,12 @@
-﻿"use client";
+"use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useParams } from "next/navigation";
-import Link from "next/link";
-import { motion } from "framer-motion";
-import { 
-  Download, 
-  ExternalLink, 
+import { useEffect, useMemo, useState } from "react"
+import { useParams } from "next/navigation"
+import { motion } from "framer-motion"
+import {
+  Download,
+  ExternalLink,
   RotateCw,
   Shield,
   Zap,
@@ -18,68 +18,113 @@ import {
   XCircle,
   TrendingUp,
   Sparkles,
-} from "lucide-react";
-import { mockAnalyses } from "@/data/mockData";
-import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
-import { Separator } from "@/components/ui/separator";
+  Loader2,
+} from "lucide-react"
+import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { fetchDashboardAnalysisDetails, type DashboardAnalysisDetails } from "@/lib/dashboard-analysis-details"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
+import { Separator } from "@/components/ui/separator"
+
+function severityVariant(severity: string): "default" | "secondary" | "destructive" | "outline" {
+  if (severity === "BLOCKER") {
+    return "destructive"
+  }
+  if (severity === "WARN") {
+    return "secondary"
+  }
+  return "outline"
+}
 
 export function GlobalReport() {
-  const currentUser = useDashboardUser();
-  const params = useParams<{ id: string | string[] }>();
-  const id = Array.isArray(params.id) ? params.id[0] : params.id;
-  const analysis = mockAnalyses.find(a => a.id === id);
+  const currentUser = useDashboardUser()
+  const params = useParams<{ id: string | string[] }>()
+  const id = Array.isArray(params.id) ? params.id[0] : params.id
 
-  if (!analysis) {
-    return <div>Analyse non trouvÃ©e</div>;
+  const [analysis, setAnalysis] = useState<DashboardAnalysisDetails | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    if (!id) {
+      setAnalysis(null)
+      setLoading(false)
+      return () => {
+        cancelled = true
+      }
+    }
+    setLoading(true)
+    fetchDashboardAnalysisDetails(id)
+      .then((payload) => {
+        if (!cancelled) {
+          setAnalysis(payload)
+        }
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  const isReviewer = currentUser.role === "reviewer" || currentUser.role === "admin"
+
+  const findings = useMemo(() => analysis?.findings ?? [], [analysis])
+  const files = useMemo(() => analysis?.files ?? [], [analysis])
+  const blockerCount = findings.filter((finding) => finding.severity === "BLOCKER").length
+  const warnCount = findings.filter((finding) => finding.severity === "WARN").length
+  const infoCount = findings.filter((finding) => finding.severity === "INFO").length
+  const securityCount = findings.filter((finding) => finding.category.toLowerCase() === "security").length
+  const performanceCount = findings.filter((finding) => finding.category.toLowerCase() === "performance").length
+  const maintainabilityCount = findings.filter((finding) => finding.category.toLowerCase() === "maintainability").length
+
+  const additionsTotal = useMemo(() => files.reduce((acc, file) => acc + file.additionsCount, 0), [files])
+  const deletionsTotal = useMemo(() => files.reduce((acc, file) => acc + file.deletionsCount, 0), [files])
+
+  const riskScore = blockerCount * 10 + warnCount * 3
+  const maxRisk = 100
+  const riskLevel = riskScore > 30 ? "Eleve" : riskScore > 10 ? "Moyen" : "Faible"
+
+  if (loading) {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center text-gray-500 dark:text-gray-400">
+        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+        Chargement du rapport...
+      </div>
+    )
   }
 
-  const isReviewer = currentUser.role === 'reviewer' || currentUser.role === 'admin';
-
-  const categoryFindings = {
-    security: analysis.findings.filter(f => f.category === 'security'),
-    performance: analysis.findings.filter(f => f.category === 'performance'),
-    quality: analysis.findings.filter(f => f.category === 'quality'),
-    maintainability: analysis.findings.filter(f => f.category === 'maintainability'),
-  };
-
-  const riskScore = analysis.blockerCount * 10 + analysis.warnCount * 3;
-  const maxRisk = 100;
-  const riskLevel = riskScore > 30 ? 'Ã‰levÃ©' : riskScore > 10 ? 'Moyen' : 'Faible';
+  if (!analysis) {
+    return <div>Analyse non trouvee</div>
+  }
 
   return (
-    <motion.div 
-      className="max-w-5xl mx-auto space-y-6"
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-    >
-      <motion.div 
-        className="flex justify-between items-start"
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-      >
+    <motion.div className="max-w-5xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
           <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-2">
             Rapport global
           </h1>
           <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
             <span className="font-medium">{analysis.repo}</span>
-            <span>â€¢</span>
-            <span className="text-blue-600 dark:text-blue-400">{analysis.pr}</span>
-            <span>â€¢</span>
-            <span className="font-mono text-sm">{analysis.commit}</span>
+            <span>•</span>
+            <span className="text-blue-600 dark:text-blue-400">{analysis.prLabel}</span>
+            <span>•</span>
+            <span className="font-mono text-sm">{analysis.commitSha ?? "-"}</span>
           </div>
         </div>
         <div className="flex gap-2">
           {[
-            { icon: Download, label: 'PDF' },
-            { icon: Download, label: 'Markdown' },
-            { icon: RotateCw, label: 'Re-run' },
+            { icon: Download, label: "PDF" },
+            { icon: Download, label: "Markdown" },
+            { icon: RotateCw, label: "Re-run" },
           ].map((action, index) => (
-            <motion.div 
+            <motion.div
               key={action.label}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -93,13 +138,7 @@ export function GlobalReport() {
               </Button>
             </motion.div>
           ))}
-          <motion.div 
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.95 }}
-            initial={{ opacity: 0, x: 20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.3 }}
-          >
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
             <Button className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
               <ExternalLink className="h-4 w-4" />
               Ouvrir PR
@@ -108,37 +147,22 @@ export function GlobalReport() {
         </div>
       </motion.div>
 
-      {/* Summary */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.1 }}
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="relative overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 backdrop-blur-xl border-blue-200/50 dark:border-blue-800/50">
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/20 to-purple-500/20 rounded-full blur-3xl" />
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
-              RÃ©sumÃ© automatique des changements
+              Resume automatique des changements
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 relative z-10">
-            <p className="text-gray-700 dark:text-gray-300">
-              Cette PR introduit des modifications dans le systÃ¨me d'authentification et de recherche utilisateur.
-              Les changements affectent principalement les fichiers{' '}
-              <code className="bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-sm">
-                src/api/users.ts
-              </code>{' '}
-              et{' '}
-              <code className="bg-white dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 text-sm">
-                src/components/UserProfile.tsx
-              </code>.
-            </p>
+            <p className="text-gray-700 dark:text-gray-300">{analysis.summary}</p>
             <div className="grid md:grid-cols-3 gap-4">
               {[
-                { label: 'Fichiers modifiÃ©s', value: '5', gradient: 'from-blue-500 to-cyan-500' },
-                { label: 'Additions', value: '22 lignes', gradient: 'from-green-500 to-emerald-500' },
-                { label: 'Suppressions', value: '11 lignes', gradient: 'from-red-500 to-orange-500' },
+                { label: "Fichiers modifies", value: `${files.length}`, gradient: "from-blue-500 to-cyan-500" },
+                { label: "Additions", value: `${additionsTotal} lignes`, gradient: "from-green-500 to-emerald-500" },
+                { label: "Suppressions", value: `${deletionsTotal} lignes`, gradient: "from-red-500 to-orange-500" },
               ].map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -157,26 +181,19 @@ export function GlobalReport() {
         </Card>
       </motion.div>
 
-      {/* Risk Assessment */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.2 }}
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
         <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Shield className="h-5 w-5 text-orange-500" />
-              Ã‰valuation des risques
+              Evaluation des risques
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Niveau de risque global
-                </span>
-                <Badge variant={riskScore > 30 ? 'destructive' : riskScore > 10 ? 'secondary' : 'default'}>
+                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Niveau de risque global</span>
+                <Badge variant={riskScore > 30 ? "destructive" : riskScore > 10 ? "secondary" : "default"}>
                   {riskLevel}
                 </Badge>
               </div>
@@ -195,9 +212,9 @@ export function GlobalReport() {
 
             <div className="grid md:grid-cols-3 gap-4">
               {[
-                { icon: Shield, label: 'SÃ©curitÃ©', count: categoryFindings.security.length, color: 'text-red-600 dark:text-red-400', bg: 'from-red-500 to-orange-500' },
-                { icon: Zap, label: 'Performance', count: categoryFindings.performance.length, color: 'text-orange-600 dark:text-orange-400', bg: 'from-orange-500 to-yellow-500' },
-                { icon: Code2, label: 'MaintenabilitÃ©', count: categoryFindings.maintainability.length, color: 'text-blue-600 dark:text-blue-400', bg: 'from-blue-500 to-purple-500' },
+                { icon: Shield, label: "Securite", count: securityCount, bg: "from-red-500 to-orange-500" },
+                { icon: Zap, label: "Performance", count: performanceCount, bg: "from-orange-500 to-yellow-500" },
+                { icon: Code2, label: "Maintenabilite", count: maintainabilityCount, bg: "from-blue-500 to-purple-500" },
               ].map((category, index) => (
                 <motion.div
                   key={category.label}
@@ -207,19 +224,12 @@ export function GlobalReport() {
                   whileHover={{ y: -4 }}
                   className="flex items-start gap-3 p-4 rounded-xl bg-gradient-to-br from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent border border-gray-200/50 dark:border-gray-700/50"
                 >
-                  <motion.div 
-                    className={`p-2 rounded-lg bg-gradient-to-br ${category.bg}`}
-                    whileHover={{ scale: 1.1, rotate: 5 }}
-                  >
+                  <motion.div className={`p-2 rounded-lg bg-gradient-to-br ${category.bg}`} whileHover={{ scale: 1.1, rotate: 5 }}>
                     <category.icon className="h-5 w-5 text-white" />
                   </motion.div>
                   <div>
-                    <div className="font-semibold text-gray-900 dark:text-white">
-                      {category.label}
-                    </div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
-                      {category.count} problÃ¨me(s) dÃ©tectÃ©(s)
-                    </div>
+                    <div className="font-semibold text-gray-900 dark:text-white">{category.label}</div>
+                    <div className="text-sm text-gray-600 dark:text-gray-400">{category.count} probleme(s) detecte(s)</div>
                   </div>
                 </motion.div>
               ))}
@@ -228,22 +238,17 @@ export function GlobalReport() {
         </Card>
       </motion.div>
 
-      {/* Top Findings */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.3 }}
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
         <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
-              Top {Math.min(10, analysis.findings.length)} Findings
+              Top {Math.min(10, findings.length)} Findings
             </CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              {analysis.findings.slice(0, 10).map((finding, idx) => (
+              {findings.slice(0, 10).map((finding, idx) => (
                 <motion.div
                   key={finding.id}
                   initial={{ opacity: 0, x: -20 }}
@@ -252,7 +257,7 @@ export function GlobalReport() {
                   whileHover={{ x: 4, scale: 1.01 }}
                   className="flex items-start gap-3 p-4 rounded-xl bg-gradient-to-r from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent border border-gray-200/50 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600 transition-all"
                 >
-                  <motion.div 
+                  <motion.div
                     className="flex-shrink-0 w-8 h-8 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white text-sm font-bold shadow-lg"
                     whileHover={{ scale: 1.2, rotate: 360 }}
                     transition={{ duration: 0.3 }}
@@ -261,22 +266,16 @@ export function GlobalReport() {
                   </motion.div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-semibold text-gray-900 dark:text-white">
-                        {finding.title}
-                      </span>
-                      <Badge variant={finding.severity === 'BLOCKER' ? 'destructive' : finding.severity === 'WARN' ? 'secondary' : 'outline'}>
-                        {finding.severity}
-                      </Badge>
+                      <span className="font-semibold text-gray-900 dark:text-white">{finding.ruleId ?? "Finding"}</span>
+                      <Badge variant={severityVariant(finding.severity)}>{finding.severity}</Badge>
                       <Badge variant="outline" className="text-xs">
                         {finding.category}
                       </Badge>
                     </div>
                     <div className="text-xs text-gray-600 dark:text-gray-400 font-mono mb-2">
-                      {finding.file}:{finding.line}
+                      {finding.filePath}:{finding.lineStart ?? "-"}
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">
-                      {finding.description}
-                    </p>
+                    <p className="text-sm text-gray-700 dark:text-gray-300">{finding.message}</p>
                   </div>
                 </motion.div>
               ))}
@@ -285,12 +284,7 @@ export function GlobalReport() {
         </Card>
       </motion.div>
 
-      {/* Recommendations */}
-      <motion.div
-        initial={{ opacity: 0, y: 20 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.4 }}
-      >
+      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
         <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
           <CardHeader>
             <CardTitle>Recommandations</CardTitle>
@@ -298,9 +292,33 @@ export function GlobalReport() {
           <CardContent>
             <div className="space-y-3">
               {[
-                { icon: AlertCircle, title: 'Critique - Action immÃ©diate', desc: 'Corrigez les 2 problÃ¨mes de sÃ©curitÃ© BLOCKER avant de merger cette PR.', bg: 'from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30', border: 'border-red-200/50 dark:border-red-800/50', text: 'text-red-900 dark:text-red-100', iconColor: 'text-red-600 dark:text-red-400' },
-                { icon: AlertTriangle, title: 'RecommandÃ©', desc: 'Ajoutez des tests unitaires et optimisez les requÃªtes de base de donnÃ©es.', bg: 'from-orange-50 to-yellow-50 dark:from-orange-950/30 dark:to-yellow-950/30', border: 'border-orange-200/50 dark:border-orange-800/50', text: 'text-orange-900 dark:text-orange-100', iconColor: 'text-orange-600 dark:text-orange-400' },
-                { icon: Info, title: 'AmÃ©lioration', desc: 'AmÃ©liorez la documentation et remplacez les magic numbers par des constantes.', bg: 'from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30', border: 'border-blue-200/50 dark:border-blue-800/50', text: 'text-blue-900 dark:text-blue-100', iconColor: 'text-blue-600 dark:text-blue-400' },
+                {
+                  icon: AlertCircle,
+                  title: "Critique - Action immediate",
+                  desc: `Corrigez les ${blockerCount} problemes BLOCKER avant de merger.`,
+                  bg: "from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30",
+                  border: "border-red-200/50 dark:border-red-800/50",
+                  text: "text-red-900 dark:text-red-100",
+                  iconColor: "text-red-600 dark:text-red-400",
+                },
+                {
+                  icon: AlertTriangle,
+                  title: "Recommande",
+                  desc: `${warnCount} warning(s) detecte(s), ajoutez des tests ou corrections cibles.`,
+                  bg: "from-orange-50 to-yellow-50 dark:from-orange-950/30 dark:to-yellow-950/30",
+                  border: "border-orange-200/50 dark:border-orange-800/50",
+                  text: "text-orange-900 dark:text-orange-100",
+                  iconColor: "text-orange-600 dark:text-orange-400",
+                },
+                {
+                  icon: Info,
+                  title: "Amelioration",
+                  desc: `${infoCount} info(s) peuvent etre adressees pour ameliorer la qualite globale.`,
+                  bg: "from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30",
+                  border: "border-blue-200/50 dark:border-blue-800/50",
+                  text: "text-blue-900 dark:text-blue-100",
+                  iconColor: "text-blue-600 dark:text-blue-400",
+                },
               ].map((rec, index) => (
                 <motion.div
                   key={rec.title}
@@ -312,12 +330,8 @@ export function GlobalReport() {
                 >
                   <rec.icon className={`h-5 w-5 ${rec.iconColor} mt-0.5 flex-shrink-0`} />
                   <div>
-                    <div className={`font-semibold ${rec.text} mb-1`}>
-                      {rec.title}
-                    </div>
-                    <div className={`text-sm ${rec.text}`}>
-                      {rec.desc}
-                    </div>
+                    <div className={`font-semibold ${rec.text} mb-1`}>{rec.title}</div>
+                    <div className={`text-sm ${rec.text}`}>{rec.desc}</div>
                   </div>
                 </motion.div>
               ))}
@@ -326,13 +340,8 @@ export function GlobalReport() {
         </Card>
       </motion.div>
 
-      {/* Reviewer Decision Panel */}
       {isReviewer && (
-        <motion.div
-          initial={{ opacity: 0, scale: 0.95 }}
-          animate={{ opacity: 1, scale: 1 }}
-          transition={{ delay: 0.6 }}
-        >
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.6 }}>
           <Card className="relative overflow-hidden bg-gradient-to-br from-purple-50 to-blue-50 dark:from-purple-950/30 dark:to-blue-950/30 backdrop-blur-xl border-2 border-purple-200/50 dark:border-purple-800/50">
             <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-purple-500/20 to-blue-500/20 rounded-full blur-3xl" />
             <CardHeader>
@@ -344,9 +353,9 @@ export function GlobalReport() {
             <CardContent className="relative z-10">
               <div className="flex gap-3">
                 {[
-                  { label: 'Approve', icon: CheckCircle2, gradient: 'from-green-600 to-emerald-600' },
-                  { label: 'Approve with warnings', icon: AlertTriangle, gradient: 'from-orange-500 to-yellow-500' },
-                  { label: 'Block', icon: XCircle, gradient: 'from-red-600 to-orange-600' },
+                  { label: "Approve", icon: CheckCircle2, gradient: "from-green-600 to-emerald-600" },
+                  { label: "Approve with warnings", icon: AlertTriangle, gradient: "from-orange-500 to-yellow-500" },
+                  { label: "Block", icon: XCircle, gradient: "from-red-600 to-orange-600" },
                 ].map((action, index) => (
                   <motion.div
                     key={action.label}
@@ -365,12 +374,12 @@ export function GlobalReport() {
                 ))}
               </div>
               <p className="text-xs text-gray-600 dark:text-gray-400 mt-4 text-center">
-                Cette dÃ©cision sera enregistrÃ©e et notifiÃ©e Ã  l'auteur de la PR
+                Cette decision sera enregistree et notifiee a l'auteur de la PR
               </p>
             </CardContent>
           </Card>
         </motion.div>
       )}
     </motion.div>
-  );
+  )
 }
