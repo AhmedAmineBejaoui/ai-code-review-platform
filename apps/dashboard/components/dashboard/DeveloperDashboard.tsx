@@ -49,6 +49,23 @@ type LaunchAnalysisResponse = {
   };
 };
 
+type GithubRepoOption = {
+  id: number;
+  name: string;
+  fullName: string;
+  private: boolean;
+  htmlUrl: string | null;
+  defaultBranch: string | null;
+  ownerLogin: string | null;
+  updatedAt: string | null;
+};
+
+type GithubReposResponse = {
+  connected?: boolean;
+  items?: GithubRepoOption[];
+  error?: string | null;
+};
+
 type ImportedProjectFile = {
   path: string;
   content: string;
@@ -232,6 +249,11 @@ export function DeveloperDashboard() {
   const [analysisRows, setAnalysisRows] = useState<DashboardAnalysisItem[]>([]);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
+  const [githubRepoSelection, setGithubRepoSelection] = useState("manual");
+  const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([]);
+  const [isLoadingGithubRepos, setIsLoadingGithubRepos] = useState(false);
+  const [githubReposError, setGithubReposError] = useState<string | null>(null);
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null);
   const [prNumberInput, setPrNumberInput] = useState("");
   const [commitShaInput, setCommitShaInput] = useState("");
   const [diffInput, setDiffInput] = useState("");
@@ -356,6 +378,54 @@ export function DeveloperDashboard() {
       setInsightsLoading(false);
     }
   };
+
+  const loadGithubRepos = async () => {
+    setIsLoadingGithubRepos(true);
+    setGithubReposError(null);
+    try {
+      const response = await fetch("/api/dashboard/github/repos", {
+        method: "GET",
+        headers: { Accept: "application/json" },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        throw new Error("Impossible de recuperer les repositories GitHub.");
+      }
+
+      const payload = (await response.json().catch(() => ({}))) as GithubReposResponse;
+      const items = Array.isArray(payload.items) ? payload.items : [];
+      setGithubRepos(items);
+      setGithubConnected(payload.connected === true);
+      if (typeof payload.error === "string" && payload.error.trim().length > 0) {
+        setGithubReposError(payload.error);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Chargement des repositories GitHub impossible.";
+      setGithubRepos([]);
+      setGithubConnected(false);
+      setGithubReposError(message);
+    } finally {
+      setIsLoadingGithubRepos(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!analysisDialogOpen) {
+      return;
+    }
+    void loadGithubRepos();
+  }, [analysisDialogOpen]);
+
+  useEffect(() => {
+    if (githubRepoSelection === "manual") {
+      return;
+    }
+    const stillExists = githubRepos.some((repo) => repo.fullName === githubRepoSelection);
+    if (!stillExists) {
+      setGithubRepoSelection("manual");
+    }
+  }, [githubRepoSelection, githubRepos]);
 
   const openLaunchDialog = () => {
     setFormError(null);
@@ -523,6 +593,8 @@ export function DeveloperDashboard() {
             ignored_files_count: importedProjectSummary?.ignoredFiles ?? null,
             imported_text_bytes: importedProjectSummary?.totalBytes ?? null,
             synthetic_diff_bytes: importedProjectSummary?.diffBytes ?? null,
+            repo_selected_from_github: githubRepoSelection !== "manual",
+            selected_github_repo: githubRepoSelection !== "manual" ? githubRepoSelection : null,
           },
         }),
       });
@@ -547,6 +619,7 @@ export function DeveloperDashboard() {
       setPrNumberInput("");
       setCommitShaInput("");
       setImportedProjectSummary(null);
+      setGithubRepoSelection("manual");
       await refreshDashboardData();
       router.refresh();
     } catch (error) {
@@ -650,12 +723,59 @@ export function DeveloperDashboard() {
               </div>
             )}
             <div className="grid gap-2">
+              <Label htmlFor="analysis-repo-select">Repository GitHub (compte connecte)</Label>
+              <Select
+                value={githubRepoSelection}
+                onValueChange={(value) => {
+                  setGithubRepoSelection(value);
+                  if (value !== "manual") {
+                    setRepoInput(value);
+                  }
+                }}
+              >
+                <SelectTrigger
+                  id="analysis-repo-select"
+                  className="bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                >
+                  <SelectValue
+                    placeholder={
+                      isLoadingGithubRepos
+                        ? "Chargement des repositories GitHub..."
+                        : "Choisir un repository GitHub"
+                    }
+                  />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="manual">Saisie manuelle</SelectItem>
+                  {githubRepos.map((repo) => (
+                    <SelectItem key={repo.id} value={repo.fullName}>
+                      {repo.fullName}{repo.private ? " (prive)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {githubReposError && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">{githubReposError}</p>
+              )}
+              {githubConnected === false && !githubReposError && (
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  Aucun compte GitHub connecte detecte pour cet utilisateur.
+                </p>
+              )}
+            </div>
+            <div className="grid gap-2">
               <Label htmlFor="analysis-repo">Repository</Label>
               <Input
                 id="analysis-repo"
-                placeholder="ex: backend-api"
+                placeholder="ex: owner/repo ou backend-api"
                 value={repoInput}
-                onChange={(event) => setRepoInput(event.target.value)}
+                onChange={(event) => {
+                  const next = event.target.value;
+                  setRepoInput(next);
+                  if (githubRepoSelection !== "manual" && next.trim() !== githubRepoSelection) {
+                    setGithubRepoSelection("manual");
+                  }
+                }}
               />
             </div>
             <div className="grid gap-2 md:grid-cols-2 md:gap-4">
