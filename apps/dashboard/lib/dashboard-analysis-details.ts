@@ -32,8 +32,11 @@ export interface DashboardAnalysisDiffFile {
 export interface DashboardAnalysisDetails {
   id: string
   repo: string
+  source: string
+  prNumber: number | null
   prLabel: string
   commitSha: string | null
+  diffText: string
   author: string
   status: string
   summary: string
@@ -62,4 +65,3 @@ export async function fetchDashboardAnalysisDetails(analysisId: string): Promise
     return null
   }
 }
-

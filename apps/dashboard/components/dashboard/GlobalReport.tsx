@@ -2,7 +2,7 @@
 /* eslint-disable react/no-unescaped-entities */
 
 import { useEffect, useMemo, useState } from "react"
-import { useParams } from "next/navigation"
+import { useParams, useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
   Download,
@@ -28,6 +28,20 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
 
+type LaunchAnalysisResponse = {
+  analysis_id?: string
+  error?: string
+  backend_response?: {
+    detail?: string
+    message?: string
+    error?: {
+      details?: {
+        existing_id?: string
+      }
+    }
+  }
+}
+
 function severityVariant(severity: string): "default" | "secondary" | "destructive" | "outline" {
   if (severity === "BLOCKER") {
     return "destructive"
@@ -38,13 +52,103 @@ function severityVariant(severity: string): "default" | "secondary" | "destructi
   return "outline"
 }
 
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function buildGithubUrl(analysis: DashboardAnalysisDetails): string | null {
+  if (!analysis.repo || analysis.repo.startsWith("local/")) {
+    return null
+  }
+  const [owner, repo] = analysis.repo.split("/")
+  if (!owner || !repo) {
+    return null
+  }
+  if (typeof analysis.prNumber === "number") {
+    return `https://github.com/${owner}/${repo}/pull/${analysis.prNumber}`
+  }
+  if (analysis.commitSha && analysis.commitSha.trim().length > 0) {
+    return `https://github.com/${owner}/${repo}/commit/${analysis.commitSha}`
+  }
+  return null
+}
+
+function toDiffPrefixedLine(
+  lineType: "context" | "add" | "remove" | "header",
+  content: string,
+): string {
+  if (lineType === "header") {
+    return content
+  }
+  if (content.startsWith("+") || content.startsWith("-") || content.startsWith(" ")) {
+    return content
+  }
+  if (lineType === "add") {
+    return `+${content}`
+  }
+  if (lineType === "remove") {
+    return `-${content}`
+  }
+  return ` ${content}`
+}
+
+function buildUnifiedDiffFromFiles(files: DashboardAnalysisDetails["files"]): string {
+  const chunks: string[] = []
+  for (const file of files) {
+    const oldPath = (file.pathOld && file.pathOld.trim().length > 0 ? file.pathOld : file.pathNew).replace(
+      /^\/+/,
+      "",
+    )
+    const newPath = file.pathNew.replace(/^\/+/, "")
+
+    chunks.push(`diff --git a/${oldPath} b/${newPath}`)
+    if (file.changeType === "added") {
+      chunks.push("new file mode 100644")
+      chunks.push("--- /dev/null")
+      chunks.push(`+++ b/${newPath}`)
+    } else if (file.changeType === "deleted") {
+      chunks.push(`--- a/${oldPath}`)
+      chunks.push("+++ /dev/null")
+    } else {
+      chunks.push(`--- a/${oldPath}`)
+      chunks.push(`+++ b/${newPath}`)
+    }
+
+    if (!file.lines.some((line) => line.lineType === "header")) {
+      const oldLines = Math.max(file.deletionsCount, 1)
+      const newLines = Math.max(file.additionsCount, 1)
+      chunks.push(`@@ -1,${oldLines} +1,${newLines} @@`)
+    }
+
+    for (const line of file.lines) {
+      chunks.push(toDiffPrefixedLine(line.lineType, line.content))
+    }
+
+    if (file.lines.length === 0) {
+      chunks.push("@@ -0,0 +0,0 @@")
+    }
+    chunks.push("")
+  }
+  return chunks.join("\n")
+}
+
 export function GlobalReport() {
+  const router = useRouter()
   const currentUser = useDashboardUser()
   const params = useParams<{ id: string | string[] }>()
   const id = Array.isArray(params.id) ? params.id[0] : params.id
 
   const [analysis, setAnalysis] = useState<DashboardAnalysisDetails | null>(null)
   const [loading, setLoading] = useState(true)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
+  const [isRerunning, setIsRerunning] = useState(false)
+  const [isExporting, setIsExporting] = useState<"pdf" | "md" | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -89,6 +193,210 @@ export function GlobalReport() {
   const riskScore = blockerCount * 10 + warnCount * 3
   const maxRisk = 100
   const riskLevel = riskScore > 30 ? "Eleve" : riskScore > 10 ? "Moyen" : "Faible"
+  const githubUrl = analysis ? buildGithubUrl(analysis) : null
+
+  const downloadMarkdown = async () => {
+    if (!analysis) {
+      return
+    }
+    setActionError(null)
+    setActionMessage(null)
+    setIsExporting("md")
+    try {
+      const markdown = [
+        `# Rapport d'analyse`,
+        ``,
+        `- Analyse ID: \`${analysis.id}\``,
+        `- Repository: \`${analysis.repo}\``,
+        `- Cible: ${analysis.prLabel}${analysis.commitSha ? ` (${analysis.commitSha})` : ""}`,
+        `- Statut: **${analysis.status}**`,
+        `- Auteur: ${analysis.author}`,
+        `- Date: ${analysis.createdAt || "-"}`,
+        ``,
+        `## Resume`,
+        ``,
+        analysis.summary || "Aucun resume disponible.",
+        ``,
+        `## Stats`,
+        ``,
+        `- Fichiers modifies: ${files.length}`,
+        `- Additions: ${additionsTotal}`,
+        `- Suppressions: ${deletionsTotal}`,
+        `- BLOCKER: ${blockerCount}`,
+        `- WARN: ${warnCount}`,
+        `- INFO: ${infoCount}`,
+        ``,
+        `## Findings`,
+        ``,
+        ...findings.map((finding, index) => {
+          const location = `${finding.filePath}:${finding.lineStart ?? "-"}`
+          const suggestion = finding.suggestion ? `\n  - Suggestion: ${finding.suggestion}` : ""
+          return `${index + 1}. [${finding.severity}] (${finding.category}) ${finding.message}\n  - Fichier: ${location}${suggestion}`
+        }),
+      ].join("\n")
+
+      const blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" })
+      const link = document.createElement("a")
+      link.href = URL.createObjectURL(blob)
+      link.download = `analysis-${analysis.id}.md`
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      URL.revokeObjectURL(link.href)
+      setActionMessage("Export Markdown telecharge.")
+    } catch {
+      setActionError("Echec de l'export Markdown.")
+    } finally {
+      setIsExporting(null)
+    }
+  }
+
+  const exportPdf = async () => {
+    if (!analysis) {
+      return
+    }
+    setActionError(null)
+    setActionMessage(null)
+    setIsExporting("pdf")
+    try {
+      const rows = findings
+        .slice(0, 25)
+        .map(
+          (finding) =>
+            `<tr><td>${escapeHtml(finding.severity)}</td><td>${escapeHtml(finding.category)}</td><td>${escapeHtml(
+              `${finding.filePath}:${finding.lineStart ?? "-"}`,
+            )}</td><td>${escapeHtml(finding.message)}</td></tr>`,
+        )
+        .join("")
+
+      const html = `
+        <html>
+          <head>
+            <title>analysis-${escapeHtml(analysis.id)}</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 24px; color: #111; }
+              h1, h2 { margin: 0 0 12px; }
+              .muted { color: #666; font-size: 12px; margin-bottom: 16px; }
+              table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+              th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; font-size: 12px; }
+              th { background: #f5f5f5; text-align: left; }
+            </style>
+          </head>
+          <body>
+            <h1>Rapport d'analyse</h1>
+            <div class="muted">ID: ${escapeHtml(analysis.id)} | Repo: ${escapeHtml(analysis.repo)} | Statut: ${escapeHtml(
+              analysis.status,
+            )}</div>
+            <h2>Resume</h2>
+            <p>${escapeHtml(analysis.summary || "Aucun resume disponible.")}</p>
+            <h2>Stats</h2>
+            <ul>
+              <li>Fichiers modifies: ${files.length}</li>
+              <li>Additions: ${additionsTotal}</li>
+              <li>Suppressions: ${deletionsTotal}</li>
+              <li>BLOCKER: ${blockerCount}</li>
+              <li>WARN: ${warnCount}</li>
+              <li>INFO: ${infoCount}</li>
+            </ul>
+            <h2>Findings</h2>
+            <table>
+              <thead><tr><th>Severite</th><th>Categorie</th><th>Fichier</th><th>Message</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </body>
+        </html>
+      `
+
+      const printWindow = window.open("", "_blank", "width=1200,height=800")
+      if (!printWindow) {
+        throw new Error("popup_blocked")
+      }
+      printWindow.document.open()
+      printWindow.document.write(html)
+      printWindow.document.close()
+      printWindow.focus()
+      setTimeout(() => {
+        printWindow.print()
+      }, 400)
+      setActionMessage("Fenetre PDF ouverte. Choisissez 'Save as PDF'.")
+    } catch {
+      setActionError("Echec de l'export PDF.")
+    } finally {
+      setIsExporting(null)
+    }
+  }
+
+  const rerunAnalysis = async () => {
+    if (!analysis) {
+      return
+    }
+    const fallbackDiff = buildUnifiedDiffFromFiles(files)
+    const rerunDiffText =
+      analysis.diffText && analysis.diffText.trim().length > 0 ? analysis.diffText : fallbackDiff
+    if (!rerunDiffText || rerunDiffText.trim().length === 0) {
+      setActionError("Diff indisponible pour relancer cette analyse.")
+      return
+    }
+    setActionError(null)
+    setActionMessage(null)
+    setIsRerunning(true)
+    try {
+      const response = await fetch("/api/dashboard/analyses", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({
+          repo: analysis.repo,
+          pr_number: analysis.prNumber,
+          commit_sha: analysis.commitSha,
+          diff_text: rerunDiffText,
+          metadata: {
+            triggered_from: "global_report_rerun",
+            rerun_of: analysis.id,
+            rerun_requested_by: currentUser.id,
+            diff_reconstructed: !(analysis.diffText && analysis.diffText.trim().length > 0),
+          },
+        }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as LaunchAnalysisResponse
+      if (response.ok && typeof payload.analysis_id === "string" && payload.analysis_id.trim().length > 0) {
+        setActionMessage(`Nouvelle analyse lancee: ${payload.analysis_id}`)
+        router.push(`/dashboard/report/${payload.analysis_id}`)
+        return
+      }
+
+      const existingId =
+        payload?.backend_response?.error?.details?.existing_id ??
+        (payload as Record<string, unknown>)?.["analysis_id"]
+      if (response.status === 409 && typeof existingId === "string" && existingId.trim().length > 0) {
+        setActionMessage(`Analyse existante reutilisee: ${existingId}`)
+        router.push(`/dashboard/report/${existingId}`)
+        return
+      }
+
+      const message =
+        payload?.backend_response?.message ??
+        payload?.backend_response?.detail ??
+        payload?.error ??
+        "Echec de relance."
+      throw new Error(message)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Echec de relance."
+      setActionError(message)
+    } finally {
+      setIsRerunning(false)
+    }
+  }
+
+  const openPr = () => {
+    if (!githubUrl) {
+      setActionError("Lien PR/commit indisponible pour cette analyse.")
+      return
+    }
+    setActionError(null)
+    setActionMessage(null)
+    window.open(githubUrl, "_blank", "noopener,noreferrer")
+  }
 
   if (loading) {
     return (
@@ -119,33 +427,66 @@ export function GlobalReport() {
           </div>
         </div>
         <div className="flex gap-2">
-          {[
-            { icon: Download, label: "PDF" },
-            { icon: Download, label: "Markdown" },
-            { icon: RotateCw, label: "Re-run" },
-          ].map((action, index) => (
-            <motion.div
-              key={action.label}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              initial={{ opacity: 0, x: 20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.1 }}
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.0 }}>
+            <Button
+              variant="outline"
+              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              onClick={exportPdf}
+              disabled={isExporting !== null || isRerunning}
             >
-              <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
-                <action.icon className="h-4 w-4" />
-                {action.label}
-              </Button>
-            </motion.div>
-          ))}
+              {isExporting === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              PDF
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
+            <Button
+              variant="outline"
+              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              onClick={downloadMarkdown}
+              disabled={isExporting !== null || isRerunning}
+            >
+              {isExporting === "md" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+              Markdown
+            </Button>
+          </motion.div>
+          <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
+            <Button
+              variant="outline"
+              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              onClick={rerunAnalysis}
+              disabled={isRerunning || isExporting !== null}
+            >
+              {isRerunning ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCw className="h-4 w-4" />}
+              Re-run
+            </Button>
+          </motion.div>
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
-            <Button className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
+            <Button
+              className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+              onClick={openPr}
+              disabled={!githubUrl}
+              title={!githubUrl ? "PR/commit GitHub indisponible" : "Ouvrir sur GitHub"}
+            >
               <ExternalLink className="h-4 w-4" />
               Ouvrir PR
             </Button>
           </motion.div>
         </div>
       </motion.div>
+
+      {(actionError || actionMessage) && (
+        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className={actionError ? "border-red-200 bg-red-50/70 dark:border-red-900/50 dark:bg-red-950/20" : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20"}>
+            <CardContent className="pt-4">
+              {actionError ? (
+                <p className="text-sm font-medium text-red-700 dark:text-red-300">{actionError}</p>
+              ) : (
+                <p className="text-sm font-medium text-emerald-700 dark:text-emerald-300">{actionMessage}</p>
+              )}
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
         <Card className="relative overflow-hidden bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 backdrop-blur-xl border-blue-200/50 dark:border-blue-800/50">

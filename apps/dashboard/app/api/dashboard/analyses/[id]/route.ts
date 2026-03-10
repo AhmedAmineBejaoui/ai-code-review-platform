@@ -49,8 +49,10 @@ type BackendFile = {
 type BackendAnalysisDetails = {
   analysis_id?: string
   repo?: string
+  source?: string
   pr_number?: number | null
   commit_sha?: string | null
+  diff_redacted?: string | null
   status?: string
   summary?: string | null
   created_at?: string
@@ -94,8 +96,11 @@ type DashboardDiffFile = {
 type DashboardAnalysisDetails = {
   id: string
   repo: string
+  source: string
+  prNumber: number | null
   prLabel: string
   commitSha: string | null
+  diffText: string
   author: string
   status: string
   summary: string
@@ -270,8 +275,14 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
   return {
     id: payload.analysis_id,
     repo: payload.repo,
+    source: typeof payload.source === "string" ? payload.source : "unknown",
+    prNumber: typeof payload.pr_number === "number" ? payload.pr_number : null,
     prLabel: typeof payload.pr_number === "number" ? `PR #${payload.pr_number}` : "Commit",
     commitSha: typeof payload.commit_sha === "string" ? payload.commit_sha : null,
+    diffText:
+      typeof payload.diff_redacted === "string" && payload.diff_redacted.trim().length > 0
+        ? payload.diff_redacted
+        : "",
     author,
     status: normalizeStatus(payload.status),
     summary: typeof payload.summary === "string" && payload.summary.trim().length > 0 ? payload.summary : "Summary unavailable.",
@@ -341,4 +352,3 @@ export async function GET(_request: Request, context: { params: { id: string } }
 
   return NextResponse.json(details, { status: 200 })
 }
-
