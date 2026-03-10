@@ -79,7 +79,13 @@ def _resolve_repo_path_for_kb(*, repo: str, metadata: dict[str, Any]) -> str | N
     return settings.repo_context_repo_path_map.get(repo.strip().lower())
 
 
-def run_static_analysis_stage(parsed: Any, *, repo_name: str, commit_sha: str | None) -> StaticAnalysisResult:
+def run_static_analysis_stage(
+    parsed: Any,
+    *,
+    repo_name: str,
+    commit_sha: str | None,
+    metadata: dict[str, Any],
+) -> StaticAnalysisResult:
     if not settings.STATIC_ANALYSIS_ENABLED:
         return StaticAnalysisResult(findings=[], stats={"scan_disabled": True}, warnings=[], tool_runs=[])
 
@@ -108,6 +114,8 @@ def run_static_analysis_stage(parsed: Any, *, repo_name: str, commit_sha: str | 
         git_token=git_token,
         checkout_timeout_seconds=settings.STATIC_ANALYSIS_CHECKOUT_TIMEOUT_SECONDS,
         checkout_base_path=settings.STATIC_ANALYSIS_CHECKOUT_BASE_PATH,
+        parsed=parsed,
+        metadata=metadata,
     )
     try:
         result = service.run(
@@ -345,6 +353,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 parsed,
                 repo_name=analysis.repo,
                 commit_sha=analysis.commit_sha,
+                metadata=analysis.metadata,
             )
             static_stats = static_result.stats
             static_warnings = static_result.warnings

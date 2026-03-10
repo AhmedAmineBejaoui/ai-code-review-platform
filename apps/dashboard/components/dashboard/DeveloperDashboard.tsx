@@ -361,6 +361,11 @@ export function DeveloperDashboard() {
     setFormError(null);
     setActionMessage(null);
     setAnalysisDialogOpen(true);
+    if (!diffInput.trim()) {
+      window.setTimeout(() => {
+        projectFolderInputRef.current?.click();
+      }, 0);
+    }
   };
 
   const openImportDialog = () => {
