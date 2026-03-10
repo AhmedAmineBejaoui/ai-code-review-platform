@@ -42,6 +42,14 @@ type LaunchAnalysisResponse = {
   }
 }
 
+type ReviewDecisionValue = "APPROVE" | "WARN" | "BLOCK"
+
+type ReviewDecisionApiResponse = {
+  error?: string
+  detail?: string
+  message?: string
+}
+
 function severityVariant(severity: string): "default" | "secondary" | "destructive" | "outline" {
   if (severity === "BLOCKER") {
     return "destructive"
@@ -149,6 +157,7 @@ export function GlobalReport() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [isRerunning, setIsRerunning] = useState(false)
   const [isExporting, setIsExporting] = useState<"pdf" | "md" | null>(null)
+  const [isSubmittingDecision, setIsSubmittingDecision] = useState<ReviewDecisionValue | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -396,6 +405,43 @@ export function GlobalReport() {
     setActionError(null)
     setActionMessage(null)
     window.open(githubUrl, "_blank", "noopener,noreferrer")
+  }
+
+  const submitDecision = async (decision: ReviewDecisionValue) => {
+    if (!analysis) {
+      return
+    }
+    setActionError(null)
+    setActionMessage(null)
+    setIsSubmittingDecision(decision)
+    try {
+      const response = await fetch(`/api/dashboard/analyses/${analysis.id}/decision`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify({ decision }),
+      })
+
+      const payload = (await response.json().catch(() => ({}))) as ReviewDecisionApiResponse
+      if (!response.ok) {
+        throw new Error(payload.error ?? payload.detail ?? payload.message ?? "Echec d'enregistrement de la decision.")
+      }
+
+      const refreshed = await fetchDashboardAnalysisDetails(analysis.id)
+      if (refreshed) {
+        setAnalysis(refreshed)
+      }
+      const labels: Record<ReviewDecisionValue, string> = {
+        APPROVE: "Approve",
+        WARN: "Approve with warnings",
+        BLOCK: "Block",
+      }
+      setActionMessage(`Decision enregistree: ${labels[decision]}.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Echec d'enregistrement de la decision."
+      setActionError(message)
+    } finally {
+      setIsSubmittingDecision(null)
+    }
   }
 
   if (loading) {
@@ -692,11 +738,31 @@ export function GlobalReport() {
               </CardTitle>
             </CardHeader>
             <CardContent className="relative z-10">
+              {analysis.reviewDecision && (
+                <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200/50 bg-purple-50/60 p-2 text-xs dark:border-purple-800/50 dark:bg-purple-950/20">
+                  <Badge variant="outline">Decision actuelle: {analysis.reviewDecision.value}</Badge>
+                  {analysis.reviewDecision.decidedAt && (
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {new Date(analysis.reviewDecision.decidedAt).toLocaleString("fr-FR")}
+                    </span>
+                  )}
+                </div>
+              )}
               <div className="flex gap-3">
                 {[
-                  { label: "Approve", icon: CheckCircle2, gradient: "from-green-600 to-emerald-600" },
-                  { label: "Approve with warnings", icon: AlertTriangle, gradient: "from-orange-500 to-yellow-500" },
-                  { label: "Block", icon: XCircle, gradient: "from-red-600 to-orange-600" },
+                  {
+                    label: "Approve",
+                    value: "APPROVE" as const,
+                    icon: CheckCircle2,
+                    gradient: "from-green-600 to-emerald-600",
+                  },
+                  {
+                    label: "Approve with warnings",
+                    value: "WARN" as const,
+                    icon: AlertTriangle,
+                    gradient: "from-orange-500 to-yellow-500",
+                  },
+                  { label: "Block", value: "BLOCK" as const, icon: XCircle, gradient: "from-red-600 to-orange-600" },
                 ].map((action, index) => (
                   <motion.div
                     key={action.label}
@@ -707,8 +773,18 @@ export function GlobalReport() {
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: 0.7 + index * 0.1 }}
                   >
-                    <Button className={`w-full gap-2 bg-gradient-to-r ${action.gradient} hover:shadow-lg shadow-md`}>
-                      <action.icon className="h-4 w-4" />
+                    <Button
+                      className={`w-full gap-2 bg-gradient-to-r ${action.gradient} hover:shadow-lg shadow-md`}
+                      onClick={() => void submitDecision(action.value)}
+                      disabled={
+                        isSubmittingDecision !== null || isRerunning || isExporting !== null || loading
+                      }
+                    >
+                      {isSubmittingDecision === action.value ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <action.icon className="h-4 w-4" />
+                      )}
                       {action.label}
                     </Button>
                   </motion.div>

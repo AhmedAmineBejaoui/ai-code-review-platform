@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -132,6 +133,13 @@ class CreateFindingRequest(BaseModel):
     issue_type: str | None = Field(default=None, min_length=1, max_length=64)
     rule_id: str | None = Field(default=None, min_length=1, max_length=255)
     evidence: dict[str, Any] = Field(default_factory=dict)
+
+
+class ReviewDecisionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    decision: Literal["APPROVE", "WARN", "BLOCK"]
+    comment: str | None = Field(default=None, max_length=2000)
 
 
 class AnalysisHunkLineResponse(BaseModel):
@@ -614,6 +622,50 @@ async def update_analysis_status(
                 error_message=payload.error_message,
                 stage=payload.stage,
                 progress=payload.progress,
+            )
+        )
+        findings = await service.list_findings(analysis_id)
+        files_changed = await service.list_files_with_hunks(analysis_id)
+        tool_runs = await service.list_tool_runs(analysis_id)
+    except ServiceError as exc:
+        _raise_api_error(exc)
+
+    return _to_analysis_response(updated, findings=findings, files_changed=files_changed, tool_runs=tool_runs)
+
+
+@router.post("/analyses/{analysis_id}/decision", response_model=AnalysisResponse)
+async def set_analysis_review_decision(
+    analysis_id: str,
+    payload: ReviewDecisionRequest,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+    service: AnalysisService = Depends(get_analysis_service),
+) -> AnalysisResponse:
+    if principal is None:
+        raise ApiError(
+            status_code=401,
+            code="UNAUTHORIZED",
+            message="Missing authentication credentials",
+        )
+
+    decided_at = datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
+
+    try:
+        current = await service.get_analysis(analysis_id)
+        updated = await service.update_analysis_status(
+            UpdateAnalysisStatusCommand(
+                analysis_id=analysis_id,
+                status=current.status,
+                stage=current.stage,
+                progress=current.progress,
+                metadata_updates={
+                    "review_decision": {
+                        "value": payload.decision,
+                        "comment": payload.comment,
+                        "decided_at": decided_at,
+                        "decided_by": principal.user_id,
+                        "decider_roles": principal.roles,
+                    }
+                },
             )
         )
         findings = await service.list_findings(analysis_id)

@@ -29,6 +29,13 @@ export interface DashboardAnalysisDiffFile {
   lines: DashboardDiffLine[]
 }
 
+export interface DashboardReviewDecision {
+  value: "APPROVE" | "WARN" | "BLOCK"
+  comment: string | null
+  decidedAt: string | null
+  decidedBy: string | null
+}
+
 export interface DashboardAnalysisDetails {
   id: string
   repo: string
@@ -42,6 +49,7 @@ export interface DashboardAnalysisDetails {
   summary: string
   createdAt: string
   updatedAt: string
+  reviewDecision: DashboardReviewDecision | null
   findings: DashboardAnalysisFinding[]
   files: DashboardAnalysisDiffFile[]
 }

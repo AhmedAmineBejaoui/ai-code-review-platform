@@ -93,6 +93,13 @@ type DashboardDiffFile = {
   lines: DashboardDiffLine[]
 }
 
+type DashboardReviewDecision = {
+  value: "APPROVE" | "WARN" | "BLOCK"
+  comment: string | null
+  decidedAt: string | null
+  decidedBy: string | null
+}
+
 type DashboardAnalysisDetails = {
   id: string
   repo: string
@@ -106,6 +113,7 @@ type DashboardAnalysisDetails = {
   summary: string
   createdAt: string
   updatedAt: string
+  reviewDecision: DashboardReviewDecision | null
   findings: DashboardFinding[]
   files: DashboardDiffFile[]
 }
@@ -203,6 +211,24 @@ function normalizeStatus(status: string | undefined): string {
   return "QUEUED"
 }
 
+function normalizeReviewDecision(metadata: Record<string, unknown>): DashboardReviewDecision | null {
+  const raw = normalizeOptionalObject(metadata.review_decision)
+  const valueRaw = typeof raw.value === "string" ? raw.value.trim().toUpperCase() : ""
+  const value =
+    valueRaw === "APPROVE" || valueRaw === "WARN" || valueRaw === "BLOCK"
+      ? (valueRaw as DashboardReviewDecision["value"])
+      : null
+  if (!value) {
+    return null
+  }
+  return {
+    value,
+    comment: typeof raw.comment === "string" && raw.comment.trim().length > 0 ? raw.comment.trim() : null,
+    decidedAt: typeof raw.decided_at === "string" ? raw.decided_at : null,
+    decidedBy: typeof raw.decided_by === "string" ? raw.decided_by : null,
+  }
+}
+
 function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisDetails | null {
   if (typeof payload.analysis_id !== "string" || typeof payload.repo !== "string") {
     return null
@@ -288,6 +314,7 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
     summary: typeof payload.summary === "string" && payload.summary.trim().length > 0 ? payload.summary : "Summary unavailable.",
     createdAt: typeof payload.created_at === "string" ? payload.created_at : "",
     updatedAt: typeof payload.updated_at === "string" ? payload.updated_at : "",
+    reviewDecision: normalizeReviewDecision(metadata),
     findings,
     files,
   }
