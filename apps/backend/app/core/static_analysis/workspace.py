@@ -4,8 +4,11 @@ import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
+from typing import Any
 from urllib.parse import quote
+
+from app.core.review_engine.diff_engine import FileDiff, ParsedDiff
 
 
 @dataclass
@@ -40,6 +43,60 @@ def _run_git(args: list[str], *, timeout_seconds: int, cwd: str | None = None) -
     )
 
 
+def _is_snapshot_workspace(metadata: dict[str, Any] | None) -> bool:
+    if not metadata:
+        return False
+    return str(metadata.get("workspace_source") or "").strip().lower() == "imported_folder_snapshot"
+
+
+def _sanitize_snapshot_relative_path(raw_path: str) -> Path | None:
+    normalized = raw_path.strip().replace("\\", "/").lstrip("/")
+    if not normalized:
+        return None
+    posix_path = PurePosixPath(normalized)
+    if posix_path.is_absolute():
+        return None
+    if any(part in {"", ".", ".."} for part in posix_path.parts):
+        return None
+    return Path(*posix_path.parts)
+
+
+def _render_snapshot_file(file_item: FileDiff) -> str:
+    lines_by_number: dict[int, str] = {}
+    max_line_number = 0
+    for hunk in file_item.hunks:
+        for line in hunk.lines:
+            if line.line_type not in {"context", "add"} or line.new_line_no is None:
+                continue
+            lines_by_number[line.new_line_no] = line.content
+            max_line_number = max(max_line_number, line.new_line_no)
+    if max_line_number <= 0:
+        return ""
+    return "\n".join(lines_by_number.get(index, "") for index in range(1, max_line_number + 1))
+
+
+def _prepare_snapshot_workspace(parsed: ParsedDiff) -> PreparedWorkspace:
+    temp_root = tempfile.mkdtemp(prefix="analysis-snapshot-")
+    repo_dir = Path(temp_root) / "repo"
+    repo_dir.mkdir(parents=True, exist_ok=True)
+    warnings: list[str] = []
+
+    for file_item in parsed.files:
+        if file_item.is_binary or file_item.change_type == "deleted":
+            continue
+
+        safe_relative_path = _sanitize_snapshot_relative_path(file_item.path_new)
+        if safe_relative_path is None:
+            warnings.append(f"snapshot skipped invalid path: {file_item.path_new}")
+            continue
+
+        target_path = repo_dir / safe_relative_path
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        target_path.write_text(_render_snapshot_file(file_item), encoding="utf-8")
+
+    return PreparedWorkspace(path=str(repo_dir), source="snapshot", warnings=warnings, _cleanup_root=temp_root)
+
+
 def prepare_workspace(
     *,
     repo: str,
@@ -50,7 +107,12 @@ def prepare_workspace(
     git_token: str | None,
     checkout_timeout_seconds: int,
     checkout_base_path: str | None,
+    parsed: ParsedDiff | None = None,
+    metadata: dict[str, Any] | None = None,
 ) -> PreparedWorkspace:
+    if parsed is not None and _is_snapshot_workspace(metadata):
+        return _prepare_snapshot_workspace(parsed)
+
     default_path = str(Path(default_workspace_path).resolve())
     warnings: list[str] = []
 

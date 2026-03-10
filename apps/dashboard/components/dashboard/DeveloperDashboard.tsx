@@ -49,6 +49,179 @@ type LaunchAnalysisResponse = {
   };
 };
 
+type ImportedProjectFile = {
+  path: string;
+  content: string;
+};
+
+type ImportedProjectSummary = {
+  folderName: string;
+  importedFiles: number;
+  ignoredFiles: number;
+  totalBytes: number;
+  diffBytes: number;
+};
+
+const IMPORT_EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vercel",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".ruff_cache",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".idea",
+  ".vscode",
+]);
+
+const IMPORT_EXCLUDED_FILES = new Set([
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "poetry.lock",
+  "semgrep_out.json",
+  "semgrep_err.txt",
+  "Thumbs.db",
+]);
+
+const IMPORT_SUPPORTED_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".java",
+  ".kt",
+  ".go",
+  ".rs",
+  ".rb",
+  ".php",
+  ".cs",
+  ".cpp",
+  ".c",
+  ".h",
+  ".hpp",
+  ".swift",
+  ".sql",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".env",
+  ".md",
+  ".txt",
+  ".css",
+  ".scss",
+  ".less",
+  ".html",
+  ".xml",
+  ".sh",
+  ".ps1",
+  ".bat",
+]);
+
+const IMPORT_SUPPORTED_BASENAMES = new Set([
+  ".env",
+  ".env.example",
+  ".gitignore",
+  "Dockerfile",
+  "Makefile",
+]);
+
+const MAX_IMPORTED_PROJECT_FILES = 400;
+const MAX_IMPORTED_FILE_BYTES = 200_000;
+const MAX_IMPORTED_TOTAL_BYTES = 1_500_000;
+const MAX_SYNTHETIC_DIFF_BYTES = 1_850_000;
+
+const textEncoder = new TextEncoder();
+
+function normalizeImportPath(rawPath: string): string {
+  return rawPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/");
+}
+
+function getFolderImportPath(file: File): { rootFolderName: string; relativePath: string } | null {
+  const rawPath = normalizeImportPath(file.webkitRelativePath || file.name);
+  const parts = rawPath.split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return null;
+  }
+  if (parts.length === 1) {
+    return {
+      rootFolderName: parts[0],
+      relativePath: parts[0],
+    };
+  }
+  return {
+    rootFolderName: parts[0],
+    relativePath: parts.slice(1).join("/"),
+  };
+}
+
+function shouldIgnoreImportedPath(relativePath: string): boolean {
+  const parts = normalizeImportPath(relativePath).split("/").filter(Boolean);
+  if (parts.length === 0) {
+    return true;
+  }
+  if (parts.some((part) => IMPORT_EXCLUDED_DIRECTORIES.has(part))) {
+    return true;
+  }
+  const fileName = parts[parts.length - 1];
+  if (IMPORT_EXCLUDED_FILES.has(fileName)) {
+    return true;
+  }
+  const dotIndex = fileName.lastIndexOf(".");
+  const extension = dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : "";
+  return !(IMPORT_SUPPORTED_EXTENSIONS.has(extension) || IMPORT_SUPPORTED_BASENAMES.has(fileName));
+}
+
+function isTextContent(content: string): boolean {
+  return !content.includes("\u0000");
+}
+
+function synthesizeFolderSnapshotDiff(files: ImportedProjectFile[]): string {
+  return files
+    .map(({ path, content }) => {
+      const normalizedPath = normalizeImportPath(path);
+      const normalizedContent = content.replace(/\r\n/g, "\n");
+      const lines = normalizedContent.length > 0 ? normalizedContent.split("\n") : [];
+      const additions = lines.map((line) => `+${line}`).join("\n");
+      const hunkHeader = lines.length > 0 ? `@@ -0,0 +1,${lines.length} @@` : "@@ -0,0 +0,0 @@";
+
+      return [
+        `diff --git a/${normalizedPath} b/${normalizedPath}`,
+        "new file mode 100644",
+        "index 0000000..1111111",
+        "--- /dev/null",
+        `+++ b/${normalizedPath}`,
+        hunkHeader,
+        additions,
+        "",
+      ].join("\n");
+    })
+    .join("\n");
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+}
+
 export function DeveloperDashboard() {
   const router = useRouter();
   const currentUser = useDashboardUser();
@@ -64,10 +237,10 @@ export function DeveloperDashboard() {
   const [diffInput, setDiffInput] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
-  const [isImportingDiff, setIsImportingDiff] = useState(false);
+  const [isImportingProject, setIsImportingProject] = useState(false);
   const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
-  const [importedFileName, setImportedFileName] = useState<string | null>(null);
-  const diffFileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importedProjectSummary, setImportedProjectSummary] = useState<ImportedProjectSummary | null>(null);
+  const projectFolderInputRef = useRef<HTMLInputElement | null>(null);
 
   const recentAnalyses = analysisRows.slice(0, 5);
   const atRiskPRs = analysisRows.filter((analysis) => analysis.blockerCount > 0);
@@ -107,6 +280,15 @@ export function DeveloperDashboard() {
       cancelled = true;
       clearInterval(interval);
     };
+  }, []);
+
+  useEffect(() => {
+    const input = projectFolderInputRef.current;
+    if (!input) {
+      return;
+    }
+    input.setAttribute("webkitdirectory", "");
+    input.setAttribute("directory", "");
   }, []);
 
   const normalizeStatus = (status: string) => {
@@ -184,42 +366,98 @@ export function DeveloperDashboard() {
   const openImportDialog = () => {
     setFormError(null);
     setActionMessage(null);
-    diffFileInputRef.current?.click();
+    projectFolderInputRef.current?.click();
   };
 
-  const handleDiffFileImport = async (event: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0];
+  const handleProjectFolderImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const selectedFiles = Array.from(event.target.files ?? []);
     event.target.value = "";
-    if (!selectedFile) {
+    if (selectedFiles.length === 0) {
       return;
     }
 
-    setIsImportingDiff(true);
+    setIsImportingProject(true);
     setFormError(null);
 
     try {
-      const importedText = await selectedFile.text();
-      if (!importedText.trim()) {
-        throw new Error("Le fichier diff importe est vide.");
+      const acceptedFiles: ImportedProjectFile[] = [];
+      let ignoredFiles = 0;
+      let totalBytes = 0;
+      let folderName = "local-project";
+
+      for (const file of selectedFiles) {
+        const importPath = getFolderImportPath(file);
+        if (!importPath) {
+          ignoredFiles += 1;
+          continue;
+        }
+
+        folderName = importPath.rootFolderName || folderName;
+
+        if (
+          shouldIgnoreImportedPath(importPath.relativePath) ||
+          file.size > MAX_IMPORTED_FILE_BYTES ||
+          acceptedFiles.length >= MAX_IMPORTED_PROJECT_FILES
+        ) {
+          ignoredFiles += 1;
+          continue;
+        }
+
+        const nextTotalBytes = totalBytes + file.size;
+        if (nextTotalBytes > MAX_IMPORTED_TOTAL_BYTES) {
+          ignoredFiles += 1;
+          continue;
+        }
+
+        const importedText = await file.text();
+        if (!isTextContent(importedText)) {
+          ignoredFiles += 1;
+          continue;
+        }
+
+        acceptedFiles.push({
+          path: importPath.relativePath,
+          content: importedText,
+        });
+        totalBytes = nextTotalBytes;
       }
 
-      setDiffInput(importedText);
-      setImportedFileName(selectedFile.name);
+      if (acceptedFiles.length === 0) {
+        throw new Error("Aucun fichier texte exploitable n'a ete trouve dans le dossier selectionne.");
+      }
 
+      const syntheticDiff = synthesizeFolderSnapshotDiff(acceptedFiles);
+      const diffBytes = textEncoder.encode(syntheticDiff).length;
+      if (diffBytes > MAX_SYNTHETIC_DIFF_BYTES) {
+        throw new Error(
+          `Le snapshot du dossier depasse la taille maximale analysee (${formatBytes(diffBytes)} > ${formatBytes(MAX_SYNTHETIC_DIFF_BYTES)}).`,
+        );
+      }
+
+      setDiffInput(syntheticDiff);
+      setImportedProjectSummary({
+        folderName,
+        importedFiles: acceptedFiles.length,
+        ignoredFiles,
+        totalBytes,
+        diffBytes,
+      });
       if (!repoInput.trim()) {
-        const inferredRepo = selectedFile.name.replace(/\.(diff|patch|txt)$/i, "").replace(/\s+/g, "-");
+        const inferredRepo = folderName.replace(/\s+/g, "-");
         if (inferredRepo.trim()) {
           setRepoInput(inferredRepo.trim());
         }
       }
 
       setAnalysisDialogOpen(true);
-      setActionMessage(`Diff importe: ${selectedFile.name}`);
+      setActionMessage(
+        `Dossier importe: ${folderName} (${acceptedFiles.length} fichiers, ${formatBytes(totalBytes)} de texte utile).`,
+      );
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Import du diff impossible.";
+      const message = error instanceof Error ? error.message : "Import du dossier impossible.";
       setFormError(message);
     } finally {
-      setIsImportingDiff(false);
+      setIsImportingProject(false);
     }
   };
 
@@ -237,7 +475,7 @@ export function DeveloperDashboard() {
       return;
     }
     if (!normalizedDiff) {
-      setFormError("Importez un diff ou collez son contenu avant de lancer l'analyse.");
+      setFormError("Importez un dossier de code ou collez un diff avant de lancer l'analyse.");
       return;
     }
 
@@ -272,7 +510,14 @@ export function DeveloperDashboard() {
           metadata: {
             triggered_from: "developer_dashboard",
             imported_diff: true,
-            imported_file_name: importedFileName,
+            imported_file_name: importedProjectSummary?.folderName ?? null,
+            import_mode: importedProjectSummary ? "folder" : "manual_diff",
+            workspace_source: importedProjectSummary ? "imported_folder_snapshot" : "manual_diff",
+            imported_folder_name: importedProjectSummary?.folderName ?? null,
+            imported_files_count: importedProjectSummary?.importedFiles ?? null,
+            ignored_files_count: importedProjectSummary?.ignoredFiles ?? null,
+            imported_text_bytes: importedProjectSummary?.totalBytes ?? null,
+            synthetic_diff_bytes: importedProjectSummary?.diffBytes ?? null,
           },
         }),
       });
@@ -296,7 +541,7 @@ export function DeveloperDashboard() {
       setAnalysisDialogOpen(false);
       setPrNumberInput("");
       setCommitShaInput("");
-      setImportedFileName(null);
+      setImportedProjectSummary(null);
       await refreshDashboardData();
       router.refresh();
     } catch (error) {
@@ -341,17 +586,17 @@ export function DeveloperDashboard() {
               variant="outline"
               className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50 hover:border-gray-300 dark:hover:border-gray-600"
               onClick={openImportDialog}
-              disabled={isImportingDiff || isSubmittingAnalysis}
+              disabled={isImportingProject || isSubmittingAnalysis}
             >
-              {isImportingDiff ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-              {isImportingDiff ? "Import..." : "Importer"}
+              {isImportingProject ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+              {isImportingProject ? "Import..." : "Importer"}
             </Button>
             <input
-              ref={diffFileInputRef}
+              ref={projectFolderInputRef}
               type="file"
-              accept=".diff,.patch,.txt"
+              multiple
               className="hidden"
-              onChange={handleDiffFileImport}
+              onChange={handleProjectFolderImport}
             />
           </motion.div>
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
@@ -386,10 +631,19 @@ export function DeveloperDashboard() {
           <DialogHeader>
             <DialogTitle>Lancer une nouvelle analyse</DialogTitle>
             <DialogDescription>
-              Importez un fichier diff puis completez les informations du repository avant de lancer l'analyse.
+              Importez un dossier de code complet. Le dashboard genere un snapshot diff multi-fichiers puis le backend reconstruit un workspace temporaire pour l'analyse.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
+            {importedProjectSummary && (
+              <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
+                <p className="font-medium">{importedProjectSummary.folderName}</p>
+                <p>
+                  {importedProjectSummary.importedFiles} fichiers importes, {importedProjectSummary.ignoredFiles} ignores,{" "}
+                  {formatBytes(importedProjectSummary.totalBytes)} lus, diff genere: {formatBytes(importedProjectSummary.diffBytes)}.
+                </p>
+              </div>
+            )}
             <div className="grid gap-2">
               <Label htmlFor="analysis-repo">Repository</Label>
               <Input
@@ -420,12 +674,12 @@ export function DeveloperDashboard() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="analysis-diff">Diff a analyser</Label>
+              <Label htmlFor="analysis-diff">Diff technique genere a partir du dossier</Label>
               <Textarea
                 id="analysis-diff"
                 value={diffInput}
                 onChange={(event) => setDiffInput(event.target.value)}
-                placeholder="Collez ici le contenu du diff (.patch/.diff)"
+                placeholder="Importez un dossier ou collez ici un diff unifie (.patch/.diff)"
                 className="min-h-[220px] font-mono text-xs"
               />
             </div>
@@ -435,12 +689,12 @@ export function DeveloperDashboard() {
               type="button"
               variant="outline"
               onClick={openImportDialog}
-              disabled={isImportingDiff || isSubmittingAnalysis}
+              disabled={isImportingProject || isSubmittingAnalysis}
             >
               <Upload className="h-4 w-4" />
-              Importer un diff
+              Importer un dossier
             </Button>
-            <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis || isImportingDiff}>
+            <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis || isImportingProject}>
               {isSubmittingAnalysis ? <Loader2 className="h-4 w-4 animate-spin" /> : <Play className="h-4 w-4" />}
               {isSubmittingAnalysis ? "Lancement..." : "Lancer une analyse"}
             </Button>
