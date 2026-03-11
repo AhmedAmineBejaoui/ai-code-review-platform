@@ -562,13 +562,16 @@ export function DeveloperDashboard() {
 
     const isGithubRemoteMode = githubRepoSelection !== "manual" && importedProjectSummary === null;
     const hasGithubTarget = parsedPrNumber !== null || normalizedCommitSha.length > 0;
+    const githubRemoteTargetMode = isGithubRemoteMode
+      ? parsedPrNumber !== null
+        ? "pr"
+        : normalizedCommitSha.length > 0
+          ? "commit"
+          : "repo_snapshot"
+      : null;
 
     if (!normalizedDiff && !isGithubRemoteMode) {
       setFormError("Importez un dossier de code ou collez un diff avant de lancer l'analyse.");
-      return;
-    }
-    if (isGithubRemoteMode && !hasGithubTarget) {
-      setFormError("En mode GitHub distant, renseignez PR number ou commit SHA.");
       return;
     }
 
@@ -607,6 +610,8 @@ export function DeveloperDashboard() {
             synthetic_diff_bytes: importedProjectSummary?.diffBytes ?? null,
             repo_selected_from_github: githubRepoSelection !== "manual",
             selected_github_repo: githubRepoSelection !== "manual" ? githubRepoSelection : null,
+            github_remote_target_mode: githubRemoteTargetMode,
+            github_remote_has_pr_or_commit: hasGithubTarget,
           },
         }),
       });
@@ -718,12 +723,12 @@ export function DeveloperDashboard() {
 
       <Dialog open={analysisDialogOpen} onOpenChange={setAnalysisDialogOpen}>
         <DialogContent className="sm:max-w-3xl">
-          <DialogHeader>
-            <DialogTitle>Lancer une nouvelle analyse</DialogTitle>
-            <DialogDescription>
-              Deux modes sont disponibles: import local (dossier/diff) ou analyse distante GitHub (repo + PR/commit).
-            </DialogDescription>
-          </DialogHeader>
+            <DialogHeader>
+              <DialogTitle>Lancer une nouvelle analyse</DialogTitle>
+              <DialogDescription>
+                Deux modes sont disponibles: import local (dossier/diff) ou analyse distante GitHub (PR/commit ou repo complet).
+              </DialogDescription>
+            </DialogHeader>
           <div className="grid gap-4 py-2">
             {importedProjectSummary && (
               <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-900">
@@ -790,12 +795,12 @@ export function DeveloperDashboard() {
                 }}
               />
             </div>
-            <div className="grid gap-2 md:grid-cols-2 md:gap-4">
+              <div className="grid gap-2 md:grid-cols-2 md:gap-4">
               <div className="grid gap-2">
                 <Label htmlFor="analysis-pr">Numero PR (optionnel)</Label>
                 <Input
                   id="analysis-pr"
-                  placeholder="ex: 456"
+                  placeholder="ex: 456 (laisser vide = repo complet)"
                   value={prNumberInput}
                   onChange={(event) => setPrNumberInput(event.target.value)}
                 />
@@ -804,7 +809,7 @@ export function DeveloperDashboard() {
                 <Label htmlFor="analysis-commit">Commit SHA (optionnel)</Label>
                 <Input
                   id="analysis-commit"
-                  placeholder="ex: a1b2c3d4"
+                  placeholder="ex: a1b2c3d4 (laisser vide = repo complet)"
                   value={commitShaInput}
                   onChange={(event) => setCommitShaInput(event.target.value)}
                 />
@@ -816,7 +821,7 @@ export function DeveloperDashboard() {
                 id="analysis-diff"
                 value={diffInput}
                 onChange={(event) => setDiffInput(event.target.value)}
-                placeholder="Importez un dossier ou collez un diff unifie (.patch/.diff). En mode GitHub distant, laissez vide."
+                placeholder="Importez un dossier ou collez un diff unifie (.patch/.diff). En mode GitHub distant, laissez vide (PR/commit ou repo complet)."
                 className="min-h-[220px] font-mono text-xs"
               />
             </div>

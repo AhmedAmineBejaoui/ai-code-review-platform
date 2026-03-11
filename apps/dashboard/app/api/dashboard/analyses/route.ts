@@ -9,6 +9,10 @@ const GITHUB_API_BASE_URL = "https://api.github.com"
 
 const COMMIT_SHA_PATTERN = /^[0-9a-fA-F]{6,64}$/
 const REPO_PATTERN = /^[^/\s]+\/[^/\s]+$/
+const MAX_GITHUB_SNAPSHOT_FILES = 220
+const MAX_GITHUB_SNAPSHOT_FILE_BYTES = 200_000
+const MAX_GITHUB_SNAPSHOT_TOTAL_BYTES = 1_500_000
+const MAX_GITHUB_SNAPSHOT_DIFF_BYTES = 1_850_000
 
 type CreateAnalysisBody = {
   repo?: unknown
@@ -70,6 +74,39 @@ type GithubPullDetails = {
 
 type GithubCommitDetails = {
   sha?: string
+}
+
+type GithubRepositoryDetails = {
+  default_branch?: string
+}
+
+type GithubBranchDetails = {
+  name?: string
+  commit?: {
+    sha?: string
+    commit?: {
+      tree?: {
+        sha?: string
+      } | null
+    } | null
+  } | null
+}
+
+type GithubTreeEntry = {
+  path?: string
+  type?: string
+  sha?: string
+  size?: number
+}
+
+type GithubTreeDetails = {
+  tree?: GithubTreeEntry[]
+  truncated?: boolean
+}
+
+type GithubBlobDetails = {
+  content?: string
+  encoding?: string
 }
 
 type GithubDiffResolution = {
@@ -134,6 +171,145 @@ function synthesizeUnifiedDiff(content: string, filePath: string): string {
     additions,
     "",
   ].join("\n")
+}
+
+const GITHUB_SNAPSHOT_EXCLUDED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  ".nuxt",
+  ".turbo",
+  ".vercel",
+  "node_modules",
+  "dist",
+  "build",
+  "coverage",
+  ".ruff_cache",
+  "__pycache__",
+  ".pytest_cache",
+  ".mypy_cache",
+  ".idea",
+  ".vscode",
+])
+
+const GITHUB_SNAPSHOT_EXCLUDED_FILES = new Set([
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "poetry.lock",
+  "semgrep_out.json",
+  "semgrep_err.txt",
+  "Thumbs.db",
+])
+
+const GITHUB_SNAPSHOT_SUPPORTED_EXTENSIONS = new Set([
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".py",
+  ".java",
+  ".kt",
+  ".go",
+  ".rs",
+  ".rb",
+  ".php",
+  ".cs",
+  ".cpp",
+  ".c",
+  ".h",
+  ".hpp",
+  ".swift",
+  ".sql",
+  ".json",
+  ".yml",
+  ".yaml",
+  ".toml",
+  ".ini",
+  ".cfg",
+  ".conf",
+  ".env",
+  ".md",
+  ".txt",
+  ".css",
+  ".scss",
+  ".less",
+  ".html",
+  ".xml",
+  ".sh",
+  ".ps1",
+  ".bat",
+])
+
+const GITHUB_SNAPSHOT_SUPPORTED_BASENAMES = new Set([".env", ".env.example", ".gitignore", "Dockerfile", "Makefile"])
+
+function normalizePathForSnapshot(rawPath: string): string {
+  return rawPath.replace(/\\/g, "/").replace(/^\/+/, "").replace(/\/+/g, "/")
+}
+
+function shouldIncludeGithubSnapshotPath(relativePath: string): boolean {
+  const parts = normalizePathForSnapshot(relativePath).split("/").filter(Boolean)
+  if (parts.length === 0) {
+    return false
+  }
+  if (parts.some((part) => GITHUB_SNAPSHOT_EXCLUDED_DIRECTORIES.has(part))) {
+    return false
+  }
+  const fileName = parts[parts.length - 1]
+  if (GITHUB_SNAPSHOT_EXCLUDED_FILES.has(fileName)) {
+    return false
+  }
+  const dotIndex = fileName.lastIndexOf(".")
+  const extension = dotIndex >= 0 ? fileName.slice(dotIndex).toLowerCase() : ""
+  return (
+    GITHUB_SNAPSHOT_SUPPORTED_EXTENSIONS.has(extension) || GITHUB_SNAPSHOT_SUPPORTED_BASENAMES.has(fileName)
+  )
+}
+
+function isTextContent(content: string): boolean {
+  return !content.includes("\u0000")
+}
+
+function byteLength(value: string): number {
+  return Buffer.byteLength(value, "utf-8")
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) {
+    return `${bytes} B`
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(1)} KB`
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+}
+
+type GithubSnapshotFile = {
+  path: string
+  content: string
+}
+
+function synthesizeGithubSnapshotDiff(files: GithubSnapshotFile[]): string {
+  return files
+    .map(({ path, content }) => {
+      const normalizedPath = normalizePathForSnapshot(path)
+      const normalizedContent = content.replace(/\r\n/g, "\n")
+      const lines = normalizedContent.length > 0 ? normalizedContent.split("\n") : []
+      const additions = lines.map((line) => `+${line}`).join("\n")
+      const hunkHeader = lines.length > 0 ? `@@ -0,0 +1,${lines.length} @@` : "@@ -0,0 +0,0 @@"
+      return [
+        `diff --git a/${normalizedPath} b/${normalizedPath}`,
+        "new file mode 100644",
+        "index 0000000..1111111",
+        "--- /dev/null",
+        `+++ b/${normalizedPath}`,
+        hunkHeader,
+        additions,
+        "",
+      ].join("\n")
+    })
+    .join("\n")
 }
 
 function deriveCommitSha(diffText: string): string {
@@ -391,6 +567,129 @@ async function fetchGithubDiffText(token: string | null, path: string): Promise<
   return await response.text()
 }
 
+async function fetchGithubBlobText(token: string | null, repo: string, blobSha: string): Promise<string | null> {
+  const blob = await fetchGithubJson<GithubBlobDetails>(token, `/repos/${repo}/git/blobs/${blobSha}`)
+  if (blob.encoding !== "base64" || typeof blob.content !== "string") {
+    return null
+  }
+  try {
+    const decoded = Buffer.from(blob.content.replace(/\n/g, ""), "base64").toString("utf-8")
+    return isTextContent(decoded) ? decoded : null
+  } catch {
+    return null
+  }
+}
+
+async function resolveGithubRepositorySnapshotDiff(options: {
+  token: string | null
+  repo: string
+}): Promise<GithubDiffResolution> {
+  const { token, repo } = options
+  const repository = await fetchGithubJson<GithubRepositoryDetails>(token, `/repos/${repo}`)
+  const defaultBranch = asNonEmptyString(repository.default_branch)
+  if (!defaultBranch) {
+    throw new Error("Impossible de determiner la branche par defaut GitHub pour ce repository.")
+  }
+
+  const branch = await fetchGithubJson<GithubBranchDetails>(token, `/repos/${repo}/branches/${encodeURIComponent(defaultBranch)}`)
+  const commitSha = asNonEmptyString(branch.commit?.sha)
+  const treeSha = asNonEmptyString(branch.commit?.commit?.tree?.sha)
+  if (!commitSha || !treeSha) {
+    throw new Error("Impossible de recuperer le commit/tarbre de la branche par defaut.")
+  }
+
+  const tree = await fetchGithubJson<GithubTreeDetails>(token, `/repos/${repo}/git/trees/${treeSha}?recursive=1`)
+  if (tree.truncated === true) {
+    throw new Error("Repository trop volumineux pour un snapshot complet via GitHub API.")
+  }
+
+  const entries = Array.isArray(tree.tree) ? tree.tree : []
+  let ignoredFiles = 0
+  const candidateEntries: GithubTreeEntry[] = []
+  for (const entry of entries) {
+    if (entry?.type !== "blob") {
+      continue
+    }
+    if (typeof entry.path !== "string" || entry.path.trim().length === 0) {
+      ignoredFiles += 1
+      continue
+    }
+    if (typeof entry.sha !== "string" || entry.sha.trim().length === 0) {
+      ignoredFiles += 1
+      continue
+    }
+    if (!shouldIncludeGithubSnapshotPath(entry.path)) {
+      ignoredFiles += 1
+      continue
+    }
+    if (typeof entry.size === "number" && entry.size > MAX_GITHUB_SNAPSHOT_FILE_BYTES) {
+      ignoredFiles += 1
+      continue
+    }
+    candidateEntries.push(entry)
+  }
+
+  const files: GithubSnapshotFile[] = []
+  let totalBytes = 0
+  let stopBecauseOfLimits = false
+  for (const entry of candidateEntries) {
+    if (files.length >= MAX_GITHUB_SNAPSHOT_FILES) {
+      stopBecauseOfLimits = true
+      break
+    }
+    const safePath = entry.path as string
+    const safeSha = entry.sha as string
+    const content = await fetchGithubBlobText(token, repo, safeSha)
+    if (content === null) {
+      ignoredFiles += 1
+      continue
+    }
+
+    const fileBytes = byteLength(content)
+    if (fileBytes > MAX_GITHUB_SNAPSHOT_FILE_BYTES) {
+      ignoredFiles += 1
+      continue
+    }
+    if (totalBytes + fileBytes > MAX_GITHUB_SNAPSHOT_TOTAL_BYTES) {
+      stopBecauseOfLimits = true
+      break
+    }
+
+    files.push({
+      path: safePath,
+      content,
+    })
+    totalBytes += fileBytes
+  }
+
+  if (files.length === 0) {
+    throw new Error("Aucun fichier texte exploitable n'a ete trouve pour ce repository.")
+  }
+
+  const diffText = synthesizeGithubSnapshotDiff(files)
+  const diffBytes = byteLength(diffText)
+  if (diffBytes > MAX_GITHUB_SNAPSHOT_DIFF_BYTES) {
+    throw new Error(
+      `Le snapshot du repository depasse la limite analysee (${formatBytes(diffBytes)} > ${formatBytes(MAX_GITHUB_SNAPSHOT_DIFF_BYTES)}).`,
+    )
+  }
+
+  return {
+    diffText,
+    resolvedCommitSha: commitSha,
+    metadataUpdates: {
+      diff_source: "github_repo_snapshot",
+      github_default_branch: defaultBranch,
+      github_commit_sha: commitSha,
+      github_snapshot_files_count: files.length,
+      github_snapshot_ignored_files_count: ignoredFiles,
+      github_snapshot_text_bytes: totalBytes,
+      github_snapshot_diff_bytes: diffBytes,
+      github_snapshot_truncated_by_limits: stopBecauseOfLimits,
+    },
+  }
+}
+
 async function resolveGithubDiff(options: {
   token: string | null
   repo: string
@@ -630,27 +929,25 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       )
     }
-    if (parsed.value.prNumber === null && !commitSha) {
-      return NextResponse.json(
-        {
-          error: "Pour une analyse distante GitHub, renseignez PR number ou commit SHA.",
-        },
-        { status: 400 },
-      )
-    }
 
     const githubOauthToken = await getGithubOauthAccessToken(userId)
     metadata.github_auth_mode = githubOauthToken ? "oauth" : "public_unauthenticated"
 
     try {
-      const githubDiff = await resolveGithubDiff({
-        token: githubOauthToken,
-        repo: repoNormalization.repo,
-        prNumber: parsed.value.prNumber,
-        commitSha,
-      })
+      const githubDiff =
+        parsed.value.prNumber !== null || commitSha
+          ? await resolveGithubDiff({
+              token: githubOauthToken,
+              repo: repoNormalization.repo,
+              prNumber: parsed.value.prNumber,
+              commitSha,
+            })
+          : await resolveGithubRepositorySnapshotDiff({
+              token: githubOauthToken,
+              repo: repoNormalization.repo,
+            })
       normalizedDiffText = githubDiff.diffText
-      if (!commitSha && githubDiff.resolvedCommitSha) {
+      if (githubDiff.resolvedCommitSha) {
         commitSha = githubDiff.resolvedCommitSha
       }
       metadata.diff_fetched_from_github = true
@@ -670,7 +967,7 @@ export async function POST(request: NextRequest) {
   if (!normalizedDiffText.trim()) {
     return NextResponse.json(
       {
-        error: "Aucun diff disponible. Importez un dossier local ou utilisez PR/commit GitHub.",
+        error: "Aucun diff disponible. Importez un dossier local ou utilisez GitHub distant (PR/commit/repo complet).",
       },
       { status: 400 },
     )
@@ -680,7 +977,7 @@ export async function POST(request: NextRequest) {
     if (metadata.diff_fetched_from_github === true) {
       return NextResponse.json(
         {
-          error: "GitHub n'a pas retourne un diff unifie exploitable pour ce PR/commit.",
+          error: "GitHub n'a pas retourne un diff unifie exploitable pour cette analyse distante.",
         },
         { status: 400 },
       )
