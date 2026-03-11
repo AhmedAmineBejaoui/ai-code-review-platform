@@ -1,10 +1,11 @@
-import { auth, currentUser } from "@clerk/nextjs/server"
+import { auth, clerkClient, currentUser } from "@clerk/nextjs/server"
 import { NextResponse, type NextRequest } from "next/server"
 import { createHash } from "node:crypto"
 import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+const GITHUB_API_BASE_URL = "https://api.github.com"
 
 const COMMIT_SHA_PATTERN = /^[0-9a-fA-F]{6,64}$/
 const REPO_PATTERN = /^[^/\s]+\/[^/\s]+$/
@@ -55,10 +56,26 @@ type DashboardAnalysisListItem = {
 
 type ParsedCreateAnalysisBody = {
   repo: string
-  diffText: string
+  diffText: string | null
   prNumber: number | null
   commitSha: string | null
   metadata: Record<string, unknown>
+}
+
+type GithubPullDetails = {
+  title?: string
+  head?: { sha?: string } | null
+  base?: { sha?: string } | null
+}
+
+type GithubCommitDetails = {
+  sha?: string
+}
+
+type GithubDiffResolution = {
+  diffText: string
+  resolvedCommitSha: string | null
+  metadataUpdates: Record<string, unknown>
 }
 
 function isUnifiedDiff(text: string): boolean {
@@ -280,14 +297,161 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
   }
 }
 
+function normalizeGithubApiError(raw: unknown): string {
+  if (typeof raw === "string" && raw.trim().length > 0) {
+    return raw.trim()
+  }
+  if (typeof raw === "object" && raw !== null) {
+    const message = (raw as { message?: unknown }).message
+    if (typeof message === "string" && message.trim().length > 0) {
+      return message.trim()
+    }
+  }
+  return "GitHub request failed"
+}
+
+async function getGithubOauthAccessToken(userId: string): Promise<string | null> {
+  const client = await clerkClient()
+  try {
+    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "github")
+    const tokenCandidate = Array.isArray(oauthTokens?.data)
+      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
+      : null
+    if (tokenCandidate) {
+      return tokenCandidate.token
+    }
+  } catch {
+    // Fall through to legacy provider format.
+  }
+
+  try {
+    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "oauth_github")
+    const tokenCandidate = Array.isArray(oauthTokens?.data)
+      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
+      : null
+    if (tokenCandidate) {
+      return tokenCandidate.token
+    }
+  } catch {
+    // Ignore and return null below.
+  }
+  return null
+}
+
+function buildGithubHeaders(token: string | null, accept: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: accept,
+    "X-GitHub-Api-Version": "2022-11-28",
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  return headers
+}
+
+async function fetchGithubJson<T>(token: string | null, path: string): Promise<T> {
+  const response = await fetch(`${GITHUB_API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: buildGithubHeaders(token, "application/vnd.github+json"),
+    cache: "no-store",
+  })
+  if (!response.ok) {
+    const rawBody = await response.text()
+    let parsedBody: unknown = rawBody
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody)
+      } catch {
+        parsedBody = rawBody
+      }
+    }
+    throw new Error(normalizeGithubApiError(parsedBody))
+  }
+  return (await response.json()) as T
+}
+
+async function fetchGithubDiffText(token: string | null, path: string): Promise<string> {
+  const response = await fetch(`${GITHUB_API_BASE_URL}${path}`, {
+    method: "GET",
+    headers: buildGithubHeaders(token, "application/vnd.github.v3.diff"),
+    cache: "no-store",
+  })
+  if (!response.ok) {
+    const rawBody = await response.text()
+    let parsedBody: unknown = rawBody
+    if (rawBody) {
+      try {
+        parsedBody = JSON.parse(rawBody)
+      } catch {
+        parsedBody = rawBody
+      }
+    }
+    throw new Error(normalizeGithubApiError(parsedBody))
+  }
+  return await response.text()
+}
+
+async function resolveGithubDiff(options: {
+  token: string | null
+  repo: string
+  prNumber: number | null
+  commitSha: string | null
+}): Promise<GithubDiffResolution> {
+  const { token, repo, prNumber, commitSha } = options
+  if (prNumber !== null) {
+    const pullPath = `/repos/${repo}/pulls/${prNumber}`
+    const [pullDetails, diffText] = await Promise.all([
+      fetchGithubJson<GithubPullDetails>(token, pullPath),
+      fetchGithubDiffText(token, pullPath),
+    ])
+    return {
+      diffText,
+      resolvedCommitSha:
+        typeof pullDetails?.head?.sha === "string" && pullDetails.head.sha.trim().length > 0
+          ? pullDetails.head.sha
+          : commitSha,
+      metadataUpdates: {
+        github_pr_number: prNumber,
+        github_pr_title: typeof pullDetails?.title === "string" ? pullDetails.title : null,
+        github_head_sha:
+          typeof pullDetails?.head?.sha === "string" && pullDetails.head.sha.trim().length > 0
+            ? pullDetails.head.sha
+            : null,
+        github_base_sha:
+          typeof pullDetails?.base?.sha === "string" && pullDetails.base.sha.trim().length > 0
+            ? pullDetails.base.sha
+            : null,
+        diff_source: "github_pr",
+      },
+    }
+  }
+
+  if (commitSha) {
+    const commitPath = `/repos/${repo}/commits/${commitSha}`
+    const [commitDetails, diffText] = await Promise.all([
+      fetchGithubJson<GithubCommitDetails>(token, commitPath),
+      fetchGithubDiffText(token, commitPath),
+    ])
+    const normalizedSha =
+      typeof commitDetails?.sha === "string" && commitDetails.sha.trim().length > 0 ? commitDetails.sha : commitSha
+    return {
+      diffText,
+      resolvedCommitSha: normalizedSha,
+      metadataUpdates: {
+        github_commit_sha: normalizedSha,
+        diff_source: "github_commit",
+      },
+    }
+  }
+
+  throw new Error("PR number or commit SHA is required for GitHub remote analysis.")
+}
+
 function parseCreateAnalysisBody(rawBody: CreateAnalysisBody) {
   const repo = asNonEmptyString(rawBody.repo)
   const diffText = asNonEmptyString(rawBody.diff_text)
   if (!repo) {
     return { ok: false as const, error: "Le champ 'repo' est obligatoire." }
-  }
-  if (!diffText) {
-    return { ok: false as const, error: "Le champ 'diff_text' est obligatoire." }
   }
 
   let prNumber: number | null = null
@@ -446,18 +610,87 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400 })
   }
   const repoNormalization = normalizeRepo(parsed.value.repo)
-  let normalizedDiffText = parsed.value.diffText
+  let commitSha = parsed.value.commitSha
   const metadata = {
     ...parsed.value.metadata,
   }
+
+  const analysisInputMode = typeof metadata.analysis_input_mode === "string" ? metadata.analysis_input_mode : null
+  const wantsGithubRemoteDiff =
+    analysisInputMode === "github_remote" ||
+    (metadata.repo_selected_from_github === true && parsed.value.diffText === null)
+
+  let normalizedDiffText = wantsGithubRemoteDiff ? "" : (parsed.value.diffText ?? "")
+  if (wantsGithubRemoteDiff) {
+    if (repoNormalization.normalized) {
+      return NextResponse.json(
+        {
+          error: "Le repository GitHub doit respecter le format owner/repo.",
+        },
+        { status: 400 },
+      )
+    }
+    if (parsed.value.prNumber === null && !commitSha) {
+      return NextResponse.json(
+        {
+          error: "Pour une analyse distante GitHub, renseignez PR number ou commit SHA.",
+        },
+        { status: 400 },
+      )
+    }
+
+    const githubOauthToken = await getGithubOauthAccessToken(userId)
+    metadata.github_auth_mode = githubOauthToken ? "oauth" : "public_unauthenticated"
+
+    try {
+      const githubDiff = await resolveGithubDiff({
+        token: githubOauthToken,
+        repo: repoNormalization.repo,
+        prNumber: parsed.value.prNumber,
+        commitSha,
+      })
+      normalizedDiffText = githubDiff.diffText
+      if (!commitSha && githubDiff.resolvedCommitSha) {
+        commitSha = githubDiff.resolvedCommitSha
+      }
+      metadata.diff_fetched_from_github = true
+      metadata.workspace_source = "github_remote"
+      metadata.github_repo = repoNormalization.repo
+      Object.assign(metadata, githubDiff.metadataUpdates)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Impossible de recuperer le diff depuis GitHub."
+      const appended =
+        githubOauthToken === null
+          ? `${message}. Aucun token OAuth GitHub detecte: pour les repos prives, reconnectez GitHub dans Clerk.`
+          : message
+      return NextResponse.json({ error: appended }, { status: 400 })
+    }
+  }
+
+  if (!normalizedDiffText.trim()) {
+    return NextResponse.json(
+      {
+        error: "Aucun diff disponible. Importez un dossier local ou utilisez PR/commit GitHub.",
+      },
+      { status: 400 },
+    )
+  }
+
   if (!isUnifiedDiff(normalizedDiffText)) {
+    if (metadata.diff_fetched_from_github === true) {
+      return NextResponse.json(
+        {
+          error: "GitHub n'a pas retourne un diff unifie exploitable pour ce PR/commit.",
+        },
+        { status: 400 },
+      )
+    }
     const inferredPath = inferFilePathFromMetadata(metadata, repoNormalization.repo)
     normalizedDiffText = synthesizeUnifiedDiff(normalizedDiffText, inferredPath)
     metadata.diff_synthesized = true
     metadata.diff_synthesized_path = inferredPath
   }
 
-  let commitSha = parsed.value.commitSha
   if (parsed.value.prNumber === null && !commitSha) {
     commitSha = deriveCommitSha(normalizedDiffText)
     metadata.commit_sha_autogenerated = true

@@ -29,6 +29,11 @@ const GITHUB_API_BASE_URL = "https://api.github.com"
 const MAX_PAGES = 3
 const PAGE_SIZE = 100
 
+type GithubExternalAccountInfo = {
+  connected: boolean
+  login: string | null
+}
+
 function normalizeRepo(item: GithubRepoApiItem): GithubRepoOption | null {
   if (typeof item.id !== "number" || typeof item.full_name !== "string" || item.full_name.trim().length === 0) {
     return null
@@ -58,22 +63,84 @@ function normalizeGithubError(raw: unknown): string {
   return "GitHub request failed"
 }
 
-async function fetchGithubRepos(token: string): Promise<{ items: GithubRepoOption[]; error: string | null }> {
+function buildGithubHeaders(token: string | null): Record<string, string> {
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  }
+  if (token) {
+    headers.Authorization = `Bearer ${token}`
+  }
+  return headers
+}
+
+function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccountInfo {
+  if (typeof rawUser !== "object" || rawUser === null) {
+    return { connected: false, login: null }
+  }
+  const externalAccounts = (rawUser as { externalAccounts?: unknown }).externalAccounts
+  if (!Array.isArray(externalAccounts)) {
+    return { connected: false, login: null }
+  }
+
+  let connected = false
+  for (const account of externalAccounts) {
+    if (typeof account !== "object" || account === null) {
+      continue
+    }
+    const provider = (account as { provider?: unknown }).provider
+    if (provider !== "github" && provider !== "oauth_github") {
+      continue
+    }
+    connected = true
+    const username = (account as { username?: unknown }).username
+    if (typeof username === "string" && username.trim().length > 0) {
+      return { connected: true, login: username.trim() }
+    }
+  }
+
+  return { connected, login: null }
+}
+
+async function resolveGithubOauthAccessToken(client: Awaited<ReturnType<typeof clerkClient>>, userId: string) {
+  try {
+    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "github")
+    const tokenCandidate = Array.isArray(oauthTokens?.data)
+      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
+      : null
+    if (tokenCandidate) {
+      return tokenCandidate.token
+    }
+  } catch {
+    // Fall through to legacy provider format.
+  }
+
+  try {
+    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "oauth_github")
+    const tokenCandidate = Array.isArray(oauthTokens?.data)
+      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
+      : null
+    if (tokenCandidate) {
+      return tokenCandidate.token
+    }
+  } catch {
+    // Ignore and return null below.
+  }
+  return null
+}
+
+async function fetchGithubRepos(
+  token: string | null,
+  endpointBuilder: (page: number) => string,
+): Promise<{ items: GithubRepoOption[]; error: string | null }> {
   const dedup = new Map<number, GithubRepoOption>()
 
   for (let page = 1; page <= MAX_PAGES; page += 1) {
-    const response = await fetch(
-      `${GITHUB_API_BASE_URL}/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
-      {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          Accept: "application/vnd.github+json",
-          "X-GitHub-Api-Version": "2022-11-28",
-        },
-        cache: "no-store",
-      },
-    )
+    const response = await fetch(`${GITHUB_API_BASE_URL}${endpointBuilder(page)}`, {
+      method: "GET",
+      headers: buildGithubHeaders(token),
+      cache: "no-store",
+    })
 
     if (!response.ok) {
       const rawBody = await response.text()
@@ -126,10 +193,40 @@ export async function GET() {
   }
 
   const client = await clerkClient()
-  let oauthTokens
-  try {
-    oauthTokens = await client.users.getUserOauthAccessToken(userId, "github")
-  } catch {
+  const [user, oauthToken] = await Promise.all([
+    client.users.getUser(userId).catch(() => null),
+    resolveGithubOauthAccessToken(client, userId),
+  ])
+  const githubAccount = extractGithubExternalAccountInfo(user)
+
+  if (oauthToken) {
+    const reposResult = await fetchGithubRepos(
+      oauthToken,
+      (page) =>
+        `/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+    )
+    if (reposResult.error) {
+      return NextResponse.json(
+        {
+          connected: true,
+          items: [],
+          error: reposResult.error,
+        },
+        { status: 200 },
+      )
+    }
+
+    return NextResponse.json(
+      {
+        connected: true,
+        items: reposResult.items,
+        error: null,
+      },
+      { status: 200 },
+    )
+  }
+
+  if (!githubAccount.connected) {
     return NextResponse.json(
       {
         connected: false,
@@ -140,22 +237,23 @@ export async function GET() {
     )
   }
 
-  const tokenCandidate = Array.isArray(oauthTokens?.data)
-    ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-    : null
-
-  if (!tokenCandidate) {
+  if (!githubAccount.login) {
     return NextResponse.json(
       {
-        connected: false,
+        connected: true,
         items: [],
-        error: "GitHub account is connected but no OAuth access token is available.",
+        error: "GitHub account is connected but login is unavailable. Reconnect GitHub from Clerk.",
       },
       { status: 200 },
     )
   }
+  const githubLogin = githubAccount.login
 
-  const reposResult = await fetchGithubRepos(tokenCandidate.token)
+  const reposResult = await fetchGithubRepos(
+    null,
+    (page) =>
+      `/users/${encodeURIComponent(githubLogin)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`,
+  )
   if (reposResult.error) {
     return NextResponse.json(
       {
@@ -171,9 +269,9 @@ export async function GET() {
     {
       connected: true,
       items: reposResult.items,
-      error: null,
+      error:
+        "GitHub account is connected but no OAuth access token is available. Only public repositories are listed.",
     },
     { status: 200 },
   )
 }
-

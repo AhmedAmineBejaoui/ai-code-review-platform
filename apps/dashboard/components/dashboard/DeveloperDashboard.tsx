@@ -431,11 +431,6 @@ export function DeveloperDashboard() {
     setFormError(null);
     setActionMessage(null);
     setAnalysisDialogOpen(true);
-    if (!diffInput.trim()) {
-      window.setTimeout(() => {
-        projectFolderInputRef.current?.click();
-      }, 0);
-    }
   };
 
   const openImportDialog = () => {
@@ -549,10 +544,6 @@ export function DeveloperDashboard() {
       setFormError("Le repository est obligatoire.");
       return;
     }
-    if (!normalizedDiff) {
-      setFormError("Importez un dossier de code ou collez un diff avant de lancer l'analyse.");
-      return;
-    }
 
     let parsedPrNumber: number | null = null;
     if (normalizedPrNumber.length > 0) {
@@ -569,6 +560,18 @@ export function DeveloperDashboard() {
       return;
     }
 
+    const isGithubRemoteMode = githubRepoSelection !== "manual" && importedProjectSummary === null;
+    const hasGithubTarget = parsedPrNumber !== null || normalizedCommitSha.length > 0;
+
+    if (!normalizedDiff && !isGithubRemoteMode) {
+      setFormError("Importez un dossier de code ou collez un diff avant de lancer l'analyse.");
+      return;
+    }
+    if (isGithubRemoteMode && !hasGithubTarget) {
+      setFormError("En mode GitHub distant, renseignez PR number ou commit SHA.");
+      return;
+    }
+
     setIsSubmittingAnalysis(true);
     try {
       const response = await fetch("/api/dashboard/analyses", {
@@ -581,13 +584,22 @@ export function DeveloperDashboard() {
           repo: normalizedRepo,
           pr_number: parsedPrNumber,
           commit_sha: normalizedCommitSha.length > 0 ? normalizedCommitSha : null,
-          diff_text: normalizedDiff,
+          diff_text: normalizedDiff.length > 0 ? normalizedDiff : null,
           metadata: {
             triggered_from: "developer_dashboard",
             imported_diff: true,
             imported_file_name: importedProjectSummary?.folderName ?? null,
-            import_mode: importedProjectSummary ? "folder" : "manual_diff",
-            workspace_source: importedProjectSummary ? "imported_folder_snapshot" : "manual_diff",
+            import_mode: importedProjectSummary ? "folder" : isGithubRemoteMode ? "github_remote" : "manual_diff",
+            analysis_input_mode: importedProjectSummary
+              ? "local_folder_snapshot"
+              : isGithubRemoteMode
+                ? "github_remote"
+                : "manual_diff",
+            workspace_source: importedProjectSummary
+              ? "imported_folder_snapshot"
+              : isGithubRemoteMode
+                ? "github_remote"
+                : "manual_diff",
             imported_folder_name: importedProjectSummary?.folderName ?? null,
             imported_files_count: importedProjectSummary?.importedFiles ?? null,
             ignored_files_count: importedProjectSummary?.ignoredFiles ?? null,
@@ -709,7 +721,7 @@ export function DeveloperDashboard() {
           <DialogHeader>
             <DialogTitle>Lancer une nouvelle analyse</DialogTitle>
             <DialogDescription>
-              Importez un dossier de code complet. Le dashboard genere un snapshot diff multi-fichiers puis le backend reconstruit un workspace temporaire pour l'analyse.
+              Deux modes sont disponibles: import local (dossier/diff) ou analyse distante GitHub (repo + PR/commit).
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
@@ -799,12 +811,12 @@ export function DeveloperDashboard() {
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="analysis-diff">Diff technique genere a partir du dossier</Label>
+              <Label htmlFor="analysis-diff">Diff technique (optionnel en mode GitHub distant)</Label>
               <Textarea
                 id="analysis-diff"
                 value={diffInput}
                 onChange={(event) => setDiffInput(event.target.value)}
-                placeholder="Importez un dossier ou collez ici un diff unifie (.patch/.diff)"
+                placeholder="Importez un dossier ou collez un diff unifie (.patch/.diff). En mode GitHub distant, laissez vide."
                 className="min-h-[220px] font-mono text-xs"
               />
             </div>
