@@ -291,12 +291,29 @@ export function DeveloperDashboard() {
 
   useEffect(() => {
     let cancelled = false;
-    const interval = setInterval(async () => {
-      const analysesPayload = await fetchDashboardAnalyses();
-      if (!cancelled) {
-        setAnalysisRows(analysesPayload);
+    let isRefreshing = false;
+
+    const refreshAnalyses = async () => {
+      if (cancelled || isRefreshing) {
+        return;
       }
-    }, 8000);
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        return;
+      }
+      isRefreshing = true;
+      try {
+        const analysesPayload = await fetchDashboardAnalyses();
+        if (!cancelled) {
+          setAnalysisRows(analysesPayload);
+        }
+      } finally {
+        isRefreshing = false;
+      }
+    };
+
+    const interval = setInterval(() => {
+      void refreshAnalyses();
+    }, 10000);
 
     return () => {
       cancelled = true;

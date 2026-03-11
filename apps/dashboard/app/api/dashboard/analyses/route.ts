@@ -6,6 +6,14 @@ import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 const GITHUB_API_BASE_URL = "https://api.github.com"
+const BACKEND_FETCH_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
+)
+const BACKEND_WRITE_TIMEOUT_MS = Math.max(
+  2_000,
+  Number(process.env.DASHBOARD_BACKEND_WRITE_TIMEOUT_MS ?? "30000") || 30_000,
+)
 
 const COMMIT_SHA_PATTERN = /^[0-9a-fA-F]{6,64}$/
 const REPO_PATTERN = /^[^/\s]+\/[^/\s]+$/
@@ -458,10 +466,13 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
   if (userId) {
     headers["X-User-Id"] = userId
   }
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS)
   try {
     const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
       method: "GET",
       headers,
+      signal: controller.signal,
       cache: "no-store",
     })
     if (!response.ok) {
@@ -470,6 +481,8 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
     return (await response.json()) as T
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
@@ -1025,23 +1038,39 @@ export async function POST(request: NextRequest) {
     org_role: orgRole ?? null,
   }
 
-  const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/analyses`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "X-User-Id": userId,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      source: "manual",
-      repo: repoNormalization.repo,
-      pr_number: parsed.value.prNumber,
-      commit_sha: commitSha,
-      diff_text: normalizedDiffText,
-      metadata: enrichedMetadata,
-    }),
-    cache: "no-store",
-  })
+  const writeController = new AbortController()
+  const writeTimeout = setTimeout(() => writeController.abort(), BACKEND_WRITE_TIMEOUT_MS)
+  let backendResponse: Response
+  try {
+    backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/analyses`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-User-Id": userId,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        source: "manual",
+        repo: repoNormalization.repo,
+        pr_number: parsed.value.prNumber,
+        commit_sha: commitSha,
+        diff_text: normalizedDiffText,
+        metadata: enrichedMetadata,
+      }),
+      signal: writeController.signal,
+      cache: "no-store",
+    })
+  } catch {
+    return NextResponse.json(
+      {
+        error: "Backend timeout while creating analysis",
+        backend_timeout_ms: BACKEND_WRITE_TIMEOUT_MS,
+      },
+      { status: 504 },
+    )
+  } finally {
+    clearTimeout(writeTimeout)
+  }
 
   const rawBackendBody = await backendResponse.text()
   let parsedBackendBody: unknown = {}

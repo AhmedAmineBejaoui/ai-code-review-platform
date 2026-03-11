@@ -5,6 +5,10 @@ import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+const BACKEND_FETCH_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
+)
 
 type BackendAnalysisListResponse = {
   items?: Array<{
@@ -71,11 +75,14 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
   if (userId) {
     headers["X-User-Id"] = userId
   }
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS)
 
   try {
     const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
       method: "GET",
       headers,
+      signal: controller.signal,
       cache: "no-store",
     })
     if (!response.ok) {
@@ -84,6 +91,8 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
     return (await response.json()) as T
   } catch {
     return null
+  } finally {
+    clearTimeout(timeout)
   }
 }
 
