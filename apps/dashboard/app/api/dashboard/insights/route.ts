@@ -61,10 +61,14 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 function normalizeUserRole(userRoleCandidate: unknown, claims: unknown): AppRole {
+  const claimsRole = extractRoleFromClaims(claims)
+  if (claimsRole !== "developer") {
+    return claimsRole
+  }
   if (typeof userRoleCandidate === "string" && userRoleCandidate.trim().length > 0) {
     return normalizeRole(userRoleCandidate)
   }
-  return extractRoleFromClaims(claims)
+  return claimsRole
 }
 
 async function fetchBackendJSON<T>(path: string, token: string | null, userId: string): Promise<T | null> {

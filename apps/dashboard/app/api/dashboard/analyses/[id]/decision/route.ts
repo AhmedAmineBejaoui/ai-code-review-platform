@@ -11,11 +11,15 @@ type DecisionBody = {
 }
 
 function resolveUserRole(user: Awaited<ReturnType<typeof currentUser>>, claims: unknown): AppRole {
+  const claimsRole = extractRoleFromClaims(claims)
+  if (claimsRole !== "developer") {
+    return claimsRole
+  }
   const roleCandidate = user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
   if (typeof roleCandidate === "string" && roleCandidate.trim().length > 0) {
     return normalizeRole(roleCandidate)
   }
-  return extractRoleFromClaims(claims)
+  return claimsRole
 }
 
 export async function POST(request: Request, context: { params: { id: string } }) {

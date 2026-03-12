@@ -5,6 +5,7 @@ export type AppRole = (typeof APP_ROLES)[number]
 const ROLE_ALIASES: Record<string, AppRole> = {
   admin: "admin",
   administrator: "admin",
+  owner: "admin",
   superadmin: "admin",
   "super-admin": "admin",
   super_admin: "admin",
@@ -51,7 +52,12 @@ export function normalizeRole(value: unknown): AppRole {
     return "developer"
   }
 
-  return ROLE_ALIASES[value.trim().toLowerCase()] ?? "developer"
+  let normalized = value.trim().toLowerCase()
+  if (normalized.startsWith("org:")) {
+    normalized = normalized.slice(4)
+  }
+
+  return ROLE_ALIASES[normalized] ?? "developer"
 }
 
 export function extractRoleFromClaims(sessionClaims: unknown): AppRole {
@@ -106,4 +112,3 @@ export function formatRoleLabel(role: AppRole): string {
       return "Developer"
   }
 }
-

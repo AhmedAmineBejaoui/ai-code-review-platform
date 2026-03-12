@@ -17,7 +17,7 @@ def test_extract_roles_defaults_to_developer() -> None:
 def test_extract_roles_normalizes_aliases() -> None:
     claims = {
         "metadata": {"role": "reviewer"},
-        "roles": ["dev", "admin"],
+        "roles": ["dev", "admin", "org:owner"],
     }
 
     roles = auth_middleware._extract_roles(claims)

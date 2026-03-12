@@ -1,5 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { extractRoleFromClaims } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -36,11 +37,7 @@ export async function POST() {
     user?.fullName ?? undefined,
     user?.username ?? undefined,
   )
-  const roleCandidate = firstNonEmpty(
-    typeof user?.publicMetadata?.role === "string" ? user.publicMetadata.role : undefined,
-    typeof user?.unsafeMetadata?.role === "string" ? user.unsafeMetadata.role : undefined,
-    typeof user?.privateMetadata?.role === "string" ? user.privateMetadata.role : undefined,
-  )
+  const roleCandidate = extractRoleFromClaims(sessionClaims)
   const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
   const orgNameCandidate = firstNonEmpty(
     typeof claims.org_name === "string" ? claims.org_name : undefined,
@@ -59,8 +56,8 @@ export async function POST() {
       },
       body: JSON.stringify({
         email: primaryEmail,
-        display_name: displayName,
-        role: roleCandidate,
+      display_name: displayName,
+      role: roleCandidate,
         org_id: orgId,
         org_slug: orgSlug,
         org_name: orgNameCandidate,

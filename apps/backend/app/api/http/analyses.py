@@ -249,11 +249,6 @@ async def sync_authenticated_user(
         display_name = payload.display_name.strip()
 
     role_to_sync = principal.roles[0] if principal.roles else "developer"
-    if payload is not None and isinstance(payload.role, str) and payload.role.strip():
-        requested_role = payload.role.strip().lower()
-        principal_roles = {item.strip().lower() for item in principal.roles}
-        if requested_role in principal_roles:
-            role_to_sync = requested_role
 
     org_id = principal.org_id
     if payload is not None and isinstance(payload.org_id, str) and payload.org_id.strip():

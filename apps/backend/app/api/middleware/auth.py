@@ -31,6 +31,7 @@ _bearer_scheme = HTTPBearer(auto_error=False)
 _ROLE_ALIASES: dict[str, str] = {
     "admin": "admin",
     "administrator": "admin",
+    "owner": "admin",
     "superadmin": "admin",
     "super-admin": "admin",
     "super_admin": "admin",
@@ -80,7 +81,10 @@ def _first_non_empty_string(*values: Any) -> str | None:
 def _normalize_role(value: Any) -> str:
     if not isinstance(value, str):
         return "developer"
-    return _ROLE_ALIASES.get(value.strip().lower(), "developer")
+    normalized = value.strip().lower()
+    if normalized.startswith("org:"):
+        normalized = normalized.removeprefix("org:")
+    return _ROLE_ALIASES.get(normalized, "developer")
 
 
 def _extract_dict(parent: dict[str, Any], *keys: str) -> dict[str, Any]:

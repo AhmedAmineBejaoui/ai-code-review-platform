@@ -43,7 +43,8 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
   const userRoleCandidate =
     user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
 
-  const role = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : claimsRole
+  const metadataRole = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : "developer"
+  const role = claimsRole !== "developer" ? claimsRole : metadataRole
   const primaryEmailAddressId = user?.primaryEmailAddressId
   const primaryEmail =
     user?.emailAddresses.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??
