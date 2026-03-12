@@ -99,12 +99,11 @@ def _discovery_roots() -> list[Path]:
 
     raw_workspace_path = (settings.STATIC_ANALYSIS_WORKSPACE_PATH or "").strip()
     if raw_workspace_path:
-        candidates.append(Path(raw_workspace_path).expanduser().resolve())
+        workspace_root = Path(raw_workspace_path).expanduser().resolve()
+        candidates.extend(_with_parents(workspace_root, levels=3))
 
     cwd = Path.cwd().resolve()
-    candidates.append(cwd)
-    if cwd.parent != cwd:
-        candidates.append(cwd.parent)
+    candidates.extend(_with_parents(cwd, levels=3))
 
     roots: list[Path] = []
     seen: set[Path] = set()
@@ -118,6 +117,17 @@ def _discovery_roots() -> list[Path]:
         seen.add(resolved)
         roots.append(resolved)
     return roots
+
+
+def _with_parents(root: Path, *, levels: int) -> list[Path]:
+    nodes: list[Path] = []
+    current = root
+    for _ in range(max(levels, 1)):
+        nodes.append(current)
+        if current.parent == current:
+            break
+        current = current.parent
+    return nodes
 
 
 def _candidate_paths_for_root(root: Path, slug: str) -> Iterable[Path]:
