@@ -3,9 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "node -e \"const fs=require('fs');for (const p of ['.next','tsconfig.tsbuildinfo']) {try{if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true});}catch{}}\" && next dev -p 3001",
-    "dev:reset": "node -e \"const fs=require('fs');for (const p of ['.next','tsconfig.tsbuildinfo']) {try{if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true});}catch{}}\" && next dev -p 3001",
-    "build": "node -e \"const fs=require('fs');for (const p of ['.next','tsconfig.tsbuildinfo']) {try{if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true});}catch{}}\" && next build",
+    "clean:next": "node scripts/reset-next-cache.cjs",
+    "dev": "npm run clean:next && next dev -p 3001",
+    "dev:reset": "npm run clean:next && next dev -p 3001",
+    "build": "npm run clean:next && next build",
     "start": "next start -p 3001",
     "lint": "next lint"
   },
