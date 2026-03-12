@@ -3,12 +3,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Database, RefreshCw, Trash2, Edit, Search, Upload, Plus, Sparkles } from "lucide-react"
+import { Database, FileText, Globe, RefreshCw, Trash2, Edit, Search, Upload, Plus, Sparkles, Code2, FileCode2, Link2 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -51,6 +52,20 @@ type QueryChunk = {
 type QueryResponse = {
   chunks?: QueryChunk[]
 }
+
+type SourceType = "pdf" | "web" | "markdown" | "code" | "sql"
+
+const SOURCE_TYPES: Array<{
+  value: SourceType
+  label: string
+  hint: string
+}> = [
+  { value: "pdf", label: "PDF", hint: "Importer un ou plusieurs fichiers PDF" },
+  { value: "web", label: "Pages web", hint: "Indexer une URL publique" },
+  { value: "markdown", label: "Documentation markdown", hint: "Fichiers .md/.mdx" },
+  { value: "code", label: "Code source", hint: "Repository local ou distant" },
+  { value: "sql", label: "Base SQL", hint: "Dump SQL ou description de schema" },
+]
 
 function filesIndexed(item: RepoProfileItem): number {
   const profile = item.profile ?? {}
@@ -102,6 +117,12 @@ export function KnowledgeBase() {
   const [queryResults, setQueryResults] = useState<QueryChunk[]>([])
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
+  const [showSourceForm, setShowSourceForm] = useState(false)
+  const [sourceType, setSourceType] = useState<SourceType>("code")
+  const [sourceName, setSourceName] = useState("")
+  const [sourceLocation, setSourceLocation] = useState("")
+  const [sourceNotes, setSourceNotes] = useState("")
+  const [droppedFiles, setDroppedFiles] = useState<File[]>([])
 
   const loadRepos = useCallback(async () => {
     setLoadingRepos(true)
@@ -224,13 +245,55 @@ export function KnowledgeBase() {
     }
   }
 
-  const createSource = async () => {
-    const repoId = window.prompt("Repo ID (ex: org/repo):", "")
-    if (!repoId || repoId.trim().length === 0) {
+  const resetSourceForm = () => {
+    setSourceName("")
+    setSourceLocation("")
+    setSourceNotes("")
+    setDroppedFiles([])
+  }
+
+  const openSourceForm = (kind: SourceType = "code") => {
+    setSourceType(kind)
+    setShowSourceForm(true)
+  }
+
+  const handleFiles = (files: FileList | null) => {
+    if (!files) {
       return
     }
-    const repoPath = window.prompt("Chemin local du repo sur le backend:", "") ?? undefined
-    await queueReindex(repoId.trim(), repoPath)
+    const accepted = Array.from(files)
+    setDroppedFiles((previous) => [...previous, ...accepted].slice(0, 10))
+  }
+
+  const createSource = async () => {
+    const normalizedName = sourceName.trim()
+    const normalizedLocation = sourceLocation.trim()
+
+    if (!normalizedName) {
+      setActionMessage("Donnez un identifiant de source.")
+      return
+    }
+
+    if (sourceType === "code") {
+      await queueReindex(normalizedName, normalizedLocation || undefined)
+      setShowSourceForm(false)
+      resetSourceForm()
+      return
+    }
+
+    const fileNames = droppedFiles.map((file) => file.name)
+    const details = [
+      `type=${sourceType}`,
+      normalizedLocation ? `location=${normalizedLocation}` : null,
+      fileNames.length > 0 ? `fichiers=${fileNames.join(",")}` : null,
+      sourceNotes.trim() ? `notes=${sourceNotes.trim()}` : null,
+    ]
+      .filter(Boolean)
+      .join(" | ")
+
+    setActionMessage(`Source ${normalizedName} enregistree (${details || "sans details"}). Ajoutez un worker d'ingestion dedie pour indexation automatique de ce type.`)
+    setShowSourceForm(false)
+    resetSourceForm()
   }
 
   const editSource = async (item: RepoProfileItem) => {
@@ -288,13 +351,13 @@ export function KnowledgeBase() {
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => void createSource()} disabled={busyAction !== null}>
+            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => openSourceForm("pdf")} disabled={busyAction !== null}>
               <Upload className="h-4 w-4" />
               Importer
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => void createSource()} disabled={busyAction !== null}>
+            <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => openSourceForm("code")} disabled={busyAction !== null}>
               <Plus className="h-4 w-4" />
               Ajouter source
             </Button>
@@ -306,6 +369,113 @@ export function KnowledgeBase() {
         <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
           {actionMessage}
         </div>
+      )}
+
+      {showSourceForm && (
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
+          <Card className="bg-white/60 dark:bg-gray-900/60 border-emerald-400/40">
+            <CardHeader>
+              <CardTitle>Zone d'insertion des sources KB</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Type de source</label>
+                  <Select value={sourceType} onValueChange={(value: SourceType) => setSourceType(value)}>
+                    <SelectTrigger className="bg-white dark:bg-gray-800">
+                      <SelectValue placeholder="Selectionner un type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {SOURCE_TYPES.map((item) => (
+                        <SelectItem key={item.value} value={item.value}>
+                          {item.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                    {SOURCE_TYPES.find((item) => item.value === sourceType)?.hint}
+                  </p>
+                </div>
+                <div>
+                  <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Identifiant source</label>
+                  <Input
+                    value={sourceName}
+                    onChange={(event) => setSourceName(event.target.value)}
+                    placeholder="ex: org/repo, docs-interne, sql-prod"
+                    className="bg-white dark:bg-gray-800"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Chemin local backend ou URL</label>
+                <Input
+                  value={sourceLocation}
+                  onChange={(event) => setSourceLocation(event.target.value)}
+                  placeholder="ex: /srv/repos/mon-repo OU https://docs.exemple.com"
+                  className="bg-white dark:bg-gray-800"
+                />
+              </div>
+
+              <div
+                className="rounded-xl border border-dashed border-emerald-400/40 bg-emerald-500/5 p-4"
+                onDragOver={(event) => event.preventDefault()}
+                onDrop={(event) => {
+                  event.preventDefault()
+                  handleFiles(event.dataTransfer.files)
+                }}
+              >
+                <div className="mb-2 flex items-center gap-2 text-sm font-medium text-emerald-300">
+                  <Upload className="h-4 w-4" />
+                  Drag & drop des fichiers
+                </div>
+                <p className="text-xs text-gray-400">Sources possibles : PDF, pages web, documentation markdown, code source, base SQL.</p>
+                <Input
+                  className="mt-3 bg-white dark:bg-gray-800"
+                  type="file"
+                  multiple
+                  onChange={(event) => handleFiles(event.target.files)}
+                />
+                {droppedFiles.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {droppedFiles.map((file) => (
+                      <Badge key={`${file.name}-${file.lastModified}`} variant="secondary">
+                        {file.name}
+                      </Badge>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Notes / contexte</label>
+                <Textarea
+                  value={sourceNotes}
+                  onChange={(event) => setSourceNotes(event.target.value)}
+                  placeholder="Décrivez le contenu à indexer..."
+                  className="bg-white dark:bg-gray-800"
+                />
+              </div>
+
+              <div className="flex flex-wrap gap-2">
+                <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600" onClick={() => void createSource()} disabled={busyAction !== null}>
+                  {sourceType === "code" ? <Code2 className="h-4 w-4" /> : sourceType === "pdf" ? <FileText className="h-4 w-4" /> : sourceType === "markdown" ? <FileCode2 className="h-4 w-4" /> : sourceType === "web" ? <Globe className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                  Enregistrer la source
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    setShowSourceForm(false)
+                    resetSourceForm()
+                  }}
+                >
+                  Annuler
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
       )}
 
       <div className="grid md:grid-cols-4 gap-4">
@@ -339,7 +509,7 @@ export function KnowledgeBase() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-3">
-              <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => void (selectedRepoId ? queueReindex(selectedRepoId) : createSource())} disabled={busyAction !== null}>
+              <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => void (selectedRepoId ? queueReindex(selectedRepoId) : openSourceForm("code"))} disabled={busyAction !== null}>
                 <RefreshCw className="h-4 w-4" />
                 Lancer re-indexation
               </Button>
