@@ -58,12 +58,10 @@ SSH into VM:
 ssh ubuntu@<PUBLIC_IP>
 ```
 
-Install Docker + Compose plugin:
+Install Git first (if not already available):
 
 ```bash
-sudo bash infra/cloud/oracle/install-docker-ubuntu.sh
-sudo usermod -aG docker $USER
-newgrp docker
+sudo apt-get update && sudo apt-get install -y git
 ```
 
 ---
@@ -73,6 +71,9 @@ newgrp docker
 ```bash
 git clone <YOUR_REPO_URL>
 cd ai-code-review-platform
+sudo bash infra/cloud/oracle/install-docker-ubuntu.sh
+sudo usermod -aG docker $USER
+newgrp docker
 cp infra/cloud/oracle/.env.prod.example infra/cloud/oracle/.env.prod
 nano infra/cloud/oracle/.env.prod
 ```

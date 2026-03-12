@@ -1,6 +1,7 @@
-# Cloud Deployment Guide
+# Fly.io Deployment Guide (Legacy)
 
-100% free deployment using **Fly.io** (compute) + **Supabase** (PostgreSQL) + **Upstash** (Redis).
+Legacy deployment path using **Fly.io** (compute) + **Supabase** (PostgreSQL) + **Upstash** (Redis).
+Check current Fly pricing and account eligibility before using this option.
 
 ## Free Tier Limits
 
