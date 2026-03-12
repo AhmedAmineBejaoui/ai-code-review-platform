@@ -164,15 +164,16 @@ export function Integrations() {
         createdAt?: string
         error?: string
       }
-      if (!response.ok || typeof payload.token !== "string") {
+      const rotatedToken = payload.token
+      if (!response.ok || typeof rotatedToken !== "string") {
         throw new Error(payload.error ?? "Rotation token impossible.")
       }
-      setLastRotatedToken(payload.token)
+      setLastRotatedToken(rotatedToken)
       setIntegrationData((previous) => ({
         ...(previous ?? {}),
         ciToken: {
           exists: true,
-          prefix: payload.prefix ?? payload.token.slice(0, 12),
+          prefix: payload.prefix ?? rotatedToken.slice(0, 12),
           createdAt: payload.createdAt ?? new Date().toISOString(),
           revoked: false,
         },
