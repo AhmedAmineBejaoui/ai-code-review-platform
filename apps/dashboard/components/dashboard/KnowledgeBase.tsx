@@ -1,7 +1,7 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { Database, RefreshCw, Trash2, Edit, Search, Upload, Plus, Sparkles } from "lucide-react"
 
@@ -103,7 +103,7 @@ export function KnowledgeBase() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
 
-  const loadRepos = async () => {
+  const loadRepos = useCallback(async () => {
     setLoadingRepos(true)
     setActionMessage(null)
     try {
@@ -118,15 +118,13 @@ export function KnowledgeBase() {
       }
       const items = Array.isArray(payload.items) ? payload.items : []
       setRepos(items)
-      if (!selectedRepoId && items.length > 0) {
-        setSelectedRepoId(items[0].repo_id)
-      }
+      setSelectedRepoId((previous) => previous || items[0]?.repo_id || "")
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "Impossible de charger les sources KB.")
     } finally {
       setLoadingRepos(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     let cancelled = false
@@ -150,7 +148,7 @@ export function KnowledgeBase() {
 
   useEffect(() => {
     void loadRepos()
-  }, [])
+  }, [loadRepos])
 
   const filteredRepos = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()

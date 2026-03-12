@@ -1,7 +1,7 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
 import { Shield, Save, TestTube, History, Sparkles } from "lucide-react"
 
@@ -92,7 +92,7 @@ export function PoliciesRules() {
 
   const ignoredPathsText = useMemo(() => config.ignoredPaths.join("\n"), [config.ignoredPaths])
 
-  const loadPolicies = async () => {
+  const loadPolicies = useCallback(async () => {
     setLoading(true)
     setMessage(null)
     try {
@@ -110,19 +110,17 @@ export function PoliciesRules() {
       setUpdatedAt(typeof payload.updatedAt === "string" ? payload.updatedAt : null)
       const repos = Array.isArray(payload.repos) ? payload.repos.map((item) => item.repo) : []
       setAvailableRepos(repos)
-      if (!selectedRepo && repos.length > 0) {
-        setSelectedRepo(repos[0])
-      }
+      setSelectedRepo((previous) => previous || repos[0] || "")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Impossible de charger les policies.")
     } finally {
       setLoading(false)
     }
-  }
+  }, [])
 
   useEffect(() => {
     void loadPolicies()
-  }, [])
+  }, [loadPolicies])
 
   const setCategoryEnabled = (category: keyof PolicyConfig["enabledCategories"], enabled: boolean) => {
     setConfig((previous) => ({
