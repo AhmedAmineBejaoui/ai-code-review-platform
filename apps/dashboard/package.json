@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3001",
+    "dev": "node -e \"const fs=require('fs');for (const p of ['.next','tsconfig.tsbuildinfo']) {try{if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true});}catch{}}\" && next dev -p 3001",
     "dev:reset": "node -e \"const fs=require('fs');for (const p of ['.next','tsconfig.tsbuildinfo']) {try{if(fs.existsSync(p)) fs.rmSync(p,{recursive:true,force:true});}catch{}}\" && next dev -p 3001",
     "build": "next build",
     "start": "next start -p 3001",
