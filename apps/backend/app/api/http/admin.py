@@ -140,10 +140,20 @@ def _ensure_admin_access(
     if normalized_org_role.startswith("org:"):
         normalized_org_role = normalized_org_role.removeprefix("org:")
 
-    is_admin = "admin" in normalized_roles or normalized_org_role in {"admin", "owner"}
+    normalized_email = (principal.email or "").strip().lower()
+    is_admin = (
+        "admin" in normalized_roles
+        or normalized_org_role in {"admin", "owner"}
+        or normalized_email in settings.admin_emails
+    )
     if not is_admin:
         repo_user = get_rbac_repo().get_user(principal.user_id)
         if repo_user is not None:
+            db_email = str(repo_user.email or "").strip().lower()
+            if db_email in settings.admin_emails:
+                is_admin = True
+            if is_admin:
+                return principal
             db_roles = {role.strip().lower() for role in repo_user.roles if isinstance(role, str)}
             if "admin" in db_roles:
                 is_admin = True
