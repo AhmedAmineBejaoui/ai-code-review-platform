@@ -74,7 +74,7 @@ export function OrganizationWorkspace({
           <CardContent>
             {orgId ? (
               isOrgAdmin ? (
-                <OrganizationProfile path={profilePath} routing="path" />
+                <OrganizationProfile path={profilePath} routing="hash" />
               ) : (
                 <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/20 dark:text-amber-300">
                   <div className="mb-1 flex items-center gap-2 font-medium">

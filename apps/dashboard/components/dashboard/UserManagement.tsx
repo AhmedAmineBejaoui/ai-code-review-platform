@@ -55,6 +55,46 @@ type IntegrationsPayload = {
   }
 }
 
+
+function extractApiErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") {
+    return fallback
+  }
+
+  const record = payload as {
+    message?: unknown
+    detail?: unknown
+    error?: unknown
+  }
+
+  if (typeof record.message === "string" && record.message.trim().length > 0) {
+    return record.message
+  }
+
+  if (typeof record.detail === "string" && record.detail.trim().length > 0) {
+    return record.detail
+  }
+
+  if (typeof record.error === "string" && record.error.trim().length > 0) {
+    return record.error
+  }
+
+  if (record.error && typeof record.error === "object") {
+    const nested = record.error as { message?: unknown; detail?: unknown; code?: unknown }
+    if (typeof nested.message === "string" && nested.message.trim().length > 0) {
+      return nested.message
+    }
+    if (typeof nested.detail === "string" && nested.detail.trim().length > 0) {
+      return nested.detail
+    }
+    if (typeof nested.code === "string" && nested.code.trim().length > 0) {
+      return nested.code
+    }
+  }
+
+  return fallback
+}
+
 function initials(nameOrEmail: string): string {
   const cleaned = nameOrEmail.trim()
   if (!cleaned) {
@@ -134,28 +174,14 @@ export function UserManagement() {
     setLoading(true)
     setError(null)
     try {
-      const [usersResponse, integrationsResponse] = await Promise.all([
-        fetch("/api/dashboard/admin/users?limit=250", {
-          method: "GET",
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-        }),
-        fetch("/api/dashboard/admin/integrations", {
-          method: "GET",
-          cache: "no-store",
-          headers: { Accept: "application/json" },
-        }),
-      ])
-
+      const usersResponse = await fetch("/api/dashboard/admin/users?limit=250", {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      })
       const usersPayload = (await usersResponse.json().catch(() => ({}))) as UsersPayload
-      const integrationsPayload = (await integrationsResponse.json().catch(() => ({}))) as IntegrationsPayload
-
       if (!usersResponse.ok) {
-        throw new Error(
-          typeof (usersPayload as { message?: unknown }).message === "string"
-            ? ((usersPayload as { message: string }).message)
-            : "Impossible de charger les utilisateurs."
-        )
+        throw new Error(extractApiErrorMessage(usersPayload, "Impossible de charger les utilisateurs."))
       }
 
       const items = Array.isArray(usersPayload.items) ? usersPayload.items : []
@@ -171,7 +197,23 @@ export function UserManagement() {
         developers: Number(payloadStats.developers ?? items.filter((item) => primaryRole(item) === "developer").length),
         activeUsers: Number(payloadStats.activeUsers ?? items.filter((item) => item.isActive).length),
       })
-      setTokenInfo(integrationsPayload.ciToken ?? null)
+
+      const integrationsResponse = await fetch("/api/dashboard/admin/integrations", {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      })
+      const integrationsPayload = (await integrationsResponse.json().catch(() => ({}))) as IntegrationsPayload
+      if (integrationsResponse.ok) {
+        setTokenInfo(integrationsPayload.ciToken ?? null)
+      } else {
+        setActionMessage(
+          extractApiErrorMessage(
+            integrationsPayload,
+            "Les utilisateurs sont charges, mais les informations d'integration CI sont indisponibles.",
+          ),
+        )
+      }
     } catch (loadError) {
       const message = loadError instanceof Error ? loadError.message : "Impossible de charger les utilisateurs."
       setError(message)
@@ -214,7 +256,7 @@ export function UserManagement() {
       })
       const payload = (await response.json().catch(() => ({}))) as { error?: string; item?: AdminUser }
       if (!response.ok || !payload.item) {
-        throw new Error(payload.error ?? "Mise a jour utilisateur impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Mise a jour utilisateur impossible."))
       }
       setUsers((previous) => previous.map((user) => (user.id === userId ? payload.item! : user)))
       setActionMessage("Utilisateur mis a jour.")
@@ -260,7 +302,7 @@ export function UserManagement() {
         error?: string
       }
       if (!response.ok || typeof payload.token !== "string") {
-        throw new Error(payload.error ?? "Rotation du token impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Rotation du token impossible."))
       }
       setLastRotatedToken(payload.token)
       setTokenInfo({
@@ -287,7 +329,7 @@ export function UserManagement() {
       })
       const payload = (await response.json().catch(() => ({}))) as { error?: string }
       if (!response.ok) {
-        throw new Error(payload.error ?? "Revocation du token impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Revocation du token impossible."))
       }
       setLastRotatedToken(null)
       setTokenInfo((previous) => ({
