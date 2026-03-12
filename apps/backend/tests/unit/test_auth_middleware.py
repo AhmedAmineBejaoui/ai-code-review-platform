@@ -31,6 +31,13 @@ def test_permissions_for_roles_union() -> None:
     assert permissions == ["analyses.create", "analyses.read", "analyses.write"]
 
 
+def test_apply_admin_email_override_promotes_admin(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(auth_middleware.settings, "ADMIN_EMAILS", "bejaouiahmed053@gmail.com")
+    roles = auth_middleware._apply_admin_email_override("BejaouIAhmed053@gmail.com", ["developer"])
+    assert roles[0] == "admin"
+    assert "developer" in roles
+
+
 def test_extract_org_context_from_claims() -> None:
     claims = {
         "org_id": "org_123",

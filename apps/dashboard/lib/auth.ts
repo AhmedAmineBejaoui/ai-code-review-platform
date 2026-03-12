@@ -5,6 +5,22 @@ import { auth, currentUser } from "@clerk/nextjs/server"
 import type { DashboardAuthUser } from "@/lib/dashboard-user"
 import { extractRoleFromClaims, normalizeRole } from "@/lib/roles"
 
+function parseAdminEmails(rawValue: string | undefined): Set<string> {
+  if (!rawValue || rawValue.trim().length === 0) {
+    return new Set()
+  }
+  return new Set(
+    rawValue
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+const ADMIN_EMAIL_OVERRIDES = parseAdminEmails(
+  process.env.DASHBOARD_ADMIN_EMAILS ?? process.env.ADMIN_EMAILS,
+)
+
 function firstString(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
@@ -44,7 +60,7 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
     user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
 
   const metadataRole = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : "developer"
-  const role = claimsRole !== "developer" ? claimsRole : metadataRole
+  const baseRole = claimsRole !== "developer" ? claimsRole : metadataRole
   const primaryEmailAddressId = user?.primaryEmailAddressId
   const primaryEmail =
     user?.emailAddresses.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??
@@ -63,6 +79,7 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
       (sessionClaims as Record<string, unknown> | null | undefined)?.email,
       (sessionClaims as Record<string, unknown> | null | undefined)?.email_address,
     ) ?? "unknown@example.local"
+  const role = ADMIN_EMAIL_OVERRIDES.has(email.trim().toLowerCase()) ? "admin" : baseRole
 
   const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
   const orgNameCandidate =

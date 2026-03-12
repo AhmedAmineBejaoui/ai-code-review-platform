@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     CLERK_AUDIENCE: str | None = None
     CLERK_JWT_LEEWAY_SECONDS: int = 10
     CLERK_ORGANIZATIONS_ENFORCED: bool = False
+    ADMIN_EMAILS: str | None = None
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100
 
@@ -142,6 +143,13 @@ class Settings(BaseSettings):
                 continue
             normalized[repo_key] = repo_path
         return normalized
+
+    @property
+    def admin_emails(self) -> set[str]:
+        raw = self.ADMIN_EMAILS
+        if raw is None or not raw.strip():
+            return set()
+        return {item.strip().lower() for item in raw.split(",") if item.strip()}
 
 
 settings = Settings()

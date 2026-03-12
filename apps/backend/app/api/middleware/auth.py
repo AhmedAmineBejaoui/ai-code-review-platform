@@ -176,6 +176,18 @@ def _permissions_for_roles(roles: list[str]) -> list[str]:
     return sorted(permissions)
 
 
+def _apply_admin_email_override(email: str, roles: list[str]) -> list[str]:
+    normalized_email = email.strip().lower()
+    if not normalized_email or normalized_email not in settings.admin_emails:
+        return roles
+
+    elevated_roles = ["admin"]
+    for role in roles:
+        if role != "admin":
+            elevated_roles.append(role)
+    return elevated_roles
+
+
 def _decode_clerk_jwt(token: str) -> dict[str, Any]:
     signing_key = get_clerk_jwk_client().get_signing_key_from_jwt(token)
 
@@ -244,6 +256,7 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         email = f"{user_id}@clerk.local"
     display_name = _extract_display_name_from_claims(claims)
     roles = _extract_roles(claims)
+    roles = _apply_admin_email_override(email, roles)
     primary_role = roles[0] if roles else "developer"
     org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
 
