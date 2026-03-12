@@ -1,7 +1,7 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useMemo, useState } from "react"
+import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { Activity, Download, RotateCw, AlertCircle, Sparkles } from "lucide-react"
 
@@ -118,9 +118,8 @@ export function Observability() {
     }
   }
 
-  useMemo(() => {
+  useEffect(() => {
     void loadObservability(false)
-    return undefined
   }, [])
 
   const metrics = payload?.metrics ?? {}

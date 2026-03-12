@@ -1,5 +1,6 @@
-import { UserManagement } from "@/components/dashboard/UserManagement"
 import Link from "next/link"
+
+import { UserManagement } from "@/components/dashboard/UserManagement"
 import { Button } from "@/components/ui/button"
 
 export default function UsersPage() {
@@ -7,7 +8,7 @@ export default function UsersPage() {
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button asChild variant="outline">
-          <Link href="/dashboard/organization">GÃ©rer les invitations organization</Link>
+          <Link href="/dashboard/organization">Gerer les invitations organization</Link>
         </Button>
       </div>
       <UserManagement />
