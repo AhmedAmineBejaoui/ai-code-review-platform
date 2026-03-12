@@ -9,6 +9,22 @@ const BACKEND_SYNC_TIMEOUT_MS = Math.max(
   Number(process.env.DASHBOARD_BACKEND_SYNC_TIMEOUT_MS ?? "15000") || 15_000,
 )
 
+function parseAdminEmails(rawValue: string | undefined): Set<string> {
+  if (!rawValue || rawValue.trim().length === 0) {
+    return new Set()
+  }
+  return new Set(
+    rawValue
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean),
+  )
+}
+
+const ADMIN_EMAIL_OVERRIDES = parseAdminEmails(
+  process.env.DASHBOARD_ADMIN_EMAILS ?? process.env.ADMIN_EMAILS,
+)
+
 function firstNonEmpty(...values: Array<string | null | undefined>): string | undefined {
   for (const value of values) {
     if (typeof value === "string" && value.trim().length > 0) {
@@ -16,6 +32,31 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
     }
   }
   return undefined
+}
+
+function buildDegradedSyncResponse(args: {
+  userId: string
+  email: string | undefined
+  displayName: string | undefined
+  roleCandidate: string
+  reason: string
+  backendStatus?: number
+  backendResponse?: unknown
+}) {
+  const { userId, email, displayName, roleCandidate, reason, backendStatus, backendResponse } = args
+  return NextResponse.json(
+    {
+      user_id: userId,
+      email: email ?? `${userId}@clerk.local`,
+      display_name: displayName ?? null,
+      roles: [roleCandidate],
+      sync_degraded: true,
+      sync_reason: reason,
+      backend_status: backendStatus ?? null,
+      backend_response: backendResponse ?? null,
+    },
+    { status: 200 },
+  )
 }
 
 export async function POST() {
@@ -37,7 +78,9 @@ export async function POST() {
     user?.fullName ?? undefined,
     user?.username ?? undefined,
   )
-  const roleCandidate = extractRoleFromClaims(sessionClaims)
+  const extractedRole = extractRoleFromClaims(sessionClaims)
+  const roleCandidate =
+    primaryEmail && ADMIN_EMAIL_OVERRIDES.has(primaryEmail.trim().toLowerCase()) ? "admin" : extractedRole
   const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
   const orgNameCandidate = firstNonEmpty(
     typeof claims.org_name === "string" ? claims.org_name : undefined,
@@ -67,13 +110,14 @@ export async function POST() {
       cache: "no-store",
     })
   } catch {
-    return NextResponse.json(
-      {
-        error: "Backend auth sync timeout",
-        backend_timeout_ms: BACKEND_SYNC_TIMEOUT_MS,
-      },
-      { status: 504 },
-    )
+    return buildDegradedSyncResponse({
+      userId,
+      email: primaryEmail,
+      displayName,
+      roleCandidate,
+      reason: "backend_unreachable",
+      backendResponse: { backend_timeout_ms: BACKEND_SYNC_TIMEOUT_MS },
+    })
   } finally {
     clearTimeout(timeout)
   }
@@ -90,14 +134,15 @@ export async function POST() {
   }
 
   if (!backendResponse.ok) {
-    return NextResponse.json(
-      {
-        error: "Failed to sync user with backend",
-        backend_status: backendResponse.status,
-        backend_response: parsedBody,
-      },
-      { status: backendResponse.status },
-    )
+    return buildDegradedSyncResponse({
+      userId,
+      email: primaryEmail,
+      displayName,
+      roleCandidate,
+      reason: "backend_sync_failed",
+      backendStatus: backendResponse.status,
+      backendResponse: parsedBody,
+    })
   }
 
   return NextResponse.json(parsedBody, { status: 200 })

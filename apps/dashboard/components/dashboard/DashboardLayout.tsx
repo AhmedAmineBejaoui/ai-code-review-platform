@@ -32,7 +32,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatRoleLabel } from "@/lib/roles";
+import { formatRoleLabel, getRoleHomePath } from "@/lib/roles";
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const currentUser = useDashboardUser();
@@ -44,8 +44,11 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     setMounted(true);
   }, []);
   
+  const roleHomePath = getRoleHomePath(currentUser.role);
+  const dashboardHref = currentUser.role === "developer" ? "/dashboard" : roleHomePath;
+
   const navigation = [
-    { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard, gradient: 'from-blue-500 to-cyan-500' },
+    { name: 'Dashboard', href: dashboardHref, icon: LayoutDashboard, gradient: 'from-blue-500 to-cyan-500' },
     { name: 'Analyses', href: '/dashboard/analyses', icon: List, gradient: 'from-purple-500 to-pink-500' },
     { name: 'Workspace', href: '/dashboard/organization', icon: Building2, gradient: 'from-emerald-500 to-teal-500' },
   ];
@@ -60,6 +63,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   ];
 
   const isActive = (href: string) => {
+    if (href === dashboardHref) return pathname === dashboardHref;
     if (href === '/dashboard') return pathname === '/dashboard';
     return pathname.startsWith(href);
   };
@@ -83,7 +87,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
           >
-            <Link href="/dashboard" className="flex items-center gap-3 group">
+            <Link href={dashboardHref} className="flex items-center gap-3 group">
               <motion.div 
                 className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center"
                 whileHover={{ scale: 1.05, rotate: 5 }}
