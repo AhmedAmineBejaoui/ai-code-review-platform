@@ -14,7 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, require_permission
 from app.data.database import get_engine
 from app.data.repos.analyses_repo import AnalysesRepo
 from app.integrations.object_storage.s3_minio_client import S3MinioClient
@@ -141,6 +141,33 @@ def _ensure_admin_access(
         normalized_org_role = normalized_org_role.removeprefix("org:")
 
     is_admin = "admin" in normalized_roles or normalized_org_role in {"admin", "owner"}
+    if not is_admin:
+        repo_user = get_rbac_repo().get_user(principal.user_id)
+        if repo_user is not None:
+            db_roles = {role.strip().lower() for role in repo_user.roles if isinstance(role, str)}
+            if "admin" in db_roles:
+                is_admin = True
+            else:
+                target_org_id = (principal.org_id or "").strip()
+
+                def _membership_is_admin(membership: Any) -> bool:
+                    role_value = str(getattr(membership, "role", "") or "").strip().lower()
+                    status_value = str(getattr(membership, "status", "active") or "active").strip().lower()
+                    if role_value.startswith("org:"):
+                        role_value = role_value.removeprefix("org:")
+                    if status_value not in {"active"}:
+                        return False
+                    return role_value in {"admin", "owner"}
+
+                if target_org_id:
+                    is_admin = any(
+                        str(getattr(membership, "organization_id", "") or "").strip() == target_org_id
+                        and _membership_is_admin(membership)
+                        for membership in repo_user.organization_memberships
+                    )
+                else:
+                    is_admin = any(_membership_is_admin(membership) for membership in repo_user.organization_memberships)
+
     if not is_admin:
         raise ApiError(
             status_code=403,
