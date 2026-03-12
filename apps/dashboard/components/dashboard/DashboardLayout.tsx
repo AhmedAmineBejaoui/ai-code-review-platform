@@ -6,7 +6,7 @@ import { SignOutButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTheme } from "next-themes";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion } from "framer-motion";
 import { 
   LayoutDashboard, 
   List, 
@@ -329,18 +329,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
       {/* Main Content */}
       <main className="ml-[280px] min-h-screen">
-        <AnimatePresence mode="wait">
-          <motion.div
-            key={pathname}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -20 }}
-            transition={{ duration: 0.3 }}
-            className="p-8"
-          >
-            {children}
-          </motion.div>
-        </AnimatePresence>
+        <div className="p-8">{children}</div>
       </main>
     </div>
   );
