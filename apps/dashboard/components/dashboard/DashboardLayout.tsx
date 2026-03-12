@@ -58,8 +58,8 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
     { name: 'Policies & Rules', href: '/dashboard/admin/policies', icon: Shield, gradient: 'from-orange-500 to-red-500' },
     { name: 'Utilisateurs', href: '/dashboard/admin/users', icon: Users, gradient: 'from-indigo-500 to-purple-500' },
     { name: 'Organizations', href: '/dashboard/admin/organization', icon: Building2, gradient: 'from-blue-500 to-indigo-500' },
-    { name: 'ObservabilitÃ©', href: '/dashboard/admin/observability', icon: Activity, gradient: 'from-pink-500 to-rose-500' },
-    { name: 'IntÃ©grations', href: '/dashboard/admin/integrations', icon: Plug, gradient: 'from-cyan-500 to-blue-500' },
+    { name: 'Observabilité', href: '/dashboard/admin/observability', icon: Activity, gradient: 'from-pink-500 to-rose-500' },
+    { name: 'Intégrations', href: '/dashboard/admin/integrations', icon: Plug, gradient: 'from-cyan-500 to-blue-500' },
   ];
 
   const isActive = (href: string) => {
@@ -316,7 +316,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem>
                   <Settings className="mr-2 h-4 w-4" />
-                  PrÃ©fÃ©rences
+                  Préférences
                 </DropdownMenuItem>
                 <SignOutButton>
                   <DropdownMenuItem>Sign out</DropdownMenuItem>
