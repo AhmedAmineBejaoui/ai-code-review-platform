@@ -79,6 +79,15 @@ Optional hardening:
 REPO_CONTEXT_ALLOWED_ROOTS=C:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform
 ```
 
+Dynamic repo path resolution (no static map):
+
+- Backend can auto-resolve `repo_path` for webhook/automation by scanning allowed roots + current workspace.
+- For GitHub repos (`owner/repo`), it also tries to match `git remote origin`.
+- For local repos (`local/<name>`), it matches folder name.
+
+If you want this to work for multiple local repos, set `REPO_CONTEXT_ALLOWED_ROOTS` to a parent folder
+that contains all repos (for example `C:\Users\Ahmed Amin Bejoui\Desktop`) instead of a single repo path.
+
 ## 5. First-time onboarding (full)
 
 Endpoint:

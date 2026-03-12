@@ -9,6 +9,7 @@ from typing import Any
 
 from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
+from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
 from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
@@ -70,13 +71,6 @@ def _static_fingerprint(
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
-
-
-def _resolve_repo_path_for_kb(*, repo: str, metadata: dict[str, Any]) -> str | None:
-    raw_repo_path = metadata.get("repo_path")
-    if isinstance(raw_repo_path, str) and raw_repo_path.strip():
-        return raw_repo_path.strip()
-    return settings.repo_context_repo_path_map.get(repo.strip().lower())
 
 
 def run_static_analysis_stage(
@@ -173,7 +167,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             try:
                 qdrant_client = QdrantClient()
                 retriever = RepoContextRetriever(vector_store=qdrant_client)
-                repo_path = _resolve_repo_path_for_kb(repo=analysis.repo, metadata=analysis.metadata)
+                repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
 
                 if repo_path:
                     ingestor = RepoContextIngestor(vector_store=qdrant_client)

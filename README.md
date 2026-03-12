@@ -861,11 +861,13 @@ REPO_CONTEXT_CHUNK_OVERLAP=200
 REPO_CONTEXT_MAX_FILE_BYTES=250000
 REPO_CONTEXT_MAX_FILES_PER_RUN=5000
 REPO_CONTEXT_ALLOWED_ROOTS=
-# map JSON optionnelle repo->path local, utilisee par webhook/automation
+# optionnel: map JSON repo->path local (prioritaire si definie)
 REPO_CONTEXT_REPO_PATH_MAP={"owner/repo":"/workspace/owner-repo"}
 ```
 
 Si `REPO_CONTEXT_ALLOWED_ROOTS` est rempli, le backend refusera toute indexation en dehors des chemins autorises.
+Sans `REPO_CONTEXT_REPO_PATH_MAP`, le backend tente une resolution dynamique dans les roots autorises
+(et workspace courant) via nom de dossier puis remote Git `origin` quand disponible.
 
 ### 20.3.1 Mode evenementiel automatique (sans question utilisateur)
 
@@ -876,7 +878,7 @@ Le systeme supporte maintenant les deux triggers automatiques:
 
 Declenchement possible via:
 
-- Webhook GitHub `/webhooks/github` (si `REPO_CONTEXT_REPO_PATH_MAP` configure),
+- Webhook GitHub `/webhooks/github` (map statique optionnelle; resolution dynamique active),
 - ou endpoints `/v1/kb/automation/*`.
 
 ### 20.4 Outils externes a installer (hors code)

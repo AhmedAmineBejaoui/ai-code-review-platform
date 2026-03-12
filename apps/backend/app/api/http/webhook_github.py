@@ -7,6 +7,7 @@ import logging
 
 from fastapi import APIRouter, HTTPException, Request
 
+from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
 from app.settings import settings
 from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboarding
 
@@ -81,7 +82,7 @@ async def github_webhook(request: Request):
         return {"ok": True, "event": event, "duplicate": True}
 
     repo_full_name = _extract_repo_full_name(payload)
-    local_repo_path = _resolve_local_repo_path(repo_full_name)
+    local_repo_path = resolve_repo_context_repo_path(repo=repo_full_name or "", metadata=None)
     if not repo_full_name or not local_repo_path:
         return {
             "ok": True,
@@ -134,12 +135,6 @@ def _extract_repo_full_name(payload: dict) -> str | None:
         return None
     normalized = full_name.strip().lower()
     return normalized or None
-
-
-def _resolve_local_repo_path(repo_full_name: str | None) -> str | None:
-    if not repo_full_name:
-        return None
-    return settings.repo_context_repo_path_map.get(repo_full_name)
 
 
 def _extract_diff_text(payload: dict) -> str:
