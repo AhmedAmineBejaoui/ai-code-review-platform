@@ -594,3 +594,933 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
                 details={"user_id": user_id},
             )
         return updated
+
+
+def _collect_policy_payload() -> dict[str, Any]:
+    engine = get_engine()
+    with engine.connect() as conn:
+        config, version, updated_at = _load_versioned_settings(conn, _ADMIN_POLICY_REPO_KEY, _policy_defaults())
+        repo_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT repo, COUNT(*) AS analysis_count, MAX(created_at) AS last_analysis_at
+                    FROM analyses
+                    GROUP BY repo
+                    ORDER BY last_analysis_at DESC NULLS LAST
+                    LIMIT 100
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+    return {
+        "config": config,
+        "version": version,
+        "updatedAt": updated_at,
+        "repos": [
+            {
+                "repo": str(row["repo"]),
+                "analysisCount": int(row.get("analysis_count") or 0),
+                "lastAnalysisAt": _to_iso(row.get("last_analysis_at")),
+            }
+            for row in repo_rows
+        ],
+    }
+
+
+def _save_policy_payload(config: AdminPolicyConfig, actor_id: str) -> dict[str, Any]:
+    engine = get_engine()
+    payload = json.loads(config.model_dump_json())
+    with engine.begin() as conn:
+        version, updated_at = _save_versioned_settings(
+            conn,
+            _ADMIN_POLICY_REPO_KEY,
+            payload,
+            blocking_enabled=bool(payload.get("failOnBlocker", True)),
+        )
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.policy.save",
+            target_type="policy",
+            target_id=_ADMIN_POLICY_REPO_KEY,
+            meta={"version": version},
+        )
+    return {
+        "config": payload,
+        "version": version,
+        "updatedAt": updated_at,
+    }
+
+
+def _is_category_enabled(category: str, enabled: dict[str, bool]) -> bool:
+    normalized = category.strip().lower()
+    if normalized == "security":
+        return bool(enabled.get("security", True))
+    if normalized in {"perf", "performance"}:
+        return bool(enabled.get("performance", True))
+    if normalized in {"quality", "style", "other"}:
+        return bool(enabled.get("quality", True))
+    if normalized == "maintainability":
+        return bool(enabled.get("maintainability", True))
+    return True
+
+
+def _resolve_analysis_for_policy_test(conn: Connection, target: str | None) -> dict[str, Any] | None:
+    if target is None or len(target.strip()) == 0:
+        row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT id, repo, pr_number, commit_sha, status, created_at
+                    FROM analyses
+                    ORDER BY created_at DESC
+                    LIMIT 1
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        return dict(row) if row is not None else None
+
+    cleaned = target.strip()
+    lower = cleaned.lower()
+    if lower.startswith("pr"):
+        digits = "".join(character for character in cleaned if character.isdigit())
+        if digits:
+            pr_number = int(digits)
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT id, repo, pr_number, commit_sha, status, created_at
+                        FROM analyses
+                        WHERE pr_number = :pr_number
+                        ORDER BY created_at DESC
+                        LIMIT 1
+                        """
+                    ),
+                    {"pr_number": pr_number},
+                )
+                .mappings()
+                .first()
+            )
+            if row is not None:
+                return dict(row)
+
+    row = (
+        conn.execute(
+            text(
+                """
+                SELECT id, repo, pr_number, commit_sha, status, created_at
+                FROM analyses
+                WHERE id = :analysis_id
+                LIMIT 1
+                """
+            ),
+            {"analysis_id": cleaned},
+        )
+        .mappings()
+        .first()
+    )
+    if row is not None:
+        return dict(row)
+
+    row = (
+        conn.execute(
+            text(
+                """
+                SELECT id, repo, pr_number, commit_sha, status, created_at
+                FROM analyses
+                WHERE commit_sha ILIKE :commit_prefix
+                ORDER BY created_at DESC
+                LIMIT 1
+                """
+            ),
+            {"commit_prefix": f"{cleaned}%"},
+        )
+        .mappings()
+        .first()
+    )
+    if row is not None:
+        return dict(row)
+    return None
+
+
+def _test_policy(target: str | None, config: AdminPolicyConfig | None) -> dict[str, Any]:
+    engine = get_engine()
+    with engine.connect() as conn:
+        effective_config: dict[str, Any]
+        if config is None:
+            effective_config, _version, _updated_at = _load_versioned_settings(conn, _ADMIN_POLICY_REPO_KEY, _policy_defaults())
+        else:
+            effective_config = json.loads(config.model_dump_json())
+        analysis = _resolve_analysis_for_policy_test(conn, target)
+        if analysis is None:
+            raise ApiError(
+                status_code=404,
+                code="ANALYSIS_NOT_FOUND",
+                message="No analysis found for policy test",
+                details={"target": target},
+            )
+        finding_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT severity, category, COUNT(*) AS count
+                    FROM findings
+                    WHERE analysis_id = :analysis_id
+                    GROUP BY severity, category
+                    """
+                ),
+                {"analysis_id": str(analysis["id"])},
+            )
+            .mappings()
+            .all()
+        )
+
+    enabled_categories_raw = _as_json_object(effective_config.get("enabledCategories"))
+    enabled_categories: dict[str, bool] = {key: bool(value) for key, value in enabled_categories_raw.items()}
+    blocker_count = 0
+    warn_count = 0
+    info_count = 0
+    for row in finding_rows:
+        category = str(row.get("category") or "")
+        if not _is_category_enabled(category, enabled_categories):
+            continue
+        severity = str(row.get("severity") or "").upper()
+        count = int(row.get("count") or 0)
+        if severity == "BLOCKER":
+            blocker_count += count
+        elif severity == "WARN":
+            warn_count += count
+        elif severity == "INFO":
+            info_count += count
+
+    fail_on_blocker = bool(effective_config.get("failOnBlocker", True))
+    max_comments = int(effective_config.get("maxComments") or 50)
+    total_comments = blocker_count + warn_count + info_count
+
+    decision: Literal["APPROVE", "WARN", "BLOCK"]
+    reasons: list[str] = []
+    if fail_on_blocker and blocker_count > 0:
+        decision = "BLOCK"
+        reasons.append(f"{blocker_count} blocker finding(s)")
+    elif warn_count > 0 or total_comments > max_comments:
+        decision = "WARN"
+        if warn_count > 0:
+            reasons.append(f"{warn_count} warning finding(s)")
+        if total_comments > max_comments:
+            reasons.append(f"comment budget exceeded ({total_comments} > {max_comments})")
+    else:
+        decision = "APPROVE"
+        reasons.append("no blocking condition matched")
+
+    return {
+        "analysisId": str(analysis["id"]),
+        "repo": str(analysis["repo"]),
+        "status": str(analysis.get("status") or ""),
+        "createdAt": _to_iso(analysis.get("created_at")),
+        "decision": decision,
+        "reasons": reasons,
+        "counts": {
+            "blocker": blocker_count,
+            "warn": warn_count,
+            "info": info_count,
+            "total": total_comments,
+            "maxComments": max_comments,
+        },
+        "config": effective_config,
+    }
+
+
+def _collect_observability_payload() -> dict[str, Any]:
+    engine = get_engine()
+    with engine.connect() as conn:
+        metrics_row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        COUNT(*) FILTER (WHERE created_at >= date_trunc('day', NOW())) AS analyses_today,
+                        COUNT(*) FILTER (WHERE created_at >= date_trunc('day', NOW()) AND status = 'FAILED') AS failures_today,
+                        COUNT(*) FILTER (WHERE status = 'RUNNING') AS running_count,
+                        COUNT(*) FILTER (WHERE status IN ('RECEIVED', 'QUEUED')) AS queued_count
+                    FROM analyses
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        duration_row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT COALESCE(AVG(EXTRACT(EPOCH FROM (updated_at - created_at))), 0) AS avg_duration_sec
+                    FROM analyses
+                    WHERE status IN ('COMPLETED', 'FAILED')
+                      AND created_at >= NOW() - INTERVAL '24 hours'
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        worker_row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT
+                        COUNT(DISTINCT tool_name) FILTER (
+                            WHERE started_at >= NOW() - INTERVAL '15 minutes'
+                              AND (finished_at IS NULL OR finished_at >= NOW() - INTERVAL '15 minutes')
+                        ) AS active_workers,
+                        COUNT(DISTINCT tool_name) AS total_workers
+                    FROM tool_runs
+                    """
+                )
+            )
+            .mappings()
+            .first()
+        )
+        api_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT id, created_at, status, repo, pr_number, error_message
+                    FROM analyses
+                    ORDER BY created_at DESC
+                    LIMIT 40
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        worker_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT id, analysis_id, tool_name, status, created_at, duration_ms, findings_count, warning
+                    FROM tool_runs
+                    ORDER BY created_at DESC
+                    LIMIT 40
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        ingestion_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT repo_id, updated_at, profile_json
+                    FROM repo_profiles
+                    ORDER BY updated_at DESC
+                    LIMIT 40
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+        queue_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT id, repo, pr_number, status, created_at
+                    FROM analyses
+                    WHERE status IN ('RECEIVED', 'QUEUED', 'RUNNING')
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    analyses_today = int((metrics_row or {}).get("analyses_today") or 0)
+    failures_today = int((metrics_row or {}).get("failures_today") or 0)
+    running_count = int((metrics_row or {}).get("running_count") or 0)
+    queued_count = int((metrics_row or {}).get("queued_count") or 0)
+    avg_duration_sec = float((duration_row or {}).get("avg_duration_sec") or 0.0)
+    active_workers = int((worker_row or {}).get("active_workers") or 0)
+    total_workers = int((worker_row or {}).get("total_workers") or 0)
+    if total_workers < active_workers:
+        total_workers = active_workers
+
+    failure_rate = (failures_today / analyses_today * 100.0) if analyses_today > 0 else 0.0
+
+    issues: list[dict[str, Any]] = []
+    if queued_count >= 5:
+        issues.append(
+            {
+                "id": "queue_saturation",
+                "title": "Worker queue saturation",
+                "detail": f"{queued_count} job(s) are queued or waiting.",
+                "severity": "warn",
+            }
+        )
+    if failure_rate >= 20:
+        issues.append(
+            {
+                "id": "high_failure_rate",
+                "title": "High failure rate",
+                "detail": f"Failure rate is {failure_rate:.1f}% for today.",
+                "severity": "error",
+            }
+        )
+    if analyses_today == 0:
+        issues.append(
+            {
+                "id": "no_activity",
+                "title": "No analyses today",
+                "detail": "No analysis has been created since the start of the day.",
+                "severity": "info",
+            }
+        )
+
+    api_logs = []
+    for row in api_rows:
+        status = str(row.get("status") or "").upper()
+        level = "error" if status == "FAILED" else ("warn" if status in {"RECEIVED", "QUEUED"} else "info")
+        message = f"Analysis {row['id']} {status or 'UNKNOWN'}"
+        details = f"repo={row['repo']}"
+        if row.get("pr_number") is not None:
+            details += f" pr=#{row['pr_number']}"
+        if row.get("error_message"):
+            details += f" error={row['error_message']}"
+        api_logs.append(
+            {
+                "id": str(row["id"]),
+                "timestamp": _to_iso(row.get("created_at")),
+                "level": level,
+                "message": message,
+                "details": details,
+            }
+        )
+
+    worker_logs = []
+    for row in worker_rows:
+        status = str(row.get("status") or "").upper()
+        level = "error" if status == "FAILED" else ("warn" if status == "SKIPPED" else "info")
+        worker_logs.append(
+            {
+                "id": str(row["id"]),
+                "timestamp": _to_iso(row.get("created_at")),
+                "level": level,
+                "message": f"{row['tool_name']} {status or 'UNKNOWN'}",
+                "details": (
+                    f"analysis={row['analysis_id']} "
+                    f"durationMs={int(row.get('duration_ms') or 0)} "
+                    f"findings={int(row.get('findings_count') or 0)} "
+                    f"warning={row.get('warning') or '-'}"
+                ),
+            }
+        )
+
+    ingestion_logs = []
+    for row in ingestion_rows:
+        profile = _as_json_object(row.get("profile_json"))
+        files_indexed = int(profile.get("files_indexed") or 0)
+        indexed_commit = profile.get("indexed_commit")
+        ingestion_logs.append(
+            {
+                "id": f"repo:{row['repo_id']}",
+                "timestamp": _to_iso(row.get("updated_at")),
+                "level": "info",
+                "message": f"KB profile refreshed for {row['repo_id']}",
+                "details": f"filesIndexed={files_indexed} indexedCommit={indexed_commit or '-'}",
+            }
+        )
+
+    return {
+        "metrics": {
+            "failureRatePct": round(failure_rate, 2),
+            "avgLatencySec": round(avg_duration_sec, 2),
+            "analysesToday": analyses_today,
+            "activeWorkers": active_workers,
+            "totalWorkers": total_workers,
+            "queuedJobs": queued_count,
+            "runningJobs": running_count,
+        },
+        "issues": issues,
+        "logs": {
+            "api": api_logs,
+            "workers": worker_logs,
+            "ingestion": ingestion_logs,
+        },
+        "queue": [
+            {
+                "analysisId": str(row["id"]),
+                "repo": str(row["repo"]),
+                "prNumber": int(row["pr_number"]) if row.get("pr_number") is not None else None,
+                "status": str(row["status"]),
+                "createdAt": _to_iso(row.get("created_at")),
+            }
+            for row in queue_rows
+        ],
+        "generatedAt": _utc_iso_now(),
+    }
+
+
+def _requeue_analysis_job(analysis_id: str, actor_id: str) -> dict[str, Any]:
+    repo = AnalysesRepo()
+    analysis = repo.get_by_id(analysis_id)
+    if analysis is None:
+        raise ApiError(
+            status_code=404,
+            code="ANALYSIS_NOT_FOUND",
+            message="Analysis not found",
+            details={"analysis_id": analysis_id},
+        )
+
+    repo.update_status(
+        analysis_id=analysis_id,
+        status="QUEUED",
+        stage="QUEUED",
+        progress=10,
+        error_code=None,
+        error_message=None,
+        metadata_updates={
+            "pipeline": {
+                "requeued": True,
+                "requeued_at": _utc_iso_now(),
+                "requeued_by": actor_id,
+            }
+        },
+    )
+    try:
+        enqueue_result = enqueue_analysis_job(analysis_id)
+    except QueueUnavailableError as exc:
+        raise ApiError(
+            status_code=503,
+            code="QUEUE_UNAVAILABLE",
+            message="Unable to enqueue analysis job",
+            details={"analysis_id": analysis_id},
+        ) from exc
+    return {
+        "analysisId": analysis_id,
+        "taskId": enqueue_result.task_id,
+        "status": "QUEUED",
+    }
+
+
+def _collect_integrations_payload() -> dict[str, Any]:
+    engine = get_engine()
+    with engine.connect() as conn:
+        integration_settings, settings_version, settings_updated_at = _load_versioned_settings(
+            conn,
+            _ADMIN_INTEGRATIONS_REPO_KEY,
+            _integration_defaults(),
+        )
+        ci_token_settings, _token_version, _token_updated_at = _load_versioned_settings(
+            conn,
+            _ADMIN_CI_TOKEN_REPO_KEY,
+            {"revoked": True},
+        )
+        webhook_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT repo, source, created_at
+                    FROM analyses
+                    WHERE source ILIKE 'github%'
+                    ORDER BY created_at DESC
+                    LIMIT 20
+                    """
+                )
+            )
+            .mappings()
+            .all()
+        )
+
+    token_revoked = bool(ci_token_settings.get("revoked", True))
+    token_hash = str(ci_token_settings.get("tokenHash") or "")
+    token_exists = bool(token_hash) and not token_revoked
+    ci_token = {
+        "exists": token_exists,
+        "prefix": ci_token_settings.get("tokenPrefix"),
+        "createdAt": ci_token_settings.get("createdAt"),
+        "createdBy": ci_token_settings.get("createdBy"),
+        "revoked": token_revoked,
+        "revokedAt": ci_token_settings.get("revokedAt"),
+    }
+
+    return {
+        "config": {
+            "ciEnabled": bool(integration_settings.get("ciEnabled", True)),
+            "failOnBlocker": bool(integration_settings.get("failOnBlocker", True)),
+        },
+        "version": settings_version,
+        "updatedAt": settings_updated_at,
+        "ciToken": ci_token,
+        "providers": {
+            "githubAppConfigured": bool(
+                settings.GITHUB_APP_ID and settings.GITHUB_APP_INSTALLATION_ID and settings.GITHUB_APP_PRIVATE_KEY_PEM
+            ),
+            "githubWebhookConfigured": bool(settings.GITHUB_WEBHOOK_SECRET),
+            "qdrantEnabled": bool(settings.QDRANT_ENABLED),
+        },
+        "storage": {
+            "enabled": bool(settings.OBJECT_STORAGE_ENABLED),
+            "provider": "S3 Compatible (MinIO)",
+            "endpoint": settings.MINIO_ENDPOINT,
+            "bucket": settings.MINIO_BUCKET,
+            "secure": bool(settings.MINIO_SECURE),
+        },
+        "webhooks": [
+            {
+                "repo": str(row["repo"]),
+                "event": str(row["source"]),
+                "timestamp": _to_iso(row.get("created_at")),
+            }
+            for row in webhook_rows
+        ],
+    }
+
+
+def _save_integrations_payload(payload: AdminIntegrationsUpdateRequest, actor_id: str) -> dict[str, Any]:
+    engine = get_engine()
+    with engine.begin() as conn:
+        current, _version, _updated_at = _load_versioned_settings(conn, _ADMIN_INTEGRATIONS_REPO_KEY, _integration_defaults())
+        if payload.ciEnabled is not None:
+            current["ciEnabled"] = bool(payload.ciEnabled)
+        if payload.failOnBlocker is not None:
+            current["failOnBlocker"] = bool(payload.failOnBlocker)
+        version, updated_at = _save_versioned_settings(conn, _ADMIN_INTEGRATIONS_REPO_KEY, current)
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.integrations.save",
+            target_type="integration",
+            target_id=_ADMIN_INTEGRATIONS_REPO_KEY,
+            meta={"version": version},
+        )
+
+    return {
+        "config": {
+            "ciEnabled": bool(current.get("ciEnabled", True)),
+            "failOnBlocker": bool(current.get("failOnBlocker", True)),
+        },
+        "version": version,
+        "updatedAt": updated_at,
+    }
+
+
+def _rotate_ci_token(actor_id: str) -> dict[str, Any]:
+    token_value = f"air_{secrets.token_urlsafe(36)}"
+    token_hash = hashlib.sha256(token_value.encode("utf-8")).hexdigest()
+    created_at = _utc_iso_now()
+    payload = {
+        "tokenHash": token_hash,
+        "tokenPrefix": token_value[:_TOKEN_PREFIX_LEN],
+        "createdAt": created_at,
+        "createdBy": actor_id,
+        "revoked": False,
+        "revokedAt": None,
+    }
+    engine = get_engine()
+    with engine.begin() as conn:
+        version, updated_at = _save_versioned_settings(conn, _ADMIN_CI_TOKEN_REPO_KEY, payload)
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.integrations.ci_token.rotate",
+            target_type="integration_token",
+            target_id=_ADMIN_CI_TOKEN_REPO_KEY,
+            meta={"version": version},
+        )
+    return {
+        "token": token_value,
+        "prefix": payload["tokenPrefix"],
+        "createdAt": created_at,
+        "version": version,
+        "updatedAt": updated_at,
+    }
+
+
+def _revoke_ci_token(actor_id: str) -> dict[str, Any]:
+    engine = get_engine()
+    with engine.begin() as conn:
+        current, _version, _updated_at = _load_versioned_settings(conn, _ADMIN_CI_TOKEN_REPO_KEY, {"revoked": True})
+        current["revoked"] = True
+        current["revokedAt"] = _utc_iso_now()
+        version, updated_at = _save_versioned_settings(conn, _ADMIN_CI_TOKEN_REPO_KEY, current)
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.integrations.ci_token.revoke",
+            target_type="integration_token",
+            target_id=_ADMIN_CI_TOKEN_REPO_KEY,
+            meta={"version": version},
+        )
+    return {
+        "revoked": True,
+        "version": version,
+        "updatedAt": updated_at,
+    }
+
+
+async def _reindex_kb_repo(repo_id: str, repo_path: str | None, actor_id: str) -> dict[str, Any]:
+    engine = get_engine()
+    with engine.connect() as conn:
+        resolved_repo_path = repo_path
+        if not resolved_repo_path:
+            row = (
+                conn.execute(
+                    text("SELECT repo_path FROM repo_profiles WHERE repo_id = :repo_id LIMIT 1"),
+                    {"repo_id": repo_id},
+                )
+                .mappings()
+                .first()
+            )
+            resolved_repo_path = str(row["repo_path"]) if row and row.get("repo_path") else None
+    if not resolved_repo_path:
+        raise ApiError(
+            status_code=400,
+            code="MISSING_REPO_PATH",
+            message="repoPath is required because no existing profile path was found",
+            details={"repoId": repo_id},
+        )
+    try:
+        async_result = run_repo_onboarding.apply_async(
+            args=[repo_id, resolved_repo_path, "admin_manual"],
+            queue=settings.ANALYSIS_QUEUE_NAME,
+        )
+    except Exception as exc:
+        raise ApiError(
+            status_code=503,
+            code="QUEUE_UNAVAILABLE",
+            message="Unable to enqueue KB reindex task",
+            details={"repoId": repo_id},
+        ) from exc
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.kb.reindex",
+            target_type="repo_profile",
+            target_id=repo_id,
+            meta={"repoPath": resolved_repo_path},
+        )
+    return {
+        "repoId": repo_id,
+        "repoPath": resolved_repo_path,
+        "taskId": str(async_result.id or ""),
+        "status": "QUEUED",
+    }
+
+
+async def _delete_kb_repo(repo_id: str, actor_id: str) -> dict[str, Any]:
+    engine = get_engine()
+    deleted = False
+    with engine.begin() as conn:
+        existing = (
+            conn.execute(
+                text("SELECT repo_id FROM repo_profiles WHERE repo_id = :repo_id LIMIT 1"),
+                {"repo_id": repo_id},
+            )
+            .mappings()
+            .first()
+        )
+        if existing is None:
+            raise ApiError(
+                status_code=404,
+                code="REPO_PROFILE_NOT_FOUND",
+                message="Repo profile not found",
+                details={"repoId": repo_id},
+            )
+        conn.execute(text("DELETE FROM repo_profiles WHERE repo_id = :repo_id"), {"repo_id": repo_id})
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.kb.delete_profile",
+            target_type="repo_profile",
+            target_id=repo_id,
+            meta={},
+        )
+        deleted = True
+
+    if settings.QDRANT_ENABLED:
+        qdrant_client = QdrantClient()
+        try:
+            await qdrant_client.delete_by_filter(
+                collection_name=settings.QDRANT_REPO_CONTEXT_COLLECTION,
+                filter_payload={"repo_id": repo_id},
+            )
+        except Exception:
+            # Keep profile deletion successful even when vector-store cleanup fails.
+            pass
+
+    return {"repoId": repo_id, "deleted": deleted}
+
+
+def _test_storage_connection() -> dict[str, Any]:
+    client = S3MinioClient()
+    if not settings.OBJECT_STORAGE_ENABLED:
+        return {
+            "ok": False,
+            "message": "Object storage is disabled in settings.",
+            "checkedAt": _utc_iso_now(),
+        }
+
+    probe_key = f"admin-storage-probe/{uuid.uuid4().hex}.txt"
+    payload = f"probe:{_utc_iso_now()}".encode("utf-8")
+    object_path = client.put_object(probe_key, payload, content_type="text/plain")
+    if object_path is None:
+        return {
+            "ok": False,
+            "message": "Unable to upload probe object.",
+            "checkedAt": _utc_iso_now(),
+        }
+    fetched = client.get_object(probe_key)
+    deleted = client.delete_object(probe_key)
+    ok = fetched == payload and deleted
+    return {
+        "ok": ok,
+        "message": "Storage probe succeeded." if ok else "Storage probe failed.",
+        "checkedAt": _utc_iso_now(),
+    }
+
+
+@router.get("/users")
+async def get_admin_users(
+    limit: int = Query(default=250, ge=1, le=1000),
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_collect_admin_users, limit)
+    return payload
+
+
+@router.patch("/users/{user_id}")
+async def patch_admin_user(
+    payload: AdminUserUpdateRequest,
+    user_id: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    if payload.role is None and payload.isActive is None:
+        raise ApiError(
+            status_code=400,
+            code="EMPTY_UPDATE",
+            message="At least one field must be provided",
+        )
+    if payload.isActive is False and principal.user_id == user_id:
+        raise ApiError(
+            status_code=400,
+            code="SELF_DEACTIVATE_FORBIDDEN",
+            message="Cannot deactivate the current admin user",
+        )
+
+    updated = await asyncio.to_thread(_update_admin_user, user_id, payload, principal.user_id)
+    return {"item": updated}
+
+
+@router.get("/policies")
+async def get_admin_policies(
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_collect_policy_payload)
+    return payload
+
+
+@router.put("/policies")
+async def put_admin_policies(
+    payload: AdminPoliciesUpdateRequest,
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    saved = await asyncio.to_thread(_save_policy_payload, payload.config, principal.user_id)
+    return saved
+
+
+@router.post("/policies/test")
+async def test_admin_policies(
+    payload: AdminPoliciesTestRequest,
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    result = await asyncio.to_thread(_test_policy, payload.target, payload.config)
+    return result
+
+
+@router.get("/observability")
+async def get_admin_observability(
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_collect_observability_payload)
+    return payload
+
+
+@router.post("/observability/jobs/{analysis_id}/retry")
+async def retry_admin_observability_job(
+    analysis_id: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_requeue_analysis_job, analysis_id, principal.user_id)
+    return payload
+
+
+@router.get("/integrations")
+async def get_admin_integrations(
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_collect_integrations_payload)
+    return payload
+
+
+@router.put("/integrations")
+async def put_admin_integrations(
+    payload: AdminIntegrationsUpdateRequest,
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    saved = await asyncio.to_thread(_save_integrations_payload, payload, principal.user_id)
+    return saved
+
+
+@router.post("/integrations/ci-token/rotate")
+async def rotate_admin_ci_token(
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_rotate_ci_token, principal.user_id)
+    return payload
+
+
+@router.delete("/integrations/ci-token")
+async def delete_admin_ci_token(
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_revoke_ci_token, principal.user_id)
+    return payload
+
+
+@router.post("/integrations/storage/test")
+async def test_admin_storage(
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    payload = await asyncio.to_thread(_test_storage_connection)
+    return payload
+
+
+@router.post("/knowledge-base/reindex")
+async def reindex_admin_knowledge_base(
+    payload: KnowledgeBaseReindexRequest,
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    result = await _reindex_kb_repo(payload.repoId, payload.repoPath, principal.user_id)
+    return result
+
+
+@router.delete("/knowledge-base/repos/{repo_id}")
+async def delete_admin_knowledge_base_repo(
+    repo_id: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    result = await _delete_kb_repo(repo_id, principal.user_id)
+    return result

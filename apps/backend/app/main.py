@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.errors import register_exception_handlers
-from app.api.http import analyses, knowledge_base, webhook_github
+from app.api.http import admin, analyses, knowledge_base, webhook_github
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
 
@@ -58,6 +58,7 @@ async def health():
 app.include_router(webhook_github.router)
 app.include_router(analyses.router)
 app.include_router(knowledge_base.router)
+app.include_router(admin.router)
 
 
 @app.get("/__routes")
