@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server"
 import { createRequire } from "node:module"
+import { dirname, resolve } from "node:path"
+import { pathToFileURL } from "node:url"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
@@ -8,6 +10,14 @@ const nodeRequire = createRequire(import.meta.url)
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+
+type PdfParseCtor = {
+  new (options: { data: Uint8Array | Buffer }): {
+    getText: () => Promise<{ text?: string }>
+    destroy: () => Promise<void>
+  }
+  setWorker: (workerSrc?: string) => string
+}
 
 type BackendErrorPayload = {
   error?: unknown
@@ -21,6 +31,8 @@ type BackendIngestResponse = BackendErrorPayload & {
   chunks?: number
   source_type?: string
 }
+
+let pdfWorkerConfigured = false
 
 function extractErrorText(value: unknown): string | null {
   if (typeof value === "string") {
@@ -70,11 +82,12 @@ async function parseBackendError(response: Response): Promise<string> {
 
 async function extractPdfText(file: File): Promise<string> {
   // Force Node/CJS loading path to avoid Next ESM bundling issues with pdfjs-dist.
-  const { PDFParse } = nodeRequire("pdf-parse") as {
-    PDFParse: new (options: { data: Uint8Array | Buffer }) => {
-      getText: () => Promise<{ text?: string }>
-      destroy: () => Promise<void>
-    }
+  const { PDFParse } = nodeRequire("pdf-parse") as { PDFParse: PdfParseCtor }
+  if (!pdfWorkerConfigured) {
+    const cjsEntry = nodeRequire.resolve("pdf-parse")
+    const workerPath = resolve(dirname(cjsEntry), "..", "web", "pdf.worker.mjs")
+    PDFParse.setWorker(pathToFileURL(workerPath).href)
+    pdfWorkerConfigured = true
   }
   const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
   try {
