@@ -136,11 +136,20 @@ def _ensure_admin_access(
         )
 
     normalized_roles = {role.strip().lower() for role in principal.roles if isinstance(role, str)}
-    if "admin" not in normalized_roles:
+    normalized_org_role = (principal.org_role or "").strip().lower()
+    if normalized_org_role.startswith("org:"):
+        normalized_org_role = normalized_org_role.removeprefix("org:")
+
+    is_admin = "admin" in normalized_roles or normalized_org_role in {"admin", "owner"}
+    if not is_admin:
         raise ApiError(
             status_code=403,
             code="FORBIDDEN",
             message="Admin role required",
+            details={
+                "roles": sorted(normalized_roles),
+                "orgRole": normalized_org_role or None,
+            },
         )
     return principal
 
