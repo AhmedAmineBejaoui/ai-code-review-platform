@@ -4,7 +4,7 @@ import asyncio
 import json
 import logging
 import uuid
-from typing import Any
+from typing import Any, Literal
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -72,6 +72,7 @@ class ContextByQueryRequest(BaseModel):
     query: str = Field(min_length=1)
     changed_files: list[str] = Field(default_factory=list, max_length=200)
     limit: int = Field(default=8, ge=1, le=30)
+    route_hint: Literal["auto", "repo_query", "policy_query", "document_query"] = "auto"
 
 
 class RepoBootstrapContextRequest(BaseModel):
@@ -498,6 +499,7 @@ async def get_context_for_query(
             query=payload.query,
             changed_files=payload.changed_files or None,
             limit=payload.limit,
+            route_hint=payload.route_hint,
         )
         return ContextResponse(
             repo_id=payload.repo_id,
@@ -648,46 +650,27 @@ async def search_documents(
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     vector_store: QdrantClient = Depends(get_qdrant_client),
 ) -> DocumentSearchResponse:
-    if not vector_store.enabled:
-        return DocumentSearchResponse(repo_id=payload.repo_id, citations=[])
-
-    collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
-    await vector_store.ensure_collection(collection_name=collection_name)
-
-    query_vector = hash_embed_text(payload.query, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE)
-    filter_payload: dict[str, Any] = {"repo_id": payload.repo_id, "type": "kb_document_chunk"}
-    if payload.source_type:
-        filter_payload["source_type"] = payload.source_type
-
-    hits = await vector_store.search(
-        collection_name=collection_name,
-        query_vector=query_vector,
-        limit=max(payload.limit * 3, payload.limit),
-        filter_payload=filter_payload,
+    retriever = RepoContextRetriever(vector_store=vector_store)
+    chunks = await retriever.retrieve_document_chunks(
+        repo_id=payload.repo_id,
+        query=payload.query,
+        source_type=payload.source_type,
+        tags=payload.tags,
+        limit=payload.limit,
     )
 
-    wanted_tags = {tag.strip().lower() for tag in payload.tags if tag.strip()}
-    citations: list[CitationResponse] = []
-    for hit in hits:
-        payload_hit = getattr(hit, "payload", None) or {}
-        hit_tags = {str(item).strip().lower() for item in (payload_hit.get("tags") or []) if str(item).strip()}
-        if wanted_tags and not wanted_tags.intersection(hit_tags):
-            continue
-
-        citations.append(
-            CitationResponse(
-                doc_id=str(payload_hit.get("doc_id") or ""),
-                title=str(payload_hit.get("title") or "Document"),
-                source_type=str(payload_hit.get("source_type") or "unknown"),
-                excerpt=str(payload_hit.get("content") or ""),
-                score=float(getattr(hit, "score", 0.0) or 0.0),
-                path_or_url=(str(payload_hit.get("path_or_url")) if payload_hit.get("path_or_url") else None),
-                chunk_index=int(payload_hit.get("chunk_index") or 0),
-            )
+    citations = [
+        CitationResponse(
+            doc_id=f"{payload.repo_id}:{item.path}:{item.chunk_index}",
+            title=item.path.rsplit("/", maxsplit=1)[-1] if "/" in item.path else item.path,
+            source_type=item.source_type or item.file_type or "unknown",
+            excerpt=item.content,
+            score=item.score,
+            path_or_url=item.path,
+            chunk_index=item.chunk_index,
         )
-        if len(citations) >= payload.limit:
-            break
-
+        for item in chunks
+    ]
     return DocumentSearchResponse(repo_id=payload.repo_id, citations=citations)
 
 
