@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server"
-import { PDFParse } from "pdf-parse"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
@@ -68,6 +67,7 @@ async function parseBackendError(response: Response): Promise<string> {
 }
 
 async function extractPdfText(file: File): Promise<string> {
+  const { PDFParse } = await import("pdf-parse")
   const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
   try {
     const result = await parser.getText()
