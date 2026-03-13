@@ -1,24 +1,19 @@
 import { NextResponse } from "next/server"
-import { createRequire } from "node:module"
+import { execFile } from "node:child_process"
 import { existsSync } from "node:fs"
-import { join } from "node:path"
-import { pathToFileURL } from "node:url"
+import { mkdtemp, rm, writeFile } from "node:fs/promises"
+import { tmpdir } from "node:os"
+import { basename, join } from "node:path"
+import { promisify } from "node:util"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
 export const runtime = "nodejs"
-const nodeRequire = createRequire(import.meta.url)
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 
-type PdfParseCtor = {
-  new (options: { data: Uint8Array | Buffer }): {
-    getText: () => Promise<{ text?: string }>
-    destroy: () => Promise<void>
-  }
-  setWorker: (workerSrc?: string) => string
-}
+const execFileAsync = promisify(execFile)
 
 type BackendErrorPayload = {
   error?: unknown
@@ -32,6 +27,18 @@ type BackendIngestResponse = BackendErrorPayload & {
   chunks?: number
   source_type?: string
 }
+
+type PdfScriptSuccess = {
+  ok: true
+  text: string
+}
+
+type PdfScriptFailure = {
+  ok: false
+  error: string
+}
+
+type PdfScriptResponse = PdfScriptSuccess | PdfScriptFailure
 
 function extractErrorText(value: unknown): string | null {
   if (typeof value === "string") {
@@ -79,16 +86,65 @@ async function parseBackendError(response: Response): Promise<string> {
   }
 }
 
-async function extractPdfText(file: File): Promise<string> {
-  // Use Node/CJS loading path and pin worker to real filesystem path (avoid virtual "(rsc)" paths).
-  const { PDFParse } = nodeRequire("pdf-parse") as { PDFParse: PdfParseCtor }
-  configurePdfWorker(PDFParse)
-  const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
+function resolvePdfExtractorScript(): string {
+  const scriptCandidates = [
+    join(process.cwd(), "scripts", "extract-pdf-text.cjs"),
+    join(process.cwd(), "apps", "dashboard", "scripts", "extract-pdf-text.cjs"),
+  ]
+  const scriptPath = scriptCandidates.find((candidate) => existsSync(candidate))
+  if (!scriptPath) {
+    throw new Error("PDF extractor script is missing.")
+  }
+  return scriptPath
+}
+
+function parsePdfScriptOutput(stdout: string, stderr: string): PdfScriptResponse {
+  const raw = stdout.trim() || stderr.trim()
+  if (!raw) {
+    return { ok: false, error: "PDF extractor returned no output." }
+  }
   try {
-    const result = await parser.getText()
-    return (result.text || "").trim()
+    const parsed = JSON.parse(raw) as Partial<PdfScriptResponse>
+    if (parsed.ok === true) {
+      return { ok: true, text: typeof parsed.text === "string" ? parsed.text : "" }
+    }
+    return {
+      ok: false,
+      error: extractErrorText(parsed.error) ?? "PDF extractor returned an invalid error payload.",
+    }
+  } catch {
+    return { ok: false, error: raw }
+  }
+}
+
+async function extractPdfText(file: File): Promise<string> {
+  const tempDir = await mkdtemp(join(tmpdir(), "ai-code-review-pdf-"))
+  const tempFilePath = join(tempDir, basename(file.name || "upload.pdf"))
+
+  try {
+    await writeFile(tempFilePath, Buffer.from(await file.arrayBuffer()))
+
+    const { stdout, stderr } = await execFileAsync(process.execPath, [resolvePdfExtractorScript(), tempFilePath], {
+      maxBuffer: 32 * 1024 * 1024,
+    })
+    const payload = parsePdfScriptOutput(stdout, stderr)
+    if (!payload.ok) {
+      throw new Error(payload.error)
+    }
+    return payload.text.trim()
+  } catch (error) {
+    const execError = error as {
+      stdout?: string | Buffer
+      stderr?: string | Buffer
+      message?: string
+    }
+    const payload = parsePdfScriptOutput(String(execError.stdout ?? ""), String(execError.stderr ?? ""))
+    if (!payload.ok) {
+      throw new Error(payload.error)
+    }
+    throw new Error(errorMessage(execError.message, "PDF extractor failed."))
   } finally {
-    await parser.destroy()
+    await rm(tempDir, { recursive: true, force: true })
   }
 }
 
@@ -198,21 +254,5 @@ export async function POST(request: Request) {
       { error: `Unhandled PDF import error: ${errorMessage(error, "Unknown server error")}` },
       { status: 500 },
     )
-  }
-}
-let pdfWorkerConfigured = false
-
-function configurePdfWorker(PDFParse: PdfParseCtor): void {
-  if (pdfWorkerConfigured) {
-    return
-  }
-  const workerCandidates = [
-    join(process.cwd(), "node_modules", "pdf-parse", "dist", "pdf-parse", "web", "pdf.worker.mjs"),
-    join(process.cwd(), "apps", "dashboard", "node_modules", "pdf-parse", "dist", "pdf-parse", "web", "pdf.worker.mjs"),
-  ]
-  const workerPath = workerCandidates.find((candidate) => existsSync(candidate))
-  if (workerPath) {
-    PDFParse.setWorker(pathToFileURL(workerPath).href)
-    pdfWorkerConfigured = true
   }
 }
