@@ -661,8 +661,8 @@ async def search_documents(
 
     citations = [
         CitationResponse(
-            doc_id=f"{payload.repo_id}:{item.path}:{item.chunk_index}",
-            title=item.path.rsplit("/", maxsplit=1)[-1] if "/" in item.path else item.path,
+            doc_id=item.document_id or f"{payload.repo_id}:{item.path}:{item.chunk_index}",
+            title=item.title or (item.path.rsplit("/", maxsplit=1)[-1] if "/" in item.path else item.path),
             source_type=item.source_type or item.file_type or "unknown",
             excerpt=item.content,
             score=item.score,

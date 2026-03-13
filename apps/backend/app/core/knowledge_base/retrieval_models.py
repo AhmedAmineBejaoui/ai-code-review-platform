@@ -29,6 +29,8 @@ class RetrievedContextChunk:
     source: str = "semantic"
     source_type: str | None = None
     tags: tuple[str, ...] = ()
+    document_id: str | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True)

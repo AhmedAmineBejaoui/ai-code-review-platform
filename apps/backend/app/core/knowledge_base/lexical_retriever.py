@@ -80,6 +80,8 @@ class LexicalRetriever:
                 source="lexical_document",
                 source_type=row.source_type,
                 tags=tuple(row.tags),
+                document_id=row.doc_id,
+                title=row.title,
             )
             candidates.append(RetrievalCandidate(chunk=chunk, channel="lexical_document", raw_score=score, score=score))
         return candidates

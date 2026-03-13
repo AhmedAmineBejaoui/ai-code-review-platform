@@ -250,7 +250,12 @@ class RepoContextRetriever:
         tags: list[str] | None = None,
         limit: int = 8,
     ) -> list[RetrievedContextChunk]:
-        route = QueryRoute.POLICY_QUERY if tags and {tag.lower() for tag in tags}.intersection({"policy", "security", "compliance"}) else QueryRoute.DOCUMENT_QUERY
+        policy_tags = {tag.lower() for tag in (tags or []) if isinstance(tag, str)}
+        route = (
+            QueryRoute.POLICY_QUERY
+            if source_type == "policy" or policy_tags.intersection({"policy", "security", "compliance"})
+            else QueryRoute.DOCUMENT_QUERY
+        )
         candidates = [
             *self._lexical.retrieve_documents(
                 repo_id=repo_id,
@@ -444,6 +449,8 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
                 source=source,
                 source_type=_as_optional_str(payload.get("source_type")),
                 tags=normalized_tags,
+                document_id=_as_optional_str(payload.get("doc_id")),
+                title=_as_optional_str(payload.get("title")),
             )
         )
     return chunks

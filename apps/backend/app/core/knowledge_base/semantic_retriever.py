@@ -105,6 +105,8 @@ def _hits_to_candidates(hits: list[Any], *, source: str) -> list[RetrievalCandid
             source=source,
             source_type=str(payload.get("source_type")) if payload.get("source_type") else None,
             tags=normalized_tags,
+            document_id=str(payload.get("doc_id")) if payload.get("doc_id") else None,
+            title=str(payload.get("title")) if payload.get("title") else None,
         )
         candidates.append(RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score))
     return candidates
