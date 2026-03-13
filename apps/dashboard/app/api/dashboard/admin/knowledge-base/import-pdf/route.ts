@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server"
+import { createRequire } from "node:module"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
 export const runtime = "nodejs"
+const nodeRequire = createRequire(import.meta.url)
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -67,7 +69,13 @@ async function parseBackendError(response: Response): Promise<string> {
 }
 
 async function extractPdfText(file: File): Promise<string> {
-  const { PDFParse } = await import("pdf-parse")
+  // Force Node/CJS loading path to avoid Next ESM bundling issues with pdfjs-dist.
+  const { PDFParse } = nodeRequire("pdf-parse") as {
+    PDFParse: new (options: { data: Uint8Array | Buffer }) => {
+      getText: () => Promise<{ text?: string }>
+      destroy: () => Promise<void>
+    }
+  }
   const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
   try {
     const result = await parser.getText()
