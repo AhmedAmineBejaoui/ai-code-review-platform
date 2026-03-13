@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-import logging
-from typing import Any
 import asyncio
+import json
+import logging
+import uuid
+from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel, ConfigDict, Field
@@ -10,13 +12,16 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.deps import get_qdrant_client
 from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
+from app.data.database import get_engine
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
 from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.settings import settings
+from app.core.knowledge_base.embeddings import hash_embed_text
+from sqlalchemy import text
 from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboarding
 
 logger = logging.getLogger(__name__)
@@ -157,6 +162,123 @@ class RepoProfileListItemResponse(BaseModel):
 
 class RepoProfileListResponse(BaseModel):
     items: list[RepoProfileListItemResponse]
+
+
+class DocumentIngestRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    repo_id: str = Field(min_length=1, max_length=255)
+    title: str = Field(min_length=1, max_length=500)
+    source_type: str = Field(default="markdown", min_length=1, max_length=64)
+    path_or_url: str | None = Field(default=None, max_length=4096)
+    content: str = Field(min_length=1, max_length=2_000_000)
+    tags: list[str] = Field(default_factory=list, max_length=64)
+    doc_version: int = Field(default=1, ge=1, le=10_000)
+
+
+class DocumentIngestResponse(BaseModel):
+    doc_id: str
+    repo_id: str
+    title: str
+    chunks: int
+    source_type: str
+
+
+class DocumentSearchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    repo_id: str = Field(min_length=1, max_length=255)
+    query: str = Field(min_length=1, max_length=4000)
+    source_type: str | None = Field(default=None, max_length=64)
+    tags: list[str] = Field(default_factory=list, max_length=32)
+    limit: int = Field(default=8, ge=1, le=30)
+
+
+class CitationResponse(BaseModel):
+    doc_id: str
+    title: str
+    source_type: str
+    excerpt: str
+    score: float
+    path_or_url: str | None = None
+    chunk_index: int
+
+
+class DocumentSearchResponse(BaseModel):
+    repo_id: str
+    citations: list[CitationResponse]
+
+
+def _chunk_text(content: str, *, chunk_size: int = 2400, overlap: int = 250) -> list[str]:
+    clean = content.strip()
+    if not clean:
+        return []
+
+    chunks: list[str] = []
+    start = 0
+    while start < len(clean):
+        end = min(len(clean), start + chunk_size)
+        part = clean[start:end].strip()
+        if part:
+            chunks.append(part)
+        if end >= len(clean):
+            break
+        start = max(0, end - overlap)
+    return chunks
+
+
+def _insert_kb_document(
+    *,
+    doc_id: str,
+    title: str,
+    source_type: str,
+    path_or_url: str | None,
+    tags: list[str],
+    doc_version: int,
+    chunks: list[str],
+) -> None:
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO kb_documents (id, title, source_type, path_or_url, tags_json, doc_version)
+                VALUES (:id, :title, :source_type, :path_or_url, CAST(:tags_json AS jsonb), :doc_version)
+                ON CONFLICT (id) DO UPDATE
+                SET title = EXCLUDED.title,
+                    source_type = EXCLUDED.source_type,
+                    path_or_url = EXCLUDED.path_or_url,
+                    tags_json = EXCLUDED.tags_json,
+                    doc_version = EXCLUDED.doc_version
+                """
+            ),
+            {
+                "id": doc_id,
+                "title": title,
+                "source_type": source_type,
+                "path_or_url": path_or_url,
+                "tags_json": json.dumps({"tags": tags}),
+                "doc_version": doc_version,
+            },
+        )
+        conn.execute(text("DELETE FROM kb_chunks WHERE doc_id = :doc_id"), {"doc_id": doc_id})
+        for index, chunk in enumerate(chunks):
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO kb_chunks (id, doc_id, chunk_index, content, token_count, metadata_json)
+                    VALUES (:id, :doc_id, :chunk_index, :content, :token_count, CAST(:metadata_json AS jsonb))
+                    """
+                ),
+                {
+                    "id": f"kbc_{uuid.uuid4().hex}",
+                    "doc_id": doc_id,
+                    "chunk_index": index,
+                    "content": chunk,
+                    "token_count": max(1, len(chunk) // 4),
+                    "metadata_json": json.dumps({}),
+                },
+            )
 
 
 def _map_index_result(result: RepoIndexResult) -> RepoIndexResponse:
@@ -392,6 +514,110 @@ async def get_bootstrap_context_for_repo(
         )
     except Exception as exc:  # noqa: BLE001
         raise _to_api_error(exc) from exc
+
+
+@router.post("/ingest", response_model=DocumentIngestResponse)
+async def ingest_document(
+    payload: DocumentIngestRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+    vector_store: QdrantClient = Depends(get_qdrant_client),
+) -> DocumentIngestResponse:
+    chunks = _chunk_text(payload.content)
+    if not chunks:
+        raise ApiError(status_code=400, code="INVALID_REQUEST", message="Document content is empty after cleaning")
+
+    doc_id = f"doc_{uuid.uuid4().hex}"
+    await asyncio.to_thread(
+        _insert_kb_document,
+        doc_id=doc_id,
+        title=payload.title,
+        source_type=payload.source_type,
+        path_or_url=payload.path_or_url,
+        tags=payload.tags,
+        doc_version=payload.doc_version,
+        chunks=chunks,
+    )
+
+    if vector_store.enabled:
+        collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
+        await vector_store.ensure_collection(collection_name=collection_name)
+        points: list[QdrantPoint] = []
+        for index, chunk in enumerate(chunks):
+            points.append(
+                QdrantPoint(
+                    id=f"{doc_id}:{index}",
+                    vector=hash_embed_text(chunk, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
+                    payload={
+                        "type": "kb_document_chunk",
+                        "repo_id": payload.repo_id,
+                        "doc_id": doc_id,
+                        "title": payload.title,
+                        "source_type": payload.source_type,
+                        "path_or_url": payload.path_or_url,
+                        "chunk_index": index,
+                        "content": chunk,
+                        "tags": payload.tags,
+                    },
+                )
+            )
+        await vector_store.upsert_points(collection_name=collection_name, points=points)
+
+    return DocumentIngestResponse(
+        doc_id=doc_id,
+        repo_id=payload.repo_id,
+        title=payload.title,
+        chunks=len(chunks),
+        source_type=payload.source_type,
+    )
+
+
+@router.post("/search", response_model=DocumentSearchResponse)
+async def search_documents(
+    payload: DocumentSearchRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+    vector_store: QdrantClient = Depends(get_qdrant_client),
+) -> DocumentSearchResponse:
+    if not vector_store.enabled:
+        return DocumentSearchResponse(repo_id=payload.repo_id, citations=[])
+
+    collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
+    await vector_store.ensure_collection(collection_name=collection_name)
+
+    query_vector = hash_embed_text(payload.query, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE)
+    filter_payload: dict[str, Any] = {"repo_id": payload.repo_id, "type": "kb_document_chunk"}
+    if payload.source_type:
+        filter_payload["source_type"] = payload.source_type
+
+    hits = await vector_store.search(
+        collection_name=collection_name,
+        query_vector=query_vector,
+        limit=max(payload.limit * 3, payload.limit),
+        filter_payload=filter_payload,
+    )
+
+    wanted_tags = {tag.strip().lower() for tag in payload.tags if tag.strip()}
+    citations: list[CitationResponse] = []
+    for hit in hits:
+        payload_hit = getattr(hit, "payload", None) or {}
+        hit_tags = {str(item).strip().lower() for item in (payload_hit.get("tags") or []) if str(item).strip()}
+        if wanted_tags and not wanted_tags.intersection(hit_tags):
+            continue
+
+        citations.append(
+            CitationResponse(
+                doc_id=str(payload_hit.get("doc_id") or ""),
+                title=str(payload_hit.get("title") or "Document"),
+                source_type=str(payload_hit.get("source_type") or "unknown"),
+                excerpt=str(payload_hit.get("content") or ""),
+                score=float(getattr(hit, "score", 0.0) or 0.0),
+                path_or_url=(str(payload_hit.get("path_or_url")) if payload_hit.get("path_or_url") else None),
+                chunk_index=int(payload_hit.get("chunk_index") or 0),
+            )
+        )
+        if len(citations) >= payload.limit:
+            break
+
+    return DocumentSearchResponse(repo_id=payload.repo_id, citations=citations)
 
 
 @router.post("/automation/onboard", response_model=AutomationTaskResponse)
