@@ -40,6 +40,11 @@ type PdfScriptFailure = {
 
 type PdfScriptResponse = PdfScriptSuccess | PdfScriptFailure
 
+type UploadedPdfFile = {
+  name: string
+  arrayBuffer: () => Promise<ArrayBuffer>
+}
+
 function extractErrorText(value: unknown): string | null {
   if (typeof value === "string") {
     const normalized = value.trim()
@@ -84,6 +89,14 @@ async function parseBackendError(response: Response): Promise<string> {
   } catch {
     return rawBody
   }
+}
+
+function isUploadedPdfFile(value: FormDataEntryValue): value is UploadedPdfFile {
+  if (!value || typeof value !== "object") {
+    return false
+  }
+  const candidate = value as Record<string, unknown>
+  return typeof candidate.name === "string" && typeof candidate.arrayBuffer === "function"
 }
 
 function resolvePdfExtractorScript(): string {
@@ -167,7 +180,7 @@ export async function POST(request: Request) {
     const notes = String(formData.get("notes") ?? "").trim()
     const files = formData
       .getAll("files")
-      .filter((item): item is File => item instanceof File)
+      .filter(isUploadedPdfFile)
 
     if (!repoId) {
       return NextResponse.json({ error: "repoId is required" }, { status: 400 })
@@ -249,7 +262,10 @@ export async function POST(request: Request) {
       { status: 200 },
     )
   } catch (error) {
-    console.error("Unhandled PDF import route failure", error)
+    console.error("Unhandled PDF import route failure", {
+      error: errorMessage(error, "Unknown server error"),
+      stack: error instanceof Error ? error.stack : undefined,
+    })
     return NextResponse.json(
       { error: `Unhandled PDF import error: ${errorMessage(error, "Unknown server error")}` },
       { status: 500 },
