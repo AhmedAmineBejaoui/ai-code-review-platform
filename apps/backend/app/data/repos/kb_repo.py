@@ -33,7 +33,7 @@ class KBRepo:
     def search_document_chunks(
         self,
         *,
-        repo_id: str,
+        repo_id: str | None,
         query: str,
         limit: int = 8,
         source_type: str | None = None,
@@ -67,7 +67,7 @@ class KBRepo:
                                 ) AS lexical_score
                             FROM kb_documents d
                             JOIN kb_chunks c ON c.doc_id = d.id
-                            WHERE COALESCE(d.tags_json->>'repo_id', '') = :repo_id
+                            WHERE (:repo_id IS NULL OR COALESCE(d.tags_json->>'repo_id', '') = :repo_id)
                               AND (:source_type IS NULL OR d.source_type = :source_type)
                               AND to_tsvector('simple', COALESCE(c.content, c.text)) @@ plainto_tsquery('simple', :query)
                             ORDER BY lexical_score DESC, c.chunk_index ASC
@@ -94,6 +94,22 @@ class KBRepo:
             if len(results) >= safe_limit:
                 break
         return results
+
+    def search_global_document_chunks(
+        self,
+        *,
+        query: str,
+        limit: int = 8,
+        source_type: str | None = None,
+        tags: Iterable[str] | None = None,
+    ) -> list[KBDocumentChunkRow]:
+        return self.search_document_chunks(
+            repo_id=None,
+            query=query,
+            limit=limit,
+            source_type=source_type,
+            tags=tags,
+        )
 
 
 def _row_to_document_chunk(row: RowMapping) -> KBDocumentChunkRow:

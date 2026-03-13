@@ -57,6 +57,28 @@ class SemanticRetriever:
             ]
         return candidates[:limit]
 
+    async def retrieve_global_documents(
+        self,
+        *,
+        query_text: str,
+        limit: int,
+        source_type: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[RetrievalCandidate]:
+        filter_payload: dict[str, Any] = {"type": "kb_document_chunk"}
+        if source_type:
+            filter_payload["source_type"] = source_type
+        hits = await self._search(query_text=query_text, limit=max(limit * 4, limit), filter_payload=filter_payload)
+        candidates = _hits_to_candidates(hits, source="semantic_global_document")
+        wanted_tags = {tag.strip().lower() for tag in (tags or []) if tag.strip()}
+        if wanted_tags:
+            candidates = [
+                candidate
+                for candidate in candidates
+                if wanted_tags.intersection({tag.lower() for tag in candidate.chunk.tags})
+            ]
+        return candidates[:limit]
+
     async def retrieve_repo_bootstrap(self, *, repo_id: str, query_text: str, limit: int) -> list[RetrievalCandidate]:
         hits = await self._search(
             query_text=query_text,

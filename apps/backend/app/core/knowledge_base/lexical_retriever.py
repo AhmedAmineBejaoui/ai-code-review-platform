@@ -85,3 +85,45 @@ class LexicalRetriever:
             )
             candidates.append(RetrievalCandidate(chunk=chunk, channel="lexical_document", raw_score=score, score=score))
         return candidates
+
+    def retrieve_global_documents(
+        self,
+        *,
+        query: str,
+        limit: int,
+        source_type: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[RetrievalCandidate]:
+        rows = self._kb_repo.search_global_document_chunks(
+            query=query,
+            limit=limit,
+            source_type=source_type,
+            tags=tags or [],
+        )
+        candidates: list[RetrievalCandidate] = []
+        for row in rows:
+            score = max(row.lexical_score, 0.1)
+            chunk = RetrievedContextChunk(
+                score=score,
+                path=row.path_or_url or row.title,
+                chunk_index=row.chunk_index,
+                language=row.source_type,
+                content=row.content,
+                token_count=row.token_count,
+                file_type=row.source_type,
+                chunk_type="document_chunk",
+                source="lexical_global_document",
+                source_type=row.source_type,
+                tags=tuple(row.tags),
+                document_id=row.doc_id,
+                title=row.title,
+            )
+            candidates.append(
+                RetrievalCandidate(
+                    chunk=chunk,
+                    channel="lexical_global_document",
+                    raw_score=score,
+                    score=score,
+                )
+            )
+        return candidates

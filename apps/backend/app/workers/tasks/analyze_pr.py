@@ -73,6 +73,19 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _kb_reference(item: Any) -> dict[str, Any]:
+    return {
+        "path": item.path,
+        "title": item.title,
+        "source": item.source,
+        "source_type": item.source_type,
+        "chunk_type": item.chunk_type,
+        "symbol_name": item.symbol_name,
+        "score": round(float(item.score), 4),
+        "tags": list(item.tags),
+    }
+
+
 def run_static_analysis_stage(
     parsed: Any,
     *,
@@ -161,56 +174,57 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         files_count, additions_total, deletions_total = repo.replace_parsed_diff(analysis_id, parsed)
 
         kb_context_preview: str | None = None
+        kb_context_references: list[dict[str, Any]] = []
         kb_context_chunks_count = 0
-        kb_retrieval_mode = "disabled"
-        if settings.QDRANT_ENABLED:
-            try:
-                qdrant_client = QdrantClient()
-                retriever = RepoContextRetriever(vector_store=qdrant_client)
-                repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
+        kb_retrieval_mode = "not_attempted"
+        try:
+            qdrant_client = QdrantClient()
+            retriever = RepoContextRetriever(vector_store=qdrant_client)
+            repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
 
-                if repo_path:
-                    ingestor = RepoContextIngestor(vector_store=qdrant_client)
-                    asyncio.run(
-                        ingestor.update_repo_incremental(
-                            repo_id=analysis.repo,
-                            repo_path=repo_path,
-                            base_ref=None,
-                            head_ref=analysis.commit_sha or "HEAD",
-                            source="analysis_pipeline",
-                        )
-                    )
-                    kb_retrieval_mode = "diff_with_incremental_update"
-                else:
-                    kb_retrieval_mode = "diff_retrieval_only"
-
-                kb_chunks, kb_profile = asyncio.run(
-                    retriever.retrieve_for_diff(
-                        repo_id=analysis.repo,
-                        diff_text=analysis.diff_raw,
-                        limit=12,
-                    )
-                )
-                kb_context_chunks_count = len(kb_chunks)
-                kb_context_preview = build_llm_context(kb_chunks)[:4000] if kb_chunks else None
-
-                if kb_profile and repo_path:
-                    existing_profile = RepoProfilesRepo().get_profile(analysis.repo)
-                    enriched_profile = dict(kb_profile)
-                    if existing_profile and isinstance(existing_profile.profile, dict):
-                        previous_overview = existing_profile.profile.get("llm_overview")
-                        if isinstance(previous_overview, dict):
-                            enriched_profile["llm_overview"] = previous_overview
-                    RepoProfilesRepo().upsert_profile(
+            if repo_path:
+                ingestor = RepoContextIngestor(vector_store=qdrant_client)
+                asyncio.run(
+                    ingestor.update_repo_incremental(
                         repo_id=analysis.repo,
                         repo_path=repo_path,
-                        indexed_commit=str(kb_profile.get("indexed_commit") or "") or None,
-                        default_branch=str(kb_profile.get("default_branch") or "") or None,
-                        profile=enriched_profile,
-                        overview_context=kb_context_preview,
+                        base_ref=None,
+                        head_ref=analysis.commit_sha or "HEAD",
+                        source="analysis_pipeline",
                     )
-            except Exception:
-                kb_retrieval_mode = "failed"
+                )
+                kb_retrieval_mode = "diff_with_incremental_update"
+            else:
+                kb_retrieval_mode = "diff_retrieval_only"
+
+            kb_chunks, kb_profile = asyncio.run(
+                retriever.retrieve_for_diff(
+                    repo_id=analysis.repo,
+                    diff_text=analysis.diff_raw,
+                    limit=12,
+                )
+            )
+            kb_context_chunks_count = len(kb_chunks)
+            kb_context_preview = build_llm_context(kb_chunks)[:6000] if kb_chunks else None
+            kb_context_references = [_kb_reference(item) for item in kb_chunks[:8]]
+
+            if kb_profile and repo_path:
+                existing_profile = RepoProfilesRepo().get_profile(analysis.repo)
+                enriched_profile = dict(kb_profile)
+                if existing_profile and isinstance(existing_profile.profile, dict):
+                    previous_overview = existing_profile.profile.get("llm_overview")
+                    if isinstance(previous_overview, dict):
+                        enriched_profile["llm_overview"] = previous_overview
+                RepoProfilesRepo().upsert_profile(
+                    repo_id=analysis.repo,
+                    repo_path=repo_path,
+                    indexed_commit=str(kb_profile.get("indexed_commit") or "") or None,
+                    default_branch=str(kb_profile.get("default_branch") or "") or None,
+                    profile=enriched_profile,
+                    overview_context=kb_context_preview,
+                )
+        except Exception:
+            kb_retrieval_mode = "failed"
 
         security_findings_count = 0
         scan_failed = False
@@ -438,6 +452,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 change_type=change_type,
                 diff_redacted=diff_redacted or "",
                 files_changed=files_changed,
+                retrieved_context=kb_context_preview,
             )
 
             summary_text = summary_output.summary
@@ -479,6 +494,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "mode": kb_retrieval_mode,
                 "context_chunks": kb_context_chunks_count,
                 "context_preview": kb_context_preview,
+                "used_in_summary": bool(kb_context_preview),
+                "references": kb_context_references,
             },
         }
         if scan_disabled:

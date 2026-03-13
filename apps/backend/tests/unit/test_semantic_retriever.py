@@ -76,3 +76,16 @@ async def test_semantic_retriever_filters_document_tags() -> None:
 
     assert len(candidates) == 1
     assert candidates[0].chunk.document_id == "doc_1"
+
+
+@pytest.mark.anyio
+async def test_semantic_retriever_maps_global_document_results() -> None:
+    retriever = SemanticRetriever(vector_store=_FakeVectorStore())  # type: ignore[arg-type]
+    candidates = await retriever.retrieve_global_documents(
+        query_text="security guardrails",
+        limit=4,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].chunk.document_id == "doc_1"
+    assert candidates[0].channel == "semantic_global_document"

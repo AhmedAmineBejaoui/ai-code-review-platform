@@ -37,18 +37,28 @@ class SummaryService:
         change_type: str | None,
         diff_redacted: str,
         files_changed: list[str],
+        retrieved_context: str | None = None,
     ) -> str:
         max_chars = 6000
         diff_excerpt = diff_redacted[:max_chars]
         files_txt = "\n".join(f"- {path}" for path in files_changed[:30]) if files_changed else "- none"
         change_type_value = change_type or "unknown"
         pr_number_value = pr_number if pr_number is not None else "N/A"
+        kb_context_section = ""
+        if isinstance(retrieved_context, str) and retrieved_context.strip():
+            kb_context_section = f"""
+
+knowledge_base_context:
+{retrieved_context[:4500]}
+""".rstrip()
 
         return f"""
 You are a senior software engineer. Your task: summarize a pull request.
 Rules:
 - Do NOT invent changes not present in the diff.
 - Be concise and clear.
+- Use the knowledge base context only as supporting reference for architecture, policies, naming, or domain conventions.
+- Do NOT claim that a KB snippet changed unless the diff shows it.
 - Output ONLY valid JSON (no markdown, no extra text).
 Schema:
 {{"summary":"string"}}
@@ -62,6 +72,7 @@ files_changed:
 
 diff_excerpt:
 {diff_excerpt}
+{kb_context_section}
 
 Return JSON now:
 """.strip()
@@ -141,6 +152,7 @@ Bad output:
         change_type: str | None,
         diff_redacted: str,
         files_changed: list[str],
+        retrieved_context: str | None = None,
     ) -> SummaryOutput:
         prompt = self._build_prompt(
             repo=repo,
@@ -148,6 +160,7 @@ Bad output:
             change_type=change_type,
             diff_redacted=diff_redacted,
             files_changed=files_changed,
+            retrieved_context=retrieved_context,
         )
         return self._generate_structured_output(
             prompt=prompt,

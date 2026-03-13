@@ -92,6 +92,7 @@ class RepoContextRetriever:
         route = self._router.route_query(query=query, route_hint=route_hint)
         changed_files_set = set(changed_files or [])
         candidates = []
+        global_document_limit = max(3, settings.KB_LEXICAL_TOP_K // 2)
 
         if route in {QueryRoute.REPO_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
             candidates.extend(
@@ -117,6 +118,18 @@ class RepoContextRetriever:
                     changed_files=changed_files_set or None,
                 )
             )
+            candidates.extend(
+                self._lexical.retrieve_global_documents(
+                    query=query,
+                    limit=global_document_limit,
+                )
+            )
+            candidates.extend(
+                await self._semantic.retrieve_global_documents(
+                    query_text=query,
+                    limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
+                )
+            )
 
         if route in {QueryRoute.POLICY_QUERY, QueryRoute.DOCUMENT_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
             desired_tags = ["policy", "security", "compliance"] if route == QueryRoute.POLICY_QUERY else []
@@ -133,6 +146,20 @@ class RepoContextRetriever:
                     repo_id=repo_id,
                     query_text=query,
                     limit=max(4, settings.KB_SEMANTIC_TOP_K // 2),
+                    tags=desired_tags or None,
+                )
+            )
+            candidates.extend(
+                self._lexical.retrieve_global_documents(
+                    query=query,
+                    limit=global_document_limit,
+                    tags=desired_tags or None,
+                )
+            )
+            candidates.extend(
+                await self._semantic.retrieve_global_documents(
+                    query_text=query,
+                    limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
                     tags=desired_tags or None,
                 )
             )
@@ -188,6 +215,7 @@ class RepoContextRetriever:
         changed_files_set = set(inferred_files)
         symbols = set(signals.symbols)
         lexical_query = _build_lexical_query_from_diff(signals)
+        global_document_limit = max(3, settings.KB_LEXICAL_TOP_K // 2)
 
         candidates = [
             *self._exact.retrieve_file_chunks(
@@ -217,6 +245,10 @@ class RepoContextRetriever:
                 limit=max(2, settings.KB_LEXICAL_TOP_K // 3),
                 tags=["policy", "security", "compliance"],
             ),
+            *self._lexical.retrieve_global_documents(
+                query=lexical_query,
+                limit=global_document_limit,
+            ),
             *(await self._semantic.retrieve_code(
                 repo_id=repo_id,
                 query_text=signals.semantic_query,
@@ -228,6 +260,10 @@ class RepoContextRetriever:
                 query_text=signals.semantic_query,
                 limit=max(2, settings.KB_SEMANTIC_TOP_K // 3),
                 tags=["policy", "security", "compliance"],
+            )),
+            *(await self._semantic.retrieve_global_documents(
+                query_text=signals.semantic_query,
+                limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
             )),
         ]
 

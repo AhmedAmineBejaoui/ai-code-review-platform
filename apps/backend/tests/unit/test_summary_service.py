@@ -10,9 +10,10 @@ class _FakeLLM:
     def __init__(self, responses: list[str]) -> None:
         self._responses = responses
         self._index = 0
+        self.prompts: list[str] = []
 
     def generate(self, prompt: str):  # noqa: ANN001
-        _ = prompt
+        self.prompts.append(prompt)
         response = self._responses[min(self._index, len(self._responses) - 1)]
         self._index += 1
 
@@ -40,13 +41,14 @@ def test_summary_schema_rejects_too_short() -> None:
 
 
 def test_generate_summary_with_repair() -> None:
+    llm = _FakeLLM(
+        [
+            "not-json",
+            '{"summary":"This PR improves auth validation and updates endpoint guards to reduce runtime failures."}',
+        ]
+    )
     service = SummaryService(
-        llm_client=_FakeLLM(
-            [
-                "not-json",
-                '{"summary":"This PR improves auth validation and updates endpoint guards to reduce runtime failures."}',
-            ]
-        )
+        llm_client=llm
     )
 
     out = service.generate_summary(
@@ -57,6 +59,23 @@ def test_generate_summary_with_repair() -> None:
         files_changed=["app/auth.py"],
     )
     assert "improves auth validation" in out.summary
+
+
+def test_generate_summary_includes_knowledge_base_context_when_available() -> None:
+    llm = _FakeLLM(['{"summary":"This PR aligns with the documented authentication guardrails."}'])
+    service = SummaryService(llm_client=llm)
+
+    service.generate_summary(
+        repo="acme/repo",
+        pr_number=7,
+        change_type="feature",
+        diff_redacted="diff --git a/app/auth.py b/app/auth.py\n+def enforce_guardrail(): pass",
+        files_changed=["app/auth.py"],
+        retrieved_context="[FILE: docs/security.md] | type=document_chunk\nAuthentication guardrail: require MFA for admin changes.",
+    )
+
+    assert "knowledge_base_context:" in llm.prompts[0]
+    assert "Authentication guardrail" in llm.prompts[0]
 
 
 def test_repo_overview_schema() -> None:

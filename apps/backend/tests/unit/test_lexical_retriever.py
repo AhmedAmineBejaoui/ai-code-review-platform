@@ -67,6 +67,28 @@ class _FakeKBRepo:
             )
         ][:limit]
 
+    def search_global_document_chunks(
+        self,
+        *,
+        query: str,
+        limit: int = 8,
+        source_type: str | None = None,
+        tags: list[str] | None = None,
+    ) -> list[KBDocumentChunkRow]:  # noqa: ARG002
+        return [
+            KBDocumentChunkRow(
+                doc_id="doc_global",
+                title="Architecture Guide",
+                source_type=source_type or "pdf",
+                path_or_url="global/architecture.pdf",
+                chunk_index=1,
+                content="Use repository context and security guardrails during reviews.",
+                token_count=9,
+                tags=tags or ["pdf", "dashboard_upload"],
+                lexical_score=0.77,
+            )
+        ][:limit]
+
 
 def test_lexical_retriever_filters_code_by_changed_files() -> None:
     retriever = LexicalRetriever(code_repo=_FakeCodeRepo(), kb_repo=_FakeKBRepo())  # type: ignore[arg-type]
@@ -94,3 +116,15 @@ def test_lexical_retriever_maps_document_results() -> None:
     assert len(candidates) == 1
     assert candidates[0].chunk.source_type == "policy"
     assert candidates[0].chunk.document_id == "doc_1"
+
+
+def test_lexical_retriever_maps_global_document_results() -> None:
+    retriever = LexicalRetriever(code_repo=_FakeCodeRepo(), kb_repo=_FakeKBRepo())  # type: ignore[arg-type]
+    candidates = retriever.retrieve_global_documents(
+        query="architecture security guardrails",
+        limit=4,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].chunk.document_id == "doc_global"
+    assert candidates[0].channel == "lexical_global_document"
