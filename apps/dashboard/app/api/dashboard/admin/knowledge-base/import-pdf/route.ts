@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server"
 import { createRequire } from "node:module"
+import { existsSync } from "node:fs"
+import { join } from "node:path"
+import { pathToFileURL } from "node:url"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
@@ -10,10 +13,11 @@ const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 
 type PdfParseCtor = {
-  new (options: { data: Uint8Array | Buffer; disableWorker?: boolean }): {
+  new (options: { data: Uint8Array | Buffer }): {
     getText: () => Promise<{ text?: string }>
     destroy: () => Promise<void>
   }
+  setWorker: (workerSrc?: string) => string
 }
 
 type BackendErrorPayload = {
@@ -76,12 +80,10 @@ async function parseBackendError(response: Response): Promise<string> {
 }
 
 async function extractPdfText(file: File): Promise<string> {
-  // Use Node/CJS loading path and disable worker for server route stability under Next RSC bundling.
+  // Use Node/CJS loading path and pin worker to real filesystem path (avoid virtual "(rsc)" paths).
   const { PDFParse } = nodeRequire("pdf-parse") as { PDFParse: PdfParseCtor }
-  const parser = new PDFParse({
-    data: Buffer.from(await file.arrayBuffer()),
-    disableWorker: true,
-  })
+  configurePdfWorker(PDFParse)
+  const parser = new PDFParse({ data: Buffer.from(await file.arrayBuffer()) })
   try {
     const result = await parser.getText()
     return (result.text || "").trim()
@@ -196,5 +198,21 @@ export async function POST(request: Request) {
       { error: `Unhandled PDF import error: ${errorMessage(error, "Unknown server error")}` },
       { status: 500 },
     )
+  }
+}
+let pdfWorkerConfigured = false
+
+function configurePdfWorker(PDFParse: PdfParseCtor): void {
+  if (pdfWorkerConfigured) {
+    return
+  }
+  const workerCandidates = [
+    join(process.cwd(), "node_modules", "pdf-parse", "dist", "pdf-parse", "web", "pdf.worker.mjs"),
+    join(process.cwd(), "apps", "dashboard", "node_modules", "pdf-parse", "dist", "pdf-parse", "web", "pdf.worker.mjs"),
+  ]
+  const workerPath = workerCandidates.find((candidate) => existsSync(candidate))
+  if (workerPath) {
+    PDFParse.setWorker(pathToFileURL(workerPath).href)
+    pdfWorkerConfigured = true
   }
 }
