@@ -599,34 +599,42 @@ async def ingest_document(
     )
 
     if vector_store.enabled:
-        collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
-        await vector_store.ensure_collection(collection_name=collection_name)
-        points: list[QdrantPoint] = []
-        for index, chunk in enumerate(chunks):
-            token_count = max(1, len(chunk) // 4)
-            points.append(
-                QdrantPoint(
-                    id=f"{doc_id}:{index}",
-                    vector=hash_embed_text(chunk, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
-                    payload={
-                        "type": "kb_document_chunk",
-                        "repo_id": payload.repo_id,
-                        "doc_id": doc_id,
-                        "title": payload.title,
-                        "source_type": normalized_source_type,
-                        "path_or_url": payload.path_or_url,
-                        "path": payload.path_or_url or payload.title,
-                        "chunk_index": index,
-                        "content": chunk,
-                        "language": "text",
-                        "token_count": token_count,
-                        "file_type": normalized_source_type,
-                        "chunk_type": "document_chunk",
-                        "tags": normalized_tags,
-                    },
+        try:
+            collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
+            await vector_store.ensure_collection(collection_name=collection_name)
+            points: list[QdrantPoint] = []
+            for index, chunk in enumerate(chunks):
+                token_count = max(1, len(chunk) // 4)
+                points.append(
+                    QdrantPoint(
+                        id=f"{doc_id}:{index}",
+                        vector=hash_embed_text(chunk, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
+                        payload={
+                            "type": "kb_document_chunk",
+                            "repo_id": payload.repo_id,
+                            "doc_id": doc_id,
+                            "title": payload.title,
+                            "source_type": normalized_source_type,
+                            "path_or_url": payload.path_or_url,
+                            "path": payload.path_or_url or payload.title,
+                            "chunk_index": index,
+                            "content": chunk,
+                            "language": "text",
+                            "token_count": token_count,
+                            "file_type": normalized_source_type,
+                            "chunk_type": "document_chunk",
+                            "tags": normalized_tags,
+                        },
+                    )
                 )
+            await vector_store.upsert_points(collection_name=collection_name, points=points)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Skipping vector indexing for KB document %s in repo %s: %s",
+                doc_id,
+                payload.repo_id,
+                exc,
             )
-        await vector_store.upsert_points(collection_name=collection_name, points=points)
 
     repo_profiles = RepoProfilesRepo()
     existing_profile = await asyncio.to_thread(repo_profiles.get_profile, payload.repo_id)

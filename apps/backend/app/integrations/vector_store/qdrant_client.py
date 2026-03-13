@@ -41,6 +41,12 @@ class QdrantClient:
     def default_collection(self) -> str:
         return self._collection
 
+    def _disable(self, *, reason: str, exc: Exception) -> None:
+        if self._enabled:
+            logger.warning("Disabling Qdrant after %s failure: %s", reason, exc)
+        self._enabled = False
+        self._client = None
+
     def ensure_enabled(self) -> None:
         if not self._enabled:
             raise RuntimeError(
@@ -56,12 +62,14 @@ class QdrantClient:
                     url=self._url,
                     api_key=self._api_key,
                 )
-            except ImportError:
+            except Exception as exc:
                 logger.warning(
-                    "qdrant-client package not installed. "
-                    "Install it with: pip install qdrant-client"
+                    "qdrant-client unavailable or incompatible. "
+                    "Vector retrieval will be disabled. Details: %s",
+                    exc,
                 )
-                raise
+                self._disable(reason="client initialization", exc=exc)
+                raise RuntimeError("Qdrant client is unavailable in the current runtime.") from exc
         return self._client
 
     @staticmethod
@@ -69,7 +77,11 @@ class QdrantClient:
         if not filter_payload:
             return None
 
-        from qdrant_client.models import FieldCondition, Filter, MatchValue  # type: ignore[import]
+        try:
+            from qdrant_client.models import FieldCondition, Filter, MatchValue  # type: ignore[import]
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Qdrant filter models unavailable; skipping filter construction: %s", exc)
+            return None
 
         must = []
         for key, value in filter_payload.items():
@@ -77,39 +89,47 @@ class QdrantClient:
         return Filter(must=must)
 
     async def ensure_collection(self, *, collection_name: str, vector_size: int | None = None) -> None:
-        self.ensure_enabled()
-
-        from qdrant_client.models import Distance, VectorParams  # type: ignore[import]
-
-        target_size = vector_size or self._vector_size
-        client = self._get_client()
-
-        exists = await client.collection_exists(collection_name=collection_name)  # type: ignore[attr-defined]
-        if exists:
+        if not self._enabled:
             return
 
-        await client.create_collection(  # type: ignore[attr-defined]
-            collection_name=collection_name,
-            vectors_config=VectorParams(size=target_size, distance=Distance.COSINE),
-        )
+        try:
+            from qdrant_client.models import Distance, VectorParams  # type: ignore[import]
+
+            target_size = vector_size or self._vector_size
+            client = self._get_client()
+
+            exists = await client.collection_exists(collection_name=collection_name)  # type: ignore[attr-defined]
+            if exists:
+                return
+
+            await client.create_collection(  # type: ignore[attr-defined]
+                collection_name=collection_name,
+                vectors_config=VectorParams(size=target_size, distance=Distance.COSINE),
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"ensure_collection({collection_name})", exc=exc)
+            logger.warning("Qdrant ensure_collection failed; continuing without vectors: %s", exc)
 
     async def upsert_points(self, *, collection_name: str, points: list[QdrantPoint]) -> None:
-        self.ensure_enabled()
-        if not points:
+        if not self._enabled or not points:
             return
 
-        from qdrant_client.models import PointStruct  # type: ignore[import]
+        try:
+            from qdrant_client.models import PointStruct  # type: ignore[import]
 
-        client = self._get_client()
-        point_structs = [
-            PointStruct(id=point.id, vector=list(point.vector), payload=point.payload)
-            for point in points
-        ]
-        await client.upsert(  # type: ignore[attr-defined]
-            collection_name=collection_name,
-            points=point_structs,
-            wait=True,
-        )
+            client = self._get_client()
+            point_structs = [
+                PointStruct(id=point.id, vector=list(point.vector), payload=point.payload)
+                for point in points
+            ]
+            await client.upsert(  # type: ignore[attr-defined]
+                collection_name=collection_name,
+                points=point_structs,
+                wait=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"upsert_points({collection_name})", exc=exc)
+            logger.warning("Qdrant upsert failed; continuing without vectors: %s", exc)
 
     async def search(
         self,
@@ -123,17 +143,23 @@ class QdrantClient:
             await asyncio.sleep(0)
             return []
 
-        client = self._get_client()
-        query_filter = self._build_filter(filter_payload)
-        hits = await client.search(  # type: ignore[attr-defined]
-            collection_name=collection_name,
-            query_vector=list(query_vector),
-            query_filter=query_filter,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
-        return list(hits or [])
+        try:
+            client = self._get_client()
+            query_filter = self._build_filter(filter_payload)
+            hits = await client.search(  # type: ignore[attr-defined]
+                collection_name=collection_name,
+                query_vector=list(query_vector),
+                query_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return list(hits or [])
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"search({collection_name})", exc=exc)
+            logger.warning("Qdrant search failed; returning no vector hits: %s", exc)
+            await asyncio.sleep(0)
+            return []
 
     async def scroll(
         self,
@@ -146,31 +172,43 @@ class QdrantClient:
             await asyncio.sleep(0)
             return []
 
-        client = self._get_client()
-        query_filter = self._build_filter(filter_payload)
-        points, _next_page = await client.scroll(  # type: ignore[attr-defined]
-            collection_name=collection_name,
-            scroll_filter=query_filter,
-            limit=limit,
-            with_payload=True,
-            with_vectors=False,
-        )
-        return list(points or [])
+        try:
+            client = self._get_client()
+            query_filter = self._build_filter(filter_payload)
+            points, _next_page = await client.scroll(  # type: ignore[attr-defined]
+                collection_name=collection_name,
+                scroll_filter=query_filter,
+                limit=limit,
+                with_payload=True,
+                with_vectors=False,
+            )
+            return list(points or [])
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"scroll({collection_name})", exc=exc)
+            logger.warning("Qdrant scroll failed; returning no vector hits: %s", exc)
+            await asyncio.sleep(0)
+            return []
 
     async def delete_by_filter(self, *, collection_name: str, filter_payload: dict[str, Any]) -> None:
-        self.ensure_enabled()
-        query_filter = self._build_filter(filter_payload)
-        if query_filter is None:
+        if not self._enabled:
             return
 
-        from qdrant_client.models import FilterSelector  # type: ignore[import]
+        try:
+            query_filter = self._build_filter(filter_payload)
+            if query_filter is None:
+                return
 
-        client = self._get_client()
-        await client.delete(  # type: ignore[attr-defined]
-            collection_name=collection_name,
-            points_selector=FilterSelector(filter=query_filter),
-            wait=True,
-        )
+            from qdrant_client.models import FilterSelector  # type: ignore[import]
+
+            client = self._get_client()
+            await client.delete(  # type: ignore[attr-defined]
+                collection_name=collection_name,
+                points_selector=FilterSelector(filter=query_filter),
+                wait=True,
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"delete_by_filter({collection_name})", exc=exc)
+            logger.warning("Qdrant delete failed; continuing without vectors: %s", exc)
 
     async def search_related_rules(
         self, repo: str, diff_text: str, limit: int = 3
