@@ -17,7 +17,7 @@ export async function POST(request: Request) {
 
   return proxyBackendRequest({
     method: "POST",
-    path: "/v1/admin/knowledge-base/reindex",
+    path: "/v1/kb/reindex",
     token: authContext.token,
     userId: authContext.userId,
     body: payload,

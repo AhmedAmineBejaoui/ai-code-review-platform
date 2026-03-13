@@ -15,7 +15,7 @@ export async function DELETE(_request: Request, context: { params: { repoId: str
 
   return proxyBackendRequest({
     method: "DELETE",
-    path: `/v1/admin/knowledge-base/repos/${encodeURIComponent(repoId)}`,
+    path: `/v1/kb/repos/${encodeURIComponent(repoId)}`,
     token: authContext.token,
     userId: authContext.userId,
   })

@@ -6,7 +6,7 @@ import logging
 import uuid
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.deps import get_qdrant_client
@@ -163,6 +163,25 @@ class RepoProfileListItemResponse(BaseModel):
 
 class RepoProfileListResponse(BaseModel):
     items: list[RepoProfileListItemResponse]
+
+
+class KnowledgeBaseReindexRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    repoId: str = Field(min_length=1, max_length=255)
+    repoPath: str | None = Field(default=None, max_length=4096)
+
+
+class KnowledgeBaseReindexResponse(BaseModel):
+    repoId: str
+    repoPath: str
+    taskId: str
+    status: str = "QUEUED"
+
+
+class KnowledgeBaseDeleteResponse(BaseModel):
+    repoId: str
+    deleted: bool
 
 
 class DocumentIngestRequest(BaseModel):
@@ -369,6 +388,46 @@ def _map_chunk(item: RetrievedContextChunk) -> ContextChunkResponse:
     )
 
 
+def _resolve_repo_path_for_reindex(repo_id: str, repo_path: str | None) -> str:
+    normalized = (repo_path or "").strip()
+    if normalized:
+        return normalized
+
+    profile = RepoProfilesRepo().get_profile(repo_id)
+    candidate = str(profile.repo_path or "").strip() if profile else ""
+    if candidate:
+        return candidate
+
+    raise ApiError(
+        status_code=400,
+        code="MISSING_REPO_PATH",
+        message="repoPath is required because no existing profile path was found",
+        details={"repoId": repo_id},
+    )
+
+
+def _delete_repo_profile(repo_id: str) -> bool:
+    engine = get_engine()
+    with engine.begin() as conn:
+        existing = (
+            conn.execute(
+                text("SELECT repo_id FROM repo_profiles WHERE repo_id = :repo_id LIMIT 1"),
+                {"repo_id": repo_id},
+            )
+            .mappings()
+            .first()
+        )
+        if existing is None:
+            raise ApiError(
+                status_code=404,
+                code="REPO_PROFILE_NOT_FOUND",
+                message="Repo profile not found",
+                details={"repoId": repo_id},
+            )
+        conn.execute(text("DELETE FROM repo_profiles WHERE repo_id = :repo_id"), {"repo_id": repo_id})
+    return True
+
+
 def _to_api_error(exc: Exception) -> ApiError:
     if isinstance(exc, ValueError):
         return ApiError(status_code=400, code="INVALID_REQUEST", message=str(exc))
@@ -456,6 +515,29 @@ async def update_repo(
         raise _to_api_error(exc) from exc
 
 
+@router.post("/reindex", response_model=KnowledgeBaseReindexResponse)
+async def reindex_repo(
+    payload: KnowledgeBaseReindexRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+) -> KnowledgeBaseReindexResponse:
+    try:
+        resolved_repo_path = await asyncio.to_thread(_resolve_repo_path_for_reindex, payload.repoId, payload.repoPath)
+        async_result = run_repo_onboarding.apply_async(
+            args=[payload.repoId, resolved_repo_path, "dashboard_manual"],
+            queue=settings.ANALYSIS_QUEUE_NAME,
+        )
+        return KnowledgeBaseReindexResponse(
+            repoId=payload.repoId,
+            repoPath=resolved_repo_path,
+            taskId=str(async_result.id or ""),
+            status="QUEUED",
+        )
+    except ApiError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise _to_api_error(exc) from exc
+
+
 @router.get("/repos/{repo_id}/profile", response_model=RepoProfileResponse)
 async def get_repo_profile(
     repo_id: str,
@@ -472,6 +554,26 @@ async def get_repo_profile(
             sql_profile=sql_profile.profile if sql_profile else None,
             overview_context=sql_profile.overview_context if sql_profile else None,
         )
+    except Exception as exc:  # noqa: BLE001
+        raise _to_api_error(exc) from exc
+
+
+@router.delete("/repos/{repo_id}", response_model=KnowledgeBaseDeleteResponse)
+async def delete_repo(
+    repo_id: str = Path(min_length=1, max_length=255),
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+) -> KnowledgeBaseDeleteResponse:
+    try:
+        deleted = await asyncio.to_thread(_delete_repo_profile, repo_id)
+        if settings.QDRANT_ENABLED:
+            qdrant_client = QdrantClient()
+            await qdrant_client.delete_by_filter(
+                collection_name=settings.QDRANT_REPO_CONTEXT_COLLECTION,
+                filter_payload={"repo_id": repo_id},
+            )
+        return KnowledgeBaseDeleteResponse(repoId=repo_id, deleted=deleted)
+    except ApiError:
+        raise
     except Exception as exc:  # noqa: BLE001
         raise _to_api_error(exc) from exc
 
