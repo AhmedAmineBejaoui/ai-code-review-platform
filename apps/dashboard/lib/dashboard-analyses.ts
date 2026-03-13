@@ -17,7 +17,52 @@ type DashboardAnalysesResponse = {
   items?: DashboardAnalysisItem[]
 }
 
-export async function fetchDashboardAnalyses(): Promise<DashboardAnalysisItem[]> {
+const ANALYSES_CACHE_TTL_MS = 8_000
+
+let analysesCacheValue: DashboardAnalysisItem[] | null = null
+let analysesCacheExpiresAt = 0
+let analysesInFlight: Promise<DashboardAnalysisItem[]> | null = null
+
+function normalizeAnalysesPayload(payload: DashboardAnalysesResponse | null | undefined): DashboardAnalysisItem[] {
+  if (!payload || !Array.isArray(payload.items)) {
+    return []
+  }
+  return payload.items
+    .filter((item) => item && typeof item.id === "string" && typeof item.repo === "string")
+    .map((item) => ({
+      id: item.id,
+      repo: item.repo,
+      prLabel: typeof item.prLabel === "string" ? item.prLabel : "Commit",
+      commitSha: typeof item.commitSha === "string" ? item.commitSha : null,
+      author: typeof item.author === "string" ? item.author : "Unknown",
+      status: typeof item.status === "string" ? item.status : "QUEUED",
+      createdAt: typeof item.createdAt === "string" ? item.createdAt : "",
+      updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : "",
+      durationLabel: typeof item.durationLabel === "string" ? item.durationLabel : "-",
+      blockerCount: typeof item.blockerCount === "number" ? item.blockerCount : 0,
+      warnCount: typeof item.warnCount === "number" ? item.warnCount : 0,
+      infoCount: typeof item.infoCount === "number" ? item.infoCount : 0,
+    }))
+}
+
+export function hasActiveDashboardAnalysis(items: DashboardAnalysisItem[]): boolean {
+  return items.some((item) => {
+    const normalized = item.status.trim().toUpperCase()
+    return normalized === "RECEIVED" || normalized === "QUEUED" || normalized === "RUNNING"
+  })
+}
+
+export async function fetchDashboardAnalyses(options?: { force?: boolean }): Promise<DashboardAnalysisItem[]> {
+  const force = options?.force === true
+  const now = Date.now()
+  if (!force && analysesCacheValue && now < analysesCacheExpiresAt) {
+    return analysesCacheValue
+  }
+  if (!force && analysesInFlight) {
+    return analysesInFlight
+  }
+
+  const request = (async (): Promise<DashboardAnalysisItem[]> => {
   try {
     const response = await fetch("/api/dashboard/analyses", {
       method: "GET",
@@ -25,30 +70,23 @@ export async function fetchDashboardAnalyses(): Promise<DashboardAnalysisItem[]>
       headers: { Accept: "application/json" },
     })
     if (!response.ok) {
-      return []
+      analysesCacheValue = []
+      analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
+      return analysesCacheValue
     }
     const payload = (await response.json()) as DashboardAnalysesResponse
-    if (!payload || !Array.isArray(payload.items)) {
-      return []
-    }
-    return payload.items
-      .filter((item) => item && typeof item.id === "string" && typeof item.repo === "string")
-      .map((item) => ({
-        id: item.id,
-        repo: item.repo,
-        prLabel: typeof item.prLabel === "string" ? item.prLabel : "Commit",
-        commitSha: typeof item.commitSha === "string" ? item.commitSha : null,
-        author: typeof item.author === "string" ? item.author : "Unknown",
-        status: typeof item.status === "string" ? item.status : "QUEUED",
-        createdAt: typeof item.createdAt === "string" ? item.createdAt : "",
-        updatedAt: typeof item.updatedAt === "string" ? item.updatedAt : "",
-        durationLabel: typeof item.durationLabel === "string" ? item.durationLabel : "-",
-        blockerCount: typeof item.blockerCount === "number" ? item.blockerCount : 0,
-        warnCount: typeof item.warnCount === "number" ? item.warnCount : 0,
-        infoCount: typeof item.infoCount === "number" ? item.infoCount : 0,
-      }))
+    analysesCacheValue = normalizeAnalysesPayload(payload)
+    analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
+    return analysesCacheValue
   } catch {
-    return []
+    analysesCacheValue = []
+    analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
+    return analysesCacheValue
+  } finally {
+    analysesInFlight = null
   }
-}
+  })()
 
+  analysesInFlight = request
+  return request
+}

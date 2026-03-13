@@ -421,7 +421,22 @@ class AnalysesRepo:
                 total = int(total_row["total"] if total_row else 0)
                 rows = (
                     conn.execute(
-                        text("SELECT * FROM analyses ORDER BY created_at DESC, id DESC LIMIT :limit OFFSET :offset"),
+                        text(
+                            """
+                            SELECT
+                                a.*,
+                                COUNT(f.id)::int AS findings_count,
+                                COUNT(*) FILTER (WHERE f.severity = 'BLOCKER')::int AS blocker_count,
+                                COUNT(*) FILTER (WHERE f.severity = 'WARN')::int AS warn_count,
+                                COUNT(*) FILTER (WHERE f.severity = 'INFO')::int AS info_count
+                            FROM analyses AS a
+                            LEFT JOIN findings AS f
+                                ON f.analysis_id = a.id
+                            GROUP BY a.id
+                            ORDER BY a.created_at DESC, a.id DESC
+                            LIMIT :limit OFFSET :offset
+                            """
+                        ),
                         {"limit": size, "offset": offset},
                     )
                     .mappings()
@@ -846,6 +861,10 @@ class AnalysesRepo:
         change_type_confidence = row.get("change_type_confidence")
         if change_type_confidence is not None:
             change_type_confidence = float(change_type_confidence)
+        findings_count = int(row.get("findings_count") or 0)
+        blocker_count = int(row.get("blocker_count") or 0)
+        warn_count = int(row.get("warn_count") or 0)
+        info_count = int(row.get("info_count") or 0)
 
         return Analysis(
             id=str(row["id"]),
@@ -876,6 +895,10 @@ class AnalysesRepo:
             created_at=created_at_str,
             updated_at=updated_at_str,
             metadata_json=metadata_serialized,
+            findings_count=findings_count,
+            blocker_count=blocker_count,
+            warn_count=warn_count,
+            info_count=info_count,
         )
 
     @staticmethod

@@ -102,6 +102,10 @@ class AnalysisResponse(BaseModel):
     error_code: str | None
     error_message: str | None
     metadata: dict[str, Any] = Field(default_factory=dict)
+    findings_count: int = 0
+    blocker_count: int = 0
+    warn_count: int = 0
+    info_count: int = 0
     findings: list[FindingResponse] = Field(default_factory=list)
     security_findings: list[FindingResponse] = Field(default_factory=list)
     static_findings: list[FindingResponse] = Field(default_factory=list)
@@ -430,6 +434,15 @@ def _to_analysis_response(
     findings_response = [] if findings is None else [_to_finding_response(item) for item in findings]
     security_findings = [item for item in findings_response if item.category == "security"]
     static_findings = [item for item in findings_response if item.source.startswith("STATIC_")]
+    blocker_count = model.blocker_count
+    warn_count = model.warn_count
+    info_count = model.info_count
+    findings_count = model.findings_count
+    if findings is not None:
+        blocker_count = sum(1 for item in findings_response if item.severity == "BLOCKER")
+        warn_count = sum(1 for item in findings_response if item.severity == "WARN")
+        info_count = sum(1 for item in findings_response if item.severity == "INFO")
+        findings_count = len(findings_response)
     return AnalysisResponse(
         analysis_id=model.id,
         status=model.status,
@@ -458,6 +471,10 @@ def _to_analysis_response(
         error_code=model.error_code,
         error_message=model.error_message,
         metadata=model.metadata,
+        findings_count=findings_count,
+        blocker_count=blocker_count,
+        warn_count=warn_count,
+        info_count=info_count,
         findings=findings_response,
         security_findings=security_findings,
         static_findings=static_findings,

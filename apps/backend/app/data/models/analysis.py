@@ -35,6 +35,10 @@ class Analysis:
     created_at: str
     updated_at: str
     metadata_json: str
+    findings_count: int = 0
+    blocker_count: int = 0
+    warn_count: int = 0
+    info_count: int = 0
 
     @property
     def metadata(self) -> dict[str, Any]:

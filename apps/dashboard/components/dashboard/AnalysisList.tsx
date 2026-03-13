@@ -20,7 +20,11 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights"
-import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "@/lib/dashboard-analyses"
+import {
+  fetchDashboardAnalyses,
+  hasActiveDashboardAnalysis,
+  type DashboardAnalysisItem,
+} from "@/lib/dashboard-analyses"
 import {
   Table,
   TableBody,
@@ -101,7 +105,7 @@ export function AnalysisList() {
     setInsightsLoading(true)
     setAnalysesLoading(true)
 
-    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses()])
+    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true })])
       .then(([insightsPayload, analysesPayload]) => {
         if (cancelled) {
           return
@@ -123,18 +127,39 @@ export function AnalysisList() {
 
   useEffect(() => {
     let cancelled = false
-    const interval = setInterval(async () => {
-      const analysesPayload = await fetchDashboardAnalyses()
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const refreshAnalyses = async () => {
+      if (cancelled) {
+        return
+      }
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        timeoutId = setTimeout(() => {
+          void refreshAnalyses()
+        }, 30_000)
+        return
+      }
+
+      const analysesPayload = await fetchDashboardAnalyses({ force: true })
       if (!cancelled) {
         setAnalyses(analysesPayload)
+        timeoutId = setTimeout(() => {
+          void refreshAnalyses()
+        }, hasActiveDashboardAnalysis(analysesPayload) ? 8_000 : 30_000)
       }
-    }, 8000)
+    }
+
+    timeoutId = setTimeout(() => {
+      void refreshAnalyses()
+    }, hasActiveDashboardAnalysis(analyses) ? 8_000 : 30_000)
 
     return () => {
       cancelled = true
-      clearInterval(interval)
+      if (timeoutId) {
+        clearTimeout(timeoutId)
+      }
     }
-  }, [])
+  }, [analyses])
 
   return (
     <motion.div className="max-w-7xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>

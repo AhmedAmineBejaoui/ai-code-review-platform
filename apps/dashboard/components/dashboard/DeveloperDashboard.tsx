@@ -21,7 +21,11 @@ import {
 } from "lucide-react";
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
-import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "@/lib/dashboard-analyses";
+import {
+  fetchDashboardAnalyses,
+  hasActiveDashboardAnalysis,
+  type DashboardAnalysisItem,
+} from "@/lib/dashboard-analyses";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -271,7 +275,7 @@ export function DeveloperDashboard() {
   useEffect(() => {
     let cancelled = false;
     setInsightsLoading(true);
-    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses()])
+    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true })])
       .then(([insightsPayload, analysesPayload]) => {
         if (cancelled) {
           return;
@@ -292,34 +296,48 @@ export function DeveloperDashboard() {
   useEffect(() => {
     let cancelled = false;
     let isRefreshing = false;
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
     const refreshAnalyses = async () => {
       if (cancelled || isRefreshing) {
         return;
       }
+      let latestItems = analysisRows;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
+        timeoutId = setTimeout(() => {
+          void refreshAnalyses();
+        }, 30_000);
         return;
       }
       isRefreshing = true;
       try {
-        const analysesPayload = await fetchDashboardAnalyses();
+        const analysesPayload = await fetchDashboardAnalyses({ force: true });
+        latestItems = analysesPayload;
         if (!cancelled) {
           setAnalysisRows(analysesPayload);
         }
       } finally {
         isRefreshing = false;
+        if (!cancelled) {
+          const nextDelay = hasActiveDashboardAnalysis(latestItems) ? 10_000 : 30_000;
+          timeoutId = setTimeout(() => {
+            void refreshAnalyses();
+          }, nextDelay);
+        }
       }
     };
 
-    const interval = setInterval(() => {
+    timeoutId = setTimeout(() => {
       void refreshAnalyses();
-    }, 10000);
+    }, hasActiveDashboardAnalysis(analysisRows) ? 10_000 : 30_000);
 
     return () => {
       cancelled = true;
-      clearInterval(interval);
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
     };
-  }, []);
+  }, [analysisRows]);
 
   useEffect(() => {
     const input = projectFolderInputRef.current;
@@ -387,7 +405,7 @@ export function DeveloperDashboard() {
     try {
       const [insightsPayload, analysesPayload] = await Promise.all([
         fetchDashboardInsights(),
-        fetchDashboardAnalyses(),
+        fetchDashboardAnalyses({ force: true }),
       ]);
       setInsights(insightsPayload);
       setAnalysisRows(analysesPayload);

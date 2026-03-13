@@ -39,16 +39,14 @@ type BackendAnalysisListItem = {
   created_at?: string
   updated_at?: string
   metadata?: Record<string, unknown>
+  findings_count?: number
+  blocker_count?: number
+  warn_count?: number
+  info_count?: number
 }
 
 type BackendAnalysisListResponse = {
   items?: BackendAnalysisListItem[]
-}
-
-type BackendAnalysisDetailsResponse = {
-  findings?: Array<{
-    severity?: string
-  }>
 }
 
 type DashboardAnalysisListItem = {
@@ -846,6 +844,9 @@ export async function GET() {
         createdAt: typeof item.created_at === "string" ? item.created_at : "",
         updatedAt: typeof item.updated_at === "string" ? item.updated_at : "",
         durationLabel: resolveDurationLabel(item.created_at, item.updated_at, status),
+        blockerCount: typeof item.blocker_count === "number" ? item.blocker_count : 0,
+        warnCount: typeof item.warn_count === "number" ? item.warn_count : 0,
+        infoCount: typeof item.info_count === "number" ? item.info_count : 0,
         metadata,
       }
     })
@@ -862,43 +863,20 @@ export async function GET() {
       : baseItems
 
   const selectedItems = scopedItems.slice(0, 100)
-  const enrichedItems = await Promise.all(
-    selectedItems.map(async (item) => {
-      const shouldFetchFindings = item.status === "COMPLETED" || item.status === "FAILED"
-      const details = shouldFetchFindings
-        ? await fetchBackendJSON<BackendAnalysisDetailsResponse>(`/v1/analyses/${item.id}`, token, userId)
-        : null
-      const findings = Array.isArray(details?.findings) ? details.findings : []
-      let blockerCount = 0
-      let warnCount = 0
-      let infoCount = 0
-      for (const finding of findings) {
-        const severity = (finding?.severity ?? "").toUpperCase()
-        if (severity === "BLOCKER") {
-          blockerCount += 1
-        } else if (severity === "WARN") {
-          warnCount += 1
-        } else if (severity === "INFO") {
-          infoCount += 1
-        }
-      }
-      const responseItem: DashboardAnalysisListItem = {
-        id: item.id,
-        repo: item.repo,
-        prLabel: item.prLabel,
-        commitSha: item.commitSha,
-        author: item.author,
-        status: item.status,
-        createdAt: item.createdAt,
-        updatedAt: item.updatedAt,
-        durationLabel: item.durationLabel,
-        blockerCount,
-        warnCount,
-        infoCount,
-      }
-      return responseItem
-    }),
-  )
+  const enrichedItems: DashboardAnalysisListItem[] = selectedItems.map((item) => ({
+    id: item.id,
+    repo: item.repo,
+    prLabel: item.prLabel,
+    commitSha: item.commitSha,
+    author: item.author,
+    status: item.status,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    durationLabel: item.durationLabel,
+    blockerCount: item.blockerCount,
+    warnCount: item.warnCount,
+    infoCount: item.infoCount,
+  }))
 
   return NextResponse.json({ items: enrichedItems }, { status: 200 })
 }
