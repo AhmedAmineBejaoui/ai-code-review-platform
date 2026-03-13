@@ -318,14 +318,15 @@ def _insert_kb_document(
             conn.execute(
                 text(
                     """
-                    INSERT INTO kb_chunks (id, doc_id, chunk_index, content, token_count, metadata_json)
-                    VALUES (:id, :doc_id, :chunk_index, :content, :token_count, CAST(:metadata_json AS jsonb))
+                    INSERT INTO kb_chunks (id, doc_id, chunk_index, text, content, token_count, metadata_json)
+                    VALUES (:id, :doc_id, :chunk_index, :text, :content, :token_count, CAST(:metadata_json AS jsonb))
                     """
                 ),
                 {
                     "id": f"kbc_{uuid.uuid4().hex}",
                     "doc_id": doc_id,
                     "chunk_index": index,
+                    "text": chunk,
                     "content": chunk,
                     "token_count": max(1, len(chunk) // 4),
                     "metadata_json": json.dumps({}),
