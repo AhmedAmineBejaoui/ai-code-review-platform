@@ -25,6 +25,8 @@ Plateforme de revue de code automatisÃ©e orientÃ©e sÃ©curitÃ© et qualit�
 17. [Troubleshooting (Windows/Linux)](#17-troubleshooting-windowslinux)
 18. [SÃ©curitÃ©](#18-sÃ©curitÃ©)
 19. [Ã‰tat courant des modules](#19-Ã©tat-courant-des-modules)
+20. [RepoContext](#20-repocontext-onboarding-initial--diff-context)
+21. [Architecture RAG cible](#21-architecture-rag-cible-hybrid-rag--re-rank--router-leger)
 
 ---
 
@@ -906,4 +908,182 @@ Pour migration de donnees:
 - outil de migration Qdrant.
 
 La logique backend reste la meme (meme endpoints et meme schema de payloads).
+
+---
+
+## 21. Architecture RAG cible (Hybrid RAG + Re-rank + Router leger)
+
+Architecture recommandee pour ce projet:
+
+- **Hybrid RAG**: combine retrieval exact, lexical et semantique.
+- **Re-rank**: rerank des candidats avant le prompt final.
+- **Router leger**: selection deterministe du bon pipeline selon le type de requete.
+- **Context packing**: budget de contexte, deduplication, diversification des preuves.
+
+Cette architecture est adaptee a:
+
+- revue de diff / PR,
+- recherche de contexte repo,
+- recherche dans policies et regles,
+- ingestion de PDF / markdown,
+- grounding des reponses avec citations exploitables.
+
+### 21.1 Vue globale produit + backend + RAG
+
+```mermaid
+graph TD
+  subgraph Frontend
+    UI["Next.js Dashboard"]
+    AUTH["Clerk Auth"]
+  end
+
+  subgraph API
+    FAST["FastAPI"]
+    KB["KB / Review Orchestrator"]
+    ROUTER["Query Router"]
+    PACK["Context Packer"]
+  end
+
+  subgraph Retrieval
+    EXACT["Exact Retriever\npath / symbol / changed_files"]
+    LEX["Lexical Retriever\nBM25 / FTS"]
+    SEM["Semantic Retriever\nQdrant embeddings"]
+    RERANK["Re-ranker"]
+  end
+
+  subgraph Async
+    REDIS["Redis"]
+    CELERY["Celery Worker"]
+    INGEST["Ingestion Pipeline"]
+  end
+
+  subgraph Storage
+    PG["PostgreSQL\nprofiles / docs / metadata"]
+    QD["Qdrant\nsemantic vectors"]
+    S3["MinIO / Artifacts optional"]
+  end
+
+  subgraph Intelligence
+    LLM["LLM Provider\nOpenAI / Ollama"]
+  end
+
+  UI --> AUTH
+  UI --> FAST
+  FAST --> KB
+  KB --> ROUTER
+  ROUTER --> EXACT
+  ROUTER --> LEX
+  ROUTER --> SEM
+  EXACT --> RERANK
+  LEX --> RERANK
+  SEM --> RERANK
+  RERANK --> PACK
+  PACK --> LLM
+  LLM --> FAST
+  FAST --> UI
+
+  FAST --> PG
+  FAST --> REDIS
+  CELERY --> INGEST
+  REDIS --> CELERY
+  INGEST --> PG
+  INGEST --> QD
+  INGEST --> S3
+  EXACT --> PG
+  LEX --> PG
+  SEM --> QD
+```
+
+### 21.2 Pipeline d'ingestion et d'indexation
+
+```mermaid
+flowchart LR
+  SRC["Sources\nrepo / diff / markdown / pdf / policies"] --> VALID["Validation"]
+  VALID --> PARSE["Parsing + normalization"]
+  PARSE --> CHUNK["Chunking"]
+  CHUNK --> META["Metadata enrichment\nrepo_id / path / symbol / source_type / tags"]
+  META --> EMB["Embeddings"]
+  META --> FTS["Lexical index / SQL FTS"]
+  EMB --> VEC["Qdrant upsert"]
+  FTS --> SQL["PostgreSQL upsert"]
+  VEC --> PROFILE["Repo profile update"]
+  SQL --> PROFILE
+```
+
+### 21.3 Decision router
+
+```mermaid
+flowchart TD
+  Q["Incoming request"] --> A{"Has diff_text ?"}
+  A -- Yes --> D["Route: diff_review"]
+  A -- No --> B{"Has file path / symbol / repo context ?"}
+  B -- Yes --> E["Route: repo_query"]
+  B -- No --> C{"Mentions policy / security / compliance ?"}
+  C -- Yes --> F["Route: policy_query"]
+  C -- No --> G{"Selected source is pdf / docs ?"}
+  G -- Yes --> H["Route: document_query"]
+  G -- No --> I["Route: generic_hybrid_query"]
+```
+
+### 21.4 Pipeline review diff / pull request
+
+```mermaid
+sequenceDiagram
+  participant UI as Dashboard
+  participant API as FastAPI
+  participant RT as Router
+  participant EX as Exact Retriever
+  participant LX as Lexical Retriever
+  participant SM as Semantic Retriever
+  participant RR as Re-ranker
+  participant CP as Context Packer
+  participant LLM as LLM
+
+  UI->>API: POST /v1/kb/context/diff or review request
+  API->>RT: classify as diff_review
+  RT->>EX: changed_files / path / symbol / tests
+  RT->>LX: lexical search on modified areas
+  RT->>SM: semantic search on repo and docs
+  EX-->>RR: candidates
+  LX-->>RR: candidates
+  SM-->>RR: candidates
+  RR-->>CP: top ranked chunks
+  CP-->>LLM: grounded prompt with evidence
+  LLM-->>API: findings / answer / citations
+  API-->>UI: review result
+```
+
+### 21.5 Composants recommandes
+
+| Composant | Role |
+|---|---|
+| `RepoContextRetriever` | point d'entree retrieval existant a faire evoluer |
+| `ExactRetriever` | fichiers modifies, symboles, chemins exacts |
+| `LexicalRetriever` | recherche mot-cle / BM25 / SQL FTS |
+| `SemanticRetriever` | recherche embeddings dans Qdrant |
+| `ReRanker` | rerank top N avant prompt |
+| `QueryRouter` | selection du pipeline selon le type de requete |
+| `ContextPacker` | dedup, quotas, budget tokens |
+| `CitationBuilder` | sorties traceables et verifiables |
+
+### 21.6 Ordre d'implementation conseille
+
+1. Ajouter un **LexicalRetriever** en plus du retrieval actuel.
+2. Introduire un **ReRanker** sur les top candidats.
+3. Ajouter un **QueryRouter** deterministe:
+   - `diff_review`
+   - `repo_query`
+   - `policy_query`
+   - `document_query`
+4. Ajouter un **ContextPacker** avec deduplication et quotas par source.
+5. Generaliser les **citations** dans les reponses UI/API.
+
+### 21.7 Mapping direct avec ce repo
+
+- Retrieval repo/diff actuel: `apps/backend/app/core/knowledge_base/retriever.py`
+- Endpoints KB: `apps/backend/app/api/http/knowledge_base.py`
+- Worker ingestion KB: `apps/backend/app/workers/tasks/ingest_kb.py`
+- UI base de connaissance: `apps/dashboard/components/dashboard/KnowledgeBase.tsx`
+
+La cible n'est donc pas de remplacer l'existant, mais de le faire evoluer vers un **Code-Aware Hybrid RAG** plus robuste pour la revue de code, les policies et les documents techniques.
 
