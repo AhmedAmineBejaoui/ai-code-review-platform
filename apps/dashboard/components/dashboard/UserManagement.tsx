@@ -174,6 +174,13 @@ export function UserManagement() {
     setLoading(true)
     setError(null)
     try {
+      // Keep backend RBAC profile in sync with Clerk session before admin API calls.
+      await fetch("/api/auth/sync", {
+        method: "POST",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      }).catch(() => null)
+
       const usersResponse = await fetch("/api/dashboard/admin/users?limit=250", {
         method: "GET",
         cache: "no-store",

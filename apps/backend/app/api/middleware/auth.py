@@ -225,6 +225,15 @@ def _extract_email_from_claims(claims: dict[str, Any]) -> str:
     return "unknown@example.local"
 
 
+def _is_placeholder_email(email: str | None) -> bool:
+    if not isinstance(email, str):
+        return True
+    normalized = email.strip().lower()
+    if not normalized:
+        return True
+    return normalized == "unknown@example.local" or normalized.endswith("@clerk.local")
+
+
 def _extract_display_name_from_claims(claims: dict[str, Any]) -> str | None:
     return _first_non_empty_string(
         claims.get("name"),
@@ -251,9 +260,15 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clerk token missing subject")
 
-    email = _extract_email_from_claims(claims)
-    if email == "unknown@example.local":
-        email = f"{user_id}@clerk.local"
+    existing_user = await asyncio.to_thread(repo.get_user, user_id)
+    email_from_claims = _extract_email_from_claims(claims)
+    if _is_placeholder_email(email_from_claims):
+        if existing_user is not None and not _is_placeholder_email(existing_user.email):
+            email = existing_user.email.strip().lower()
+        else:
+            email = f"{user_id}@clerk.local"
+    else:
+        email = email_from_claims.strip().lower()
     display_name = _extract_display_name_from_claims(claims)
     roles = _extract_roles(claims)
     roles = _apply_admin_email_override(email, roles)

@@ -4,10 +4,14 @@
 
 .PHONY: help up down build build-no-cache migrate migrate-history \
         migrate-create logs logs-api logs-worker test test-ci api-shell \
-        worker-shell generate-fernet-key ps clean db-shell
+        worker-shell generate-fernet-key ps clean db-shell \
+        prod-build prod-up prod-down prod-logs prod-migrate
 
 COMPOSE_FILE = infra/local/docker-compose.yml
 COMPOSE      = docker compose -f $(COMPOSE_FILE)
+PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
+PROD_ENV_FILE = infra/cloud/oracle/.env.prod
+PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
 BACKEND_DIR  = apps/backend
 
 # Default target
@@ -39,6 +43,14 @@ help:
 	@echo "  make api-shell          Enter running API container"
 	@echo "  make worker-shell       Enter running worker container"
 	@echo "  make db-shell           psql in DB container"
+	@echo ""
+	@echo "  Production (Oracle)"
+	@echo "  -----------------------------------------------------"
+	@echo "  make prod-build         Build prod API/worker images"
+	@echo "  make prod-migrate       Run Alembic migrations in prod stack"
+	@echo "  make prod-up            Start prod stack (api+worker+caddy)"
+	@echo "  make prod-down          Stop prod stack"
+	@echo "  make prod-logs          Tail prod stack logs"
 	@echo ""
 	@echo "  Security"
 	@echo "  -----------------------------------------------------"
@@ -128,3 +140,19 @@ db-shell:
 
 generate-fernet-key:
 	@python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+
+# ——— Oracle Production Helpers ——————————————————————————————————————————————
+prod-build:
+	$(PROD_COMPOSE) build
+
+prod-migrate:
+	$(PROD_COMPOSE) run --rm api alembic -c /app/alembic.ini upgrade head
+
+prod-up:
+	$(PROD_COMPOSE) up -d
+
+prod-down:
+	$(PROD_COMPOSE) down
+
+prod-logs:
+	$(PROD_COMPOSE) logs -f

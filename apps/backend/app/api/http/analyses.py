@@ -29,6 +29,15 @@ from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 router = APIRouter(prefix="/v1", tags=["analyses"])
 
 
+def _is_placeholder_email(email: str | None) -> bool:
+    if not isinstance(email, str):
+        return True
+    normalized = email.strip().lower()
+    if not normalized:
+        return True
+    return normalized == "unknown@example.local" or normalized.endswith("@clerk.local")
+
+
 class AnalyzeRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -240,15 +249,26 @@ async def sync_authenticated_user(
             message="Missing authentication credentials",
         )
 
-    email = principal.email
+    payload_email = None
     if payload is not None and isinstance(payload.email, str) and payload.email.strip():
-        email = payload.email.strip().lower()
+        payload_email = payload.email.strip().lower()
+
+    email = (principal.email or "").strip().lower()
+    if _is_placeholder_email(email):
+        if payload_email:
+            email = payload_email
+        elif not email:
+            email = f"{principal.user_id}@clerk.local"
+    elif payload_email and payload_email == email:
+        email = payload_email
 
     display_name = principal.display_name
     if payload is not None and isinstance(payload.display_name, str) and payload.display_name.strip():
         display_name = payload.display_name.strip()
 
     role_to_sync = principal.roles[0] if principal.roles else "developer"
+    if email in settings.admin_emails:
+        role_to_sync = "admin"
 
     org_id = principal.org_id
     if payload is not None and isinstance(payload.org_id, str) and payload.org_id.strip():

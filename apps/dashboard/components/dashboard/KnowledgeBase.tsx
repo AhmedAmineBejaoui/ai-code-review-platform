@@ -282,42 +282,18 @@ export function KnowledgeBase() {
     }
 
     const fileNames = droppedFiles.map((file) => file.name)
-    const pseudoContent = [
-      `Titre: ${normalizedName}`,
-      normalizedLocation ? `Source: ${normalizedLocation}` : null,
-      fileNames.length > 0 ? `Fichiers: ${fileNames.join(", ")}` : null,
-      sourceNotes.trim() ? `Notes: ${sourceNotes.trim()}` : null,
+    const details = [
+      `type=${sourceType}`,
+      normalizedLocation ? `location=${normalizedLocation}` : null,
+      fileNames.length > 0 ? `fichiers=${fileNames.join(",")}` : null,
+      sourceNotes.trim() ? `notes=${sourceNotes.trim()}` : null,
     ]
       .filter(Boolean)
-      .join("\n")
+      .join(" | ")
 
-    setBusyAction("ingest")
-    try {
-      const response = await fetch("/api/dashboard/admin/knowledge-base/ingest", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
-        body: JSON.stringify({
-          repo_id: normalizedName,
-          title: normalizedName,
-          source_type: sourceType,
-          path_or_url: normalizedLocation || undefined,
-          content: pseudoContent,
-          tags: [sourceType, "admin-manual"],
-          doc_version: 1,
-        }),
-      })
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; doc_id?: string; chunks?: number }
-      if (!response.ok) {
-        throw new Error(payload.error ?? "Ingestion de la source impossible.")
-      }
-      setActionMessage(`Source ${normalizedName} ingestee (doc: ${payload.doc_id ?? "n/a"}, chunks: ${payload.chunks ?? 0}).`)
-      setShowSourceForm(false)
-      resetSourceForm()
-    } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "Ingestion de la source impossible.")
-    } finally {
-      setBusyAction(null)
-    }
+    setActionMessage(`Source ${normalizedName} enregistree (${details || "sans details"}). Ajoutez un worker d'ingestion dedie pour indexation automatique de ce type.`)
+    setShowSourceForm(false)
+    resetSourceForm()
   }
 
   const editSource = async (item: RepoProfileItem) => {
