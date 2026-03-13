@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 from app.core.knowledge_base.retriever import (
     _build_query_from_diff,
     _extract_added_lines_from_diff,
     _extract_paths_from_diff,
     _extract_symbols_from_diff,
+    _to_retrieved_chunks,
 )
 
 
@@ -63,3 +66,25 @@ def test_extract_added_lines_from_diff_cleans_comments() -> None:
     lines = _extract_added_lines_from_diff(diff_text)
     assert "value = compute()" in lines
     assert "keep_me = 1" in lines
+
+
+def test_to_retrieved_chunks_supports_document_payloads() -> None:
+    hits = [
+        SimpleNamespace(
+            score=0.91,
+            payload={
+                "title": "design.pdf",
+                "content": "architecture patterns and guardrails",
+                "chunk_index": 2,
+                "source_type": "pdf",
+                "chunk_type": "document_chunk",
+            },
+        )
+    ]
+
+    chunks = _to_retrieved_chunks(hits, source="document")
+
+    assert len(chunks) == 1
+    assert chunks[0].path == "design.pdf"
+    assert chunks[0].file_type == "pdf"
+    assert chunks[0].chunk_type == "document_chunk"

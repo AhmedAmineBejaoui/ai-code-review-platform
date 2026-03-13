@@ -46,6 +46,15 @@ type ApiErrorPayload = {
   message?: unknown
 }
 
+type PdfImportResponse = ApiErrorPayload & {
+  importedCount?: number
+  items?: Array<{
+    docId?: string
+    title?: string
+    chunks?: number
+  }>
+}
+
 type QueryChunk = {
   path?: string
   score?: number
@@ -326,6 +335,57 @@ export function KnowledgeBase() {
       await queueReindex(normalizedName, normalizedLocation || undefined)
       setShowSourceForm(false)
       resetSourceForm()
+      return
+    }
+
+    if (sourceType === "pdf") {
+      if (droppedFiles.length === 0) {
+        setActionMessage("Ajoutez au moins un fichier PDF.")
+        return
+      }
+
+      setBusyAction("import:pdf")
+      setActionMessage(null)
+      try {
+        const formData = new FormData()
+        formData.set("repoId", normalizedName)
+        if (normalizedLocation) {
+          formData.set("pathOrUrl", normalizedLocation)
+        }
+        if (sourceNotes.trim()) {
+          formData.set("notes", sourceNotes.trim())
+        }
+        for (const file of droppedFiles) {
+          formData.append("files", file)
+        }
+
+        const response = await fetch("/api/dashboard/admin/knowledge-base/import-pdf", {
+          method: "POST",
+          body: formData,
+          headers: { Accept: "application/json" },
+        })
+        const payload = (await response.json().catch(() => ({}))) as PdfImportResponse
+        if (!response.ok) {
+          throw new Error(resolveApiErrorMessage(payload, "Import PDF impossible."))
+        }
+
+        const importedCount = Number(payload.importedCount ?? 0) || 0
+        const totalChunks = Array.isArray(payload.items)
+          ? payload.items.reduce((sum, item) => sum + (Number(item.chunks ?? 0) || 0), 0)
+          : 0
+
+        setActionMessage(
+          `${importedCount} PDF ingere(s) pour ${normalizedName}${totalChunks > 0 ? ` (${totalChunks} chunks)` : ""}.`,
+        )
+        setShowSourceForm(false)
+        resetSourceForm()
+        await loadRepos()
+        setSelectedRepoId(normalizedName)
+      } catch (error) {
+        setActionMessage(error instanceof Error ? error.message : "Import PDF impossible.")
+      } finally {
+        setBusyAction(null)
+      }
       return
     }
 
