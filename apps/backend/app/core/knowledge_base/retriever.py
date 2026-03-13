@@ -102,14 +102,23 @@ class RepoContextRetriever:
         await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
 
         query_vector = hash_embed_text(query, vector_size=self._vector_size)
-        hits = await self._vector_store.search(
+        code_hits = await self._vector_store.search(
             collection_name=self._collection,
             query_vector=query_vector,
             filter_payload={"repo_id": repo_id, "type": "chunk"},
             limit=limit * 6,
         )
+        document_hits = await self._vector_store.search(
+            collection_name=self._collection,
+            query_vector=query_vector,
+            filter_payload={"repo_id": repo_id, "type": "kb_document_chunk"},
+            limit=limit * 4,
+        )
 
-        chunks = _to_retrieved_chunks(hits, source="semantic")
+        chunks = [
+            *_to_retrieved_chunks(code_hits, source="semantic"),
+            *_to_retrieved_chunks(document_hits, source="document"),
+        ]
         changed_files_set = set(changed_files or [])
         if changed_files_set:
             chunks = [item for item in chunks if item.path in changed_files_set]
@@ -374,20 +383,21 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
     chunks: list[RetrievedContextChunk] = []
     for hit in hits:
         payload = getattr(hit, "payload", None) or {}
-        path = str(payload.get("path") or "")
-        content = str(payload.get("content") or "")
+        path = str(payload.get("path") or payload.get("path_or_url") or payload.get("title") or payload.get("doc_id") or "")
+        content = str(payload.get("content") or payload.get("text") or "")
         if not path or not content:
             continue
         score = float(getattr(hit, "score", fallback_score) or fallback_score)
+        token_count = _as_optional_int(payload.get("token_count"))
         chunks.append(
             RetrievedContextChunk(
                 score=score,
                 path=path,
                 chunk_index=int(payload.get("chunk_index") or 0),
-                language=str(payload.get("language") or "text"),
+                language=str(payload.get("language") or payload.get("source_type") or "text"),
                 content=content,
-                token_count=int(payload.get("token_count") or 0),
-                file_type=str(payload.get("file_type") or "text"),
+                token_count=token_count if token_count is not None else max(1, len(content) // 4),
+                file_type=str(payload.get("file_type") or payload.get("source_type") or "text"),
                 chunk_type=str(payload.get("chunk_type") or "text_chunk"),
                 symbol_name=_as_optional_str(payload.get("symbol_name")),
                 start_line=_as_optional_int(payload.get("start_line")),

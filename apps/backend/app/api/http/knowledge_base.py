@@ -227,8 +227,37 @@ def _chunk_text(content: str, *, chunk_size: int = 2400, overlap: int = 250) -> 
     return chunks
 
 
+def _coerce_non_negative_int(value: Any) -> int:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    if isinstance(value, str):
+        try:
+            return max(int(value.strip()), 0)
+        except ValueError:
+            return 0
+    return 0
+
+
+def _normalize_string_list(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    results: list[str] = []
+    for item in value:
+        if not isinstance(item, str):
+            continue
+        normalized = item.strip()
+        if normalized and normalized not in results:
+            results.append(normalized)
+    return results
+
+
 def _insert_kb_document(
     *,
+    repo_id: str,
     doc_id: str,
     title: str,
     source_type: str,
@@ -257,7 +286,14 @@ def _insert_kb_document(
                 "title": title,
                 "source_type": source_type,
                 "path_or_url": path_or_url,
-                "tags_json": json.dumps({"tags": tags}),
+                "tags_json": json.dumps(
+                    {
+                        "repo_id": repo_id,
+                        "source_type": source_type,
+                        "path_or_url": path_or_url,
+                        "tags": tags,
+                    }
+                ),
                 "doc_version": doc_version,
             },
         )
@@ -529,6 +565,7 @@ async def ingest_document(
     doc_id = f"doc_{uuid.uuid4().hex}"
     await asyncio.to_thread(
         _insert_kb_document,
+        repo_id=payload.repo_id,
         doc_id=doc_id,
         title=payload.title,
         source_type=payload.source_type,
@@ -543,6 +580,7 @@ async def ingest_document(
         await vector_store.ensure_collection(collection_name=collection_name)
         points: list[QdrantPoint] = []
         for index, chunk in enumerate(chunks):
+            token_count = max(1, len(chunk) // 4)
             points.append(
                 QdrantPoint(
                     id=f"{doc_id}:{index}",
@@ -554,13 +592,46 @@ async def ingest_document(
                         "title": payload.title,
                         "source_type": payload.source_type,
                         "path_or_url": payload.path_or_url,
+                        "path": payload.path_or_url or payload.title,
                         "chunk_index": index,
                         "content": chunk,
+                        "language": "text",
+                        "token_count": token_count,
+                        "file_type": payload.source_type,
+                        "chunk_type": "document_chunk",
                         "tags": payload.tags,
                     },
                 )
             )
         await vector_store.upsert_points(collection_name=collection_name, points=points)
+
+    repo_profiles = RepoProfilesRepo()
+    existing_profile = await asyncio.to_thread(repo_profiles.get_profile, payload.repo_id)
+    profile_payload = dict(existing_profile.profile) if existing_profile and isinstance(existing_profile.profile, dict) else {}
+    source_kinds = _normalize_string_list(profile_payload.get("source_kinds"))
+    if payload.source_type not in source_kinds:
+        source_kinds.append(payload.source_type)
+
+    profile_payload.update(
+        {
+            "source_kind": "document",
+            "source_type": payload.source_type,
+            "source_kinds": source_kinds,
+            "files_indexed": _coerce_non_negative_int(profile_payload.get("files_indexed")) + 1,
+            "documents_count": _coerce_non_negative_int(profile_payload.get("documents_count")) + 1,
+            "chunks_indexed": _coerce_non_negative_int(profile_payload.get("chunks_indexed")) + len(chunks),
+            "last_document_title": payload.title,
+        }
+    )
+    await asyncio.to_thread(
+        repo_profiles.upsert_profile,
+        repo_id=payload.repo_id,
+        repo_path=payload.path_or_url or (existing_profile.repo_path if existing_profile else None),
+        indexed_commit=existing_profile.indexed_commit if existing_profile else None,
+        default_branch=existing_profile.default_branch if existing_profile else None,
+        profile=profile_payload,
+        overview_context=existing_profile.overview_context if existing_profile else None,
+    )
 
     return DocumentIngestResponse(
         doc_id=doc_id,
