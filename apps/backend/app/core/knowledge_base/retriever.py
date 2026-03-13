@@ -1,52 +1,50 @@
 from __future__ import annotations
 
-import hashlib
+import asyncio
 import re
-from dataclasses import dataclass
 from typing import Any
 
-from app.core.knowledge_base.embeddings import hash_embed_text
+from app.core.knowledge_base.context_packer import ContextPacker
+from app.core.knowledge_base.exact_retriever import ExactRetriever
 from app.core.knowledge_base.ingestor import RepoContextIngestor
+from app.core.knowledge_base.lexical_retriever import LexicalRetriever
+from app.core.knowledge_base.query_router import QueryRouter
+from app.core.knowledge_base.re_ranker import ReRanker
+from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievedContextChunk
+from app.core.knowledge_base.semantic_retriever import SemanticRetriever
 from app.core.review_engine.diff_engine import DiffParseError, parse_unified_diff
+from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
-
-
-@dataclass(frozen=True)
-class RetrievedContextChunk:
-    score: float
-    path: str
-    chunk_index: int
-    language: str
-    content: str
-    token_count: int
-    file_type: str = "text"
-    chunk_type: str = "text_chunk"
-    symbol_name: str | None = None
-    start_line: int | None = None
-    end_line: int | None = None
-    source: str = "semantic"
-
-
-@dataclass(frozen=True)
-class DiffSignals:
-    paths: list[str]
-    symbols: list[str]
-    added_lines: list[str]
-    semantic_query: str
 
 
 class RepoContextRetriever:
     def __init__(self, vector_store: QdrantClient) -> None:
         self._vector_store = vector_store
-        self._collection = settings.QDRANT_REPO_CONTEXT_COLLECTION
-        self._vector_size = settings.REPO_CONTEXT_VECTOR_SIZE
         self._ingestor = RepoContextIngestor(vector_store=vector_store)
-        self._max_context_chars = 14_000
-        self._max_chunks_per_file = 3
+        self._exact = ExactRetriever()
+        self._lexical = LexicalRetriever()
+        self._semantic = SemanticRetriever(vector_store=vector_store)
+        self._router = QueryRouter()
+        self._reranker = ReRanker()
+        self._packer = ContextPacker(
+            max_chars=settings.KB_CONTEXT_MAX_CHARS,
+            max_chunks=settings.KB_CONTEXT_MAX_CHUNKS,
+        )
 
     async def get_repo_profile(self, repo_id: str) -> dict[str, Any] | None:
-        return await self._ingestor.get_repo_profile(repo_id)
+        if self._vector_store.enabled:
+            try:
+                profile = await self._ingestor.get_repo_profile(repo_id)
+                if profile:
+                    return profile
+            except Exception:
+                pass
+
+        sql_profile = await asyncio.to_thread(RepoProfilesRepo().get_profile, repo_id)
+        if sql_profile and isinstance(sql_profile.profile, dict):
+            return dict(sql_profile.profile)
+        return None
 
     async def retrieve_for_repo_bootstrap(
         self,
@@ -54,10 +52,6 @@ class RepoContextRetriever:
         repo_id: str,
         limit: int = 16,
     ) -> tuple[list[RetrievedContextChunk], dict[str, Any] | None]:
-        """Auto-retrieval entrypoint for a newly indexed repo (no user question)."""
-        self._vector_store.ensure_enabled()
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-
         seed_queries = [
             "repository architecture overview entry points main modules",
             "authentication authorization security middleware",
@@ -66,26 +60,25 @@ class RepoContextRetriever:
             "ci pipeline workflows quality checks",
         ]
 
-        merged_hits: list[RetrievedContextChunk] = []
+        candidates = []
         for query in seed_queries:
-            query_vector = hash_embed_text(query, vector_size=self._vector_size)
-            hits = await self._vector_store.search(
-                collection_name=self._collection,
-                query_vector=query_vector,
-                filter_payload={"repo_id": repo_id, "type": "chunk"},
-                limit=max(limit, 8),
+            candidates.extend(
+                await self._semantic.retrieve_repo_bootstrap(
+                    repo_id=repo_id,
+                    query_text=query,
+                    limit=max(limit, settings.KB_SEMANTIC_TOP_K),
+                )
             )
-            merged_hits.extend(_to_retrieved_chunks(hits, source="repo_bootstrap"))
 
-        ranked = _rank_and_trim(
-            chunks=merged_hits,
-            limit=limit,
-            max_context_chars=self._max_context_chars,
-            max_chunks_per_file=self._max_chunks_per_file,
-            mode="repo_bootstrap",
+        ranked = self._reranker.rank(
+            query=" ".join(seed_queries),
+            candidates=candidates,
+            route=QueryRoute.GENERIC_HYBRID_QUERY,
+            limit=max(limit * 4, settings.KB_RERANK_TOP_K * 2),
         )
-        profile = await self._ingestor.get_repo_profile(repo_id)
-        return ranked, profile
+        packed = self._packer.pack(candidates=ranked, route=QueryRoute.GENERIC_HYBRID_QUERY, limit=limit)
+        profile = await self.get_repo_profile(repo_id)
+        return packed, profile
 
     async def retrieve_for_query(
         self,
@@ -94,46 +87,93 @@ class RepoContextRetriever:
         query: str,
         changed_files: list[str] | None = None,
         limit: int = 8,
+        route_hint: str = "auto",
     ) -> tuple[list[RetrievedContextChunk], dict[str, Any] | None]:
-        if limit < 1:
-            limit = 1
-
-        self._vector_store.ensure_enabled()
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-
-        query_vector = hash_embed_text(query, vector_size=self._vector_size)
-        code_hits = await self._vector_store.search(
-            collection_name=self._collection,
-            query_vector=query_vector,
-            filter_payload={"repo_id": repo_id, "type": "chunk"},
-            limit=limit * 6,
-        )
-        document_hits = await self._vector_store.search(
-            collection_name=self._collection,
-            query_vector=query_vector,
-            filter_payload={"repo_id": repo_id, "type": "kb_document_chunk"},
-            limit=limit * 4,
-        )
-
-        chunks = [
-            *_to_retrieved_chunks(code_hits, source="semantic"),
-            *_to_retrieved_chunks(document_hits, source="document"),
-        ]
+        route = self._router.route_query(query=query, route_hint=route_hint)
         changed_files_set = set(changed_files or [])
-        if changed_files_set:
-            chunks = [item for item in chunks if item.path in changed_files_set]
+        candidates = []
 
-        ranked = _rank_and_trim(
-            chunks=chunks,
-            limit=limit,
-            max_context_chars=self._max_context_chars,
-            max_chunks_per_file=self._max_chunks_per_file,
-            mode="query",
-            changed_files=changed_files_set,
-            symbols=set(),
+        if route in {QueryRoute.REPO_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+            candidates.extend(
+                self._exact.retrieve_query_hints(
+                    repo_id=repo_id,
+                    query=query,
+                    limit=settings.KB_EXACT_TOP_K,
+                )
+            )
+            candidates.extend(
+                self._lexical.retrieve_code(
+                    repo_id=repo_id,
+                    query=query,
+                    limit=settings.KB_LEXICAL_TOP_K,
+                    changed_files=changed_files_set or None,
+                )
+            )
+            candidates.extend(
+                await self._semantic.retrieve_code(
+                    repo_id=repo_id,
+                    query_text=query,
+                    limit=settings.KB_SEMANTIC_TOP_K,
+                    changed_files=changed_files_set or None,
+                )
+            )
+
+        if route in {QueryRoute.POLICY_QUERY, QueryRoute.DOCUMENT_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+            desired_tags = ["policy", "security", "compliance"] if route == QueryRoute.POLICY_QUERY else []
+            candidates.extend(
+                self._lexical.retrieve_documents(
+                    repo_id=repo_id,
+                    query=query,
+                    limit=max(4, settings.KB_LEXICAL_TOP_K // 2),
+                    tags=desired_tags or None,
+                )
+            )
+            candidates.extend(
+                await self._semantic.retrieve_documents(
+                    repo_id=repo_id,
+                    query_text=query,
+                    limit=max(4, settings.KB_SEMANTIC_TOP_K // 2),
+                    tags=desired_tags or None,
+                )
+            )
+
+        if route == QueryRoute.POLICY_QUERY:
+            candidates.extend(
+                self._lexical.retrieve_code(
+                    repo_id=repo_id,
+                    query=query,
+                    limit=max(2, settings.KB_LEXICAL_TOP_K // 3),
+                )
+            )
+            candidates.extend(
+                await self._semantic.retrieve_code(
+                    repo_id=repo_id,
+                    query_text=query,
+                    limit=max(2, settings.KB_SEMANTIC_TOP_K // 3),
+                )
+            )
+
+        if route == QueryRoute.DOCUMENT_QUERY:
+            candidates.extend(self._exact.retrieve_query_hints(repo_id=repo_id, query=query, limit=2))
+
+        if route == QueryRoute.GENERIC_HYBRID_QUERY:
+            candidates.extend(
+                self._lexical.retrieve_code(
+                    repo_id=repo_id,
+                    query=query,
+                    limit=max(2, settings.KB_LEXICAL_TOP_K // 2),
+                )
+            )
+
+        ranked = self._reranker.rank(
+            query=query,
+            candidates=candidates,
+            route=route,
+            limit=max(limit * 6, settings.KB_RERANK_TOP_K * 3),
         )
-        profile = await self._ingestor.get_repo_profile(repo_id)
-        return ranked, profile
+        packed = self._packer.pack(candidates=ranked, route=route, limit=limit)
+        profile = await self.get_repo_profile(repo_id)
+        return packed, profile
 
     async def retrieve_for_diff(
         self,
@@ -143,105 +183,97 @@ class RepoContextRetriever:
         changed_files: list[str] | None = None,
         limit: int = 8,
     ) -> tuple[list[RetrievedContextChunk], dict[str, Any] | None]:
-        if limit < 1:
-            limit = 1
-
-        self._vector_store.ensure_enabled()
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-
         signals = _extract_diff_signals(diff_text)
         inferred_files = sorted(set(changed_files or signals.paths))
+        changed_files_set = set(inferred_files)
         symbols = set(signals.symbols)
+        lexical_query = _build_lexical_query_from_diff(signals)
 
-        exact_chunks = await self._retrieve_exact_file_chunks(repo_id=repo_id, paths=inferred_files, per_file_limit=8)
-        symbol_chunks = await self._retrieve_symbol_chunks(repo_id=repo_id, symbols=symbols, per_symbol_limit=4)
-        semantic_chunks = await self._retrieve_semantic_chunks(repo_id=repo_id, query_text=signals.semantic_query, limit=limit * 4)
-        test_chunks = await self._retrieve_related_tests(repo_id=repo_id, changed_files=inferred_files, limit=max(4, limit))
+        candidates = [
+            *self._exact.retrieve_file_chunks(
+                repo_id=repo_id,
+                paths=inferred_files,
+                per_file_limit=settings.KB_EXACT_TOP_K,
+            ),
+            *self._exact.retrieve_symbol_chunks(
+                repo_id=repo_id,
+                symbols=symbols,
+                per_symbol_limit=max(2, settings.KB_EXACT_TOP_K // 2),
+            ),
+            *self._exact.retrieve_related_tests(
+                repo_id=repo_id,
+                changed_files=inferred_files,
+                limit=max(4, settings.KB_EXACT_TOP_K // 2),
+            ),
+            *self._lexical.retrieve_code(
+                repo_id=repo_id,
+                query=lexical_query,
+                limit=settings.KB_LEXICAL_TOP_K,
+                changed_files=changed_files_set,
+            ),
+            *self._lexical.retrieve_documents(
+                repo_id=repo_id,
+                query=lexical_query,
+                limit=max(2, settings.KB_LEXICAL_TOP_K // 3),
+                tags=["policy", "security", "compliance"],
+            ),
+            *(await self._semantic.retrieve_code(
+                repo_id=repo_id,
+                query_text=signals.semantic_query,
+                limit=settings.KB_SEMANTIC_TOP_K,
+                changed_files=changed_files_set,
+            )),
+            *(await self._semantic.retrieve_documents(
+                repo_id=repo_id,
+                query_text=signals.semantic_query,
+                limit=max(2, settings.KB_SEMANTIC_TOP_K // 3),
+                tags=["policy", "security", "compliance"],
+            )),
+        ]
 
-        merged = [*exact_chunks, *symbol_chunks, *semantic_chunks, *test_chunks]
-        ranked = _rank_and_trim(
-            chunks=merged,
-            limit=limit,
-            max_context_chars=self._max_context_chars,
-            max_chunks_per_file=self._max_chunks_per_file,
-            mode="diff",
-            changed_files=set(inferred_files),
-            symbols=symbols,
+        ranked = self._reranker.rank(
+            query=signals.semantic_query,
+            candidates=candidates,
+            route=QueryRoute.DIFF_REVIEW,
+            limit=max(limit * 6, settings.KB_RERANK_TOP_K * 3),
         )
-        profile = await self._ingestor.get_repo_profile(repo_id)
-        return ranked, profile
+        packed = self._packer.pack(candidates=ranked, route=QueryRoute.DIFF_REVIEW, limit=limit)
+        profile = await self.get_repo_profile(repo_id)
+        return packed, profile
 
-    async def _retrieve_exact_file_chunks(
+    async def retrieve_document_chunks(
         self,
         *,
         repo_id: str,
-        paths: list[str],
-        per_file_limit: int,
+        query: str,
+        source_type: str | None = None,
+        tags: list[str] | None = None,
+        limit: int = 8,
     ) -> list[RetrievedContextChunk]:
-        chunks: list[RetrievedContextChunk] = []
-        for path in paths:
-            hits = await self._vector_store.scroll(
-                collection_name=self._collection,
-                limit=per_file_limit,
-                filter_payload={"repo_id": repo_id, "type": "chunk", "path": path},
-            )
-            chunks.extend(_to_retrieved_chunks(hits, source="file_exact", fallback_score=1.0))
-        return chunks
-
-    async def _retrieve_symbol_chunks(
-        self,
-        *,
-        repo_id: str,
-        symbols: set[str],
-        per_symbol_limit: int,
-    ) -> list[RetrievedContextChunk]:
-        chunks: list[RetrievedContextChunk] = []
-        for symbol in symbols:
-            hits = await self._vector_store.scroll(
-                collection_name=self._collection,
-                limit=per_symbol_limit,
-                filter_payload={"repo_id": repo_id, "type": "chunk", "symbol_name": symbol},
-            )
-            chunks.extend(_to_retrieved_chunks(hits, source="symbol_exact", fallback_score=0.95))
-        return chunks
-
-    async def _retrieve_semantic_chunks(
-        self,
-        *,
-        repo_id: str,
-        query_text: str,
-        limit: int,
-    ) -> list[RetrievedContextChunk]:
-        query_vector = hash_embed_text(query_text, vector_size=self._vector_size)
-        hits = await self._vector_store.search(
-            collection_name=self._collection,
-            query_vector=query_vector,
-            filter_payload={"repo_id": repo_id, "type": "chunk"},
-            limit=limit,
+        route = QueryRoute.POLICY_QUERY if tags and {tag.lower() for tag in tags}.intersection({"policy", "security", "compliance"}) else QueryRoute.DOCUMENT_QUERY
+        candidates = [
+            *self._lexical.retrieve_documents(
+                repo_id=repo_id,
+                query=query,
+                limit=max(limit * 2, settings.KB_LEXICAL_TOP_K // 2),
+                source_type=source_type,
+                tags=tags,
+            ),
+            *(await self._semantic.retrieve_documents(
+                repo_id=repo_id,
+                query_text=query,
+                limit=max(limit * 2, settings.KB_SEMANTIC_TOP_K // 2),
+                source_type=source_type,
+                tags=tags,
+            )),
+        ]
+        ranked = self._reranker.rank(
+            query=query,
+            candidates=candidates,
+            route=route,
+            limit=max(limit * 4, settings.KB_RERANK_TOP_K * 2),
         )
-        return _to_retrieved_chunks(hits, source="semantic")
-
-    async def _retrieve_related_tests(
-        self,
-        *,
-        repo_id: str,
-        changed_files: list[str],
-        limit: int,
-    ) -> list[RetrievedContextChunk]:
-        if not changed_files:
-            return []
-
-        test_query = _build_related_tests_query(changed_files)
-        query_vector = hash_embed_text(test_query, vector_size=self._vector_size)
-        hits = await self._vector_store.search(
-            collection_name=self._collection,
-            query_vector=query_vector,
-            filter_payload={"repo_id": repo_id, "type": "chunk"},
-            limit=limit * 3,
-        )
-        candidates = _to_retrieved_chunks(hits, source="test_related")
-        filtered = [item for item in candidates if _is_probably_test_path(item.path, item.file_type)]
-        return filtered[:limit]
+        return self._packer.pack(candidates=ranked, route=route, limit=limit)
 
 
 def retrieve(query: str) -> list[str]:
@@ -305,6 +337,14 @@ def _extract_diff_signals(diff_text: str) -> DiffSignals:
     return DiffSignals(paths=paths, symbols=symbols, added_lines=added_lines, semantic_query=semantic_query)
 
 
+class DiffSignals:
+    def __init__(self, *, paths: list[str], symbols: list[str], added_lines: list[str], semantic_query: str) -> None:
+        self.paths = paths
+        self.symbols = symbols
+        self.added_lines = added_lines
+        self.semantic_query = semantic_query
+
+
 def _extract_symbols_from_diff(diff_text: str) -> list[str]:
     patterns = [
         re.compile(r"^\+\s*def\s+([A-Za-z_]\w*)\s*\("),
@@ -366,17 +406,14 @@ def _build_query_from_diff(
     )
 
 
-def _build_related_tests_query(changed_files: list[str]) -> str:
-    seeds: list[str] = []
-    for path in changed_files:
-        parts = path.split("/")
-        filename = parts[-1] if parts else path
-        stem = filename.rsplit(".", maxsplit=1)[0]
-        if stem:
-            seeds.append(f"test {stem}")
-        if parts:
-            seeds.append(" ".join(parts[-3:]))
-    return "related unit tests integration tests " + " ".join(seeds[:20])
+def _build_lexical_query_from_diff(signals: DiffSignals) -> str:
+    if signals.added_lines:
+        return " ".join(signals.added_lines[:24])[:2000]
+    if signals.symbols:
+        return " ".join(signals.symbols[:20])
+    if signals.paths:
+        return " ".join(signals.paths[:20])
+    return signals.semantic_query[:800]
 
 
 def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float = 0.0) -> list[RetrievedContextChunk]:
@@ -389,6 +426,8 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
             continue
         score = float(getattr(hit, "score", fallback_score) or fallback_score)
         token_count = _as_optional_int(payload.get("token_count"))
+        tags = payload.get("tags")
+        normalized_tags = tuple(str(tag).strip() for tag in tags if str(tag).strip()) if isinstance(tags, list) else ()
         chunks.append(
             RetrievedContextChunk(
                 score=score,
@@ -403,117 +442,26 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
                 start_line=_as_optional_int(payload.get("start_line")),
                 end_line=_as_optional_int(payload.get("end_line")),
                 source=source,
+                source_type=_as_optional_str(payload.get("source_type")),
+                tags=normalized_tags,
             )
         )
     return chunks
 
 
-def _rank_and_trim(
-    *,
-    chunks: list[RetrievedContextChunk],
-    limit: int,
-    max_context_chars: int,
-    max_chunks_per_file: int,
-    mode: str,
-    changed_files: set[str] | None = None,
-    symbols: set[str] | None = None,
-) -> list[RetrievedContextChunk]:
-    if not chunks:
-        return []
-
-    changed_files = changed_files or set()
-    symbols = symbols or set()
-    deduped: dict[str, RetrievedContextChunk] = {}
-    for item in chunks:
-        key = _dedup_key(item)
-        previous = deduped.get(key)
-        if previous is None or item.score > previous.score:
-            deduped[key] = item
-
-    scored: list[tuple[float, RetrievedContextChunk]] = []
-    for item in deduped.values():
-        bonus = 0.0
-        source_weight = {
-            "file_exact": 3.0,
-            "symbol_exact": 2.2,
-            "test_related": 1.6,
-            "semantic": 1.2,
-            "repo_bootstrap": 1.0,
-        }.get(item.source, 1.0)
-        bonus += source_weight
-
-        if mode == "diff":
-            if item.path in changed_files:
-                bonus += 2.5
-            if item.symbol_name and item.symbol_name in symbols:
-                bonus += 2.0
-            if item.file_type == "test":
-                bonus += 0.7
-            if item.chunk_type in {"function", "class", "test_case"}:
-                bonus += 0.4
-        elif mode == "repo_bootstrap":
-            if _is_key_repo_file(item.path):
-                bonus += 2.0
-            if item.file_type == "test":
-                bonus -= 0.6
-            if item.chunk_type in {"class", "function", "config_section", "infra_block"}:
-                bonus += 0.5
-
-        scored.append((item.score + bonus, item))
-
-    scored.sort(key=lambda pair: pair[0], reverse=True)
-
-    result: list[RetrievedContextChunk] = []
-    by_file: dict[str, int] = {}
-    total_chars = 0
-    for _, item in scored:
-        current_count = by_file.get(item.path, 0)
-        if current_count >= max_chunks_per_file:
-            continue
-        projected = total_chars + len(item.content)
-        if projected > max_context_chars and result:
-            continue
-        result.append(item)
-        by_file[item.path] = current_count + 1
-        total_chars = projected
-        if len(result) >= limit:
-            break
-    return result
-
-
-def _is_probably_test_path(path: str, file_type: str) -> bool:
-    lower_path = path.lower()
-    if file_type == "test":
-        return True
-    if "/tests/" in lower_path or "/test/" in lower_path or "__tests__" in lower_path:
-        return True
-    filename = lower_path.rsplit("/", maxsplit=1)[-1]
-    return filename.startswith("test_") or filename.endswith("_test.py") or filename.endswith(".spec.ts")
-
-
-def _is_key_repo_file(path: str) -> bool:
-    lower = path.lower()
-    key_names = (
-        "readme.md",
-        "docker-compose.yml",
-        "dockerfile",
-        "pyproject.toml",
-        "package.json",
-        "go.mod",
-        "cargo.toml",
-        "pom.xml",
-        "app/main.py",
-        "src/main.ts",
-        "main.py",
-        "main.ts",
-    )
-    return any(lower.endswith(name) for name in key_names)
-
-
-def _dedup_key(item: RetrievedContextChunk) -> str:
-    anchor = f"{item.path}:{item.start_line}:{item.end_line}:{item.chunk_index}:{item.chunk_type}"
-    digest = hashlib.sha1(item.content.encode("utf-8")).hexdigest()[:12]
-    return f"{anchor}:{digest}"
+def _as_optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
 
 
 def _as_optional_str(value: Any) -> str | None:
@@ -521,10 +469,3 @@ def _as_optional_str(value: Any) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
-
-
-def _as_optional_int(value: Any) -> int | None:
-    try:
-        return int(value) if value is not None else None
-    except (TypeError, ValueError):
-        return None
