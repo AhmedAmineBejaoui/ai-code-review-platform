@@ -50,6 +50,10 @@ function extractErrorText(value: unknown): string | null {
   return null
 }
 
+function errorMessage(error: unknown, fallback: string): string {
+  return extractErrorText(error) ?? fallback
+}
+
 async function parseBackendError(response: Response): Promise<string> {
   const rawBody = await response.text()
   if (!rawBody) {
@@ -74,84 +78,110 @@ async function extractPdfText(file: File): Promise<string> {
 }
 
 export async function POST(request: Request) {
-  const authContext = await requireBackendAuth()
-  if (!authContext.ok) {
-    return authContext.response
-  }
-
-  let formData: FormData
   try {
-    formData = await request.formData()
-  } catch {
-    return NextResponse.json({ error: "Invalid multipart payload" }, { status: 400 })
-  }
-
-  const repoId = String(formData.get("repoId") ?? "").trim()
-  const pathOrUrl = String(formData.get("pathOrUrl") ?? "").trim()
-  const notes = String(formData.get("notes") ?? "").trim()
-  const files = formData
-    .getAll("files")
-    .filter((item): item is File => item instanceof File)
-
-  if (!repoId) {
-    return NextResponse.json({ error: "repoId is required" }, { status: 400 })
-  }
-  if (files.length === 0) {
-    return NextResponse.json({ error: "At least one PDF file is required" }, { status: 400 })
-  }
-
-  const importedItems: Array<{ docId: string; title: string; chunks: number }> = []
-
-  for (const file of files) {
-    const normalizedName = file.name.trim()
-    if (!normalizedName.toLowerCase().endsWith(".pdf")) {
-      return NextResponse.json({ error: `Unsupported file type for '${normalizedName}'. PDF only.` }, { status: 400 })
+    const authContext = await requireBackendAuth()
+    if (!authContext.ok) {
+      return authContext.response
     }
 
-    const extractedText = await extractPdfText(file)
-    if (!extractedText) {
-      return NextResponse.json({ error: `No readable text extracted from '${normalizedName}'.` }, { status: 400 })
+    let formData: FormData
+    try {
+      formData = await request.formData()
+    } catch {
+      return NextResponse.json({ error: "Invalid multipart payload" }, { status: 400 })
     }
 
-    const ingestPayload = {
-      repo_id: repoId,
-      title: normalizedName,
-      source_type: "pdf",
-      path_or_url: pathOrUrl || normalizedName,
-      content: notes ? `${notes}\n\n${extractedText}` : extractedText,
-      tags: ["pdf", "dashboard_upload"],
-      doc_version: 1,
+    const repoId = String(formData.get("repoId") ?? "").trim()
+    const pathOrUrl = String(formData.get("pathOrUrl") ?? "").trim()
+    const notes = String(formData.get("notes") ?? "").trim()
+    const files = formData
+      .getAll("files")
+      .filter((item): item is File => item instanceof File)
+
+    if (!repoId) {
+      return NextResponse.json({ error: "repoId is required" }, { status: 400 })
+    }
+    if (files.length === 0) {
+      return NextResponse.json({ error: "At least one PDF file is required" }, { status: 400 })
     }
 
-    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/kb/ingest`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${authContext.token}`,
-        "X-User-Id": authContext.userId,
-        "Content-Type": "application/json",
+    const importedItems: Array<{ docId: string; title: string; chunks: number }> = []
+
+    for (const file of files) {
+      const normalizedName = file.name.trim()
+      if (!normalizedName.toLowerCase().endsWith(".pdf")) {
+        return NextResponse.json({ error: `Unsupported file type for '${normalizedName}'. PDF only.` }, { status: 400 })
+      }
+
+      let extractedText = ""
+      try {
+        extractedText = await extractPdfText(file)
+      } catch (error) {
+        console.error("PDF import parsing failed", { fileName: normalizedName, error })
+        return NextResponse.json(
+          { error: `PDF parsing failed for '${normalizedName}': ${errorMessage(error, "Unknown parser error")}` },
+          { status: 400 },
+        )
+      }
+      if (!extractedText) {
+        return NextResponse.json({ error: `No readable text extracted from '${normalizedName}'.` }, { status: 400 })
+      }
+
+      const ingestPayload = {
+        repo_id: repoId,
+        title: normalizedName,
+        source_type: "pdf",
+        path_or_url: pathOrUrl || normalizedName,
+        content: notes ? `${notes}\n\n${extractedText}` : extractedText,
+        tags: ["pdf", "dashboard_upload"],
+        doc_version: 1,
+      }
+
+      let backendResponse: Response
+      try {
+        backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/kb/ingest`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${authContext.token}`,
+            "X-User-Id": authContext.userId,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(ingestPayload),
+          cache: "no-store",
+        })
+      } catch (error) {
+        console.error("PDF import backend request failed", { repoId, fileName: normalizedName, error })
+        return NextResponse.json(
+          { error: `KB backend request failed: ${errorMessage(error, "Backend unavailable")}` },
+          { status: 502 },
+        )
+      }
+
+      if (!backendResponse.ok) {
+        return NextResponse.json({ error: await parseBackendError(backendResponse) }, { status: backendResponse.status })
+      }
+
+      const payload = (await backendResponse.json()) as BackendIngestResponse
+      importedItems.push({
+        docId: String(payload.doc_id ?? ""),
+        title: String(payload.title ?? normalizedName),
+        chunks: Number(payload.chunks ?? 0) || 0,
+      })
+    }
+
+    return NextResponse.json(
+      {
+        repoId,
+        importedCount: importedItems.length,
+        items: importedItems,
       },
-      body: JSON.stringify(ingestPayload),
-      cache: "no-store",
-    })
-
-    if (!backendResponse.ok) {
-      return NextResponse.json({ error: await parseBackendError(backendResponse) }, { status: backendResponse.status })
-    }
-
-    const payload = (await backendResponse.json()) as BackendIngestResponse
-    importedItems.push({
-      docId: String(payload.doc_id ?? ""),
-      title: String(payload.title ?? normalizedName),
-      chunks: Number(payload.chunks ?? 0) || 0,
-    })
+      { status: 200 },
+    )
+  } catch (error) {
+    console.error("Unhandled PDF import route failure", error)
+    return NextResponse.json(
+      { error: `Unhandled PDF import error: ${errorMessage(error, "Unknown server error")}` },
+      { status: 500 },
+    )
   }
-
-  return NextResponse.json(
-    {
-      repoId,
-      importedCount: importedItems.length,
-      items: importedItems,
-    },
-    { status: 200 },
-  )
 }
