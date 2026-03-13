@@ -275,7 +275,7 @@ export function DeveloperDashboard() {
   useEffect(() => {
     let cancelled = false;
     setInsightsLoading(true);
-    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true })])
+    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true, size: 40 })])
       .then(([insightsPayload, analysesPayload]) => {
         if (cancelled) {
           return;
@@ -311,7 +311,7 @@ export function DeveloperDashboard() {
       }
       isRefreshing = true;
       try {
-        const analysesPayload = await fetchDashboardAnalyses({ force: true });
+        const analysesPayload = await fetchDashboardAnalyses({ force: true, size: 40 });
         latestItems = analysesPayload;
         if (!cancelled) {
           setAnalysisRows(analysesPayload);
@@ -405,7 +405,7 @@ export function DeveloperDashboard() {
     try {
       const [insightsPayload, analysesPayload] = await Promise.all([
         fetchDashboardInsights(),
-        fetchDashboardAnalyses({ force: true }),
+        fetchDashboardAnalyses({ force: true, size: 40 }),
       ]);
       setInsights(insightsPayload);
       setAnalysisRows(analysesPayload);

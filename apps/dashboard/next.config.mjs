@@ -2,10 +2,11 @@
 const nextConfig = {
   reactStrictMode: true,
   webpack: (config, { dev }) => {
-    // On Windows, webpack filesystem cache can occasionally reference stale chunk ids in .next.
-    // Disable webpack cache in dev to avoid "Cannot find module './<id>.js'" runtime crashes.
+    // Use in-memory cache in dev: faster incremental rebuilds while avoiding stale filesystem cache issues on Windows.
     if (dev) {
-      config.cache = false
+      config.cache = {
+        type: "memory",
+      }
     }
     return config
   },

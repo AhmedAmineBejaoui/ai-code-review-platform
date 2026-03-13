@@ -18,10 +18,21 @@ type DashboardAnalysesResponse = {
 }
 
 const ANALYSES_CACHE_TTL_MS = 8_000
+const ANALYSES_DEFAULT_SIZE = 40
+const ANALYSES_MIN_SIZE = 10
+const ANALYSES_MAX_SIZE = 100
 
-let analysesCacheValue: DashboardAnalysisItem[] | null = null
-let analysesCacheExpiresAt = 0
-let analysesInFlight: Promise<DashboardAnalysisItem[]> | null = null
+const analysesCacheValueBySize = new Map<number, DashboardAnalysisItem[]>()
+const analysesCacheExpiresAtBySize = new Map<number, number>()
+const analysesInFlightBySize = new Map<number, Promise<DashboardAnalysisItem[]>>()
+
+function normalizeSize(rawSize: number | undefined): number {
+  if (typeof rawSize !== "number" || !Number.isFinite(rawSize)) {
+    return ANALYSES_DEFAULT_SIZE
+  }
+  const value = Math.floor(rawSize)
+  return Math.max(ANALYSES_MIN_SIZE, Math.min(ANALYSES_MAX_SIZE, value))
+}
 
 function normalizeAnalysesPayload(payload: DashboardAnalysesResponse | null | undefined): DashboardAnalysisItem[] {
   if (!payload || !Array.isArray(payload.items)) {
@@ -52,41 +63,46 @@ export function hasActiveDashboardAnalysis(items: DashboardAnalysisItem[]): bool
   })
 }
 
-export async function fetchDashboardAnalyses(options?: { force?: boolean }): Promise<DashboardAnalysisItem[]> {
+export async function fetchDashboardAnalyses(options?: { force?: boolean; size?: number }): Promise<DashboardAnalysisItem[]> {
   const force = options?.force === true
+  const size = normalizeSize(options?.size)
   const now = Date.now()
-  if (!force && analysesCacheValue && now < analysesCacheExpiresAt) {
-    return analysesCacheValue
+  const cachedValue = analysesCacheValueBySize.get(size) ?? null
+  const cacheExpiresAt = analysesCacheExpiresAtBySize.get(size) ?? 0
+  if (!force && cachedValue && now < cacheExpiresAt) {
+    return cachedValue
   }
-  if (!force && analysesInFlight) {
-    return analysesInFlight
+  const inFlight = analysesInFlightBySize.get(size) ?? null
+  if (!force && inFlight) {
+    return inFlight
   }
 
   const request = (async (): Promise<DashboardAnalysisItem[]> => {
-  try {
-    const response = await fetch("/api/dashboard/analyses", {
-      method: "GET",
-      cache: "no-store",
-      headers: { Accept: "application/json" },
-    })
-    if (!response.ok) {
-      analysesCacheValue = []
-      analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
-      return analysesCacheValue
+    try {
+      const response = await fetch(`/api/dashboard/analyses?size=${encodeURIComponent(String(size))}`, {
+        method: "GET",
+        cache: "no-store",
+        headers: { Accept: "application/json" },
+      })
+      if (!response.ok) {
+        analysesCacheValueBySize.set(size, [])
+        analysesCacheExpiresAtBySize.set(size, Date.now() + ANALYSES_CACHE_TTL_MS)
+        return []
+      }
+      const payload = (await response.json()) as DashboardAnalysesResponse
+      const normalized = normalizeAnalysesPayload(payload)
+      analysesCacheValueBySize.set(size, normalized)
+      analysesCacheExpiresAtBySize.set(size, Date.now() + ANALYSES_CACHE_TTL_MS)
+      return normalized
+    } catch {
+      analysesCacheValueBySize.set(size, [])
+      analysesCacheExpiresAtBySize.set(size, Date.now() + ANALYSES_CACHE_TTL_MS)
+      return []
+    } finally {
+      analysesInFlightBySize.delete(size)
     }
-    const payload = (await response.json()) as DashboardAnalysesResponse
-    analysesCacheValue = normalizeAnalysesPayload(payload)
-    analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
-    return analysesCacheValue
-  } catch {
-    analysesCacheValue = []
-    analysesCacheExpiresAt = Date.now() + ANALYSES_CACHE_TTL_MS
-    return analysesCacheValue
-  } finally {
-    analysesInFlight = null
-  }
   })()
 
-  analysesInFlight = request
+  analysesInFlightBySize.set(size, request)
   return request
 }

@@ -105,7 +105,7 @@ export function AnalysisList() {
     setInsightsLoading(true)
     setAnalysesLoading(true)
 
-    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true })])
+    Promise.all([fetchDashboardInsights(), fetchDashboardAnalyses({ force: true, size: 100 })])
       .then(([insightsPayload, analysesPayload]) => {
         if (cancelled) {
           return
@@ -140,7 +140,7 @@ export function AnalysisList() {
         return
       }
 
-      const analysesPayload = await fetchDashboardAnalyses({ force: true })
+      const analysesPayload = await fetchDashboardAnalyses({ force: true, size: 100 })
       if (!cancelled) {
         setAnalyses(analysesPayload)
         timeoutId = setTimeout(() => {

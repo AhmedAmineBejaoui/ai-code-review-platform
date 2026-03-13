@@ -21,6 +21,10 @@ const MAX_GITHUB_SNAPSHOT_FILES = 220
 const MAX_GITHUB_SNAPSHOT_FILE_BYTES = 200_000
 const MAX_GITHUB_SNAPSHOT_TOTAL_BYTES = 1_500_000
 const MAX_GITHUB_SNAPSHOT_DIFF_BYTES = 1_850_000
+const DASHBOARD_ANALYSES_DEFAULT_SIZE = 40
+const DASHBOARD_ANALYSES_MIN_SIZE = 10
+const DASHBOARD_ANALYSES_MAX_SIZE = 100
+const DASHBOARD_ANALYSES_ROUTE_CACHE_TTL_MS = 5_000
 
 type CreateAnalysisBody = {
   repo?: unknown
@@ -62,6 +66,11 @@ type DashboardAnalysisListItem = {
   blockerCount: number
   warnCount: number
   infoCount: number
+}
+
+type AnalysesRouteCacheEntry = {
+  expiresAt: number
+  items: DashboardAnalysisListItem[]
 }
 
 type ParsedCreateAnalysisBody = {
@@ -120,6 +129,8 @@ type GithubDiffResolution = {
   resolvedCommitSha: string | null
   metadataUpdates: Record<string, unknown>
 }
+
+const analysesRouteCache = new Map<string, AnalysesRouteCacheEntry>()
 
 function isUnifiedDiff(text: string): boolean {
   return text.includes("diff --git") || text.includes("@@")
@@ -337,6 +348,30 @@ function normalizeOptionalObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function readStringFromClaims(claims: unknown, key: string): string | null {
+  if (typeof claims !== "object" || claims === null) {
+    return null
+  }
+  const value = (claims as Record<string, unknown>)[key]
+  if (typeof value !== "string") {
+    return null
+  }
+  const trimmed = value.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function extractEmailFromClaims(claims: unknown): string | undefined {
+  const direct = readStringFromClaims(claims, "email")
+  if (direct) {
+    return direct
+  }
+  const emailAddress = readStringFromClaims(claims, "email_address")
+  if (emailAddress) {
+    return emailAddress
+  }
+  return undefined
+}
+
 function resolveUserRole(user: Awaited<ReturnType<typeof currentUser>>, claims: unknown): AppRole {
   const claimsRole = extractRoleFromClaims(claims)
   if (claimsRole !== "developer") {
@@ -458,6 +493,18 @@ function resolveDurationLabel(createdAt: string | undefined, updatedAt: string |
   const terminal = status === "FAILED" || status === "COMPLETED"
   const end = terminal && updated ? updated : now
   return formatDurationMs(end.getTime() - created.getTime())
+}
+
+function normalizeDashboardAnalysesSize(raw: string | null): number {
+  if (!raw) {
+    return DASHBOARD_ANALYSES_DEFAULT_SIZE
+  }
+  const parsed = Number(raw)
+  if (!Number.isFinite(parsed)) {
+    return DASHBOARD_ANALYSES_DEFAULT_SIZE
+  }
+  const normalized = Math.floor(parsed)
+  return Math.max(DASHBOARD_ANALYSES_MIN_SIZE, Math.min(DASHBOARD_ANALYSES_MAX_SIZE, normalized))
 }
 
 async function fetchBackendJSON<T>(path: string, token: string | null, userId: string): Promise<T | null> {
@@ -811,19 +858,24 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
   return undefined
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   const { userId, getToken, sessionClaims } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const [token, user] = await Promise.all([getToken(), currentUser()])
-  const role = resolveUserRole(user, sessionClaims)
-  const email =
-    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+  const token = await getToken()
+  const role = resolveUserRole(null, sessionClaims)
+  const email = extractEmailFromClaims(sessionClaims)
+  const size = normalizeDashboardAnalysesSize(request.nextUrl.searchParams.get("size"))
+  const cacheKey = `${userId}:${role}:${email ?? ""}:${size}`
+  const now = Date.now()
+  const cachedEntry = analysesRouteCache.get(cacheKey)
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return NextResponse.json({ items: cachedEntry.items }, { status: 200 })
+  }
 
-  const listPayload = await fetchBackendJSON<BackendAnalysisListResponse>("/v1/analyses?page=1&size=100", token, userId)
+  const listPayload = await fetchBackendJSON<BackendAnalysisListResponse>(`/v1/analyses?page=1&size=${size}`, token, userId)
   if (!listPayload || !Array.isArray(listPayload.items)) {
     return NextResponse.json({ items: [] }, { status: 200 })
   }
@@ -862,7 +914,7 @@ export async function GET() {
         )
       : baseItems
 
-  const selectedItems = scopedItems.slice(0, 100)
+  const selectedItems = scopedItems.slice(0, size)
   const enrichedItems: DashboardAnalysisListItem[] = selectedItems.map((item) => ({
     id: item.id,
     repo: item.repo,
@@ -877,6 +929,11 @@ export async function GET() {
     warnCount: item.warnCount,
     infoCount: item.infoCount,
   }))
+
+  analysesRouteCache.set(cacheKey, {
+    expiresAt: now + DASHBOARD_ANALYSES_ROUTE_CACHE_TTL_MS,
+    items: enrichedItems,
+  })
 
   return NextResponse.json({ items: enrichedItems }, { status: 200 })
 }

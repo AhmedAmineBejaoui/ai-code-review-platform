@@ -1,4 +1,4 @@
-import { auth, currentUser } from "@clerk/nextjs/server"
+import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
 import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
@@ -9,6 +9,7 @@ const BACKEND_FETCH_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
 )
+const DASHBOARD_INSIGHTS_ROUTE_CACHE_TTL_MS = 8_000
 
 type BackendAnalysisListResponse = {
   items?: Array<{
@@ -52,6 +53,19 @@ type PrSummaryDTO = {
   createdAt: string
   authorLabel: string | null
 }
+
+type InsightsRouteCacheEntry = {
+  expiresAt: number
+  payload: {
+    role: AppRole
+    prSummaries: PrSummaryDTO[]
+    repoOverviews: RepoOverviewDTO[]
+    warnings: string[]
+    generatedAt: string
+  }
+}
+
+const insightsRouteCache = new Map<string, InsightsRouteCacheEntry>()
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (typeof value !== "object" || value === null) {
@@ -253,13 +267,26 @@ export async function GET() {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const [token, user] = await Promise.all([getToken(), currentUser()])
+  const token = await getToken()
+  const claimsRecord = asRecord(sessionClaims)
   const userRoleCandidate =
-    user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
+    asRecord(claimsRecord?.public_metadata)?.role ??
+    asRecord(claimsRecord?.publicMetadata)?.role ??
+    asRecord(claimsRecord?.unsafe_metadata)?.role ??
+    asRecord(claimsRecord?.unsafeMetadata)?.role ??
+    asRecord(claimsRecord?.app_metadata)?.role ??
+    asRecord(claimsRecord?.appMetadata)?.role ??
+    claimsRecord?.role
   const role = normalizeUserRole(userRoleCandidate, sessionClaims)
+  const emailCandidate = claimsRecord?.email ?? claimsRecord?.email_address
   const email =
-    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+    typeof emailCandidate === "string" && emailCandidate.trim().length > 0 ? emailCandidate.trim() : undefined
+  const cacheKey = `${userId}:${role}:${email ?? ""}`
+  const now = Date.now()
+  const cachedEntry = insightsRouteCache.get(cacheKey)
+  if (cachedEntry && cachedEntry.expiresAt > now) {
+    return NextResponse.json(cachedEntry.payload, { status: 200 })
+  }
   const warnings: string[] = []
 
   const [analysesPayload, profilesPayload] = await Promise.all([
@@ -277,14 +304,18 @@ export async function GET() {
   const prSummaries = toPrSummaries(analysesPayload, role, userId, email ?? undefined)
   const repoOverviews = toRepoOverviews(profilesPayload)
 
-  return NextResponse.json(
-    {
-      role,
-      prSummaries,
-      repoOverviews,
-      warnings,
-      generatedAt: new Date().toISOString(),
-    },
-    { status: 200 },
-  )
+  const responsePayload = {
+    role,
+    prSummaries,
+    repoOverviews,
+    warnings,
+    generatedAt: new Date().toISOString(),
+  }
+
+  insightsRouteCache.set(cacheKey, {
+    expiresAt: now + DASHBOARD_INSIGHTS_ROUTE_CACHE_TTL_MS,
+    payload: responsePayload,
+  })
+
+  return NextResponse.json(responsePayload, { status: 200 })
 }
