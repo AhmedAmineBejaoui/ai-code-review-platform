@@ -84,6 +84,14 @@ class Settings(BaseSettings):
     REPO_CONTEXT_MAX_FILES_PER_RUN: int = 5000
     REPO_CONTEXT_ALLOWED_ROOTS: str | None = None
     REPO_CONTEXT_REPO_PATH_MAP: str | None = None
+    KB_EXACT_TOP_K: int = 8
+    KB_LEXICAL_TOP_K: int = 12
+    KB_SEMANTIC_TOP_K: int = 12
+    KB_RERANK_TOP_K: int = 8
+    KB_CONTEXT_MAX_CHARS: int = 14_000
+    KB_CONTEXT_MAX_CHUNKS: int = 8
+    KB_CROSS_ENCODER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    KB_RERANK_ENABLED: bool = True
 
     # ── Object Storage (MinIO / S3) ───────────────────────────────────────────
     OBJECT_STORAGE_ENABLED: bool = False

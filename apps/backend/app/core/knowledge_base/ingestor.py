@@ -19,6 +19,7 @@ from app.core.knowledge_base.guardrails import (
     to_posix_relative,
     validate_allowed_roots,
 )
+from app.data.repos.repo_context_chunks_repo import RepoContextChunkWrite, RepoContextChunksRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
 from app.settings import settings
 
@@ -192,6 +193,7 @@ class ChunkingResult:
 class RepoContextIngestor:
     def __init__(self, vector_store: QdrantClient) -> None:
         self._vector_store = vector_store
+        self._repo_context_chunks_repo = RepoContextChunksRepo()
         self._collection = settings.QDRANT_REPO_CONTEXT_COLLECTION
         self._vector_size = settings.REPO_CONTEXT_VECTOR_SIZE
         self._chunk_size = settings.REPO_CONTEXT_CHUNK_SIZE
@@ -223,8 +225,10 @@ class RepoContextIngestor:
         await self._vector_store.delete_by_filter(collection_name=self._collection, filter_payload={"repo_id": repo_key})
 
         points: list[QdrantPoint] = []
+        sql_rows: list[RepoContextChunkWrite] = []
         files_indexed = 0
         file_type_distribution: dict[str, int] = {}
+        self._repo_context_chunks_repo.delete_repo(repo_key)
         for file_path in files:
             relative_path = to_posix_relative(root, file_path)
             chunking = self._file_to_chunks(file_path)
@@ -234,20 +238,21 @@ class RepoContextIngestor:
             language = _guess_language(relative_path)
             file_type_distribution[chunking.file_type] = file_type_distribution.get(chunking.file_type, 0) + 1
             for chunk_index, chunk in enumerate(chunking.chunks):
-                points.append(
-                    self._build_chunk_point(
-                        repo_id=repo_key,
-                        relative_path=relative_path,
-                        chunk_index=chunk_index,
-                        language=language,
-                        file_type=chunking.file_type,
-                        chunk=chunk,
-                        indexed_commit=indexed_commit,
-                    )
+                point = self._build_chunk_point(
+                    repo_id=repo_key,
+                    relative_path=relative_path,
+                    chunk_index=chunk_index,
+                    language=language,
+                    file_type=chunking.file_type,
+                    chunk=chunk,
+                    indexed_commit=indexed_commit,
                 )
+                points.append(point)
+                sql_rows.append(self._build_sql_chunk_row(point))
             files_indexed += 1
 
         await self._upsert_in_batches(points)
+        self._repo_context_chunks_repo.upsert_chunks(sql_rows)
 
         profile_payload = self._build_repo_profile_payload(
             repo_id=repo_key,
@@ -323,10 +328,12 @@ class RepoContextIngestor:
         await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
 
         points_to_upsert: list[QdrantPoint] = []
+        sql_rows_to_upsert: list[RepoContextChunkWrite] = []
         chunks_deleted = 0
         files_indexed = 0
         file_type_distribution: dict[str, int] = {}
         indexed_commit = self._safe_git_head(root)
+        self._repo_context_chunks_repo.delete_repo_paths(repo_key, changed_files)
         for relative_path in changed_files:
             await self._vector_store.delete_by_filter(
                 collection_name=self._collection,
@@ -349,20 +356,21 @@ class RepoContextIngestor:
             language = _guess_language(relative_path)
             file_type_distribution[chunking.file_type] = file_type_distribution.get(chunking.file_type, 0) + 1
             for chunk_index, chunk in enumerate(chunking.chunks):
-                points_to_upsert.append(
-                    self._build_chunk_point(
-                        repo_id=repo_key,
-                        relative_path=relative_path,
-                        chunk_index=chunk_index,
-                        language=language,
-                        file_type=chunking.file_type,
-                        chunk=chunk,
-                        indexed_commit=indexed_commit,
-                    )
+                point = self._build_chunk_point(
+                    repo_id=repo_key,
+                    relative_path=relative_path,
+                    chunk_index=chunk_index,
+                    language=language,
+                    file_type=chunking.file_type,
+                    chunk=chunk,
+                    indexed_commit=indexed_commit,
                 )
+                points_to_upsert.append(point)
+                sql_rows_to_upsert.append(self._build_sql_chunk_row(point))
             files_indexed += 1
 
         await self._upsert_in_batches(points_to_upsert)
+        self._repo_context_chunks_repo.upsert_chunks(sql_rows_to_upsert)
 
         default_branch = self._safe_git_branch(root)
         profile_payload = self._build_repo_profile_payload(
@@ -862,6 +870,27 @@ class RepoContextIngestor:
             vector_size=self._vector_size,
         )
         return QdrantPoint(id=point_id, vector=vector, payload=payload)
+
+    def _build_sql_chunk_row(self, point: QdrantPoint) -> RepoContextChunkWrite:
+        payload = point.payload
+        return RepoContextChunkWrite(
+            id=point.id,
+            repo_id=str(payload["repo_id"]),
+            path=str(payload["path"]),
+            chunk_index=int(payload["chunk_index"]),
+            content=str(payload["content"]),
+            language=str(payload["language"]),
+            file_type=str(payload["file_type"]),
+            chunk_type=str(payload["chunk_type"]),
+            symbol_name=_as_non_empty_str(payload.get("symbol_name")),
+            start_line=_as_optional_int(payload.get("start_line")),
+            end_line=_as_optional_int(payload.get("end_line")),
+            indexed_commit=_as_non_empty_str(payload.get("indexed_commit")),
+            metadata={
+                "indexed_at": payload.get("indexed_at"),
+                "token_count": payload.get("token_count"),
+            },
+        )
 
     def _build_profile_point(self, *, repo_id: str, payload: dict[str, Any]) -> QdrantPoint:
         summary = payload.get("summary", "")

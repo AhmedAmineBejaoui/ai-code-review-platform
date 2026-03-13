@@ -697,6 +697,70 @@ def init_db() -> None:
             )
         )
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_kb_chunks_doc_id ON kb_chunks(doc_id)"))
+        conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS content TEXT"))
+        conn.execute(text("ALTER TABLE kb_chunks ADD COLUMN IF NOT EXISTS token_count INTEGER"))
+        conn.execute(text("UPDATE kb_chunks SET content = COALESCE(content, text) WHERE content IS NULL"))
+        conn.execute(
+            text(
+                """
+                UPDATE kb_chunks
+                SET token_count = GREATEST(1, LENGTH(COALESCE(content, text, '')) / 4)
+                WHERE token_count IS NULL
+                """
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_kb_chunks_content_fts
+                ON kb_chunks
+                USING GIN (to_tsvector('simple', COALESCE(content, text)))
+                """
+            )
+        )
+
+        conn.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS repo_context_chunks (
+                    id TEXT PRIMARY KEY,
+                    repo_id TEXT NOT NULL,
+                    path TEXT NOT NULL,
+                    chunk_index INTEGER NOT NULL,
+                    content TEXT NOT NULL,
+                    language TEXT NOT NULL,
+                    file_type TEXT NOT NULL,
+                    chunk_type TEXT NOT NULL,
+                    symbol_name TEXT NULL,
+                    start_line INTEGER NULL,
+                    end_line INTEGER NULL,
+                    indexed_commit TEXT NULL,
+                    metadata_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    UNIQUE(repo_id, path, chunk_index, chunk_type, start_line, end_line)
+                )
+                """
+            )
+        )
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_repo_context_chunks_repo_id ON repo_context_chunks(repo_id)"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_repo_context_chunks_repo_path ON repo_context_chunks(repo_id, path)")
+        )
+        conn.execute(
+            text(
+                "CREATE INDEX IF NOT EXISTS idx_repo_context_chunks_repo_symbol ON repo_context_chunks(repo_id, symbol_name)"
+            )
+        )
+        conn.execute(
+            text(
+                """
+                CREATE INDEX IF NOT EXISTS idx_repo_context_chunks_content_fts
+                ON repo_context_chunks
+                USING GIN (to_tsvector('simple', content))
+                """
+            )
+        )
 
         conn.execute(
             text(
