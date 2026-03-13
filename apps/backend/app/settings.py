@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     OLLAMA_TIMEOUT_SECONDS: int = 60
     OLLAMA_TEMPERATURE: float = 0.2
     OLLAMA_NUM_PREDICT: int = 400
+    LLM_REVIEW_FINDINGS_ENABLED: bool = True
+    LLM_REVIEW_MAX_FINDINGS: int = 4
 
     # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
     QDRANT_ENABLED: bool = False

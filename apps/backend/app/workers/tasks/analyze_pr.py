@@ -7,6 +7,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from app.core.ai_orchestration import GroundedReviewService
 from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
@@ -27,6 +28,13 @@ from app.workers.celery_app import celery_app
 
 _CHANGE_CLASSIFIER = ChangeClassifier()
 _SUMMARY_SERVICE = SummaryService(
+    llm_client=OllamaClient(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.OLLAMA_MODEL,
+        timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+    )
+)
+_GROUNDED_REVIEW_SERVICE = GroundedReviewService(
     llm_client=OllamaClient(
         base_url=settings.OLLAMA_BASE_URL,
         model=settings.OLLAMA_MODEL,
@@ -63,6 +71,26 @@ def _static_fingerprint(
             file_path,
             str(line_start or ""),
             str(line_end or ""),
+            message.strip(),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _llm_fingerprint(
+    analysis_id: str,
+    file_path: str | None,
+    line_start: int | None,
+    category: str,
+    message: str,
+) -> str:
+    payload = "|".join(
+        [
+            analysis_id,
+            "llm_grounded_kb",
+            file_path or "",
+            str(line_start or ""),
+            category,
             message.strip(),
         ]
     )
@@ -352,6 +380,13 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             # Change categorization must not block the rest of the review pipeline.
             pass
 
+        sorted_files = sorted(
+            parsed.files,
+            key=lambda file_item: (file_item.additions_count + file_item.deletions_count),
+            reverse=True,
+        )
+        files_changed = [file_item.path_new for file_item in sorted_files]
+
         static_findings_count = 0
         static_stats: dict[str, Any] = {"scan_disabled": True}
         static_warnings: list[str] = []
@@ -435,17 +470,66 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         repo.update_static_analysis_result(analysis_id=analysis_id, static_stats=static_stats)
 
+        llm_grounded_findings_count = 0
+        llm_grounded_findings_status = "skipped"
+        if settings.LLM_REVIEW_FINDINGS_ENABLED and kb_context_preview:
+            try:
+                grounded_output = _GROUNDED_REVIEW_SERVICE.generate_findings(
+                    repo=analysis.repo,
+                    pr_number=analysis.pr_number,
+                    diff_redacted=diff_redacted or "",
+                    files_changed=files_changed,
+                    knowledge_base_context=kb_context_preview,
+                    max_findings=settings.LLM_REVIEW_MAX_FINDINGS,
+                )
+
+                for finding in grounded_output.findings:
+                    try:
+                        repo.create_finding(
+                            CreateFindingInput(
+                                finding_id=hashlib.md5(
+                                    (
+                                        f"{analysis_id}:LLM_GROUNDED_KB:{finding.file_path}:{finding.line_start}:"
+                                        f"{finding.category}:{finding.message}"
+                                    ).encode("utf-8")
+                                ).hexdigest(),
+                                analysis_id=analysis_id,
+                                source="LLM_GROUNDED_KB",
+                                file_path=finding.file_path,
+                                line_start=finding.line_start,
+                                line_end=finding.line_end,
+                                severity=finding.severity,
+                                category=finding.category,
+                                message=finding.message,
+                                suggestion=finding.suggestion,
+                                confidence=finding.confidence,
+                                issue_type="kb_grounded_review",
+                                rule_id="KB_GROUNDED_LLM",
+                                evidence={
+                                    "grounded": True,
+                                    "kb_refs": finding.kb_refs,
+                                    "kb_context_used": True,
+                                },
+                                fingerprint=_llm_fingerprint(
+                                    analysis_id=analysis_id,
+                                    file_path=finding.file_path,
+                                    line_start=finding.line_start,
+                                    category=finding.category,
+                                    message=finding.message,
+                                ),
+                            )
+                        )
+                        llm_grounded_findings_count += 1
+                    except Exception:
+                        continue
+                llm_grounded_findings_status = "completed"
+            except Exception:
+                llm_grounded_findings_status = "failed"
+
         summary_text = "Automatic summary unavailable."
         summary_source = "ollama"
         summary_fallback = True
         try:
-            sorted_files = sorted(
-                parsed.files,
-                key=lambda file_item: (file_item.additions_count + file_item.deletions_count),
-                reverse=True,
-            )
-            files_changed = [file_item.path_new for file_item in sorted_files]
-
             summary_output = _SUMMARY_SERVICE.generate_summary(
                 repo=analysis.repo,
                 pr_number=analysis.pr_number,
@@ -459,12 +543,6 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             summary_source = "ollama"
             summary_fallback = False
         except Exception:
-            sorted_files = sorted(
-                parsed.files,
-                key=lambda file_item: (file_item.additions_count + file_item.deletions_count),
-                reverse=True,
-            )
-            files_changed = [file_item.path_new for file_item in sorted_files]
             summary_text = SummaryService.fallback_summary(
                 files_count=files_count,
                 additions_total=additions_total,
@@ -486,9 +564,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "files_changed": files_count,
             "additions_total": additions_total,
             "deletions_total": deletions_total,
-            "findings_count": security_findings_count + static_findings_count,
+            "findings_count": security_findings_count + static_findings_count + llm_grounded_findings_count,
             "security_findings_count": security_findings_count,
             "static_findings_count": static_findings_count,
+            "llm_grounded_findings_count": llm_grounded_findings_count,
             "duration_ms": duration_ms,
             "kb_retrieval": {
                 "mode": kb_retrieval_mode,
@@ -518,6 +597,12 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "fallback_used": summary_fallback,
             "model": settings.OLLAMA_MODEL if summary_source == "ollama" else None,
             "preview": summary_text[:180],
+        }
+        metrics["llm_grounded_review"] = {
+            "enabled": settings.LLM_REVIEW_FINDINGS_ENABLED,
+            "status": llm_grounded_findings_status,
+            "findings_count": llm_grounded_findings_count,
+            "model": settings.OLLAMA_MODEL if settings.LLM_REVIEW_FINDINGS_ENABLED else None,
         }
 
         repo.update_status(
