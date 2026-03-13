@@ -256,6 +256,21 @@ def _normalize_string_list(value: Any) -> list[str]:
     return results
 
 
+def _normalize_source_type(value: str) -> str:
+    normalized = value.strip().lower()
+    aliases = {
+        "md": "markdown",
+        "mdx": "markdown",
+        "doc": "markdown",
+        "docs": "markdown",
+        "url": "web",
+        "website": "web",
+        "rule": "policy",
+        "rules": "policy",
+    }
+    return aliases.get(normalized, normalized or "markdown")
+
+
 def _insert_kb_document(
     *,
     repo_id: str,
@@ -560,6 +575,11 @@ async def ingest_document(
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
     vector_store: QdrantClient = Depends(get_qdrant_client),
 ) -> DocumentIngestResponse:
+    normalized_source_type = _normalize_source_type(payload.source_type)
+    normalized_tags = _normalize_string_list(payload.tags)
+    if normalized_source_type == "policy" and "policy" not in normalized_tags:
+        normalized_tags.append("policy")
+
     chunks = _chunk_text(payload.content)
     if not chunks:
         raise ApiError(status_code=400, code="INVALID_REQUEST", message="Document content is empty after cleaning")
@@ -570,9 +590,9 @@ async def ingest_document(
         repo_id=payload.repo_id,
         doc_id=doc_id,
         title=payload.title,
-        source_type=payload.source_type,
+        source_type=normalized_source_type,
         path_or_url=payload.path_or_url,
-        tags=payload.tags,
+        tags=normalized_tags,
         doc_version=payload.doc_version,
         chunks=chunks,
     )
@@ -592,16 +612,16 @@ async def ingest_document(
                         "repo_id": payload.repo_id,
                         "doc_id": doc_id,
                         "title": payload.title,
-                        "source_type": payload.source_type,
+                        "source_type": normalized_source_type,
                         "path_or_url": payload.path_or_url,
                         "path": payload.path_or_url or payload.title,
                         "chunk_index": index,
                         "content": chunk,
                         "language": "text",
                         "token_count": token_count,
-                        "file_type": payload.source_type,
+                        "file_type": normalized_source_type,
                         "chunk_type": "document_chunk",
-                        "tags": payload.tags,
+                        "tags": normalized_tags,
                     },
                 )
             )
@@ -611,13 +631,13 @@ async def ingest_document(
     existing_profile = await asyncio.to_thread(repo_profiles.get_profile, payload.repo_id)
     profile_payload = dict(existing_profile.profile) if existing_profile and isinstance(existing_profile.profile, dict) else {}
     source_kinds = _normalize_string_list(profile_payload.get("source_kinds"))
-    if payload.source_type not in source_kinds:
-        source_kinds.append(payload.source_type)
+    if normalized_source_type not in source_kinds:
+        source_kinds.append(normalized_source_type)
 
     profile_payload.update(
         {
             "source_kind": "document",
-            "source_type": payload.source_type,
+            "source_type": normalized_source_type,
             "source_kinds": source_kinds,
             "files_indexed": _coerce_non_negative_int(profile_payload.get("files_indexed")) + 1,
             "documents_count": _coerce_non_negative_int(profile_payload.get("documents_count")) + 1,
@@ -640,7 +660,7 @@ async def ingest_document(
         repo_id=payload.repo_id,
         title=payload.title,
         chunks=len(chunks),
-        source_type=payload.source_type,
+        source_type=normalized_source_type,
     )
 
 
@@ -654,7 +674,7 @@ async def search_documents(
     chunks = await retriever.retrieve_document_chunks(
         repo_id=payload.repo_id,
         query=payload.query,
-        source_type=payload.source_type,
+        source_type=_normalize_source_type(payload.source_type) if payload.source_type else None,
         tags=payload.tags,
         limit=payload.limit,
     )
