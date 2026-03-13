@@ -459,13 +459,13 @@ export function KnowledgeBase() {
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => openSourceForm("pdf")} disabled={busyAction !== null}>
+            <Button type="button" variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => openSourceForm("pdf")} disabled={busyAction !== null}>
               <Upload className="h-4 w-4" />
               Importer
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => openSourceForm("code")} disabled={busyAction !== null}>
+            <Button type="button" className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => openSourceForm("code")} disabled={busyAction !== null}>
               <Plus className="h-4 w-4" />
               Ajouter source
             </Button>
@@ -567,11 +567,12 @@ export function KnowledgeBase() {
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600" onClick={() => void createSource()} disabled={busyAction !== null}>
+                <Button type="button" className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600" onClick={() => void createSource()} disabled={busyAction !== null}>
                   {sourceType === "code" ? <Code2 className="h-4 w-4" /> : sourceType === "pdf" ? <FileText className="h-4 w-4" /> : sourceType === "markdown" ? <FileCode2 className="h-4 w-4" /> : sourceType === "web" ? <Globe className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
                   Enregistrer la source
                 </Button>
                 <Button
+                  type="button"
                   variant="outline"
                   onClick={() => {
                     setShowSourceForm(false)
@@ -617,11 +618,11 @@ export function KnowledgeBase() {
           </CardHeader>
           <CardContent>
             <div className="flex gap-3">
-              <Button className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => void (selectedRepoId ? queueReindex(selectedRepoId) : openSourceForm("code"))} disabled={busyAction !== null}>
+              <Button type="button" className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700" onClick={() => void (selectedRepoId ? queueReindex(selectedRepoId) : openSourceForm("code"))} disabled={busyAction !== null}>
                 <RefreshCw className="h-4 w-4" />
                 Lancer re-indexation
               </Button>
-              <Button variant="outline" onClick={() => void loadRepos()} disabled={busyAction !== null || loadingRepos}>
+              <Button type="button" variant="outline" onClick={() => void loadRepos()} disabled={busyAction !== null || loadingRepos}>
                 Actualiser liste
               </Button>
             </div>
@@ -711,22 +712,22 @@ export function KnowledgeBase() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void editSource(item)} disabled={rowBusy}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => void editSource(item)} disabled={rowBusy}>
                                   <Edit className="h-4 w-4 text-blue-600" />
                                 </Button>
                               </motion.div>
                               <motion.div whileHover={{ scale: 1.2, rotate: 180 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void queueReindex(item.repo_id, item.repo_path)} disabled={rowBusy}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => void queueReindex(item.repo_id, item.repo_path)} disabled={rowBusy}>
                                   <RefreshCw className="h-4 w-4 text-purple-600" />
                                 </Button>
                               </motion.div>
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => setSelectedRepoId(item.repo_id)} disabled={rowBusy}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => setSelectedRepoId(item.repo_id)} disabled={rowBusy}>
                                   <Search className="h-4 w-4 text-emerald-600" />
                                 </Button>
                               </motion.div>
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void deleteRepo(item.repo_id)} disabled={rowBusy}>
+                                <Button type="button" variant="ghost" size="icon" onClick={() => void deleteRepo(item.repo_id)} disabled={rowBusy}>
                                   <Trash2 className="h-4 w-4 text-red-600" />
                                 </Button>
                               </motion.div>
@@ -771,7 +772,7 @@ export function KnowledgeBase() {
               </div>
             </div>
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" onClick={() => void runRetrievalTest()} disabled={busyAction === "retrieval"}>
+              <Button type="button" className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" onClick={() => void runRetrievalTest()} disabled={busyAction === "retrieval"}>
                 <Search className="h-4 w-4" />
                 Tester
               </Button>

@@ -263,8 +263,8 @@ export async function GET() {
   const warnings: string[] = []
 
   const [analysesPayload, profilesPayload] = await Promise.all([
-    fetchBackendJSON<BackendAnalysisListResponse>("/v1/analyses?page=1&size=100", token, userId),
-    fetchBackendJSON<BackendRepoProfilesResponse>("/v1/kb/repos/profiles?limit=100", token, userId),
+    fetchBackendJSON<BackendAnalysisListResponse>("/v1/analyses?page=1&size=40", token, userId),
+    fetchBackendJSON<BackendRepoProfilesResponse>("/v1/kb/repos/profiles?limit=40", token, userId),
   ])
 
   if (!analysesPayload) {
