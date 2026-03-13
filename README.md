@@ -860,6 +860,14 @@ REPO_CONTEXT_CHUNK_SIZE=1400
 REPO_CONTEXT_CHUNK_OVERLAP=200
 REPO_CONTEXT_MAX_FILE_BYTES=250000
 REPO_CONTEXT_MAX_FILES_PER_RUN=5000
+KB_EXACT_TOP_K=8
+KB_LEXICAL_TOP_K=12
+KB_SEMANTIC_TOP_K=12
+KB_RERANK_TOP_K=8
+KB_CONTEXT_MAX_CHARS=14000
+KB_CONTEXT_MAX_CHUNKS=8
+KB_CROSS_ENCODER_MODEL=cross-encoder/ms-marco-MiniLM-L-6-v2
+KB_RERANK_ENABLED=true
 REPO_CONTEXT_ALLOWED_ROOTS=
 # optionnel: map JSON repo->path local (prioritaire si definie)
 REPO_CONTEXT_REPO_PATH_MAP={"owner/repo":"/workspace/owner-repo"}
@@ -868,6 +876,16 @@ REPO_CONTEXT_REPO_PATH_MAP={"owner/repo":"/workspace/owner-repo"}
 Si `REPO_CONTEXT_ALLOWED_ROOTS` est rempli, le backend refusera toute indexation en dehors des chemins autorises.
 Sans `REPO_CONTEXT_REPO_PATH_MAP`, le backend tente une resolution dynamique dans les roots autorises
 (et workspace courant) via nom de dossier puis remote Git `origin` quand disponible.
+
+Les reglages `KB_*` pilotent le retrieval hybride:
+
+- `KB_EXACT_TOP_K`: volume de candidats exact-match (path/symbol/test)
+- `KB_LEXICAL_TOP_K`: volume de candidats Postgres FTS
+- `KB_SEMANTIC_TOP_K`: volume de candidats Qdrant
+- `KB_RERANK_TOP_K`: taille cible avant context packing
+- `KB_CONTEXT_MAX_CHARS` / `KB_CONTEXT_MAX_CHUNKS`: budget de contexte final
+- `KB_CROSS_ENCODER_MODEL`: modele local de rerank si `sentence-transformers` est installe
+- `KB_RERANK_ENABLED`: desactive le cross-encoder et bascule sur le fallback heuristique si necessaire
 
 ### 20.3.1 Mode evenementiel automatique (sans question utilisateur)
 
