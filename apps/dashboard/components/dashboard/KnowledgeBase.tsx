@@ -40,6 +40,12 @@ type RepoProfilesPayload = {
   items?: RepoProfileItem[]
 }
 
+type ApiErrorPayload = {
+  error?: unknown
+  detail?: unknown
+  message?: unknown
+}
+
 type QueryChunk = {
   path?: string
   score?: number
@@ -105,6 +111,48 @@ function displaySource(item: RepoProfileItem): string {
   return "unknown"
 }
 
+function extractErrorText(value: unknown): string | null {
+  if (typeof value === "string") {
+    const normalized = value.trim()
+    return normalized.length > 0 ? normalized : null
+  }
+  if (typeof value === "number" || typeof value === "boolean") {
+    return String(value)
+  }
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const candidate = extractErrorText(item)
+      if (candidate) {
+        return candidate
+      }
+    }
+    return null
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>
+    return (
+      extractErrorText(record.message) ??
+      extractErrorText(record.detail) ??
+      extractErrorText(record.error) ??
+      null
+    )
+  }
+  return null
+}
+
+function resolveApiErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") {
+    return fallback
+  }
+  const record = payload as Record<string, unknown>
+  return (
+    extractErrorText(record.error) ??
+    extractErrorText(record.detail) ??
+    extractErrorText(record.message) ??
+    fallback
+  )
+}
+
 export function KnowledgeBase() {
   const [searchQuery, setSearchQuery] = useState("")
   const [insightsLoading, setInsightsLoading] = useState(true)
@@ -133,9 +181,9 @@ export function KnowledgeBase() {
         cache: "no-store",
         headers: { Accept: "application/json" },
       })
-      const payload = (await response.json().catch(() => ({}))) as RepoProfilesPayload & { error?: string }
+      const payload = (await response.json().catch(() => ({}))) as RepoProfilesPayload & ApiErrorPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Impossible de charger les sources KB.")
+        throw new Error(resolveApiErrorMessage(payload, "Impossible de charger les sources KB."))
       }
       const items = Array.isArray(payload.items) ? payload.items : []
       setRepos(items)
@@ -207,9 +255,9 @@ export function KnowledgeBase() {
           repoPath: repoPath ?? undefined,
         }),
       })
-      const payload = (await response.json().catch(() => ({}))) as { taskId?: string; error?: string }
+      const payload = (await response.json().catch(() => ({}))) as { taskId?: string } & ApiErrorPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Reindexation impossible.")
+        throw new Error(resolveApiErrorMessage(payload, "Reindexation impossible."))
       }
       setActionMessage(`Reindexation en file pour ${repoId} (task: ${payload.taskId ?? "n/a"}).`)
       await loadRepos()
@@ -228,9 +276,9 @@ export function KnowledgeBase() {
         method: "DELETE",
         headers: { Accept: "application/json" },
       })
-      const payload = (await response.json().catch(() => ({}))) as { error?: string }
+      const payload = (await response.json().catch(() => ({}))) as ApiErrorPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Suppression source impossible.")
+        throw new Error(resolveApiErrorMessage(payload, "Suppression source impossible."))
       }
       setActionMessage(`Source ${repoId} supprimee.`)
       setQueryResults([])
@@ -325,9 +373,9 @@ export function KnowledgeBase() {
           limit: 8,
         }),
       })
-      const payload = (await response.json().catch(() => ({}))) as QueryResponse & { error?: string }
+      const payload = (await response.json().catch(() => ({}))) as QueryResponse & ApiErrorPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Test retrieval impossible.")
+        throw new Error(resolveApiErrorMessage(payload, "Test retrieval impossible."))
       }
       setQueryResults(Array.isArray(payload.chunks) ? payload.chunks : [])
       setActionMessage(`Retrieval termine sur ${selectedRepoId}.`)
