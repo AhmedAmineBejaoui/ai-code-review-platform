@@ -72,6 +72,8 @@ class Settings(BaseSettings):
     OLLAMA_NUM_PREDICT: int = 400
     LLM_REVIEW_FINDINGS_ENABLED: bool = True
     LLM_REVIEW_MAX_FINDINGS: int = 4
+    REVIEW_INTELLIGENCE_ENABLED: bool = True
+    REVIEW_INTELLIGENCE_REQUIRE_QDRANT: bool = True
 
     # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
     QDRANT_ENABLED: bool = False

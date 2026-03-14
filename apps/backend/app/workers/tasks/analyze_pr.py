@@ -12,6 +12,11 @@ from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
 from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
+from app.core.review_intelligence.change_explainer import ChangeExplainer
+from app.core.review_intelligence.pr_summary_service import PRSummaryService
+from app.core.review_intelligence.risk_detector import RiskDetector
+from app.core.review_intelligence.service import HybridRAGRequiredError, ReviewIntelligenceService
+from app.core.review_intelligence.test_generator import TestGenerator
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
 from app.core.security.secret_store import get_secret_store
@@ -21,6 +26,7 @@ from app.core.static_analysis.workspace import prepare_workspace
 from app.core.summarization import SummaryService
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, CreateToolRunInput
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+from app.data.repos.review_outputs_repo import ReviewOutputsRepo, UpsertReviewOutputInput
 from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
@@ -40,6 +46,30 @@ _GROUNDED_REVIEW_SERVICE = GroundedReviewService(
         model=settings.OLLAMA_MODEL,
         timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
     )
+)
+_REVIEW_INTELLIGENCE_SERVICE = ReviewIntelligenceService(
+    summary_service=PRSummaryService(
+        llm_client=OllamaClient(
+            base_url=settings.OLLAMA_BASE_URL,
+            model=settings.OLLAMA_MODEL,
+            timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+        )
+    ),
+    change_explainer=ChangeExplainer(
+        llm_client=OllamaClient(
+            base_url=settings.OLLAMA_BASE_URL,
+            model=settings.OLLAMA_MODEL,
+            timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+        )
+    ),
+    risk_detector=RiskDetector(),
+    test_generator=TestGenerator(
+        llm_client=OllamaClient(
+            base_url=settings.OLLAMA_BASE_URL,
+            model=settings.OLLAMA_MODEL,
+            timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+        )
+    ),
 )
 
 
@@ -205,6 +235,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         kb_context_references: list[dict[str, Any]] = []
         kb_context_chunks_count = 0
         kb_retrieval_mode = "not_attempted"
+        kb_retrieval_error: str | None = None
+        qdrant_client: QdrantClient | None = None
         try:
             qdrant_client = QdrantClient()
             retriever = RepoContextRetriever(vector_store=qdrant_client)
@@ -251,8 +283,9 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     profile=enriched_profile,
                     overview_context=kb_context_preview,
                 )
-        except Exception:
+        except Exception as exc:
             kb_retrieval_mode = "failed"
+            kb_retrieval_error = str(exc)
 
         security_findings_count = 0
         scan_failed = False
@@ -553,6 +586,42 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             summary_source = "heuristic"
             summary_fallback = True
 
+        review_output_status = "skipped"
+        review_merge_status: str | None = None
+        review_risk_count = 0
+        if settings.REVIEW_INTELLIGENCE_ENABLED:
+            current_findings = repo.list_findings_by_analysis(analysis_id)
+            review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
+                repo=analysis.repo,
+                pr_number=analysis.pr_number,
+                change_type=change_type,
+                parsed_diff=parsed,
+                diff_redacted=diff_redacted or "",
+                metadata=analysis.metadata,
+                findings=current_findings,
+                knowledge_base_context=kb_context_preview,
+                context_references=kb_context_references,
+                fallback_summary=summary_text,
+                qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
+                kb_retrieval_mode=kb_retrieval_mode,
+                kb_context_chunks_count=kb_context_chunks_count,
+                kb_retrieval_error=kb_retrieval_error,
+            )
+            ReviewOutputsRepo().upsert(
+                UpsertReviewOutputInput(
+                    analysis_id=analysis_id,
+                    source="hybrid_rag",
+                    qdrant_required=settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
+                    payload=review_output.model_dump(mode="json"),
+                )
+            )
+            summary_text = review_output.summary.short_summary
+            summary_source = "hybrid_rag"
+            summary_fallback = False
+            review_output_status = "completed"
+            review_merge_status = review_output.merge_readiness.status
+            review_risk_count = len(review_output.risk_findings)
+
         try:
             repo.update_summary_result(analysis_id=analysis_id, summary=summary_text)
         except Exception:
@@ -598,6 +667,13 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "model": settings.OLLAMA_MODEL if summary_source == "ollama" else None,
             "preview": summary_text[:180],
         }
+        metrics["review_intelligence"] = {
+            "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
+            "qdrant_required": settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
+            "status": review_output_status,
+            "merge_status": review_merge_status,
+            "risk_findings_count": review_risk_count,
+        }
         metrics["llm_grounded_review"] = {
             "enabled": settings.LLM_REVIEW_FINDINGS_ENABLED,
             "status": llm_grounded_findings_status,
@@ -616,6 +692,29 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             metadata_updates={"pipeline": metrics},
         )
         return {"analysis_id": analysis_id, "status": "COMPLETED", "metrics": metrics}
+    except HybridRAGRequiredError as exc:
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        repo.update_status(
+            analysis_id=analysis_id,
+            status="FAILED",
+            stage="FAILED",
+            progress=100,
+            error_code=exc.code,
+            error_message=str(exc),
+            metadata_updates={
+                "pipeline": {
+                    "duration_ms": duration_ms,
+                    "failed": True,
+                    "review_intelligence": {
+                        "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
+                        "qdrant_required": settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
+                        "status": "failed",
+                        "reason": str(exc),
+                    },
+                }
+            },
+        )
+        raise
     except Exception:
         duration_ms = int((time.perf_counter() - started_at) * 1000)
         repo.update_status(

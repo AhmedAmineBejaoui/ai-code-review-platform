@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query, Request
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.api.deps import get_analysis_service
 from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, get_rbac_repo, require_permission
+from app.core.review_intelligence.schemas import StructuredReviewOutput
 from app.core.services.analysis_service import (
     AnalysisService,
     CreateAnalysisCommand,
@@ -23,6 +24,7 @@ from app.data.models.finding import Finding
 from app.data.models.parsed_diff import AnalysisFileData, AnalysisHunkData, AnalysisHunkLineData
 from app.data.models.tool_run import ToolRun
 from app.data.repos.rbac_repo import RBACRepo
+from app.data.repos.review_outputs_repo import ReviewOutputsRepo
 from app.settings import settings
 from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 
@@ -111,6 +113,7 @@ class AnalysisResponse(BaseModel):
     static_findings: list[FindingResponse] = Field(default_factory=list)
     tool_runs: list["ToolRunResponse"] = Field(default_factory=list)
     files_changed: list["AnalysisFileResponse"] = Field(default_factory=list)
+    review_output: StructuredReviewOutput | None = None
 
 
 class AnalysisListResponse(BaseModel):
@@ -430,6 +433,7 @@ def _to_analysis_response(
     findings: list[Finding] | None = None,
     files_changed: list[AnalysisFileData] | None = None,
     tool_runs: list[ToolRun] | None = None,
+    review_output: StructuredReviewOutput | None = None,
 ) -> AnalysisResponse:
     findings_response = [] if findings is None else [_to_finding_response(item) for item in findings]
     security_findings = [item for item in findings_response if item.category == "security"]
@@ -480,7 +484,18 @@ def _to_analysis_response(
         static_findings=static_findings,
         tool_runs=[] if tool_runs is None else [_to_tool_run_response(item) for item in tool_runs],
         files_changed=[] if files_changed is None else [_to_file_response(item) for item in files_changed],
+        review_output=review_output,
     )
+
+
+async def _load_structured_review_output(analysis_id: str) -> StructuredReviewOutput | None:
+    stored = await asyncio.to_thread(ReviewOutputsRepo().get_by_analysis_id, analysis_id)
+    if stored is None:
+        return None
+    try:
+        return StructuredReviewOutput.model_validate(stored.payload)
+    except ValidationError:
+        return None
 
 
 @router.post("/analyze", response_model=AnalyzeAcceptedResponse, status_code=202)
@@ -611,10 +626,39 @@ async def get_analysis(
         findings = await service.list_findings(analysis_id)
         files_changed = await service.list_files_with_hunks(analysis_id)
         tool_runs = await service.list_tool_runs(analysis_id)
+        review_output = await _load_structured_review_output(analysis_id)
     except ServiceError as exc:
         _raise_api_error(exc)
 
-    return _to_analysis_response(analysis, findings=findings, files_changed=files_changed, tool_runs=tool_runs)
+    return _to_analysis_response(
+        analysis,
+        findings=findings,
+        files_changed=files_changed,
+        tool_runs=tool_runs,
+        review_output=review_output,
+    )
+
+
+@router.get("/analyses/{analysis_id}/review", response_model=StructuredReviewOutput)
+async def get_analysis_review_output(
+    analysis_id: str,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+    service: AnalysisService = Depends(get_analysis_service),
+) -> StructuredReviewOutput:
+    try:
+        await service.get_analysis(analysis_id)
+    except ServiceError as exc:
+        _raise_api_error(exc)
+
+    review_output = await _load_structured_review_output(analysis_id)
+    if review_output is None:
+        raise ApiError(
+            status_code=404,
+            code="REVIEW_OUTPUT_NOT_FOUND",
+            message="Structured review output not available for this analysis",
+            details={"analysis_id": analysis_id},
+        )
+    return review_output
 
 
 @router.get("/analyses", response_model=AnalysisListResponse)

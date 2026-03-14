@@ -632,6 +632,24 @@ def init_db() -> None:
         conn.execute(
             text(
                 """
+                CREATE TABLE IF NOT EXISTS analysis_review_outputs (
+                    analysis_id TEXT PRIMARY KEY REFERENCES analyses(id) ON DELETE CASCADE,
+                    source TEXT NOT NULL,
+                    qdrant_required BOOLEAN NOT NULL DEFAULT TRUE,
+                    payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+        )
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_analysis_review_outputs_source ON analysis_review_outputs(source)")
+        )
+
+        conn.execute(
+            text(
+                """
                 CREATE TABLE IF NOT EXISTS kb_documents (
                     id TEXT PRIMARY KEY,
                     title TEXT NOT NULL,
