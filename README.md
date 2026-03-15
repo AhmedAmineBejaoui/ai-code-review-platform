@@ -413,6 +413,41 @@ poetry run alembic -c alembic.ini upgrade head
 poetry run uvicorn app.main:app --reload --port 8000
 ```
 
+### 9.2.1 Backend host + ngrok auto
+
+Pour redemarrer le backend local avec un tunnel public ngrok et mettre a jour automatiquement les URLs d'environnement:
+
+```bash
+python scripts/dev_backend_ngrok.py
+```
+
+Ou via Makefile:
+
+```bash
+make dev-backend-ngrok
+```
+
+Ce wrapper:
+
+- lance `ngrok http 8000`,
+- recupere la nouvelle URL publique HTTPS,
+- met a jour `.env` (`BASE_URL`, `NGROK_PUBLIC_URL`),
+- puis lance `uvicorn app.main:app --reload --port 8000`.
+
+Par defaut, il ne touche pas `BACKEND_API_URL` ni `NEXT_PUBLIC_BACKEND_URL` pour eviter que le dashboard local parle a une URL ngrok temporaire ou offline au lieu du backend local.
+
+Si tu veux vraiment forcer les cibles backend sur l'URL publique ngrok:
+
+```bash
+python scripts/dev_backend_ngrok.py --sync-backend-targets
+```
+
+Prerequis:
+
+- binaire `ngrok` disponible dans le `PATH`,
+- backend Poetry installe dans `apps/backend`,
+- redemarrer le dashboard si tu utilises `--sync-backend-targets` et que `apps/dashboard/.env.local` a ete modifie.
+
 ### 9.3 Worker sur host
 
 #### Windows

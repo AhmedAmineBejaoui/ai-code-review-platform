@@ -31,6 +31,15 @@ type ProxyOptions = {
   timeoutMs?: number
 }
 
+function isHtmlPayload(rawBody: string, contentType: string | null): boolean {
+  const normalized = rawBody.trim().toLowerCase()
+  return (
+    (contentType ?? "").toLowerCase().includes("text/html") ||
+    normalized.startsWith("<!doctype html") ||
+    normalized.startsWith("<html")
+  )
+}
+
 export async function requireBackendAuth(): Promise<AuthContext> {
   const { userId, getToken } = await auth()
   if (!userId) {
@@ -72,12 +81,20 @@ export async function proxyBackendRequest(options: ProxyOptions): Promise<NextRe
     })
 
     const rawBody = await response.text()
+    const contentType = response.headers.get("content-type")
     let parsedBody: unknown = {}
     if (rawBody) {
-      try {
-        parsedBody = JSON.parse(rawBody)
-      } catch {
-        parsedBody = { detail: rawBody }
+      if (isHtmlPayload(rawBody, contentType)) {
+        parsedBody = {
+          error:
+            "Backend target returned HTML instead of JSON. Check BACKEND_API_URL / NEXT_PUBLIC_BACKEND_URL and ensure the backend is reachable on http://localhost:8000.",
+        }
+      } else {
+        try {
+          parsedBody = JSON.parse(rawBody)
+        } catch {
+          parsedBody = { detail: rawBody }
+        }
       }
     }
     return NextResponse.json(parsedBody, { status: response.status })
