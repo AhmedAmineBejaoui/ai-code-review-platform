@@ -56,12 +56,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--skip-dashboard-env",
         action="store_true",
+<<<<<<< HEAD
         help="Deprecated: dashboard env is no longer rewritten by default",
     )
     parser.add_argument(
         "--sync-backend-targets",
         action="store_true",
         help="Also rewrite BACKEND_API_URL and NEXT_PUBLIC_BACKEND_URL to the ngrok URL",
+=======
+        help="Do not update apps/dashboard/.env.local",
+>>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
     )
     return parser.parse_args()
 
@@ -186,6 +190,7 @@ def upsert_env_values(env_path: Path, values: dict[str, str]) -> None:
     env_path.write_text("\n".join(updated_lines) + "\n", encoding="utf-8")
 
 
+<<<<<<< HEAD
 def update_env_files(
     env_file: Path,
     dashboard_env_file: Path,
@@ -206,6 +211,22 @@ def update_env_files(
         return
 
     if sync_backend_targets:
+=======
+def update_env_files(env_file: Path, dashboard_env_file: Path, public_url: str, skip_dashboard_env: bool) -> None:
+    upsert_env_values(
+        env_file,
+        {
+            "BASE_URL": public_url,
+            "BACKEND_API_URL": public_url,
+            "NEXT_PUBLIC_BACKEND_URL": public_url,
+        },
+    )
+
+    if skip_dashboard_env:
+        return
+
+    if dashboard_env_file.exists():
+>>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
         upsert_env_values(
             dashboard_env_file,
             {
@@ -267,6 +288,7 @@ def main() -> int:
 
     try:
         public_url = wait_for_public_url(args.ngrok_api_url, args.port)
+<<<<<<< HEAD
         update_env_files(
             env_file,
             dashboard_env_file,
@@ -281,6 +303,12 @@ def main() -> int:
         else:
             print("[info] local backend targets were preserved for the dashboard and local server-side calls")
         if not args.skip_dashboard_env and dashboard_env_file.exists() and args.sync_backend_targets:
+=======
+        update_env_files(env_file, dashboard_env_file, public_url, args.skip_dashboard_env)
+        print(f"[ngrok] public URL: {public_url}")
+        print(f"[env] updated: {env_file}")
+        if not args.skip_dashboard_env and dashboard_env_file.exists():
+>>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
             print(f"[env] updated: {dashboard_env_file}")
             print("[note] restart the dashboard if it is already running to reload .env.local")
 

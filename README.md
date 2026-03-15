@@ -431,6 +431,7 @@ Ce wrapper:
 
 - lance `ngrok http 8000`,
 - recupere la nouvelle URL publique HTTPS,
+<<<<<<< HEAD
 - met a jour `.env` (`BASE_URL`, `NGROK_PUBLIC_URL`),
 - puis lance `uvicorn app.main:app --reload --port 8000`.
 
@@ -442,11 +443,21 @@ Si tu veux vraiment forcer les cibles backend sur l'URL publique ngrok:
 python scripts/dev_backend_ngrok.py --sync-backend-targets
 ```
 
+=======
+- met a jour `.env` (`BASE_URL`, `BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_URL`),
+- met a jour `apps/dashboard/.env.local` (`BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_URL`) si le fichier existe,
+- puis lance `uvicorn app.main:app --reload --port 8000`.
+
+>>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
 Prerequis:
 
 - binaire `ngrok` disponible dans le `PATH`,
 - backend Poetry installe dans `apps/backend`,
+<<<<<<< HEAD
 - redemarrer le dashboard si tu utilises `--sync-backend-targets` et que `apps/dashboard/.env.local` a ete modifie.
+=======
+- redemarrer le dashboard si `apps/dashboard/.env.local` a ete modifie et que Next.js tourne deja.
+>>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
 
 ### 9.3 Worker sur host
 
