@@ -16,6 +16,13 @@ def configure_celery_app() -> None:
     if result_backend:
         celery_app.conf.result_backend = result_backend
 
+    # Connection resilience / retries for unstable local Redis
+    celery_app.conf.broker_connection_retry = True
+    celery_app.conf.broker_connection_max_retries = 10
+    celery_app.conf.broker_transport_options = {"max_retries": 3}
+    # Limit connection pool to avoid exhausting Redis on small local instances
+    celery_app.conf.broker_pool_limit = 10
+
     celery_app.conf.task_default_queue = settings.ANALYSIS_QUEUE_NAME
     celery_app.conf.task_always_eager = settings.CELERY_TASK_ALWAYS_EAGER
     celery_app.conf.task_eager_propagates = settings.CELERY_TASK_EAGER_PROPAGATES
@@ -24,6 +31,9 @@ def configure_celery_app() -> None:
     elif sys.platform.startswith("win"):
         # Celery prefork is unstable on Windows; default to solo unless overridden.
         celery_app.conf.worker_pool = "solo"
+        # Solo pool on Windows should run single-threaded to avoid intermittent
+        # connection pressure against local Redis instances.
+        celery_app.conf.worker_concurrency = 1
     celery_app.conf.imports = (
         "app.workers.tasks.analyze_pr",
         "app.workers.tasks.ingest_kb",

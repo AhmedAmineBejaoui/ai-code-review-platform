@@ -55,48 +55,56 @@ class RBACRepo:
     def upsert_clerk_user(self, user_id: str, email: str, display_name: str | None, clerk_role: str) -> None:
         normalized_email = self._normalize_email(user_id=user_id, email=email)
         normalized_role = self._role_for_db(clerk_role)
-
         with _RBAC_LOCK:
             with self._engine.begin() as conn:
+                # Use a nested transaction (SAVEPOINT) for the optimistic insert.
+                # A unique constraint violation on the first INSERT will abort the
+                # nested transaction only, allowing the outer transaction to continue
+                # and run the fallback INSERT without entering an aborted state.
                 try:
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO users (id, email, display_name, is_active)
-                            VALUES (:user_id, :email, :display_name, TRUE)
-                            ON CONFLICT (id) DO UPDATE
-                            SET email = CASE
-                                    WHEN EXCLUDED.email LIKE '%@clerk.local'
-                                         AND users.email IS NOT NULL
-                                         AND users.email NOT LIKE '%@clerk.local'
-                                    THEN users.email
-                                    ELSE EXCLUDED.email
-                                END,
-                                display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-                                is_active = TRUE
-                            """
-                        ),
-                        {"user_id": user_id, "email": normalized_email, "display_name": display_name},
-                    )
-                except IntegrityError:
-                    # If email uniqueness conflicts with pre-existing local data, keep the local email,
-                    # but still make sure the Clerk user is active and display_name is refreshed.
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO users (id, email, display_name, is_active)
-                            VALUES (:user_id, :fallback_email, :display_name, TRUE)
-                            ON CONFLICT (id) DO UPDATE
-                            SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-                                is_active = TRUE
-                            """
-                        ),
-                        {
-                            "user_id": user_id,
-                            "fallback_email": f"{user_id}@clerk.local",
-                            "display_name": display_name,
-                        },
-                    )
+                    try:
+                        with conn.begin_nested():
+                            conn.execute(
+                                text(
+                                    """
+                                    INSERT INTO users (id, email, display_name, is_active)
+                                    VALUES (:user_id, :email, :display_name, TRUE)
+                                    ON CONFLICT (id) DO UPDATE
+                                    SET email = CASE
+                                            WHEN EXCLUDED.email LIKE '%@clerk.local'
+                                                 AND users.email IS NOT NULL
+                                                 AND users.email NOT LIKE '%@clerk.local'
+                                            THEN users.email
+                                            ELSE EXCLUDED.email
+                                        END,
+                                        display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                                        is_active = TRUE
+                                    """
+                                ),
+                                {"user_id": user_id, "email": normalized_email, "display_name": display_name},
+                            )
+                    except IntegrityError:
+                        # Nested transaction failed (likely email uniqueness). Rollback of the
+                        # nested savepoint leaves the outer transaction usable; perform fallback.
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO users (id, email, display_name, is_active)
+                                VALUES (:user_id, :fallback_email, :display_name, TRUE)
+                                ON CONFLICT (id) DO UPDATE
+                                SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                                    is_active = TRUE
+                                """
+                            ),
+                            {
+                                "user_id": user_id,
+                                "fallback_email": f"{user_id}@clerk.local",
+                                "display_name": display_name,
+                            },
+                        )
+                except Exception:
+                    # Let the outer transaction manager propagate unexpected errors.
+                    raise
 
                 role_row = (
                     conn.execute(
