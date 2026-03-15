@@ -3,12 +3,15 @@ import { ClerkProvider } from "@clerk/nextjs"
 import { Inter } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"
+import { getClerkRuntimeConfig } from "@/lib/clerk-runtime"
 import "./globals.css"
 
 const inter = Inter({
   subsets: ["latin"],
   variable: "--font-inter",
 })
+
+const clerkRuntimeConfig = getClerkRuntimeConfig()
 
 export const metadata: Metadata = {
   title: "Developer Dashboard Features",
@@ -25,6 +28,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider
+      {...clerkRuntimeConfig}
       signInFallbackRedirectUrl="/auth/role-redirect"
       signUpFallbackRedirectUrl="/auth/role-redirect"
     >

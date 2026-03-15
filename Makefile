@@ -4,7 +4,7 @@
 
 .PHONY: help up down build build-no-cache migrate migrate-history \
         migrate-create logs logs-api logs-worker test test-ci api-shell \
-        worker-shell generate-fernet-key ps clean db-shell \
+        worker-shell generate-fernet-key ps clean db-shell dev-backend-ngrok \
         prod-build prod-up prod-down prod-logs prod-migrate
 
 COMPOSE_FILE = infra/local/docker-compose.yml
@@ -33,6 +33,7 @@ help:
 	@echo "  make migrate            Run Alembic: upgrade head"
 	@echo "  make migrate-history    Show Alembic migration history"
 	@echo "  make migrate-create m=  Create new migration (m=<name>)"
+	@echo "  make dev-backend-ngrok  Start ngrok, rewrite env URLs, then run backend"
 	@echo "  make test               Run pytest (local Poetry env)"
 	@echo "  make logs               Tail all container logs"
 	@echo "  make logs-api           Tail API logs only"
@@ -113,6 +114,9 @@ test:
 
 test-ci:
 	cd $(BACKEND_DIR) && poetry run pytest tests/ -v --tb=short --no-header -q
+
+dev-backend-ngrok:
+	python scripts/dev_backend_ngrok.py
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 
