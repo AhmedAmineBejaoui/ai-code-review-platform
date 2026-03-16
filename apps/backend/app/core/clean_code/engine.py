@@ -197,6 +197,7 @@ class CleanCodeRuleEngine:
                     language=language,
                     text=text,
                 )
+                findings.extend(fallback_findings)
                 fallback_findings.append(
                     build_finding(
                         rule_id="other.python_parse_fallback",
@@ -210,9 +211,22 @@ class CleanCodeRuleEngine:
                         evidence={"scope": "file"},
                     )
                 )
-                return fallback_findings, top_level_symbols
-            return self._analyze_python_file(relative_path=relative_path, language=language, module=module, text=text)
-        return self._analyze_generic_file(relative_path=relative_path, language=language, text=text)
+                return findings, top_level_symbols
+            python_findings, top_level_symbols = self._analyze_python_file(
+                relative_path=relative_path,
+                language=language,
+                module=module,
+                text=text,
+            )
+            findings.extend(python_findings)
+            return findings, top_level_symbols
+        generic_findings, top_level_symbols = self._analyze_generic_file(
+            relative_path=relative_path,
+            language=language,
+            text=text,
+        )
+        findings.extend(generic_findings)
+        return findings, top_level_symbols
 
     def _analyze_python_file(
         self,

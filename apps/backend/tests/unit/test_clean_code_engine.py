@@ -5,7 +5,6 @@ from pathlib import Path
 from app.core.clean_code import CleanCodeRuleEngine
 from app.core.static_analysis.clean_code_analyzer import CleanCodeAnalyzer
 from app.core.static_analysis.normalizer import normalize_raw_finding
-from app.core.static_analysis.base import StaticRawFinding
 
 
 def test_clean_code_engine_detects_rule_families(tmp_path: Path) -> None:
@@ -47,6 +46,7 @@ def test_clean_code_engine_detects_rule_families(tmp_path: Path) -> None:
                 "  if (value > 4) {",
                 "    return value * 9;",
                 "  }",
+                "  // return value",
                 "  return value;",
                 "}",
             ]

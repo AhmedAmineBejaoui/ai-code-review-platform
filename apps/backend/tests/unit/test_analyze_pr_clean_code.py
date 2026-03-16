@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from types import SimpleNamespace
 
-from app.core.review_engine.diff_engine import FileDiff, ParsedDiff
+from app.core.review_engine.diff_engine import ParsedDiff
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
 from app.core.review_intelligence.risk_detector import RiskDetector
@@ -18,10 +18,6 @@ from app.workers.tasks import analyze_pr
 class _RejectingLLM:
     def generate(self, prompt: str):  # noqa: ARG002
         raise RuntimeError("llm unavailable")
-
-
-class _TaskSelf:
-    request = SimpleNamespace(id="task-1")
 
 
 class _FakeChunk:
@@ -227,7 +223,7 @@ def test_pipeline_falls_back_to_rule_engine_when_rag_is_unavailable(monkeypatch)
     fake_outputs = _FakeReviewOutputsRepo()
     _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[], qdrant_enabled=False)
 
-    result = analyze_pr.run_minimal_analysis_pipeline.run(_TaskSelf(), "analysis-1")
+    result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
 
     assert result["status"] == "COMPLETED"
     assert fake_outputs.saved is not None
@@ -243,7 +239,7 @@ def test_pipeline_keeps_hybrid_rag_source_when_grounded_context_exists(monkeypat
     fake_outputs = _FakeReviewOutputsRepo()
     _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], qdrant_enabled=True)
 
-    result = analyze_pr.run_minimal_analysis_pipeline.run(_TaskSelf(), "analysis-1")
+    result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
 
     assert result["status"] == "COMPLETED"
     assert fake_outputs.saved is not None
