@@ -140,7 +140,7 @@ export function RagCitations() {
             Citations RAG
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Sources reelles utilisees par l'IA pour contextualiser cette analyse.
+            Sources reelles utilisees par l&apos;IA pour contextualiser cette analyse.
           </p>
           <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
             <Badge variant="outline">{analysis.repo}</Badge>
@@ -169,7 +169,7 @@ export function RagCitations() {
                   A propos des citations RAG
                 </h3>
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Ces references viennent du pipeline RAG de l'analyse. Elles peuvent provenir du code indexe du repo,
+                  Ces references viennent du pipeline RAG de l&apos;analyse. Elles peuvent provenir du code indexe du repo,
                   des documents ajoutes dans la knowledge base et des sources globales disponibles pour le moteur.
                 </p>
               </div>
@@ -185,8 +185,8 @@ export function RagCitations() {
               <AlertCircle className="h-10 w-10 text-amber-500" />
               <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Aucune citation RAG disponible</h2>
               <p className="max-w-2xl text-sm text-gray-600 dark:text-gray-400">
-                Cette analyse n'a pas expose de `context_references`. Soit le fallback `rule_engine` a ete utilise,
-                soit le retrieval grounded n'a retourne aucun contexte exploitable.
+                Cette analyse n&apos;a pas expose de `context_references`. Soit le fallback `rule_engine` a ete utilise,
+                soit le retrieval grounded n&apos;a retourne aucun contexte exploitable.
               </p>
             </div>
           </CardContent>
