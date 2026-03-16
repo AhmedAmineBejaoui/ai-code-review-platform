@@ -83,12 +83,27 @@ def is_valid_name(
     relative_path: str,
     is_constant: bool = False,
 ) -> tuple[bool, str]:
+    normalized = name.lstrip("_")
+    if not normalized:
+        normalized = name
     if symbol_kind in {"class", "component"}:
-        return bool(_PASCAL_CASE_RE.match(name)), "PascalCase"
+        return bool(_PASCAL_CASE_RE.match(normalized)), "PascalCase"
     if symbol_kind == "constant" or is_constant:
-        return bool(_UPPER_SNAKE_CASE_RE.match(name)), "UPPER_SNAKE_CASE"
+        return bool(_UPPER_SNAKE_CASE_RE.match(normalized)), "UPPER_SNAKE_CASE"
     if language == "python":
-        return bool(_SNAKE_CASE_RE.match(name)), "snake_case"
-    if Path(relative_path).suffix.lower() in {".tsx", ".jsx"} and _PASCAL_CASE_RE.match(name):
+        return bool(_SNAKE_CASE_RE.match(normalized)), "snake_case"
+    if Path(relative_path).suffix.lower() in {".tsx", ".jsx"} and _PASCAL_CASE_RE.match(normalized):
         return True, "camelCase or PascalCase"
-    return bool(_CAMEL_CASE_RE.match(name)), "camelCase"
+    return bool(_CAMEL_CASE_RE.match(normalized)), "camelCase"
+
+
+def is_known_code_path(relative_path: str) -> bool:
+    return Path(relative_path).suffix.lower() in KNOWN_CODE_SUFFIXES
+
+
+def is_python(language: str) -> bool:
+    return language == "python"
+
+
+def is_js_like(language: str) -> bool:
+    return language in {"javascript", "typescript"}
