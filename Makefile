@@ -8,13 +8,14 @@
         prod-build prod-up prod-down prod-logs prod-migrate
 
 COMPOSE_FILE = infra/local/docker-compose.yml
-COMPOSE      = docker compose -f $(COMPOSE_FILE)
+COMPOSE      = docker compose --env-file .env -f $(COMPOSE_FILE)
 PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
 PROD_ENV_FILE = infra/cloud/oracle/.env.prod
 PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
 BACKEND_DIR  = apps/backend
 MINIO_API_PORT ?= 9000
 MINIO_CONSOLE_PORT ?= 9001
+GRAFANA_PORT ?= 3000
 
 # Default target
 help:
@@ -70,7 +71,7 @@ up:
 	@echo "  API:            http://localhost:8000"
 	@echo "  API Docs:       http://localhost:8000/docs"
 	@echo "  API Metrics:    http://localhost:8000/metrics"
-	@echo "  Grafana:        http://localhost:3000   (admin / admin)"
+	@echo "  Grafana:        http://localhost:$(GRAFANA_PORT)   (admin / admin)"
 	@echo "  Prometheus:     http://localhost:9090"
 	@echo "  Flower:         http://localhost:5555"
 	@echo "  Adminer:        http://localhost:8080"
