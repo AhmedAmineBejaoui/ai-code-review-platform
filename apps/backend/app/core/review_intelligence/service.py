@@ -103,6 +103,70 @@ class ReviewIntelligenceService:
             context_references=[ReviewContextReference.model_validate(item) for item in context_references[:12]],
         )
 
+    def generate_rule_engine_output(
+        self,
+        *,
+        repo: str,
+        change_type: str | None,
+        parsed_diff: ParsedDiff,
+        metadata: dict[str, Any],
+        findings: list[Finding],
+        fallback_summary: str,
+    ) -> StructuredReviewOutput:
+        files_changed = [item.path_new for item in parsed_diff.files]
+        impacted_components = _extract_impacted_components(files_changed)
+        risk_findings = self._risk_detector.generate(parsed_diff=parsed_diff, findings=findings)
+        risk_level = _derive_risk_level(risk_findings)
+        summary = self._summary_service._fallback(
+            repo=repo,
+            change_type=change_type,
+            files_changed=files_changed,
+            impacted_components=impacted_components,
+            risk_level=risk_level,
+            metadata=metadata,
+            fallback_summary=fallback_summary,
+        )
+        explanation = self._change_explainer._fallback(
+            parsed_diff=parsed_diff,
+            summary_text=summary.detailed_summary,
+            metadata=metadata,
+        )
+        generated_tests = self._test_generator._fallback(
+            parsed_diff=parsed_diff,
+            risk_findings=risk_findings,
+        )
+        return StructuredReviewOutput(
+            summary=summary,
+            key_changes=_build_key_changes(parsed_diff=parsed_diff),
+            impacted_components=impacted_components,
+            change_explanation=explanation,
+            risk_findings=risk_findings,
+            generated_tests=generated_tests,
+            merge_readiness=_derive_merge_readiness(risk_findings),
+            context_references=[],
+        )
+
+    def can_use_hybrid_rag(
+        self,
+        *,
+        qdrant_enabled: bool,
+        kb_retrieval_mode: str,
+        kb_context_chunks_count: int,
+        knowledge_base_context: str | None,
+        kb_retrieval_error: str | None,
+    ) -> tuple[bool, str | None]:
+        try:
+            self.require_hybrid_rag(
+                qdrant_enabled=qdrant_enabled,
+                kb_retrieval_mode=kb_retrieval_mode,
+                kb_context_chunks_count=kb_context_chunks_count,
+                knowledge_base_context=knowledge_base_context,
+                kb_retrieval_error=kb_retrieval_error,
+            )
+        except HybridRAGRequiredError as exc:
+            return False, str(exc)
+        return True, None
+
     def require_hybrid_rag(
         self,
         *,
