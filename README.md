@@ -567,7 +567,20 @@ docker compose -f infra/local/docker-compose.yml ps
 docker compose -f infra/local/docker-compose.yml logs -f api
 docker compose -f infra/local/docker-compose.yml exec api alembic -c /app/alembic.ini upgrade head
 ```
+# start Redis via compose (what I ran)
+docker compose -f infra/local/docker-compose.yml up -d redis
 
+# show service status (I ran this and saw healthy)
+docker compose -f infra/local/docker-compose.yml ps
+
+# tail Redis logs if needed
+docker compose -f infra/local/docker-compose.yml logs -f redis
+
+# restart / start the worker (from apps/backend)
+cd apps/backend
+poetry run celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo -c 1
+# or (if using venv)
+python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo -c 1
 ---
 
 ## 12. API HTTP (contrat d'usage)
