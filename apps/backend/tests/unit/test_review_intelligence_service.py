@@ -105,3 +105,37 @@ def test_review_intelligence_service_requires_qdrant() -> None:
             knowledge_base_context="context",
             kb_retrieval_error=None,
         )
+
+
+def test_review_intelligence_service_builds_rule_engine_fallback_output() -> None:
+    service = _build_service()
+
+    output = service.generate_rule_engine_output(
+        repo="owner/repo",
+        change_type="bugfix",
+        parsed_diff=_build_parsed_diff(),
+        metadata={"title": "Guard KB updates"},
+        findings=_build_findings(),
+        fallback_summary="This change updates knowledge-base write protections.",
+    )
+
+    assert output.summary.short_summary
+    assert output.context_references == []
+    assert output.risk_findings
+    assert output.generated_tests
+    assert output.merge_readiness.status == "blocked"
+
+
+def test_review_intelligence_service_reports_hybrid_rag_unavailable_reason() -> None:
+    service = _build_service()
+
+    enabled, reason = service.can_use_hybrid_rag(
+        qdrant_enabled=False,
+        kb_retrieval_mode="diff_retrieval_only",
+        kb_context_chunks_count=0,
+        knowledge_base_context=None,
+        kb_retrieval_error=None,
+    )
+
+    assert enabled is False
+    assert reason
