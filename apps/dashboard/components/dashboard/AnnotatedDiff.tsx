@@ -71,6 +71,32 @@ function linePrefix(lineType: "context" | "add" | "remove" | "header"): string {
   return " "
 }
 
+function normalizePathForComparison(value: string | null | undefined): string {
+  return (value ?? "").trim().replaceAll("\\", "/").replace(/^\/+/, "")
+}
+
+function severityRank(severity: string): number {
+  if (severity === "BLOCKER") {
+    return 0
+  }
+  if (severity === "WARN") {
+    return 1
+  }
+  return 2
+}
+
+function formatFindingSource(source: string): string {
+  const labels: Record<string, string> = {
+    SECURITY_SCAN: "Security scan",
+    STATIC_RUFF: "Ruff",
+    STATIC_SEMGREP: "Semgrep",
+    STATIC_CLEAN_CODE: "Clean Code",
+    LLM_GROUNDED: "AI grounded",
+    MANUAL: "Manual",
+  }
+  return labels[source.toUpperCase()] ?? source.replaceAll("_", " ")
+}
+
 export function AnnotatedDiff() {
   const currentUser = useDashboardUser()
   const params = useParams<{ id: string | string[] }>()
@@ -80,6 +106,7 @@ export function AnnotatedDiff() {
   const [loading, setLoading] = useState(true)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [resolvedFindings, setResolvedFindings] = useState<Set<string>>(new Set())
+  const [copiedFindingId, setCopiedFindingId] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -120,6 +147,42 @@ export function AnnotatedDiff() {
     return analysis.files.find((file) => file.pathNew === selectedFilePath) ?? null
   }, [analysis, selectedFilePath])
 
+  const visibleFindings = useMemo(() => {
+    if (!analysis) {
+      return []
+    }
+
+    const selectedPaths = new Set(
+      [selectedFile?.pathNew, selectedFile?.pathOld, selectedFilePath]
+        .map((value) => normalizePathForComparison(value))
+        .filter((value) => value.length > 0),
+    )
+
+    const matchingFindings =
+      selectedPaths.size > 0
+        ? analysis.findings.filter((finding) => selectedPaths.has(normalizePathForComparison(finding.filePath)))
+        : []
+
+    const candidates = matchingFindings.length > 0 ? matchingFindings : analysis.findings
+    return [...candidates].sort((left, right) => {
+      const severityDelta = severityRank(left.severity) - severityRank(right.severity)
+      if (severityDelta !== 0) {
+        return severityDelta
+      }
+      return (left.lineStart ?? Number.MAX_SAFE_INTEGER) - (right.lineStart ?? Number.MAX_SAFE_INTEGER)
+    })
+  }, [analysis, selectedFile, selectedFilePath])
+
+  const showingAllFindings = Boolean(
+    analysis &&
+      analysis.findings.length > 0 &&
+      selectedFilePath &&
+      visibleFindings.length === analysis.findings.length &&
+      !analysis.findings.some((finding) => normalizePathForComparison(finding.filePath) === normalizePathForComparison(selectedFilePath)),
+  )
+
+  const ragReferenceCount = analysis?.reviewOutput?.contextReferences.length ?? 0
+
   const isReviewer = currentUser.role === "reviewer" || currentUser.role === "admin"
 
   const toggleResolved = (findingId: string) => {
@@ -130,6 +193,26 @@ export function AnnotatedDiff() {
       next.add(findingId)
     }
     setResolvedFindings(next)
+  }
+
+  const copyFinding = async (finding: DashboardAnalysisDetails["findings"][number]) => {
+    const location =
+      typeof finding.lineStart === "number"
+        ? `${finding.filePath}:${finding.lineStart}${typeof finding.lineEnd === "number" ? `-${finding.lineEnd}` : ""}`
+        : finding.filePath
+    const payload = [finding.message, location, finding.suggestion ? `Suggestion: ${finding.suggestion}` : null]
+      .filter((item): item is string => Boolean(item))
+      .join("\n")
+
+    try {
+      await navigator.clipboard.writeText(payload)
+      setCopiedFindingId(finding.id)
+      window.setTimeout(() => {
+        setCopiedFindingId((current) => (current === finding.id ? null : current))
+      }, 1500)
+    } catch {
+      setCopiedFindingId(null)
+    }
   }
 
   if (loading) {
@@ -256,13 +339,23 @@ export function AnnotatedDiff() {
               <h3 className="text-sm font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
                 <MessageSquare className="h-4 w-4 text-purple-500" />
                 Commentaires IA
+                <Badge variant="outline" className="ml-auto text-[10px]">
+                  {visibleFindings.length}
+                </Badge>
               </h3>
               <ScrollArea className="h-[600px]">
                 <div className="space-y-4 pr-4">
                   {analysis.findings.length === 0 ? (
                     <p className="text-sm text-gray-500 dark:text-gray-400">Aucun finding pour cette analyse.</p>
                   ) : (
-                    analysis.findings.map((finding, index) => (
+                    <>
+                      {showingAllFindings ? (
+                        <div className="rounded-lg border border-amber-200/50 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-200">
+                          Aucun finding n'est rattache explicitement au fichier affiche. La liste montre tous les commentaires de l'analyse.
+                        </div>
+                      ) : null}
+
+                      {visibleFindings.map((finding, index) => (
                       <motion.div
                         key={finding.id}
                         initial={{ opacity: 0, y: 20 }}
@@ -293,9 +386,13 @@ export function AnnotatedDiff() {
                               <Badge variant="outline" className="text-xs">
                                 {finding.category}
                               </Badge>
+                              <Badge variant="outline" className="text-xs">
+                                {formatFindingSource(finding.source)}
+                              </Badge>
                             </div>
                             <div className="text-xs text-gray-600 dark:text-gray-400 font-mono mb-3">
                               {finding.filePath}:{finding.lineStart ?? "-"}
+                              {typeof finding.lineEnd === "number" ? `-${finding.lineEnd}` : ""}
                             </div>
                           </div>
                         </div>
@@ -330,18 +427,25 @@ export function AnnotatedDiff() {
                               )}
                             </Button>
                           </motion.div>
-                          <Link href={`/dashboard/rag/${id}`}>
-                            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                              <Button variant="outline" size="sm" className="gap-1">
-                                <BookOpen className="h-3 w-3" />
-                                Source
-                              </Button>
-                            </motion.div>
-                          </Link>
+                          {ragReferenceCount > 0 ? (
+                            <Link href={`/dashboard/rag/${id}`}>
+                              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
+                                <Button variant="outline" size="sm" className="gap-1">
+                                  <BookOpen className="h-3 w-3" />
+                                  Source ({ragReferenceCount})
+                                </Button>
+                              </motion.div>
+                            </Link>
+                          ) : (
+                            <Button variant="outline" size="sm" className="gap-1" disabled>
+                              <BookOpen className="h-3 w-3" />
+                              Pas de source RAG
+                            </Button>
+                          )}
                           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                            <Button variant="outline" size="sm" className="gap-1">
+                            <Button variant="outline" size="sm" className="gap-1" onClick={() => void copyFinding(finding)}>
                               <Copy className="h-3 w-3" />
-                              Copier
+                              {copiedFindingId === finding.id ? "Copie" : "Copier"}
                             </Button>
                           </motion.div>
                         </div>
@@ -368,7 +472,8 @@ export function AnnotatedDiff() {
                           </div>
                         )}
                       </motion.div>
-                    ))
+                      ))}
+                    </>
                   )}
                 </div>
               </ScrollArea>
@@ -379,4 +484,3 @@ export function AnnotatedDiff() {
     </motion.div>
   )
 }
-

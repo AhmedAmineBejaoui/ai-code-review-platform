@@ -36,6 +36,20 @@ export interface DashboardReviewDecision {
   decidedBy: string | null
 }
 
+export interface DashboardReviewContextReference {
+  path: string
+  source: string
+  sourceType: string | null
+  chunkType: string | null
+  title: string | null
+  score: number
+  tags: string[]
+}
+
+export interface DashboardAnalysisReviewOutput {
+  contextReferences: DashboardReviewContextReference[]
+}
+
 export interface DashboardAnalysisDetails {
   id: string
   repo: string
@@ -50,6 +64,7 @@ export interface DashboardAnalysisDetails {
   createdAt: string
   updatedAt: string
   reviewDecision: DashboardReviewDecision | null
+  reviewOutput: DashboardAnalysisReviewOutput | null
   findings: DashboardAnalysisFinding[]
   files: DashboardAnalysisDiffFile[]
 }

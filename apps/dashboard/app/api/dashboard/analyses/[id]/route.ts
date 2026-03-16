@@ -60,6 +60,21 @@ type BackendAnalysisDetails = {
   metadata?: Record<string, unknown>
   findings?: BackendFinding[]
   files_changed?: BackendFile[]
+  review_output?: BackendReviewOutput | null
+}
+
+type BackendReviewContextReference = {
+  path?: string
+  source?: string
+  source_type?: string | null
+  chunk_type?: string | null
+  title?: string | null
+  score?: number
+  tags?: string[]
+}
+
+type BackendReviewOutput = {
+  context_references?: BackendReviewContextReference[]
 }
 
 type DashboardFinding = {
@@ -100,6 +115,20 @@ type DashboardReviewDecision = {
   decidedBy: string | null
 }
 
+type DashboardReviewContextReference = {
+  path: string
+  source: string
+  sourceType: string | null
+  chunkType: string | null
+  title: string | null
+  score: number
+  tags: string[]
+}
+
+type DashboardAnalysisReviewOutput = {
+  contextReferences: DashboardReviewContextReference[]
+}
+
 type DashboardAnalysisDetails = {
   id: string
   repo: string
@@ -114,6 +143,7 @@ type DashboardAnalysisDetails = {
   createdAt: string
   updatedAt: string
   reviewDecision: DashboardReviewDecision | null
+  reviewOutput: DashboardAnalysisReviewOutput | null
   findings: DashboardFinding[]
   files: DashboardDiffFile[]
 }
@@ -302,6 +332,25 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
         })
     : []
 
+  const contextReferences = Array.isArray(payload.review_output?.context_references)
+    ? payload.review_output?.context_references
+        .filter(
+          (reference): reference is BackendReviewContextReference =>
+            typeof reference === "object" && reference !== null && typeof reference.path === "string",
+        )
+        .map((reference) => ({
+          path: reference.path as string,
+          source: typeof reference.source === "string" ? reference.source : "unknown",
+          sourceType: typeof reference.source_type === "string" ? reference.source_type : null,
+          chunkType: typeof reference.chunk_type === "string" ? reference.chunk_type : null,
+          title: typeof reference.title === "string" ? reference.title : null,
+          score: typeof reference.score === "number" ? reference.score : 0,
+          tags: Array.isArray(reference.tags)
+            ? reference.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+            : [],
+        }))
+    : []
+
   return {
     id: payload.analysis_id,
     repo: payload.repo,
@@ -319,6 +368,7 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
     createdAt: typeof payload.created_at === "string" ? payload.created_at : "",
     updatedAt: typeof payload.updated_at === "string" ? payload.updated_at : "",
     reviewDecision: normalizeReviewDecision(metadata),
+    reviewOutput: contextReferences.length > 0 ? { contextReferences } : null,
     findings,
     files,
   }
