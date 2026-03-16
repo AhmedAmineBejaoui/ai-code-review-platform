@@ -15,12 +15,12 @@ from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_co
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
 from app.core.review_intelligence.risk_detector import RiskDetector
-from app.core.review_intelligence.service import HybridRAGRequiredError, ReviewIntelligenceService
+from app.core.review_intelligence.service import ReviewIntelligenceService
 from app.core.review_intelligence.test_generator import TestGenerator
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
 from app.core.security.secret_store import get_secret_store
-from app.core.static_analysis import RuffAnalyzer, SemgrepAnalyzer, StaticAnalysisService
+from app.core.static_analysis import CleanCodeAnalyzer, RuffAnalyzer, SemgrepAnalyzer, StaticAnalysisService
 from app.core.static_analysis.base import StaticAnalysisResult
 from app.core.static_analysis.workspace import prepare_workspace
 from app.core.summarization import SummaryService
@@ -159,6 +159,8 @@ def run_static_analysis_stage(
         analyzers.append(RuffAnalyzer())
     if settings.STATIC_ANALYSIS_SEMGREP_ENABLED:
         analyzers.append(SemgrepAnalyzer())
+    if settings.CLEAN_CODE_RULE_ENGINE_ENABLED:
+        analyzers.append(CleanCodeAnalyzer())
 
     if not analyzers:
         return StaticAnalysisResult(
@@ -190,6 +192,8 @@ def run_static_analysis_stage(
             max_files=settings.STATIC_ANALYSIS_MAX_FILES,
             max_findings=settings.STATIC_ANALYSIS_MAX_FINDINGS,
             filter_changed_lines=settings.STATIC_ANALYSIS_FILTER_CHANGED_LINES,
+            repo=repo_name,
+            metadata=metadata,
         )
         warnings = [*workspace.warnings, *result.warnings]
         stats = {
@@ -587,37 +591,75 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             summary_fallback = True
 
         review_output_status = "skipped"
+        review_output_source: str | None = None
+        review_output_reason: str | None = None
         review_merge_status: str | None = None
         review_risk_count = 0
+        review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
         if settings.REVIEW_INTELLIGENCE_ENABLED:
             current_findings = repo.list_findings_by_analysis(analysis_id)
-            review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
-                repo=analysis.repo,
-                pr_number=analysis.pr_number,
-                change_type=change_type,
-                parsed_diff=parsed,
-                diff_redacted=diff_redacted or "",
-                metadata=analysis.metadata,
-                findings=current_findings,
-                knowledge_base_context=kb_context_preview,
-                context_references=kb_context_references,
-                fallback_summary=summary_text,
+            can_use_hybrid_rag, review_output_reason = _REVIEW_INTELLIGENCE_SERVICE.can_use_hybrid_rag(
                 qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
                 kb_retrieval_mode=kb_retrieval_mode,
                 kb_context_chunks_count=kb_context_chunks_count,
+                knowledge_base_context=kb_context_preview,
                 kb_retrieval_error=kb_retrieval_error,
             )
+            try:
+                if can_use_hybrid_rag:
+                    review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
+                        repo=analysis.repo,
+                        pr_number=analysis.pr_number,
+                        change_type=change_type,
+                        parsed_diff=parsed,
+                        diff_redacted=diff_redacted or "",
+                        metadata=analysis.metadata,
+                        findings=current_findings,
+                        knowledge_base_context=kb_context_preview,
+                        context_references=kb_context_references,
+                        fallback_summary=summary_text,
+                        qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
+                        kb_retrieval_mode=kb_retrieval_mode,
+                        kb_context_chunks_count=kb_context_chunks_count,
+                        kb_retrieval_error=kb_retrieval_error,
+                    )
+                    review_output_source = "hybrid_rag"
+                    review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
+                else:
+                    review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                        repo=analysis.repo,
+                        change_type=change_type,
+                        parsed_diff=parsed,
+                        metadata=analysis.metadata,
+                        findings=current_findings,
+                        fallback_summary=summary_text,
+                    )
+                    review_output_source = "rule_engine"
+                    review_qdrant_required = False
+            except Exception as exc:
+                review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                    repo=analysis.repo,
+                    change_type=change_type,
+                    parsed_diff=parsed,
+                    metadata=analysis.metadata,
+                    findings=current_findings,
+                    fallback_summary=summary_text,
+                )
+                review_output_source = "rule_engine"
+                review_qdrant_required = False
+                review_output_reason = str(exc)
+
             ReviewOutputsRepo().upsert(
                 UpsertReviewOutputInput(
                     analysis_id=analysis_id,
-                    source="hybrid_rag",
-                    qdrant_required=settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
+                    source=review_output_source or "rule_engine",
+                    qdrant_required=review_qdrant_required,
                     payload=review_output.model_dump(mode="json"),
                 )
             )
             summary_text = review_output.summary.short_summary
-            summary_source = "hybrid_rag"
-            summary_fallback = False
+            summary_source = review_output_source or "rule_engine"
+            summary_fallback = summary_source != "hybrid_rag"
             review_output_status = "completed"
             review_merge_status = review_output.merge_readiness.status
             review_risk_count = len(review_output.risk_findings)
@@ -669,8 +711,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         }
         metrics["review_intelligence"] = {
             "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
-            "qdrant_required": settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
+            "qdrant_required": review_qdrant_required,
             "status": review_output_status,
+            "source": review_output_source,
+            "fallback_reason": review_output_reason,
             "merge_status": review_merge_status,
             "risk_findings_count": review_risk_count,
         }
@@ -692,29 +736,6 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             metadata_updates={"pipeline": metrics},
         )
         return {"analysis_id": analysis_id, "status": "COMPLETED", "metrics": metrics}
-    except HybridRAGRequiredError as exc:
-        duration_ms = int((time.perf_counter() - started_at) * 1000)
-        repo.update_status(
-            analysis_id=analysis_id,
-            status="FAILED",
-            stage="FAILED",
-            progress=100,
-            error_code=exc.code,
-            error_message=str(exc),
-            metadata_updates={
-                "pipeline": {
-                    "duration_ms": duration_ms,
-                    "failed": True,
-                    "review_intelligence": {
-                        "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
-                        "qdrant_required": settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT,
-                        "status": "failed",
-                        "reason": str(exc),
-                    },
-                }
-            },
-        )
-        raise
     except Exception:
         duration_ms = int((time.perf_counter() - started_at) * 1000)
         repo.update_status(

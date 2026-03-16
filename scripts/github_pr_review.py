@@ -140,12 +140,27 @@ def _bullet_list(items: list[str], empty_message: str) -> list[str]:
     return [f"- {item}" for item in items]
 
 
+def _clean_code_findings(analysis: dict[str, Any]) -> list[dict[str, Any]]:
+    raw_findings = analysis.get("static_findings") or analysis.get("findings") or []
+    if not isinstance(raw_findings, list):
+        return []
+    results: list[dict[str, Any]] = []
+    for item in raw_findings:
+        if not isinstance(item, dict):
+            continue
+        if str(item.get("source") or "").upper() != "STATIC_CLEAN_CODE":
+            continue
+        results.append(item)
+    return results
+
+
 def format_review_markdown(analysis: dict[str, Any]) -> str:
     review_output = analysis.get("review_output") or {}
     summary = review_output.get("summary") or {}
     change_explanation = review_output.get("change_explanation") or {}
     merge_readiness = review_output.get("merge_readiness") or {}
     risk_findings = review_output.get("risk_findings") or []
+    clean_code_findings = _clean_code_findings(analysis)
     generated_tests = review_output.get("generated_tests") or []
     key_changes = review_output.get("key_changes") or []
 
@@ -193,6 +208,27 @@ def format_review_markdown(analysis: dict[str, Any]) -> str:
             )
     else:
         lines.append("- No material risk finding generated.")
+    lines.append("")
+
+    lines.extend(["### Clean Code Findings", ""])
+    if clean_code_findings:
+        for finding in clean_code_findings[:8]:
+            file_path = finding.get("file_path") or "repo-wide"
+            severity = finding.get("severity") or "INFO"
+            rule_id = finding.get("rule_id") or "clean_code_violation"
+            message = finding.get("message") or "Clean Code issue detected."
+            suggestion = finding.get("suggestion") or "No suggestion provided."
+            line_start = finding.get("line_start")
+            line_suffix = f":{line_start}" if isinstance(line_start, int) and line_start > 0 else ""
+            lines.extend(
+                [
+                    f"- **[{severity}] {rule_id}** (`{file_path}{line_suffix}`)",
+                    f"  - {message}",
+                    f"  - Suggested fix: {suggestion}",
+                ]
+            )
+    else:
+        lines.append("- No Clean Code finding generated.")
     lines.append("")
 
     lines.extend(["### Suggested Tests", ""])
