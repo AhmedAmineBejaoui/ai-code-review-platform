@@ -49,7 +49,19 @@ def parse_ruff_output(stdout: str) -> list[StaticRawFinding]:
 class RuffAnalyzer:
     tool_name = "ruff"
 
-    def run(self, *, paths: list[str], workspace: str, timeout_seconds: int) -> StaticToolResult:
+    def run(
+        self,
+        *,
+        paths: list[str],
+        workspace: str,
+        timeout_seconds: int,
+        parsed: Any | None = None,
+        repo: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> StaticToolResult:
+        _ = parsed
+        _ = repo
+        _ = metadata
         started = time.perf_counter()
         started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
         if not paths:

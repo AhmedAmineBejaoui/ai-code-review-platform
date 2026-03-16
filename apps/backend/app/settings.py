@@ -47,6 +47,14 @@ class Settings(BaseSettings):
     STATIC_ANALYSIS_CHECKOUT_TIMEOUT_SECONDS: int = 45
     STATIC_ANALYSIS_CHECKOUT_BASE_PATH: str | None = None
     STATIC_ANALYSIS_FILTER_CHANGED_LINES: bool = True
+    CLEAN_CODE_RULE_ENGINE_ENABLED: bool = True
+    CLEAN_CODE_FUNCTION_MAX_LINES: int = 30
+    CLEAN_CODE_COMPLEXITY_WARN_THRESHOLD: int = 10
+    CLEAN_CODE_DUPLICATION_MIN_LINES: int = 8
+    CLEAN_CODE_FILE_MAX_LOGICAL_LINES: int = 400
+    CLEAN_CODE_MAX_TOP_LEVEL_SYMBOLS: int = 12
+    CLEAN_CODE_MAX_FINDINGS: int = 120
+    CLEAN_CODE_EXCLUDED_REPOS: str | None = "AhmedAmineBejaoui/ai-code-review-platform,ai-code-review-platform"
     SECRETS_ENCRYPTION_KEY: str | None = None
     SECRETS_BOOTSTRAP_FROM_ENV: bool = True
     RBAC_ENFORCEMENT_ENABLED: bool = False
@@ -159,6 +167,13 @@ class Settings(BaseSettings):
     @property
     def admin_emails(self) -> set[str]:
         raw = self.ADMIN_EMAILS
+        if raw is None or not raw.strip():
+            return set()
+        return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+    @property
+    def clean_code_excluded_repos(self) -> set[str]:
+        raw = self.CLEAN_CODE_EXCLUDED_REPOS
         if raw is None or not raw.strip():
             return set()
         return {item.strip().lower() for item in raw.split(",") if item.strip()}

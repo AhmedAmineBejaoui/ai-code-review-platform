@@ -6,11 +6,13 @@ from typing import Any, Literal, Protocol
 
 StaticSeverity = Literal["INFO", "WARN", "BLOCKER"]
 StaticCategory = Literal["security", "quality", "style", "perf", "maintainability", "other"]
+StaticToolName = Literal["ruff", "semgrep", "clean_code"]
+StaticSourceName = Literal["STATIC_RUFF", "STATIC_SEMGREP", "STATIC_CLEAN_CODE"]
 
 
 @dataclass(frozen=True)
 class StaticRawFinding:
-    tool: Literal["ruff", "semgrep"]
+    tool: StaticToolName
     rule_id: str
     file_path: str
     line_start: int | None
@@ -23,7 +25,7 @@ class StaticRawFinding:
 
 @dataclass(frozen=True)
 class StaticFinding:
-    source: Literal["STATIC_RUFF", "STATIC_SEMGREP"]
+    source: StaticSourceName
     rule_id: str
     file_path: str
     line_start: int | None
@@ -38,7 +40,7 @@ class StaticFinding:
 
 @dataclass(frozen=True)
 class StaticToolResult:
-    tool: Literal["ruff", "semgrep"]
+    tool: StaticToolName
     findings: list[StaticRawFinding]
     duration_ms: int
     scanned_files: int
@@ -52,6 +54,7 @@ class StaticToolResult:
     stdout_snippet: str | None = None
     stderr_snippet: str | None = None
     warning: str | None = None
+    stats: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -63,6 +66,15 @@ class StaticAnalysisResult:
 
 
 class StaticToolAnalyzer(Protocol):
-    tool_name: Literal["ruff", "semgrep"]
+    tool_name: StaticToolName
 
-    def run(self, *, paths: list[str], workspace: str, timeout_seconds: int) -> StaticToolResult: ...
+    def run(
+        self,
+        *,
+        paths: list[str],
+        workspace: str,
+        timeout_seconds: int,
+        parsed: Any | None = None,
+        repo: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> StaticToolResult: ...

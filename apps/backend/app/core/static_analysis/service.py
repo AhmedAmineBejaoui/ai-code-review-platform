@@ -54,6 +54,8 @@ class StaticAnalysisService:
         max_files: int,
         max_findings: int,
         filter_changed_lines: bool,
+        repo: str | None = None,
+        metadata: dict[str, object] | None = None,
     ) -> StaticAnalysisResult:
         workspace = Path(workspace_path).resolve()
         target_rel_paths: list[str] = []
@@ -80,11 +82,19 @@ class StaticAnalysisService:
 
         warnings: list[str] = []
         tools_stats: dict[str, dict[str, object]] = {}
+        engine_stats: dict[str, object] = {}
         normalized_findings: list[StaticFinding] = []
         tool_runs: list[StaticToolResult] = []
 
         for analyzer in self._analyzers:
-            result = analyzer.run(paths=existing_abs_paths, workspace=str(workspace), timeout_seconds=timeout_seconds)
+            result = analyzer.run(
+                paths=existing_abs_paths,
+                workspace=str(workspace),
+                timeout_seconds=timeout_seconds,
+                parsed=parsed,
+                repo=repo,
+                metadata=metadata,
+            )
             tool_runs.append(result)
             if result.warning:
                 warnings.append(f"{result.tool}: {result.warning}")
@@ -98,6 +108,8 @@ class StaticAnalysisService:
                 "status": result.status,
                 "exit_code": result.exit_code,
             }
+            if result.stats:
+                engine_stats[result.tool] = result.stats
 
             for raw in result.findings:
                 normalized_path = _normalize_tool_path(raw.file_path, workspace)
@@ -133,4 +145,5 @@ class StaticAnalysisService:
             "findings_count": len(deduped),
             "tools": tools_stats,
         }
+        stats.update(engine_stats)
         return StaticAnalysisResult(findings=deduped, stats=stats, warnings=warnings, tool_runs=tool_runs)

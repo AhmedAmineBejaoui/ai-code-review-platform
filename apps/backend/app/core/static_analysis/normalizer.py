@@ -3,6 +3,22 @@ from __future__ import annotations
 from app.core.static_analysis.base import StaticCategory, StaticFinding, StaticRawFinding, StaticSeverity
 
 
+def _normalize_clean_code_severity(value: str) -> StaticSeverity:
+    normalized = value.strip().upper()
+    if normalized == "INFO":
+        return "INFO"
+    if normalized == "BLOCKER":
+        return "BLOCKER"
+    return "WARN"
+
+
+def _normalize_clean_code_category(raw: StaticRawFinding) -> StaticCategory:
+    category = str(raw.evidence.get("category") or "quality").strip().lower()
+    if category in {"style", "quality", "maintainability", "other"}:
+        return category  # type: ignore[return-value]
+    return "quality"
+
+
 def _normalize_semgrep_severity(value: str) -> StaticSeverity:
     normalized = value.strip().upper()
     if normalized == "ERROR":
@@ -50,10 +66,14 @@ def normalize_raw_finding(raw: StaticRawFinding) -> StaticFinding:
         source = "STATIC_SEMGREP"
         severity = _normalize_semgrep_severity(raw.severity)
         category = _normalize_semgrep_category(raw)
-    else:
+    elif raw.tool == "ruff":
         source = "STATIC_RUFF"
         severity = _normalize_ruff_severity(raw.rule_id)
         category = _normalize_ruff_category(raw.rule_id)
+    else:
+        source = "STATIC_CLEAN_CODE"
+        severity = _normalize_clean_code_severity(raw.severity)
+        category = _normalize_clean_code_category(raw)
 
     return StaticFinding(
         source=source,
@@ -65,6 +85,6 @@ def normalize_raw_finding(raw: StaticRawFinding) -> StaticFinding:
         category=category,
         message=raw.message,
         suggestion=raw.suggestion,
-        confidence=1.0,
+        confidence=float(raw.evidence.get("confidence", 1.0)),
         evidence=raw.evidence,
     )

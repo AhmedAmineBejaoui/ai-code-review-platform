@@ -23,6 +23,8 @@ def build_changed_lines_map(parsed: ParsedDiff) -> dict[str, set[int]]:
 
 
 def _intersects_changed_lines(finding: StaticFinding, changed_lines: set[int]) -> bool:
+    if finding.evidence.get("scope") == "file":
+        return True
     if finding.line_start is None and finding.line_end is None:
         return False
     start = finding.line_start if finding.line_start is not None else finding.line_end
