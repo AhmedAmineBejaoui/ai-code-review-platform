@@ -55,6 +55,13 @@ type PdfImportResponse = ApiErrorPayload & {
   }>
 }
 
+type DocumentIngestResponse = ApiErrorPayload & {
+  doc_id?: string
+  title?: string
+  chunks?: number
+  source_type?: string
+}
+
 type QueryChunk = {
   path?: string
   score?: number
@@ -76,10 +83,10 @@ const SOURCE_TYPES: Array<{
   hint: string
 }> = [
   { value: "pdf", label: "PDF", hint: "Importer un ou plusieurs fichiers PDF" },
-  { value: "web", label: "Pages web", hint: "Indexer une URL publique" },
-  { value: "markdown", label: "Documentation markdown", hint: "Fichiers .md/.mdx" },
+  { value: "web", label: "Pages web", hint: "Indexer du HTML ou du texte de page web" },
+  { value: "markdown", label: "Documentation markdown", hint: "Indexer des fichiers .md/.mdx ou du texte colle" },
   { value: "code", label: "Code source", hint: "Repository local ou distant" },
-  { value: "sql", label: "Base SQL", hint: "Dump SQL ou description de schema" },
+  { value: "sql", label: "Base SQL", hint: "Indexer un dump SQL ou une description de schema" },
 ]
 
 function filesIndexed(item: RepoProfileItem): number {
@@ -322,9 +329,48 @@ export function KnowledgeBase() {
     setDroppedFiles((previous) => [...previous, ...accepted].slice(0, 10))
   }
 
+  const ingestDocument = async ({
+    repoId,
+    title,
+    sourceType: kind,
+    pathOrUrl,
+    content,
+    tags,
+  }: {
+    repoId: string
+    title: string
+    sourceType: Exclude<SourceType, "code" | "pdf">
+    pathOrUrl?: string
+    content: string
+    tags: string[]
+  }) => {
+    const response = await fetch("/api/dashboard/admin/knowledge-base/ingest", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        repo_id: repoId,
+        title,
+        source_type: kind,
+        path_or_url: pathOrUrl || undefined,
+        content,
+        tags,
+        doc_version: 1,
+      }),
+    })
+    const payload = (await response.json().catch(() => ({}))) as DocumentIngestResponse
+    if (!response.ok) {
+      throw new Error(resolveApiErrorMessage(payload, "Ingestion impossible."))
+    }
+    return payload
+  }
+
   const createSource = async () => {
     const normalizedName = sourceName.trim()
     const normalizedLocation = sourceLocation.trim()
+    const normalizedNotes = sourceNotes.trim()
 
     if (!normalizedName) {
       setActionMessage("Donnez un identifiant de source.")
@@ -389,19 +435,65 @@ export function KnowledgeBase() {
       return
     }
 
-    const fileNames = droppedFiles.map((file) => file.name)
-    const details = [
-      `type=${sourceType}`,
-      normalizedLocation ? `location=${normalizedLocation}` : null,
-      fileNames.length > 0 ? `fichiers=${fileNames.join(",")}` : null,
-      sourceNotes.trim() ? `notes=${sourceNotes.trim()}` : null,
-    ]
-      .filter(Boolean)
-      .join(" | ")
+    if (droppedFiles.length === 0 && !normalizedNotes) {
+      setActionMessage("Ajoutez au moins un fichier texte ou collez du contenu a indexer.")
+      return
+    }
 
-    setActionMessage(`Source ${normalizedName} enregistree (${details || "sans details"}). Ajoutez un worker d'ingestion dedie pour indexation automatique de ce type.`)
-    setShowSourceForm(false)
-    resetSourceForm()
+    setBusyAction(`import:${sourceType}`)
+    setActionMessage(null)
+    try {
+      const importedItems: Array<{ title: string; chunks: number }> = []
+      const baseTags = [sourceType, droppedFiles.length > 0 ? "dashboard_upload" : "dashboard_manual"]
+
+      if (droppedFiles.length > 0) {
+        for (const file of droppedFiles) {
+          const extractedText = (await file.text()).trim()
+          if (!extractedText) {
+            throw new Error(`Le fichier '${file.name}' est vide ou illisible.`)
+          }
+          const combinedContent = normalizedNotes ? `${normalizedNotes}\n\n${extractedText}` : extractedText
+          const payload = await ingestDocument({
+            repoId: normalizedName,
+            title: file.name.trim() || normalizedName,
+            sourceType,
+            pathOrUrl: normalizedLocation || file.name,
+            content: combinedContent,
+            tags: baseTags,
+          })
+          importedItems.push({
+            title: String(payload.title ?? file.name),
+            chunks: Number(payload.chunks ?? 0) || 0,
+          })
+        }
+      } else {
+        const payload = await ingestDocument({
+          repoId: normalizedName,
+          title: normalizedLocation || normalizedName,
+          sourceType,
+          pathOrUrl: normalizedLocation || undefined,
+          content: normalizedNotes,
+          tags: baseTags,
+        })
+        importedItems.push({
+          title: String(payload.title ?? normalizedName),
+          chunks: Number(payload.chunks ?? 0) || 0,
+        })
+      }
+
+      const totalChunks = importedItems.reduce((sum, item) => sum + item.chunks, 0)
+      setActionMessage(
+        `${importedItems.length} source(s) ${sourceType} indexee(s) pour ${normalizedName}${totalChunks > 0 ? ` (${totalChunks} chunks)` : ""}.`,
+      )
+      setShowSourceForm(false)
+      resetSourceForm()
+      await loadRepos()
+      setSelectedRepoId(normalizedName)
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Ingestion impossible.")
+    } finally {
+      setBusyAction(null)
+    }
   }
 
   const editSource = async (item: RepoProfileItem) => {
