@@ -715,6 +715,32 @@ Workflow `cd.yml`:
 3. dÃ©ploiement Fly.io API,
 4. dÃ©ploiement Fly.io Worker.
 
+### 14.4 Review automatique PR via GitHub Actions
+
+Un workflow optionnel `ai-pr-review.yml` est disponible pour brancher une PR GitHub sur le backend d'analyse existant.
+
+Fonctionnement:
+
+1. `pull_request` declenche le workflow
+2. le runner recupere le diff GitHub
+3. le diff est envoye a `/v1/analyses`
+4. le workflow poll `/v1/analyses/{analysis_id}`
+5. le resultat structure (`summary`, `risk_findings`, `generated_tests`, `merge_readiness`) est transforme en markdown
+6. une review GitHub est publiee via `pulls.createReview`
+
+Ce workflow n'introduit pas un second moteur de review. Il agit comme adaptateur GitHub du pipeline backend deja present.
+
+Secrets requis:
+
+- `AI_REVIEW_BACKEND_URL`: URL publique du backend
+- `AI_REVIEW_BEARER_TOKEN`: optionnel si auth backend active
+- `AI_REVIEW_USER_ID`: optionnel si RBAC backend exige un utilisateur technique
+
+Fichiers:
+
+- workflow: `.github/workflows/ai-pr-review.yml`
+- client CLI workflow: `scripts/github_pr_review.py`
+
 ---
 
 ## 15. ObservabilitÃ© et supervision
@@ -1163,4 +1189,3 @@ sequenceDiagram
 - UI base de connaissance: `apps/dashboard/components/dashboard/KnowledgeBase.tsx`
 
 La cible n'est donc pas de remplacer l'existant, mais de le faire evoluer vers un **Code-Aware Hybrid RAG** plus robuste pour la revue de code, les policies et les documents techniques.
-
