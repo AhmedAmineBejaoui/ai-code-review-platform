@@ -12,7 +12,8 @@
 # Ports summary:
 #   8000 → FastAPI API         9090 → Prometheus
 #   3000 → Grafana             5555 → Flower (Celery UI)
-#   9000 → MinIO API           9001 → MinIO Console
+#   ${MINIO_API_PORT:-9000} → MinIO API
+#   ${MINIO_CONSOLE_PORT:-9001} → MinIO Console
 #   6333 → Qdrant REST         6334 → Qdrant gRPC
 #   8080 → Adminer (DB UI)     5432 → PostgreSQL
 #   6380 → Redis               9121 → redis-exporter
@@ -121,8 +122,8 @@ services:
       MINIO_ROOT_PASSWORD: minioadmin
       MINIO_PROMETHEUS_AUTH_TYPE: public   # Expose /minio/v2/metrics/cluster
     ports:
-      - "9000:9000"   # S3 API endpoint
-      - "9001:9001"   # Web Console
+      - "${MINIO_API_PORT:-9000}:9000"         # S3 API endpoint
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"     # Web Console
     volumes:
       - minio_data:/data
     networks:

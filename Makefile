@@ -13,6 +13,8 @@ PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
 PROD_ENV_FILE = infra/cloud/oracle/.env.prod
 PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
 BACKEND_DIR  = apps/backend
+MINIO_API_PORT ?= 9000
+MINIO_CONSOLE_PORT ?= 9001
 
 # Default target
 help:
@@ -73,8 +75,8 @@ up:
 	@echo "  Flower:         http://localhost:5555"
 	@echo "  Adminer:        http://localhost:8080"
 	@echo "  Qdrant:         http://localhost:6333/dashboard"
-	@echo "  MinIO Console:  http://localhost:9001   (minioadmin / minioadmin)"
-	@echo "  MinIO S3 API:   http://localhost:9000"
+	@echo "  MinIO Console:  http://localhost:$(MINIO_CONSOLE_PORT)   (minioadmin / minioadmin)"
+	@echo "  MinIO S3 API:   http://localhost:$(MINIO_API_PORT)"
 	@echo "  -------------------------------------------------------"
 	@echo "  Hint: run 'make migrate' to apply DB migrations."
 	@echo ""
