@@ -14,6 +14,7 @@ from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.database import get_engine
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
+from app.core.knowledge_base.qdrant_ids import build_document_chunk_point_id
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
 from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
@@ -709,7 +710,7 @@ async def ingest_document(
                 token_count = max(1, len(chunk) // 4)
                 points.append(
                     QdrantPoint(
-                        id=f"{doc_id}:{index}",
+                        id=build_document_chunk_point_id(repo_id=payload.repo_id, doc_id=doc_id, chunk_index=index),
                         vector=hash_embed_text(chunk, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
                         payload={
                             "type": "kb_document_chunk",

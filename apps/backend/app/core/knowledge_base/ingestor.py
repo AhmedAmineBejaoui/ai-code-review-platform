@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import hashlib
 import json
 import re
 import subprocess
@@ -19,6 +18,7 @@ from app.core.knowledge_base.guardrails import (
     to_posix_relative,
     validate_allowed_roots,
 )
+from app.core.knowledge_base.qdrant_ids import build_repo_chunk_point_id, build_repo_profile_point_id
 from app.data.repos.repo_context_chunks_repo import RepoContextChunkWrite, RepoContextChunksRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
 from app.settings import settings
@@ -845,10 +845,13 @@ class RepoContextIngestor:
     ) -> QdrantPoint:
         token_count = len(chunk.content.split())
         symbol_hint = chunk.symbol_name or ""
-        hash_material = f"{repo_id}:{relative_path}:{chunk_index}:{chunk.chunk_type}:{symbol_hint}:{chunk.content[:48]}".encode(
-            "utf-8"
+        point_id = build_repo_chunk_point_id(
+            repo_id=repo_id,
+            relative_path=relative_path,
+            chunk_index=chunk_index,
+            chunk_type=chunk.chunk_type,
+            symbol_name=chunk.symbol_name,
         )
-        point_id = f"ctx_{hashlib.sha1(hash_material).hexdigest()}"
         payload = {
             "repo_id": repo_id,
             "type": "chunk",
@@ -896,7 +899,7 @@ class RepoContextIngestor:
         summary = payload.get("summary", "")
         vector = hash_embed_text(f"{repo_id}\n{summary}", vector_size=self._vector_size)
         return QdrantPoint(
-            id=f"repo_profile_{hashlib.sha1(repo_id.encode('utf-8')).hexdigest()[:24]}",
+            id=build_repo_profile_point_id(repo_id=repo_id),
             vector=vector,
             payload=payload,
         )

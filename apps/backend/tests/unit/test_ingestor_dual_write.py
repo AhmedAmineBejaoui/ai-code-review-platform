@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import uuid
 from pathlib import Path
 
 import pytest
@@ -58,3 +59,7 @@ async def test_ingestor_onboard_repo_dual_writes(monkeypatch: pytest.MonkeyPatch
     assert result.files_indexed >= 1
     assert fake_repo.deleted_repo_ids == ["repo"]
     assert len(fake_repo.upserted_rows) >= 1
+    first_batch = ingestor._vector_store.upsert_calls[0]  # type: ignore[attr-defined]
+    assert first_batch
+    uuid.UUID(str(first_batch[0].id))
+    uuid.UUID(str(fake_repo.upserted_rows[0].id))
