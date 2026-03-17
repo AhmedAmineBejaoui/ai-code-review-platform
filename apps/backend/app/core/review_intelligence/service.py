@@ -61,8 +61,10 @@ class ReviewIntelligenceService:
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
+            context_references=context_references,
             allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
+        validated_context_references = _validated_context_references(context_references)
 
         files_changed = [item.path_new for item in parsed_diff.files]
         impacted_components = _extract_impacted_components(files_changed)
@@ -102,7 +104,7 @@ class ReviewIntelligenceService:
             risk_findings=risk_findings,
             generated_tests=generated_tests,
             merge_readiness=merge_readiness,
-            context_references=[ReviewContextReference.model_validate(item) for item in context_references[:12]],
+            context_references=validated_context_references,
         )
 
     def generate_rule_engine_output(
@@ -156,6 +158,7 @@ class ReviewIntelligenceService:
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        context_references: list[dict[str, Any]] | None = None,
         allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]:
         try:
@@ -165,6 +168,7 @@ class ReviewIntelligenceService:
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=knowledge_base_context,
                 kb_retrieval_error=kb_retrieval_error,
+                context_references=context_references,
                 allow_non_qdrant_grounding=allow_non_qdrant_grounding,
             )
         except HybridRAGRequiredError as exc:
@@ -179,6 +183,7 @@ class ReviewIntelligenceService:
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        context_references: list[dict[str, Any]] | None = None,
         allow_non_qdrant_grounding: bool = False,
     ) -> None:
         if not settings.REVIEW_INTELLIGENCE_ENABLED:
@@ -192,6 +197,23 @@ class ReviewIntelligenceService:
             raise HybridRAGRequiredError(f"Hybrid RAG retrieval failed.{detail}")
         if kb_context_chunks_count <= 0 or not isinstance(knowledge_base_context, str) or not knowledge_base_context.strip():
             raise HybridRAGRequiredError("Hybrid RAG retrieval returned no usable grounded context.")
+        if not _validated_context_references(context_references or []):
+            raise HybridRAGRequiredError("Hybrid RAG retrieval returned no valid grounded citations.")
+
+
+def _validated_context_references(context_references: list[dict[str, Any]]) -> list[ReviewContextReference]:
+    validated: list[ReviewContextReference] = []
+    for item in context_references[:12]:
+        try:
+            reference = ReviewContextReference.model_validate(item)
+        except Exception:
+            continue
+        if not reference.path.strip():
+            continue
+        if not reference.source.strip():
+            continue
+        validated.append(reference)
+    return validated
 
 
 def _extract_impacted_components(files_changed: list[str]) -> list[str]:

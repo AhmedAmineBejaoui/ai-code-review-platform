@@ -61,6 +61,7 @@ class ReviewGenerationEngine(Protocol):
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        context_references: list[dict[str, Any]] | None = None,
         allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]: ...
 
@@ -164,6 +165,7 @@ class _BaseReviewGenerationEngine:
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        context_references: list[dict[str, Any]] | None = None,
         allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]:
         return self.review_intelligence_service.can_use_hybrid_rag(
@@ -172,6 +174,7 @@ class _BaseReviewGenerationEngine:
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
+            context_references=context_references,
             allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
 

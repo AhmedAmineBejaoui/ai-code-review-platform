@@ -20,7 +20,7 @@ from app.core.knowledge_base.retriever import (
     RepoContextRetriever,
     _build_lexical_query_from_diff,
     _extract_diff_signals,
-    build_llm_context,
+    build_llm_context_with_chunks,
 )
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient
@@ -521,21 +521,33 @@ def _result_from_chunks(
     duration_ms: int,
     trace: dict[str, Any] | None = None,
 ) -> RagEngineResult:
-    references = [_kb_reference(item) for item in chunks[:12]]
+    context_text, used_chunks = build_llm_context_with_chunks(chunks, max_chars=6000)
+    normalized_context = context_text if context_text != "[NO_CONTEXT_AVAILABLE]" else None
+    references, internal_references, invalid_references = _build_reference_payloads(used_chunks)
+    grounded = bool(normalized_context and references)
+    warnings: list[str] = []
+    if normalized_context and not references:
+        normalized_context = None
+        warnings.append("no_valid_citations_for_prompt_context")
     return RagEngineResult(
         stack=stack,
         mode=mode,
         chunks=chunks,
         profile=profile,
-        context_text=build_llm_context(chunks)[:6000] if chunks else None,
+        context_text=normalized_context,
         context_references=references,
-        grounded=bool(chunks),
+        grounded=grounded,
         qdrant_enabled=qdrant_enabled,
-        rag_confidence_score=_rag_confidence_score(chunks),
+        rag_confidence_score=_rag_confidence_score(used_chunks or chunks),
         trace={
             "duration_ms": duration_ms,
             "selected_count": len(chunks),
+            "prompt_chunks_used": len(used_chunks),
             "references_count": len(references),
+            "invalid_references_count": invalid_references,
+            "citation_validation_passed": bool(references) if used_chunks else False,
+            "prompt_reference_metadata": internal_references,
+            "warnings": warnings,
             **(trace or {}),
         },
     )
@@ -549,9 +561,63 @@ def _kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
         "source_type": item.source_type,
         "chunk_type": item.chunk_type,
         "symbol_name": item.symbol_name,
-        "score": round(float(item.score), 4),
+        "score": round(float(item.score_final or item.score), 4),
         "tags": list(item.tags),
     }
+
+
+def _internal_kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
+    return {
+        "source_type": item.source_type or item.file_type,
+        "source_id": item.source_id,
+        "repo_id": item.repo_id,
+        "path": item.path,
+        "chunk_id": item.chunk_id,
+        "chunk_index": item.chunk_index,
+        "line_start": item.start_line,
+        "line_end": item.end_line,
+        "document_version": item.document_version,
+        "section_title": item.section_title or item.title,
+        "retrieval_reason": item.retrieval_reason,
+        "retriever_channel": item.retriever_channel or item.source,
+        "score_raw": round(float(item.score_raw or item.score), 4),
+        "score_final": round(float(item.score_final or item.score), 4),
+        "collection_version": item.collection_version,
+    }
+
+
+def _build_reference_payloads(chunks: list[RetrievedContextChunk]) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    public_references: list[dict[str, Any]] = []
+    internal_references: list[dict[str, Any]] = []
+    invalid_references = 0
+    for item in chunks[:12]:
+        internal_reference = _internal_kb_reference(item)
+        if not _is_valid_reference(item, internal_reference):
+            invalid_references += 1
+            continue
+        internal_references.append(internal_reference)
+        public_references.append(_kb_reference(item))
+    return public_references, internal_references, invalid_references
+
+
+def _is_valid_reference(item: RetrievedContextChunk, internal_reference: dict[str, Any]) -> bool:
+    if not item.path or not item.path.strip():
+        return False
+    if not item.content or not item.content.strip():
+        return False
+    if not item.source or not item.source.strip():
+        return False
+    if not internal_reference.get("source_id"):
+        return False
+    if not internal_reference.get("chunk_id"):
+        return False
+    if not internal_reference.get("retriever_channel"):
+        return False
+    line_start = internal_reference.get("line_start")
+    line_end = internal_reference.get("line_end")
+    if isinstance(line_start, int) and isinstance(line_end, int) and line_start > line_end:
+        return False
+    return True
 
 
 def _rag_confidence_score(chunks: list[RetrievedContextChunk]) -> float:

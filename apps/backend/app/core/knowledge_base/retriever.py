@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import re
+from dataclasses import replace
 from typing import Any
 
 from app.core.knowledge_base.context_packer import ContextPacker
@@ -355,12 +356,7 @@ def build_llm_context_with_chunks(
             truncated_content = content[:remaining].rstrip()
             if not truncated_content:
                 break
-            truncated_chunk = RetrievedContextChunk(
-                **{
-                    **item.__dict__,
-                    "content": truncated_content,
-                }
-            )
+            truncated_chunk = replace(item, content=truncated_content)
             section = format_context_section(truncated_chunk)
             used_chunks.append(truncated_chunk)
             sections.append(section)
