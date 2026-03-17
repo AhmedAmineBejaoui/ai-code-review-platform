@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass
+from threading import BoundedSemaphore
 
 from app.integrations.llm_providers.ollama_client import OllamaResponse
 from app.settings import settings
@@ -24,6 +25,9 @@ class LangChainUnavailableError(RuntimeError):
 class _LangChainModelConfig:
     model: str
     timeout_s: int
+
+
+_GENERATION_SEMAPHORE = BoundedSemaphore(max(1, settings.LANGCHAIN_MAX_CONCURRENT_GENERATIONS))
 
 
 class LangChainOllamaClient:
@@ -84,7 +88,8 @@ class LangChainOllamaClient:
             | StrOutputParser()
         )
         started = time.perf_counter()
-        text = chain.invoke({"prompt": prompt})
+        with _GENERATION_SEMAPHORE:
+            text = chain.invoke({"prompt": prompt})
         duration_ms = int((time.perf_counter() - started) * 1000)
         return OllamaResponse(
             text=str(text),

@@ -278,3 +278,20 @@ def test_pipeline_keeps_hybrid_rag_source_when_grounded_context_exists(monkeypat
     assert fake_outputs.saved.source == "hybrid_rag"
     assert fake_outputs.saved.qdrant_required is True
     assert any(item.source == "STATIC_CLEAN_CODE" for item in fake_repo.findings)
+
+
+def test_langchain_parity_gate_remains_blocked_without_corpus_latency_metrics() -> None:
+    parity = analyze_pr._evaluate_langchain_parity(
+        divergence={
+            "citation_overlap": 1.0,
+            "summary_changed": False,
+            "risk_count_delta": 0,
+            "test_count_delta": 0,
+        },
+        legacy_references=[{"path": "docs/security.md", "title": "Security"}],
+        langchain_references=[{"path": "docs/security.md", "title": "Security"}],
+        langchain_review_status="completed",
+    )
+
+    assert parity["cutover_eligible"] is False
+    assert "aggregate_latency_thresholds_require_corpus_validation" in parity["blocking_reasons"]

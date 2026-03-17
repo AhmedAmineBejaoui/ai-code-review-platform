@@ -173,6 +173,7 @@ class LangChainShadowIndexingService:
             "source_id": row.id,
             "chunk_id": row.id,
             "document_version": row.indexed_commit,
+            "section_title": row.symbol_name or row.path,
             "collection_version": self._physical_collection,
         }
 
@@ -196,6 +197,7 @@ class LangChainShadowIndexingService:
             "source_id": row.doc_id,
             "chunk_id": f"{row.doc_id}:{row.chunk_index}",
             "document_version": row.doc_version,
+            "section_title": row.title,
             "collection_version": self._physical_collection,
         }
 

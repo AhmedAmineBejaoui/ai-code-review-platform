@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.core.knowledge_base.rag_engines import LangChainRagEngine
+from app.core.knowledge_base.rag_engines import LangChainRagEngine, _result_from_chunks
 from app.core.knowledge_base.retrieval_models import RetrievalCandidate, RetrievedContextChunk
 
 
@@ -23,6 +23,12 @@ def _candidate(*, path: str, content: str, score: float, source: str = "lexical_
         file_type="code",
         chunk_type="function",
         source=source,
+        repo_id="owner/repo",
+        source_id=f"{path}:0",
+        chunk_id=f"{path}:0",
+        retriever_channel=source,
+        score_raw=score,
+        score_final=score,
     )
     return RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score)
 
@@ -50,3 +56,94 @@ async def test_langchain_rag_engine_degrades_to_exact_and_lexical_when_qdrant_is
     assert result.qdrant_enabled is False
     assert result.mode == "langchain_hybrid"
     assert result.chunks[0].path == "src/auth.py"
+
+
+def test_result_from_chunks_only_references_prompt_used_chunks() -> None:
+    first = RetrievedContextChunk(
+        score=0.92,
+        path="src/first.py",
+        chunk_index=0,
+        language="python",
+        content="x" * 7000,
+        token_count=1200,
+        file_type="code",
+        chunk_type="function",
+        source="semantic_code",
+        repo_id="owner/repo",
+        source_id="src/first.py:0",
+        chunk_id="src/first.py:0",
+        retriever_channel="semantic_code",
+        score_raw=0.92,
+        score_final=0.92,
+    )
+    second = RetrievedContextChunk(
+        score=0.81,
+        path="src/second.py",
+        chunk_index=1,
+        language="python",
+        content="def two():\n    return 2",
+        token_count=12,
+        file_type="code",
+        chunk_type="function",
+        source="lexical_code",
+        repo_id="owner/repo",
+        source_id="src/second.py:1",
+        chunk_id="src/second.py:1",
+        retriever_channel="lexical_code",
+        score_raw=0.81,
+        score_final=0.81,
+    )
+
+    result = _result_from_chunks(
+        stack="langchain",
+        mode="langchain_hybrid",
+        chunks=[first, second],
+        profile=None,
+        qdrant_enabled=True,
+        duration_ms=5,
+    )
+
+    assert result.context_text is not None
+    assert "[FILE: src/first.py]" in result.context_text
+    assert "[FILE: src/second.py]" not in result.context_text
+    assert result.context_references == [
+        {
+            "path": "src/first.py",
+            "title": None,
+            "source": "semantic_code",
+            "source_type": None,
+            "chunk_type": "function",
+            "symbol_name": None,
+            "score": 0.92,
+            "tags": [],
+        }
+    ]
+    assert result.trace["prompt_chunks_used"] == 1
+
+
+def test_result_from_chunks_drops_grounding_when_citations_are_invalid() -> None:
+    result = _result_from_chunks(
+        stack="langchain",
+        mode="langchain_hybrid",
+        chunks=[
+            RetrievedContextChunk(
+                score=0.77,
+                path="src/auth.py",
+                chunk_index=0,
+                language="python",
+                content="def login():\n    return True",
+                token_count=10,
+                file_type="code",
+                chunk_type="function",
+                source="",
+            )
+        ],
+        profile=None,
+        qdrant_enabled=True,
+        duration_ms=5,
+    )
+
+    assert result.grounded is False
+    assert result.context_text is None
+    assert result.context_references == []
+    assert result.trace["invalid_references_count"] == 1

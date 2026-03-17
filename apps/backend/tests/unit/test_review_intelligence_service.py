@@ -155,3 +155,37 @@ def test_review_intelligence_service_allows_non_qdrant_grounding_when_opted_in()
 
     assert enabled is True
     assert reason is None
+
+
+def test_review_intelligence_service_rejects_grounding_without_valid_citations() -> None:
+    service = _build_service()
+
+    enabled, reason = service.can_use_hybrid_rag(
+        qdrant_enabled=True,
+        kb_retrieval_mode="diff_with_incremental_update",
+        kb_context_chunks_count=2,
+        knowledge_base_context="grounded context",
+        kb_retrieval_error=None,
+        context_references=[],
+    )
+
+    assert enabled is False
+    assert reason == "Hybrid RAG retrieval returned no valid grounded citations."
+
+    with pytest.raises(HybridRAGRequiredError, match="no valid grounded citations"):
+        service.generate(
+            repo="owner/repo",
+            pr_number=42,
+            change_type="feature",
+            parsed_diff=_build_parsed_diff(),
+            diff_redacted="diff --git a/a b/b\n@@\n+guard write path",
+            metadata={"title": "Secure KB mutations"},
+            findings=_build_findings(),
+            knowledge_base_context="KB context for authorization and knowledge-base write rules.",
+            context_references=[],
+            fallback_summary="This PR updates KB write paths and related tests.",
+            qdrant_enabled=True,
+            kb_retrieval_mode="diff_with_incremental_update",
+            kb_context_chunks_count=2,
+            kb_retrieval_error=None,
+        )

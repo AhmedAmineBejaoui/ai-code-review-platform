@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from threading import BoundedSemaphore
 from typing import Sequence
 
 from app.core.langchain_runtime.clients import LangChainUnavailableError
@@ -9,6 +10,9 @@ try:
     from langchain_ollama import OllamaEmbeddings
 except Exception:  # pragma: no cover - handled at runtime when LangChain is unavailable
     OllamaEmbeddings = None
+
+
+_EMBEDDING_SEMAPHORE = BoundedSemaphore(max(1, settings.LANGCHAIN_MAX_CONCURRENT_EMBEDDINGS))
 
 
 class LangChainEmbeddingService:
@@ -29,7 +33,8 @@ class LangChainEmbeddingService:
 
     def embed_query(self, text: str) -> list[float]:
         embeddings = self._get_embeddings()
-        vector = embeddings.embed_query(text)
+        with _EMBEDDING_SEMAPHORE:
+            vector = embeddings.embed_query(text)
         self._cache_vector_size(vector)
         return [float(value) for value in vector]
 
@@ -37,7 +42,8 @@ class LangChainEmbeddingService:
         if not texts:
             return []
         embeddings = self._get_embeddings()
-        vectors = embeddings.embed_documents(list(texts))
+        with _EMBEDDING_SEMAPHORE:
+            vectors = embeddings.embed_documents(list(texts))
         if vectors:
             self._cache_vector_size(vectors[0])
         return [[float(value) for value in vector] for vector in vectors]

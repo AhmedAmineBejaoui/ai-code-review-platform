@@ -199,6 +199,58 @@ def _summarize_review_divergence(
     }
 
 
+def _evaluate_langchain_parity(
+    *,
+    divergence: dict[str, Any],
+    legacy_references: list[dict[str, Any]],
+    langchain_references: list[dict[str, Any]],
+    langchain_review_status: str,
+) -> dict[str, Any]:
+    thresholds = {
+        "pydantic_validity_min": 0.99,
+        "context_references_presence_min": 0.95,
+        "citation_overlap_min": 0.70,
+        "critical_divergence_max": 0.05,
+    }
+    measurements = {
+        "pydantic_validity": 1.0 if langchain_review_status in {"completed", "rule_engine"} else 0.0,
+        "context_references_presence": (
+            1.0 if not legacy_references else 1.0 if langchain_references else 0.0
+        ),
+        "citation_overlap": float(divergence.get("citation_overlap") or 0.0),
+        "critical_divergence": (
+            1.0
+            if (
+                bool(divergence.get("summary_changed"))
+                or int(divergence.get("risk_count_delta") or 0) != 0
+                or int(divergence.get("test_count_delta") or 0) != 0
+            )
+            else 0.0
+        ),
+    }
+    blocking_reasons: list[str] = []
+    if measurements["pydantic_validity"] < thresholds["pydantic_validity_min"]:
+        blocking_reasons.append("pydantic_validity_below_threshold")
+    if measurements["context_references_presence"] < thresholds["context_references_presence_min"]:
+        blocking_reasons.append("context_references_presence_below_threshold")
+    if measurements["citation_overlap"] < thresholds["citation_overlap_min"]:
+        blocking_reasons.append("citation_overlap_below_threshold")
+    if measurements["critical_divergence"] > thresholds["critical_divergence_max"]:
+        blocking_reasons.append("critical_divergence_above_threshold")
+
+    unavailable_metrics = ["retrieval_p95_ms", "generation_p95_ms"]
+    if unavailable_metrics:
+        blocking_reasons.append("aggregate_latency_thresholds_require_corpus_validation")
+
+    return {
+        "thresholds": thresholds,
+        "measurements": measurements,
+        "unavailable_metrics": unavailable_metrics,
+        "cutover_eligible": not blocking_reasons,
+        "blocking_reasons": blocking_reasons,
+    }
+
+
 def run_static_analysis_stage(
     parsed: Any,
     *,
@@ -814,6 +866,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=kb_context_preview,
                 kb_retrieval_error=kb_retrieval_error,
+                context_references=kb_context_references,
             )
             langchain_can_use_hybrid_rag = False
             if langchain_review_engine is not None and langchain_kb_result is not None:
@@ -823,6 +876,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     kb_context_chunks_count=len(langchain_kb_result.chunks),
                     knowledge_base_context=langchain_kb_result.context_text,
                     kb_retrieval_error=langchain_kb_result.error,
+                    context_references=langchain_kb_result.context_references,
                     allow_non_qdrant_grounding=True,
                 )
             try:
@@ -1041,6 +1095,16 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             ),
         }
         if run_langchain_shadow:
+            divergence = _summarize_review_divergence(
+                legacy_references=legacy_kb_result.context_references if legacy_kb_result else [],
+                langchain_references=langchain_kb_result.context_references if langchain_kb_result else [],
+                legacy_summary=legacy_summary_text,
+                langchain_summary=langchain_summary_text,
+                legacy_risk_count=legacy_review_risk_count,
+                langchain_risk_count=langchain_review_risk_count,
+                legacy_test_count=legacy_review_test_count,
+                langchain_test_count=langchain_review_test_count,
+            )
             metrics["langchain_shadow"] = {
                 "enabled": True,
                 "review_model": settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY,
@@ -1048,15 +1112,12 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "grounded_findings_count": langchain_grounded_findings_count,
                 "review_status": langchain_review_output_status,
                 "review_reason": langchain_review_reason,
-                "divergence": _summarize_review_divergence(
+                "divergence": divergence,
+                "parity": _evaluate_langchain_parity(
+                    divergence=divergence,
                     legacy_references=legacy_kb_result.context_references if legacy_kb_result else [],
                     langchain_references=langchain_kb_result.context_references if langchain_kb_result else [],
-                    legacy_summary=legacy_summary_text,
-                    langchain_summary=langchain_summary_text,
-                    legacy_risk_count=legacy_review_risk_count,
-                    langchain_risk_count=langchain_review_risk_count,
-                    legacy_test_count=legacy_review_test_count,
-                    langchain_test_count=langchain_review_test_count,
+                    langchain_review_status=langchain_review_output_status,
                 ),
             }
 

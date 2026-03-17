@@ -567,12 +567,14 @@ def _kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
 
 
 def _internal_kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
+    source_id = item.source_id or item.document_id or item.path
+    chunk_id = item.chunk_id or (f"{item.document_id}:{item.chunk_index}" if item.document_id else f"{item.path}:{item.chunk_index}")
     return {
         "source_type": item.source_type or item.file_type,
-        "source_id": item.source_id,
+        "source_id": source_id,
         "repo_id": item.repo_id,
         "path": item.path,
-        "chunk_id": item.chunk_id,
+        "chunk_id": chunk_id,
         "chunk_index": item.chunk_index,
         "line_start": item.start_line,
         "line_end": item.end_line,
