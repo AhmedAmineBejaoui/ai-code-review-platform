@@ -4,6 +4,7 @@ from threading import BoundedSemaphore
 from typing import Sequence
 
 from app.core.langchain_runtime.clients import LangChainUnavailableError
+from app.core.langchain_runtime.distributed_limiter import build_distributed_limiter
 from app.settings import settings
 
 try:
@@ -13,6 +14,10 @@ except Exception:  # pragma: no cover - handled at runtime when LangChain is una
 
 
 _EMBEDDING_SEMAPHORE = BoundedSemaphore(max(1, settings.LANGCHAIN_MAX_CONCURRENT_EMBEDDINGS))
+_DISTRIBUTED_EMBEDDING_LIMITER = build_distributed_limiter(
+    namespace="langchain:embeddings",
+    max_slots=settings.LANGCHAIN_MAX_CONCURRENT_EMBEDDINGS,
+)
 
 
 class LangChainEmbeddingService:
@@ -34,7 +39,8 @@ class LangChainEmbeddingService:
     def embed_query(self, text: str) -> list[float]:
         embeddings = self._get_embeddings()
         with _EMBEDDING_SEMAPHORE:
-            vector = embeddings.embed_query(text)
+            with _DISTRIBUTED_EMBEDDING_LIMITER.acquire(timeout_s=settings.LANGCHAIN_RAG_TIMEOUT_SECONDS):
+                vector = embeddings.embed_query(text)
         self._cache_vector_size(vector)
         return [float(value) for value in vector]
 
@@ -43,7 +49,8 @@ class LangChainEmbeddingService:
             return []
         embeddings = self._get_embeddings()
         with _EMBEDDING_SEMAPHORE:
-            vectors = embeddings.embed_documents(list(texts))
+            with _DISTRIBUTED_EMBEDDING_LIMITER.acquire(timeout_s=settings.LANGCHAIN_RAG_TIMEOUT_SECONDS):
+                vectors = embeddings.embed_documents(list(texts))
         if vectors:
             self._cache_vector_size(vectors[0])
         return [[float(value) for value in vector] for vector in vectors]
