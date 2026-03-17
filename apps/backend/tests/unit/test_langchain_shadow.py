@@ -41,7 +41,8 @@ class _FakeEmbeddings:
 
 
 @pytest.mark.anyio
-async def test_shadow_index_upserts_repo_context_rows_to_shadow_alias() -> None:
+async def test_shadow_index_upserts_repo_context_rows_to_shadow_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.core.knowledge_base.langchain_shadow.settings.LANGCHAIN_ENABLED", True)
     vector_store = _FakeVectorStore()
     service = LangChainShadowIndexingService(vector_store=vector_store, embeddings=_FakeEmbeddings())
 
@@ -75,7 +76,8 @@ async def test_shadow_index_upserts_repo_context_rows_to_shadow_alias() -> None:
 
 
 @pytest.mark.anyio
-async def test_shadow_index_upserts_document_rows_with_doc_metadata() -> None:
+async def test_shadow_index_upserts_document_rows_with_doc_metadata(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("app.core.knowledge_base.langchain_shadow.settings.LANGCHAIN_ENABLED", True)
     vector_store = _FakeVectorStore()
     service = LangChainShadowIndexingService(vector_store=vector_store, embeddings=_FakeEmbeddings())
 
