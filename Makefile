@@ -5,7 +5,8 @@
 .PHONY: help up down build build-no-cache migrate migrate-history \
         migrate-create logs logs-api logs-worker test test-ci api-shell \
         worker-shell generate-fernet-key ps clean db-shell dev-backend-ngrok \
-        prod-build prod-up prod-down prod-logs prod-migrate
+        prod-build prod-up prod-down prod-logs prod-migrate \
+        langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback
 
 COMPOSE_FILE = infra/local/docker-compose.yml
 COMPOSE      = docker compose --env-file .env -f $(COMPOSE_FILE)
@@ -38,6 +39,10 @@ help:
 	@echo "  make migrate-create m=  Create new migration (m=<name>)"
 	@echo "  make dev-backend-ngrok  Start ngrok, rewrite env URLs, then run backend"
 	@echo "  make test               Run pytest (local Poetry env)"
+	@echo "  make langchain-parity   Build a corpus-wide LangChain parity report"
+	@echo "  make langchain-qdrant-aliases  Show LangChain Qdrant alias targets"
+	@echo "  make langchain-promote collection=<name>  Promote active LangChain alias"
+	@echo "  make langchain-rollback collection=<name> Roll back active LangChain alias"
 	@echo "  make logs               Tail all container logs"
 	@echo "  make logs-api           Tail API logs only"
 	@echo "  make logs-worker        Tail worker logs only"
@@ -120,6 +125,20 @@ test-ci:
 
 dev-backend-ngrok:
 	python scripts/dev_backend_ngrok.py
+
+langchain-parity:
+	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_parity_report.py
+
+langchain-qdrant-aliases:
+	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py show
+
+langchain-promote:
+	@if [ -z "$(collection)" ]; then echo "Usage: make langchain-promote collection=<collection_name>"; exit 1; fi
+	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py promote --collection "$(collection)"
+
+langchain-rollback:
+	@if [ -z "$(collection)" ]; then echo "Usage: make langchain-rollback collection=<collection_name>"; exit 1; fi
+	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py rollback --collection "$(collection)"
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 
