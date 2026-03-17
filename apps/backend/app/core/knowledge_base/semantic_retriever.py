@@ -129,6 +129,16 @@ def _hits_to_candidates(hits: list[Any], *, source: str) -> list[RetrievalCandid
             tags=normalized_tags,
             document_id=str(payload.get("doc_id")) if payload.get("doc_id") else None,
             title=str(payload.get("title")) if payload.get("title") else None,
+            repo_id=str(payload.get("repo_id")) if payload.get("repo_id") else None,
+            source_id=str(payload.get("source_id")) if payload.get("source_id") else None,
+            chunk_id=str(payload.get("chunk_id")) if payload.get("chunk_id") else None,
+            document_version=str(payload.get("document_version")) if payload.get("document_version") else None,
+            section_title=str(payload.get("section_title") or payload.get("title")) if (payload.get("section_title") or payload.get("title")) else None,
+            retrieval_reason=f"semantic_match:{source}",
+            retriever_channel=source,
+            score_raw=score,
+            score_final=score,
+            collection_version=str(payload.get("collection_version")) if payload.get("collection_version") else None,
         )
         candidates.append(RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score))
     return candidates

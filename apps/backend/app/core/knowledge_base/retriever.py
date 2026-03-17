@@ -323,27 +323,73 @@ def retrieve(query: str) -> list[str]:
 
 
 def build_llm_context(chunks: list[RetrievedContextChunk]) -> str:
+    context, _ = build_llm_context_with_chunks(chunks)
+    return context
+
+
+def build_llm_context_with_chunks(
+    chunks: list[RetrievedContextChunk],
+    *,
+    max_chars: int | None = None,
+) -> tuple[str, list[RetrievedContextChunk]]:
     if not chunks:
-        return "[NO_CONTEXT_AVAILABLE]"
+        return "[NO_CONTEXT_AVAILABLE]", []
 
     sections: list[str] = []
+    used_chunks: list[RetrievedContextChunk] = []
+    total_chars = 0
     for item in chunks:
-        location = ""
-        if item.start_line is not None and item.end_line is not None:
-            location = f"Lines {item.start_line}-{item.end_line}"
-        elif item.start_line is not None:
-            location = f"Line {item.start_line}"
+        content = item.content.strip()
+        if not content:
+            continue
+        section = format_context_section(item)
+        separator_chars = 2 if sections else 0
+        projected_chars = total_chars + separator_chars + len(section)
+        if max_chars is not None and projected_chars > max_chars:
+            if sections:
+                break
+            header, _, _ = section.partition("\n")
+            remaining = max_chars - len(header) - 1
+            if remaining <= 0:
+                break
+            truncated_content = content[:remaining].rstrip()
+            if not truncated_content:
+                break
+            truncated_chunk = RetrievedContextChunk(
+                **{
+                    **item.__dict__,
+                    "content": truncated_content,
+                }
+            )
+            section = format_context_section(truncated_chunk)
+            used_chunks.append(truncated_chunk)
+            sections.append(section)
+            total_chars = len(section)
+            break
+        sections.append(section)
+        used_chunks.append(item)
+        total_chars = projected_chars
+    if not sections:
+        return "[NO_CONTEXT_AVAILABLE]", []
+    return "\n\n".join(sections), used_chunks
 
-        header_parts = [f"[FILE: {item.path}]"]
-        if location:
-            header_parts.append(location)
-        if item.chunk_type:
-            header_parts.append(f"type={item.chunk_type}")
-        if item.symbol_name:
-            header_parts.append(f"symbol={item.symbol_name}")
 
-        sections.append("\n".join([" | ".join(header_parts), item.content.strip()]))
-    return "\n\n".join(sections)
+def format_context_section(item: RetrievedContextChunk) -> str:
+    location = ""
+    if item.start_line is not None and item.end_line is not None:
+        location = f"Lines {item.start_line}-{item.end_line}"
+    elif item.start_line is not None:
+        location = f"Line {item.start_line}"
+
+    header_parts = [f"[FILE: {item.path}]"]
+    if location:
+        header_parts.append(location)
+    if item.chunk_type:
+        header_parts.append(f"type={item.chunk_type}")
+    if item.symbol_name:
+        header_parts.append(f"symbol={item.symbol_name}")
+
+    return "\n".join([" | ".join(header_parts), item.content.strip()])
 
 
 def _extract_paths_from_diff(diff_text: str) -> list[str]:
@@ -487,6 +533,16 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
                 tags=normalized_tags,
                 document_id=_as_optional_str(payload.get("doc_id")),
                 title=_as_optional_str(payload.get("title")),
+                repo_id=_as_optional_str(payload.get("repo_id")),
+                source_id=_as_optional_str(payload.get("source_id")),
+                chunk_id=_as_optional_str(payload.get("chunk_id")),
+                document_version=_as_optional_str(payload.get("document_version")),
+                section_title=_as_optional_str(payload.get("section_title") or payload.get("title")),
+                retrieval_reason=f"semantic_match:{source}",
+                retriever_channel=source,
+                score_raw=score,
+                score_final=score,
+                collection_version=_as_optional_str(payload.get("collection_version")),
             )
         )
     return chunks

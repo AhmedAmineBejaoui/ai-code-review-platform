@@ -45,6 +45,15 @@ class LexicalRetriever:
                 start_line=row.start_line,
                 end_line=row.end_line,
                 source="lexical_code",
+                repo_id=row.repo_id,
+                source_id=row.id,
+                chunk_id=row.id,
+                document_version=row.indexed_commit,
+                section_title=str(row.metadata.get("section_title")) if row.metadata.get("section_title") else None,
+                retrieval_reason="lexical_match:code",
+                retriever_channel="lexical_code",
+                score_raw=score,
+                score_final=score,
             )
             candidates.append(RetrievalCandidate(chunk=chunk, channel="lexical_code", raw_score=score, score=score))
         return candidates
@@ -82,6 +91,15 @@ class LexicalRetriever:
                 tags=tuple(row.tags),
                 document_id=row.doc_id,
                 title=row.title,
+                repo_id=row.repo_id or repo_id,
+                source_id=row.doc_id,
+                chunk_id=f"{row.doc_id}:{row.chunk_index}",
+                document_version=row.doc_version,
+                section_title=row.title,
+                retrieval_reason="lexical_match:document",
+                retriever_channel="lexical_document",
+                score_raw=score,
+                score_final=score,
             )
             candidates.append(RetrievalCandidate(chunk=chunk, channel="lexical_document", raw_score=score, score=score))
         return candidates
@@ -117,6 +135,15 @@ class LexicalRetriever:
                 tags=tuple(row.tags),
                 document_id=row.doc_id,
                 title=row.title,
+                repo_id=row.repo_id,
+                source_id=row.doc_id,
+                chunk_id=f"{row.doc_id}:{row.chunk_index}",
+                document_version=row.doc_version,
+                section_title=row.title,
+                retrieval_reason="lexical_match:global_document",
+                retriever_channel="lexical_global_document",
+                score_raw=score,
+                score_final=score,
             )
             candidates.append(
                 RetrievalCandidate(

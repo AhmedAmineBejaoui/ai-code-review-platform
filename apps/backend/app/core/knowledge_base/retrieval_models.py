@@ -31,6 +31,16 @@ class RetrievedContextChunk:
     tags: tuple[str, ...] = ()
     document_id: str | None = None
     title: str | None = None
+    repo_id: str | None = None
+    source_id: str | None = None
+    chunk_id: str | None = None
+    document_version: str | None = None
+    section_title: str | None = None
+    retrieval_reason: str | None = None
+    retriever_channel: str | None = None
+    score_raw: float | None = None
+    score_final: float | None = None
+    collection_version: str | None = None
 
 
 @dataclass(frozen=True)

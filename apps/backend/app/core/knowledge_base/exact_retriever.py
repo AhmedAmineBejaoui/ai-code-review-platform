@@ -55,6 +55,7 @@ class ExactRetriever:
 
 
 def _row_to_candidate(row: RepoContextChunkRow, *, source: str, score: float) -> RetrievalCandidate:
+    metadata = dict(row.metadata or {})
     chunk = RetrievedContextChunk(
         score=score,
         path=row.path,
@@ -68,5 +69,14 @@ def _row_to_candidate(row: RepoContextChunkRow, *, source: str, score: float) ->
         start_line=row.start_line,
         end_line=row.end_line,
         source=source,
+        repo_id=row.repo_id,
+        source_id=row.id,
+        chunk_id=row.id,
+        document_version=row.indexed_commit,
+        section_title=str(metadata.get("section_title")) if metadata.get("section_title") else None,
+        retrieval_reason=f"exact_match:{source}",
+        retriever_channel=source,
+        score_raw=score,
+        score_final=score,
     )
     return RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score)

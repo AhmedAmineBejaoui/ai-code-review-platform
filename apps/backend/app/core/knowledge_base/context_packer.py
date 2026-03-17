@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 
 from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievalCandidate, RetrievedContextChunk
 
@@ -43,7 +44,16 @@ class ContextPacker:
             if projected_chars > self._max_chars and selected:
                 continue
 
-            selected.append(chunk)
+            selected.append(
+                replace(
+                    chunk,
+                    score=candidate.score,
+                    retrieval_reason=chunk.retrieval_reason or f"packed:{candidate.channel}",
+                    retriever_channel=candidate.channel,
+                    score_raw=candidate.raw_score,
+                    score_final=candidate.score,
+                )
+            )
             bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
             path_counts[chunk.path] = path_counts.get(chunk.path, 0) + 1
             total_chars = projected_chars
@@ -51,14 +61,24 @@ class ContextPacker:
                 break
 
         if not selected:
-            return [deduped[0].chunk]
+            top_candidate = deduped[0]
+            return [
+                replace(
+                    top_candidate.chunk,
+                    score=top_candidate.score,
+                    retrieval_reason=top_candidate.chunk.retrieval_reason or f"packed:{top_candidate.channel}",
+                    retriever_channel=top_candidate.channel,
+                    score_raw=top_candidate.raw_score,
+                    score_final=top_candidate.score,
+                )
+            ]
         return selected
 
     def _dedup(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
         deduped: dict[tuple[str, int, str], RetrievalCandidate] = {}
         content_hashes: set[str] = set()
         for candidate in candidates:
-            key = (candidate.chunk.path, candidate.chunk.chunk_index, candidate.chunk.source)
+            key = (candidate.chunk.path, candidate.chunk.chunk_index, candidate.channel)
             previous = deduped.get(key)
             if previous is None or candidate.score > previous.score:
                 deduped[key] = candidate
