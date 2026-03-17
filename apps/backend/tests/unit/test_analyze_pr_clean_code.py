@@ -40,6 +40,39 @@ class _FakeRetriever:
         return self._chunks, None
 
 
+class _FakeRagEngine:
+    def __init__(self, chunks: list[_FakeChunk], *, qdrant_enabled: bool) -> None:
+        self._chunks = chunks
+        self._qdrant_enabled = qdrant_enabled
+
+    async def retrieve_for_diff(self, **_: object):
+        return SimpleNamespace(
+            stack="legacy",
+            mode="legacy_hybrid" if self._chunks else "legacy_empty",
+            chunks=self._chunks,
+            profile=None,
+            context_text="Grounded repo context" if self._chunks else None,
+            context_references=[
+                {
+                    "path": item.path,
+                    "title": item.title,
+                    "source": item.source,
+                    "source_type": item.source_type,
+                    "chunk_type": item.chunk_type,
+                    "symbol_name": item.symbol_name,
+                    "score": item.score,
+                    "tags": item.tags,
+                }
+                for item in self._chunks
+            ],
+            grounded=bool(self._chunks),
+            qdrant_enabled=self._qdrant_enabled,
+            rag_confidence_score=0.91 if self._chunks else 0.0,
+            trace={"selected_count": len(self._chunks)},
+            error=None,
+        )
+
+
 class _FakeAnalysesRepo:
     def __init__(self, analysis: Analysis) -> None:
         self.analysis = analysis
@@ -200,9 +233,8 @@ def _patch_common(monkeypatch, *, fake_repo: _FakeAnalysesRepo, fake_outputs: _F
     monkeypatch.setattr(analyze_pr, "AnalysesRepo", lambda: fake_repo)
     monkeypatch.setattr(analyze_pr, "ReviewOutputsRepo", lambda: fake_outputs)
     monkeypatch.setattr(analyze_pr, "RepoProfilesRepo", lambda: SimpleNamespace(get_profile=lambda repo_id: None, upsert_profile=lambda **_: None))
-    monkeypatch.setattr(analyze_pr, "RepoContextRetriever", lambda vector_store: _FakeRetriever(chunks))
+    monkeypatch.setattr(analyze_pr, "build_rag_engines", lambda **_: (_FakeRagEngine(chunks, qdrant_enabled=qdrant_enabled), None))
     monkeypatch.setattr(analyze_pr, "resolve_repo_context_repo_path", lambda **_: None)
-    monkeypatch.setattr(analyze_pr, "build_llm_context", lambda chunks: "Grounded repo context" if chunks else "")
     monkeypatch.setattr(analyze_pr, "QdrantClient", lambda: SimpleNamespace(enabled=qdrant_enabled))
     monkeypatch.setattr(analyze_pr, "run_static_analysis_stage", lambda *args, **kwargs: _build_static_result())
     monkeypatch.setattr(analyze_pr, "_REVIEW_INTELLIGENCE_SERVICE", _build_review_service())

@@ -9,7 +9,6 @@ from app.core.knowledge_base.retriever import build_llm_context
 from app.core.review_intelligence.engines import build_langchain_review_generation_engine, build_legacy_review_generation_engine
 from app.core.summarization import SummaryService
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
-from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app

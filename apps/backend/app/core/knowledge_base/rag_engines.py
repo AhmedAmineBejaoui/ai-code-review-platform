@@ -15,10 +15,8 @@ from app.core.knowledge_base.langchain_shadow import LangChainShadowIndexingServ
 from app.core.knowledge_base.lexical_retriever import LexicalRetriever
 from app.core.knowledge_base.query_router import QueryRouter
 from app.core.knowledge_base.re_ranker import ReRanker
-from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
 from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievedContextChunk
 from app.core.knowledge_base.retriever import (
-    DiffSignals,
     RepoContextRetriever,
     _build_lexical_query_from_diff,
     _extract_diff_signals,

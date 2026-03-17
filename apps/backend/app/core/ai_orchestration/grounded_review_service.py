@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Literal, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError, constr

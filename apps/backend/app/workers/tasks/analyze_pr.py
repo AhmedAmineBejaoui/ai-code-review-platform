@@ -12,7 +12,6 @@ from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.rag_engines import RagEngineResult, build_rag_engines
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
-from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
 from app.core.review_intelligence.engines import build_langchain_review_generation_engine
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
