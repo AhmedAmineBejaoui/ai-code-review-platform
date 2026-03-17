@@ -906,16 +906,36 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 review_output = selected_review_output
             except Exception as exc:
                 if serve_langchain and settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK:
-                    review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
-                        repo=analysis.repo,
-                        change_type=change_type,
-                        parsed_diff=parsed,
-                        metadata=analysis.metadata,
-                        findings=current_findings,
-                        fallback_summary=summary_text,
-                    )
-                    review_output_source = "rule_engine"
-                    review_qdrant_required = False
+                    if can_use_hybrid_rag:
+                        review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
+                            repo=analysis.repo,
+                            pr_number=analysis.pr_number,
+                            change_type=change_type,
+                            parsed_diff=parsed,
+                            diff_redacted=diff_redacted or "",
+                            metadata=analysis.metadata,
+                            findings=current_findings,
+                            knowledge_base_context=kb_context_preview,
+                            context_references=kb_context_references,
+                            fallback_summary=legacy_summary_text or summary_text,
+                            qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
+                            kb_retrieval_mode=kb_retrieval_mode,
+                            kb_context_chunks_count=kb_context_chunks_count,
+                            kb_retrieval_error=kb_retrieval_error,
+                        )
+                        review_output_source = "hybrid_rag"
+                        review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
+                    else:
+                        review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                            repo=analysis.repo,
+                            change_type=change_type,
+                            parsed_diff=parsed,
+                            metadata=analysis.metadata,
+                            findings=current_findings,
+                            fallback_summary=legacy_summary_text or summary_text,
+                        )
+                        review_output_source = "rule_engine"
+                        review_qdrant_required = False
                     review_output_reason = f"langchain_failed:{exc}"
                 else:
                     review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
