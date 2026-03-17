@@ -139,3 +139,19 @@ def test_review_intelligence_service_reports_hybrid_rag_unavailable_reason() -> 
 
     assert enabled is False
     assert reason
+
+
+def test_review_intelligence_service_allows_non_qdrant_grounding_when_opted_in() -> None:
+    service = _build_service()
+
+    enabled, reason = service.can_use_hybrid_rag(
+        qdrant_enabled=False,
+        kb_retrieval_mode="lexical_only",
+        kb_context_chunks_count=2,
+        knowledge_base_context="grounded sql context",
+        kb_retrieval_error=None,
+        allow_non_qdrant_grounding=True,
+    )
+
+    assert enabled is True
+    assert reason is None
