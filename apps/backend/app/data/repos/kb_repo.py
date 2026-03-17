@@ -19,6 +19,8 @@ class KBDocumentChunkRow:
     title: str
     source_type: str
     path_or_url: str | None
+    repo_id: str | None
+    doc_version: str | None
     chunk_index: int
     content: str
     token_count: int
@@ -57,6 +59,8 @@ class KBRepo:
                                 d.title,
                                 d.source_type,
                                 d.path_or_url,
+                                COALESCE(d.tags_json->>'repo_id', '') AS repo_id,
+                                d.doc_version,
                                 d.tags_json,
                                 c.chunk_index,
                                 COALESCE(c.content, c.text) AS content,
@@ -111,6 +115,38 @@ class KBRepo:
             tags=tags,
         )
 
+    def list_document_chunks(self, *, repo_id: str | None, limit: int = 5000) -> list[KBDocumentChunkRow]:
+        with _KB_REPO_LOCK:
+            with self._engine.connect() as conn:
+                rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT
+                                d.id AS doc_id,
+                                d.title,
+                                d.source_type,
+                                d.path_or_url,
+                                COALESCE(d.tags_json->>'repo_id', '') AS repo_id,
+                                d.doc_version,
+                                d.tags_json,
+                                c.chunk_index,
+                                COALESCE(c.content, c.text) AS content,
+                                COALESCE(c.token_count, GREATEST(1, LENGTH(COALESCE(c.content, c.text, '')) / 4)) AS token_count
+                            FROM kb_documents d
+                            JOIN kb_chunks c ON c.doc_id = d.id
+                            WHERE (:repo_id IS NULL OR COALESCE(d.tags_json->>'repo_id', '') = :repo_id)
+                            ORDER BY d.id ASC, c.chunk_index ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        {"repo_id": repo_id, "limit": max(int(limit), 1)},
+                    )
+                    .mappings()
+                    .all()
+                )
+        return [_row_to_document_chunk(row) for row in rows]
+
 
 def _row_to_document_chunk(row: RowMapping) -> KBDocumentChunkRow:
     raw_tags_json = row.get("tags_json")
@@ -135,6 +171,8 @@ def _row_to_document_chunk(row: RowMapping) -> KBDocumentChunkRow:
         title=str(row["title"]),
         source_type=str(row["source_type"]),
         path_or_url=str(row["path_or_url"]) if row.get("path_or_url") else None,
+        repo_id=str(row["repo_id"]).strip() if row.get("repo_id") else None,
+        doc_version=str(row["doc_version"]) if row.get("doc_version") else None,
         chunk_index=int(row["chunk_index"]),
         content=str(row["content"]),
         token_count=int(row["token_count"]),
