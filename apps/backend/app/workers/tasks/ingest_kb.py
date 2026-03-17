@@ -4,7 +4,9 @@ import asyncio
 from typing import Any
 
 from app.core.knowledge_base.ingestor import RepoContextIngestor
-from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
+from app.core.knowledge_base.rag_engines import build_rag_engines
+from app.core.knowledge_base.retriever import build_llm_context
+from app.core.review_intelligence.engines import build_langchain_review_generation_engine, build_legacy_review_generation_engine
 from app.core.summarization import SummaryService
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.llm_providers.ollama_client import OllamaClient
@@ -12,13 +14,13 @@ from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
-_SUMMARY_SERVICE = SummaryService(
-    llm_client=OllamaClient(
-        base_url=settings.OLLAMA_BASE_URL,
-        model=settings.OLLAMA_MODEL,
-        timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
-    )
-)
+
+def _select_primary_review_engine():
+    if settings.langchain_primary_stack == "langchain" and settings.langchain_enabled:
+        engine = build_langchain_review_generation_engine()
+        if engine.available:
+            return engine
+    return build_legacy_review_generation_engine()
 
 
 @celery_app.task(name="kb.onboard_repo", bind=True)
@@ -51,11 +53,15 @@ def run_repo_diff_processing(
 async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: str) -> dict[str, Any]:
     qdrant_client = QdrantClient()
     ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    retriever = RepoContextRetriever(vector_store=qdrant_client)
+    legacy_rag, langchain_rag = build_rag_engines(vector_store=qdrant_client)
+    rag_engine = langchain_rag if settings.langchain_primary_stack == "langchain" and langchain_rag is not None else legacy_rag
+    review_engine = _select_primary_review_engine()
 
     index_result = await ingestor.onboard_repo(repo_id=repo_id, repo_path=repo_path, source=source, force_full=True)
-    overview_chunks, profile = await retriever.retrieve_for_repo_bootstrap(repo_id=repo_id, limit=16)
-    overview_context = build_llm_context(overview_chunks)
+    bootstrap_result = await rag_engine.retrieve_for_repo_bootstrap(repo_id=repo_id, limit=16)
+    overview_chunks = bootstrap_result.chunks
+    profile = bootstrap_result.profile
+    overview_context = bootstrap_result.context_text or build_llm_context(overview_chunks)
     overview_summary: str | None = None
     overview_highlights: list[str] = []
     summary_source = "none"
@@ -63,14 +69,14 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
 
     if profile:
         try:
-            generated = _SUMMARY_SERVICE.generate_repo_overview(
+            generated = review_engine.generate_repo_overview(
                 repo_id=repo_id,
                 repo_profile=profile,
                 context_excerpt=overview_context,
             )
             overview_summary = generated.summary
             overview_highlights = generated.highlights
-            summary_source = "ollama"
+            summary_source = review_engine.stack_name
         except Exception:
             fallback = SummaryService.fallback_repo_overview(repo_id=repo_id, repo_profile=profile)
             overview_summary = fallback.summary
@@ -121,7 +127,8 @@ async def _run_repo_diff_processing_async(
 ) -> dict[str, Any]:
     qdrant_client = QdrantClient()
     ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    retriever = RepoContextRetriever(vector_store=qdrant_client)
+    legacy_rag, langchain_rag = build_rag_engines(vector_store=qdrant_client)
+    rag_engine = langchain_rag if settings.langchain_primary_stack == "langchain" and langchain_rag is not None else legacy_rag
 
     update_result = await ingestor.update_repo_incremental(
         repo_id=repo_id,
@@ -131,8 +138,10 @@ async def _run_repo_diff_processing_async(
         source=source,
     )
     if diff_text.strip():
-        diff_chunks, profile = await retriever.retrieve_for_diff(repo_id=repo_id, diff_text=diff_text, limit=12)
-        llm_context = build_llm_context(diff_chunks)
+        diff_result = await rag_engine.retrieve_for_diff(repo_id=repo_id, diff_text=diff_text, limit=12)
+        diff_chunks = diff_result.chunks
+        profile = diff_result.profile
+        llm_context = diff_result.context_text or build_llm_context(diff_chunks)
     else:
         diff_chunks = []
         profile = await ingestor.get_repo_profile(repo_id)

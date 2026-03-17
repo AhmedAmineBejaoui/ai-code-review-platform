@@ -10,8 +10,10 @@ from typing import Any
 from app.core.ai_orchestration import GroundedReviewService
 from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
+from app.core.knowledge_base.rag_engines import RagEngineResult, build_rag_engines
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
 from app.core.knowledge_base.retriever import RepoContextRetriever, build_llm_context
+from app.core.review_intelligence.engines import build_langchain_review_generation_engine
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
 from app.core.review_intelligence.risk_detector import RiskDetector
@@ -71,6 +73,13 @@ _REVIEW_INTELLIGENCE_SERVICE = ReviewIntelligenceService(
         )
     ),
 )
+
+
+def _get_langchain_review_engine():
+    if not settings.langchain_enabled:
+        return None
+    engine = build_langchain_review_generation_engine()
+    return engine if engine.available else None
 
 
 def _security_message(rule_id: str, default_message: str) -> str:
@@ -141,6 +150,53 @@ def _kb_reference(item: Any) -> dict[str, Any]:
         "symbol_name": item.symbol_name,
         "score": round(float(item.score), 4),
         "tags": list(item.tags),
+    }
+
+
+def _citation_overlap(
+    left: list[dict[str, Any]],
+    right: list[dict[str, Any]],
+) -> float:
+    if not left and not right:
+        return 1.0
+    left_keys = {
+        (
+            str(item.get("path") or ""),
+            str(item.get("title") or ""),
+        )
+        for item in left
+    }
+    right_keys = {
+        (
+            str(item.get("path") or ""),
+            str(item.get("title") or ""),
+        )
+        for item in right
+    }
+    if not left_keys and not right_keys:
+        return 1.0
+    union = left_keys.union(right_keys)
+    if not union:
+        return 0.0
+    return round(len(left_keys.intersection(right_keys)) / len(union), 4)
+
+
+def _summarize_review_divergence(
+    *,
+    legacy_references: list[dict[str, Any]],
+    langchain_references: list[dict[str, Any]],
+    legacy_summary: str | None,
+    langchain_summary: str | None,
+    legacy_risk_count: int | None,
+    langchain_risk_count: int | None,
+    legacy_test_count: int | None,
+    langchain_test_count: int | None,
+) -> dict[str, Any]:
+    return {
+        "citation_overlap": _citation_overlap(legacy_references, langchain_references),
+        "summary_changed": bool((legacy_summary or "").strip() != (langchain_summary or "").strip()),
+        "risk_count_delta": int((langchain_risk_count or 0) - (legacy_risk_count or 0)),
+        "test_count_delta": int((langchain_test_count or 0) - (legacy_test_count or 0)),
     }
 
 

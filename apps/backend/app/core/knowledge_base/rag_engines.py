@@ -172,7 +172,7 @@ class LangChainRagEngine:
 
     @property
     def available(self) -> bool:
-        return self._shadow_index.available
+        return settings.langchain_enabled
 
     async def retrieve_for_diff(
         self,
@@ -190,7 +190,8 @@ class LangChainRagEngine:
         inferred_files = sorted(set(changed_files or signals.paths))
         lexical_query = _build_lexical_query_from_diff(signals)
         global_document_limit = max(3, settings.KB_LEXICAL_TOP_K // 2)
-        await self._shadow_index.backfill_repo(repo_id=repo_id)
+        if self._shadow_index.available:
+            await self._shadow_index.backfill_repo(repo_id=repo_id)
 
         counts: dict[str, int] = {}
         candidates = []
@@ -291,7 +292,8 @@ class LangChainRagEngine:
         if not self.available:
             return _empty_result(stack=self.stack_name, mode="langchain_unavailable", qdrant_enabled=False)
 
-        await self._shadow_index.backfill_repo(repo_id=repo_id)
+        if self._shadow_index.available:
+            await self._shadow_index.backfill_repo(repo_id=repo_id)
         route = self._router.route_query(query=query, route_hint=route_hint)
         changed_files_set = set(changed_files or [])
         global_document_limit = max(3, settings.KB_LEXICAL_TOP_K // 2)
@@ -383,7 +385,8 @@ class LangChainRagEngine:
         if not self.available:
             return _empty_result(stack=self.stack_name, mode="langchain_unavailable", qdrant_enabled=False)
 
-        await self._shadow_index.backfill_repo(repo_id=repo_id)
+        if self._shadow_index.available:
+            await self._shadow_index.backfill_repo(repo_id=repo_id)
         seed_queries = [
             "repository architecture overview entry points main modules",
             "authentication authorization security middleware",
@@ -459,6 +462,8 @@ class LangChainRagEngine:
         limit: int,
         source: str,
     ) -> list[Any]:
+        if not self._shadow_index.available:
+            return []
         retriever = CandidateDocumentRetriever(
             retriever_name=source,
             loader=lambda query: self._load_vector_candidates(
