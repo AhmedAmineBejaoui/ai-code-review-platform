@@ -458,7 +458,7 @@ class AnalysesRepo:
         ]
         params: dict[str, Any] = {"limit": max(int(limit), 1)}
         if since_days is not None:
-            clauses.append("updated_at >= NOW() - make_interval(days => :since_days)")
+            clauses.append("updated_at >= NOW() - (:since_days * INTERVAL '1 day')")
             params["since_days"] = max(int(since_days), 0)
         if repo and repo.strip():
             clauses.append("repo = :repo")
