@@ -19,13 +19,13 @@ class KBDocumentChunkRow:
     title: str
     source_type: str
     path_or_url: str | None
-    repo_id: str | None = None
-    doc_version: str | None = None
     chunk_index: int
     content: str
     token_count: int
     tags: list[str]
     lexical_score: float = 0.0
+    repo_id: str | None = None
+    doc_version: str | None = None
 
 
 class KBRepo:
