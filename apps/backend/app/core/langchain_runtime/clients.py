@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from threading import BoundedSemaphore
 
 from app.integrations.llm_providers.ollama_client import OllamaResponse
+from app.core.langchain_runtime.distributed_limiter import build_distributed_limiter
 from app.settings import settings
 
 try:
@@ -28,6 +29,10 @@ class _LangChainModelConfig:
 
 
 _GENERATION_SEMAPHORE = BoundedSemaphore(max(1, settings.LANGCHAIN_MAX_CONCURRENT_GENERATIONS))
+_DISTRIBUTED_GENERATION_LIMITER = build_distributed_limiter(
+    namespace="langchain:generations",
+    max_slots=settings.LANGCHAIN_MAX_CONCURRENT_GENERATIONS,
+)
 
 
 class LangChainOllamaClient:
@@ -89,7 +94,8 @@ class LangChainOllamaClient:
         )
         started = time.perf_counter()
         with _GENERATION_SEMAPHORE:
-            text = chain.invoke({"prompt": prompt})
+            with _DISTRIBUTED_GENERATION_LIMITER.acquire(timeout_s=config.timeout_s):
+                text = chain.invoke({"prompt": prompt})
         duration_ms = int((time.perf_counter() - started) * 1000)
         return OllamaResponse(
             text=str(text),

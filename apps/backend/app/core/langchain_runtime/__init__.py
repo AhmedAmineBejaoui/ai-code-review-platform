@@ -6,9 +6,15 @@ from app.core.langchain_runtime.output_parser import (
     parse_pydantic_with_repair,
     strip_reasoning_tokens,
 )
+from app.core.langchain_runtime.parity_campaign import (
+    LangChainParityCampaignReport,
+    LangChainParityCampaignService,
+)
 
 __all__ = [
     "LangChainEmbeddingService",
+    "LangChainParityCampaignReport",
+    "LangChainParityCampaignService",
     "LangChainOllamaClient",
     "LangChainUnavailableError",
     "LenientPydanticOutputParser",

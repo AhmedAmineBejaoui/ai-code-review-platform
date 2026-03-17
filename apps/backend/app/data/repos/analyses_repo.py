@@ -445,6 +445,37 @@ class AnalysesRepo:
 
         return [self._row_to_model(row) for row in rows], total
 
+    def list_recent_langchain_shadow_analyses(
+        self,
+        *,
+        limit: int = 200,
+        since_days: int | None = 14,
+        repo: str | None = None,
+    ) -> list[Analysis]:
+        clauses = [
+            "status = 'COMPLETED'",
+            "COALESCE(metadata_json->'pipeline'->'langchain_shadow', 'null'::jsonb) <> 'null'::jsonb",
+        ]
+        params: dict[str, Any] = {"limit": max(int(limit), 1)}
+        if since_days is not None:
+            clauses.append("updated_at >= NOW() - make_interval(days => :since_days)")
+            params["since_days"] = max(int(since_days), 0)
+        if repo and repo.strip():
+            clauses.append("repo = :repo")
+            params["repo"] = repo.strip()
+
+        query = f"""
+            SELECT *
+            FROM analyses
+            WHERE {' AND '.join(clauses)}
+            ORDER BY updated_at DESC, id DESC
+            LIMIT :limit
+        """
+        with _REPO_LOCK:
+            with self._engine.connect() as conn:
+                rows = conn.execute(text(query), params).mappings().all()
+        return [self._row_to_model(row) for row in rows]
+
     def create_finding(self, payload: CreateFindingInput) -> Finding:
         with _REPO_LOCK:
             with self._engine.begin() as conn:

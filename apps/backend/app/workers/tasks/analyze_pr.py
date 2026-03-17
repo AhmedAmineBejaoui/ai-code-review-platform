@@ -139,6 +139,13 @@ def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
+def _timed_call(func, /, *args, **kwargs):
+    started = time.perf_counter()
+    result = func(*args, **kwargs)
+    duration_ms = int((time.perf_counter() - started) * 1000)
+    return result, duration_ms
+
+
 def _kb_reference(item: Any) -> dict[str, Any]:
     return {
         "path": item.path,
@@ -856,8 +863,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         langchain_review_reason: str | None = None
         langchain_review_risk_count = 0
         langchain_review_test_count = 0
+        langchain_review_generation_ms: int | None = None
         legacy_review_risk_count = 0
         legacy_review_test_count = 0
+        legacy_review_generation_ms: int | None = None
         if settings.REVIEW_INTELLIGENCE_ENABLED:
             current_findings = repo.list_findings_by_analysis(analysis_id)
             can_use_hybrid_rag, review_output_reason = _REVIEW_INTELLIGENCE_SERVICE.can_use_hybrid_rag(
@@ -883,7 +892,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 langchain_review_output = None
                 if run_langchain_shadow and langchain_review_engine is not None and langchain_kb_result is not None:
                     if langchain_can_use_hybrid_rag:
-                        langchain_review_output = langchain_review_engine.generate_review_output(
+                        langchain_review_output, langchain_review_generation_ms = _timed_call(
+                            langchain_review_engine.generate_review_output,
                             repo=analysis.repo,
                             pr_number=analysis.pr_number,
                             change_type=change_type,
@@ -902,7 +912,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         )
                         langchain_review_output_status = "completed"
                     else:
-                        langchain_review_output = langchain_review_engine.generate_rule_engine_output(
+                        langchain_review_output, langchain_review_generation_ms = _timed_call(
+                            langchain_review_engine.generate_rule_engine_output,
                             repo=analysis.repo,
                             change_type=change_type,
                             parsed_diff=parsed,
@@ -916,7 +927,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
                 selected_review_output = None
                 if can_use_hybrid_rag:
-                    legacy_review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
+                    legacy_review_output, legacy_review_generation_ms = _timed_call(
+                        _REVIEW_INTELLIGENCE_SERVICE.generate,
                         repo=analysis.repo,
                         pr_number=analysis.pr_number,
                         change_type=change_type,
@@ -938,7 +950,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     review_output_source = "hybrid_rag"
                     review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
                 else:
-                    legacy_review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                    legacy_review_output, legacy_review_generation_ms = _timed_call(
+                        _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
                         repo=analysis.repo,
                         change_type=change_type,
                         parsed_diff=parsed,
@@ -960,7 +973,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             except Exception as exc:
                 if serve_langchain and settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK:
                     if can_use_hybrid_rag:
-                        review_output = _REVIEW_INTELLIGENCE_SERVICE.generate(
+                        review_output, legacy_review_generation_ms = _timed_call(
+                            _REVIEW_INTELLIGENCE_SERVICE.generate,
                             repo=analysis.repo,
                             pr_number=analysis.pr_number,
                             change_type=change_type,
@@ -979,7 +993,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         review_output_source = "hybrid_rag"
                         review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
                     else:
-                        review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                        review_output, legacy_review_generation_ms = _timed_call(
+                            _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
                             repo=analysis.repo,
                             change_type=change_type,
                             parsed_diff=parsed,
@@ -991,7 +1006,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         review_qdrant_required = False
                     review_output_reason = f"langchain_failed:{exc}"
                 else:
-                    review_output = _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output(
+                    review_output, legacy_review_generation_ms = _timed_call(
+                        _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
                         repo=analysis.repo,
                         change_type=change_type,
                         parsed_diff=parsed,
@@ -1083,6 +1099,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "fallback_reason": review_output_reason,
             "merge_status": review_merge_status,
             "risk_findings_count": review_risk_count,
+            "legacy_generation_ms": legacy_review_generation_ms,
         }
         metrics["llm_grounded_review"] = {
             "enabled": settings.LLM_REVIEW_FINDINGS_ENABLED,
@@ -1112,6 +1129,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "grounded_findings_count": langchain_grounded_findings_count,
                 "review_status": langchain_review_output_status,
                 "review_reason": langchain_review_reason,
+                "review_generation_ms": langchain_review_generation_ms,
                 "divergence": divergence,
                 "parity": _evaluate_langchain_parity(
                     divergence=divergence,
