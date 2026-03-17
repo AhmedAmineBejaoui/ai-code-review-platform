@@ -5,6 +5,7 @@ from typing import Protocol, TypeVar
 
 from pydantic import BaseModel
 
+from app.core.langchain_runtime.output_parser import extract_json_payload, parse_pydantic_with_repair
 from app.integrations.llm_providers.ollama_client import OllamaClient, OllamaResponse
 
 
@@ -21,11 +22,7 @@ class StructuredLLMHelper:
 
     @staticmethod
     def extract_json(text: str) -> str:
-        start = text.find("{")
-        end = text.rfind("}")
-        if start == -1 or end == -1 or end <= start:
-            raise ValueError("No JSON object found in LLM output")
-        return text[start : end + 1]
+        return extract_json_payload(text)
 
     def generate_structured_output(
         self,
@@ -36,16 +33,9 @@ class StructuredLLMHelper:
     ) -> _ModelT:
         response = self.llm.generate(prompt)
         raw = response.text.strip()
-        try:
-            return model_type(**json.loads(self.extract_json(raw)))
-        except Exception:
-            repair_prompt = f"""
-Fix the following output to be valid JSON EXACTLY matching:
-{schema_hint}
-Return ONLY JSON, no extra text.
-
-Bad output:
-{raw}
-""".strip()
-            repaired = self.llm.generate(repair_prompt)
-            return model_type(**json.loads(self.extract_json(repaired.text.strip())))
+        return parse_pydantic_with_repair(
+            raw_text=raw,
+            model_type=model_type,
+            schema_hint=schema_hint,
+            llm_client=self.llm,
+        )

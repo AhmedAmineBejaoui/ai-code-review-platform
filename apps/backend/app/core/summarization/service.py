@@ -6,6 +6,7 @@ from typing import Any, Protocol, TypeVar
 
 from pydantic import BaseModel, Field, ValidationError, constr
 
+from app.core.langchain_runtime.output_parser import extract_json_payload, parse_pydantic_with_repair
 from app.integrations.llm_providers.ollama_client import OllamaClient, OllamaResponse
 
 
@@ -109,10 +110,7 @@ Return JSON now:
 """.strip()
 
     def _extract_json(self, text: str) -> str:
-        match = re.search(r"\{.*?\}", text, re.DOTALL)
-        if not match:
-            raise ValueError("No JSON object found in LLM output")
-        return match.group(0)
+        return extract_json_payload(text)
 
     def _generate_structured_output(
         self,
@@ -123,26 +121,12 @@ Return JSON now:
     ) -> _ModelT:
         response = self.llm.generate(prompt)
         raw = response.text.strip()
-
-        try:
-            json_str = self._extract_json(raw)
-            data = json.loads(json_str)
-            return model_type(**data)
-        except Exception:
-            repair_prompt = f"""
-Fix the following output to be valid JSON EXACTLY matching:
-{schema_hint}
-Return ONLY JSON, no extra text.
-
-Bad output:
-{raw}
-""".strip()
-
-            repaired = self.llm.generate(repair_prompt)
-            raw_repaired = repaired.text.strip()
-            json_str_repaired = self._extract_json(raw_repaired)
-            data_repaired = json.loads(json_str_repaired)
-            return model_type(**data_repaired)
+        return parse_pydantic_with_repair(
+            raw_text=raw,
+            model_type=model_type,
+            schema_hint=schema_hint,
+            llm_client=self.llm,
+        )
 
     def generate_summary(
         self,
