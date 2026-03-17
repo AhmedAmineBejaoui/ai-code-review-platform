@@ -150,6 +150,17 @@ def test_review_intelligence_service_allows_non_qdrant_grounding_when_opted_in()
         kb_context_chunks_count=2,
         knowledge_base_context="grounded sql context",
         kb_retrieval_error=None,
+        context_references=[
+            {
+                "path": "docs/grounding/sql-policy.md",
+                "source": "lexical_document",
+                "source_type": "markdown",
+                "chunk_type": "document_chunk",
+                "title": "SQL grounding",
+                "score": 0.73,
+                "tags": ["policy"],
+            }
+        ],
         allow_non_qdrant_grounding=True,
     )
 
