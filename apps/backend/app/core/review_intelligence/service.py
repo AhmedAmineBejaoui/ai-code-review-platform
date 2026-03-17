@@ -53,6 +53,7 @@ class ReviewIntelligenceService:
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         kb_retrieval_error: str | None,
+        allow_non_qdrant_grounding: bool = False,
     ) -> StructuredReviewOutput:
         self.require_hybrid_rag(
             qdrant_enabled=qdrant_enabled,
@@ -60,6 +61,7 @@ class ReviewIntelligenceService:
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
+            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
 
         files_changed = [item.path_new for item in parsed_diff.files]
@@ -154,6 +156,7 @@ class ReviewIntelligenceService:
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]:
         try:
             self.require_hybrid_rag(
@@ -162,6 +165,7 @@ class ReviewIntelligenceService:
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=knowledge_base_context,
                 kb_retrieval_error=kb_retrieval_error,
+                allow_non_qdrant_grounding=allow_non_qdrant_grounding,
             )
         except HybridRAGRequiredError as exc:
             return False, str(exc)
@@ -175,12 +179,13 @@ class ReviewIntelligenceService:
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
+        allow_non_qdrant_grounding: bool = False,
     ) -> None:
         if not settings.REVIEW_INTELLIGENCE_ENABLED:
             return
         if not settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT:
             return
-        if not qdrant_enabled:
+        if not qdrant_enabled and not allow_non_qdrant_grounding:
             raise HybridRAGRequiredError("Qdrant is required for the hybrid RAG review pipeline.")
         if kb_retrieval_mode == "failed":
             detail = f" Retrieval error: {kb_retrieval_error}" if kb_retrieval_error else ""
