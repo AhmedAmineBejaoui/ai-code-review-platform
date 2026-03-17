@@ -104,12 +104,9 @@ class QdrantClient:
             return
 
         try:
-            client = self._get_client()
-            response = await client.get(f"/collections/{collection_name}")
-            if response.status_code == 200:
+            existing = await self.get_collection_info(collection_name=collection_name)
+            if existing is not None:
                 return
-            if response.status_code != 404:
-                raise RuntimeError(f"Unexpected Response: {response.status_code} ({response.text})")
 
             target_size = vector_size or self._vector_size
             await self._request(
@@ -120,6 +117,83 @@ class QdrantClient:
         except Exception as exc:  # noqa: BLE001
             self._disable(reason=f"ensure_collection({collection_name})", exc=exc)
             logger.warning("Qdrant ensure_collection failed; continuing without vectors: %s", exc)
+
+    async def get_collection_info(self, *, collection_name: str) -> dict[str, Any] | None:
+        if not self._enabled:
+            return None
+
+        try:
+            client = self._get_client()
+            response = await client.get(f"/collections/{collection_name}")
+            if response.status_code == 404:
+                return None
+            if response.status_code != 200:
+                raise RuntimeError(f"Unexpected Response: {response.status_code} ({response.text})")
+            payload = response.json()
+            result = payload.get("result")
+            return result if isinstance(result, dict) else {}
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"get_collection_info({collection_name})", exc=exc)
+            logger.warning("Qdrant get_collection_info failed; continuing without vectors: %s", exc)
+            return None
+
+    async def get_collection_vector_size(self, *, collection_name: str) -> int | None:
+        info = await self.get_collection_info(collection_name=collection_name)
+        if not info:
+            return None
+        config = info.get("config")
+        if not isinstance(config, dict):
+            return None
+        params = config.get("params")
+        if not isinstance(params, dict):
+            return None
+        vectors = params.get("vectors")
+        if isinstance(vectors, dict):
+            size = vectors.get("size")
+            if isinstance(size, int):
+                return size
+        return None
+
+    async def ensure_alias(self, *, alias_name: str, collection_name: str) -> None:
+        if not self._enabled:
+            return
+
+        current = await self.resolve_alias(alias_name=alias_name)
+        if current == collection_name:
+            return
+        try:
+            actions = []
+            if current:
+                actions.append({"delete_alias": {"alias_name": alias_name}})
+            actions.append({"create_alias": {"collection_name": collection_name, "alias_name": alias_name}})
+            await self._request(
+                method="POST",
+                path="/aliases",
+                json_body={"actions": actions},
+            )
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"ensure_alias({alias_name})", exc=exc)
+            logger.warning("Qdrant ensure_alias failed; continuing without vectors: %s", exc)
+
+    async def resolve_alias(self, *, alias_name: str) -> str | None:
+        if not self._enabled:
+            return None
+
+        try:
+            result = await self._request(method="GET", path="/aliases")
+            aliases = result.get("aliases") if isinstance(result, dict) else None
+            if not isinstance(aliases, list):
+                return None
+            for item in aliases:
+                if not isinstance(item, dict):
+                    continue
+                if item.get("alias_name") == alias_name and isinstance(item.get("collection_name"), str):
+                    return item["collection_name"]
+            return None
+        except Exception as exc:  # noqa: BLE001
+            self._disable(reason=f"resolve_alias({alias_name})", exc=exc)
+            logger.warning("Qdrant resolve_alias failed; continuing without vectors: %s", exc)
+            return None
 
     async def upsert_points(self, *, collection_name: str, points: list[QdrantPoint]) -> None:
         if not self._enabled or not points:

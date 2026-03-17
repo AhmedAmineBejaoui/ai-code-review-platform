@@ -231,6 +231,27 @@ class RepoContextChunksRepo:
                 break
         return matches
 
+    def list_repo_chunks(self, repo_id: str, limit: int = 5000) -> list[RepoContextChunkRow]:
+        with _REPO_CONTEXT_CHUNKS_LOCK:
+            with self._engine.connect() as conn:
+                rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT *
+                            FROM repo_context_chunks
+                            WHERE repo_id = :repo_id
+                            ORDER BY path ASC, chunk_index ASC
+                            LIMIT :limit
+                            """
+                        ),
+                        {"repo_id": repo_id, "limit": max(int(limit), 1)},
+                    )
+                    .mappings()
+                    .all()
+                )
+        return [_row_to_chunk(row) for row in rows]
+
 
 def _derive_related_test_stems(changed_files: Iterable[str]) -> list[str]:
     stems: list[str] = []
