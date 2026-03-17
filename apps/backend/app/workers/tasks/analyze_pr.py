@@ -207,10 +207,10 @@ def _evaluate_langchain_parity(
     langchain_review_status: str,
 ) -> dict[str, Any]:
     thresholds = {
-        "pydantic_validity_min": 0.99,
-        "context_references_presence_min": 0.95,
-        "citation_overlap_min": 0.70,
-        "critical_divergence_max": 0.05,
+        "pydantic_validity_min": settings.LANGCHAIN_PARITY_PYDANTIC_VALIDITY_MIN,
+        "context_references_presence_min": settings.LANGCHAIN_PARITY_CONTEXT_REFERENCES_PRESENCE_MIN,
+        "citation_overlap_min": settings.LANGCHAIN_PARITY_CITATION_OVERLAP_MIN,
+        "critical_divergence_max": settings.LANGCHAIN_PARITY_CRITICAL_DIVERGENCE_MAX,
     }
     measurements = {
         "pydantic_validity": 1.0 if langchain_review_status in {"completed", "rule_engine"} else 0.0,
