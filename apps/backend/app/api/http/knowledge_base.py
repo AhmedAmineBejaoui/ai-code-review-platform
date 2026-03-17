@@ -14,8 +14,10 @@ from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.database import get_engine
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
+from app.core.knowledge_base.langchain_shadow import LangChainShadowIndexingService
 from app.core.knowledge_base.qdrant_ids import build_document_chunk_point_id
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
+from app.data.repos.kb_repo import KBDocumentChunkRow
 from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
@@ -734,6 +736,36 @@ async def ingest_document(
         except Exception as exc:  # noqa: BLE001
             logger.warning(
                 "Skipping vector indexing for KB document %s in repo %s: %s",
+                doc_id,
+                payload.repo_id,
+                exc,
+            )
+
+    if settings.langchain_enabled:
+        try:
+            shadow_index = LangChainShadowIndexingService(vector_store=vector_store)
+            if shadow_index.available:
+                await shadow_index.upsert_kb_document_rows(
+                    repo_id=payload.repo_id,
+                    rows=[
+                        KBDocumentChunkRow(
+                            doc_id=doc_id,
+                            title=payload.title,
+                            source_type=normalized_source_type,
+                            path_or_url=payload.path_or_url,
+                            repo_id=payload.repo_id,
+                            doc_version=payload.doc_version,
+                            chunk_index=index,
+                            content=chunk,
+                            token_count=max(1, len(chunk) // 4),
+                            tags=normalized_tags,
+                        )
+                        for index, chunk in enumerate(chunks)
+                    ],
+                )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning(
+                "Skipping LangChain shadow indexing for KB document %s in repo %s: %s",
                 doc_id,
                 payload.repo_id,
                 exc,

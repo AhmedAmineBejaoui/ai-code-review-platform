@@ -1217,6 +1217,25 @@ def _as_non_empty_str(value: Any) -> str | None:
     return cleaned or None
 
 
+def _sql_write_to_row(row: RepoContextChunkWrite) -> RepoContextChunkRow:
+    return RepoContextChunkRow(
+        id=row.id,
+        repo_id=row.repo_id,
+        path=row.path,
+        chunk_index=row.chunk_index,
+        content=row.content,
+        language=row.language,
+        file_type=row.file_type,
+        chunk_type=row.chunk_type,
+        symbol_name=row.symbol_name,
+        start_line=row.start_line,
+        end_line=row.end_line,
+        indexed_commit=row.indexed_commit,
+        metadata=dict(row.metadata or {}),
+        lexical_score=0.0,
+    )
+
+
 def _as_optional_int(value: Any) -> int | None:
     if isinstance(value, bool):
         return int(value)
