@@ -234,7 +234,7 @@
   animation: trustedMarqueeLeftToRight 14s linear infinite;
 }
 
-.trusted-marquee-track:hover {
+.trusted-marquee:hover .trusted-marquee-track {
   animation-play-state: paused;
 }
 

@@ -1,0 +1,164 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Auto Start Dev Environment (Light)",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "Terminal 1 - Backend Install + Migrate",
+        "Terminal 2 - Ngrok Script",
+        "Terminal 3 - Celery Worker (analyses)",
+        "Terminal 4 - Dashboard Dev",
+        "Terminal 5 - Infra + API",
+        "Terminal 8 - Cloudflared Tunnel",
+        "Terminal 9 - Make Dev Backend Cloudflare"
+      ],
+      "runOptions": {
+        "runOn": "folderOpen"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Auto Start Dev Environment (Full)",
+      "dependsOrder": "parallel",
+      "dependsOn": [
+        "Terminal 1 - Backend Install + Migrate",
+        "Terminal 2 - Ngrok Script",
+        "Terminal 3 - Celery Worker (analyses)",
+        "Terminal 4 - Dashboard Dev",
+        "Terminal 5 - Infra + API",
+        "Terminal 6 - Host Worker",
+        "Terminal 7 - Docker Full Stack",
+        "Terminal 8 - Cloudflared Tunnel",
+        "Terminal 9 - Make Dev Backend Cloudflare"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 1 - Backend Install + Migrate",
+      "type": "shell",
+      "command": "poetry install --no-interaction && poetry run alembic -c alembic.ini upgrade head",
+      "options": {
+        "cwd": "${workspaceFolder}/apps/backend"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 2 - Ngrok Script",
+      "type": "shell",
+      "command": "python scripts/dev_backend_ngrok.py",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 3 - Celery Worker (analyses)",
+      "type": "shell",
+      "command": "poetry run celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo -c 1",
+      "options": {
+        "cwd": "${workspaceFolder}/apps/backend"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 4 - Dashboard Dev",
+      "type": "shell",
+      "command": "npm i && npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}/apps/dashboard"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 5 - Infra + API",
+      "type": "shell",
+      "command": "make infra-core-up && docker compose --env-file .env -f infra/local/docker-compose.yml up -d db redis qdrant && cd apps/backend && poetry run uvicorn app.main:app --reload --port 8000",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 6 - Host Worker",
+      "type": "shell",
+      "command": "make host-worker",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 7 - Docker Full Stack",
+      "type": "shell",
+      "command": "docker compose -f infra/local/docker-compose.yml build && docker compose -f infra/local/docker-compose.yml up -d && docker compose -f infra/local/docker-compose.yml ps && docker compose -f infra/local/docker-compose.yml exec api alembic -c /app/alembic.ini upgrade head && docker compose -f infra/local/docker-compose.yml logs -f api",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 8 - Cloudflared Tunnel",
+      "type": "shell",
+      "command": "cloudflared tunnel --url http://localhost:8000",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 9 - Make Dev Backend Cloudflare",
+      "type": "shell",
+      "command": "make dev-backend-cloudflare",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "auto-start"
+      },
+      "problemMatcher": []
+    }
+  ]
+}
