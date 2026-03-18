@@ -1415,7 +1415,7 @@ def _test_storage_connection() -> dict[str, Any]:
     if not settings.OBJECT_STORAGE_ENABLED:
         return {
             "ok": False,
-            "message": "Object storage is disabled in settings.",
+            "message": "Object storage is disabled. Set OBJECT_STORAGE_ENABLED=true and configure MinIO before running the storage probe.",
             "checkedAt": _utc_iso_now(),
         }
 

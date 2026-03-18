@@ -120,6 +120,7 @@ export function Integrations() {
     bucket: "-",
     secure: false,
   }
+  const storageEnabled = Boolean(storage.enabled)
 
   const githubConnected = Boolean(githubData?.connected)
   const githubRepoCount = Array.isArray(githubData?.items) ? githubData!.items!.length : 0
@@ -216,6 +217,19 @@ export function Integrations() {
   }
 
   const testStorage = async () => {
+    if (!storageEnabled) {
+      const checkedAt = new Date().toISOString()
+      const disabledMessage =
+        "Le stockage objet est desactive. Active OBJECT_STORAGE_ENABLED=true et configure MinIO avant de tester la connexion."
+      setStorageProbe({
+        ok: false,
+        message: disabledMessage,
+        checkedAt,
+      })
+      setMessage(disabledMessage)
+      return
+    }
+
     setSaving(true)
     setMessage(null)
     try {
@@ -413,7 +427,19 @@ export function Integrations() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <Label>Provider de stockage</Label>
+              <div className="flex items-center justify-between gap-3">
+                <Label>Provider de stockage</Label>
+                <Badge
+                  variant="outline"
+                  className={
+                    storageEnabled
+                      ? "border-emerald-400/40 bg-emerald-500/10 text-emerald-200"
+                      : "border-amber-400/40 bg-amber-500/10 text-amber-200"
+                  }
+                >
+                  {storageEnabled ? "Active" : "Desactive"}
+                </Badge>
+              </div>
               <Input value={storage.provider ?? "S3 Compatible (MinIO)"} readOnly className="mt-2 bg-white dark:bg-gray-800" />
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -426,8 +452,19 @@ export function Integrations() {
                 <Input value={storage.bucket ?? "-"} readOnly className="mt-2 bg-white dark:bg-gray-800" />
               </div>
             </div>
+            {!storageEnabled && (
+              <div className="rounded-xl border border-amber-200/50 bg-amber-50/80 px-4 py-3 text-sm text-amber-900 dark:border-amber-800/50 dark:bg-amber-950/30 dark:text-amber-100">
+                Le stockage objet est actuellement desactive dans le backend. Active <code>OBJECT_STORAGE_ENABLED=true</code> et configure MinIO pour lancer un probe reussi.
+              </div>
+            )}
             <div className="flex gap-2">
-              <Button variant="outline" className="gap-2" onClick={() => void testStorage()} disabled={saving}>
+              <Button
+                variant="outline"
+                className="gap-2"
+                onClick={() => void testStorage()}
+                disabled={saving || !storageEnabled}
+                title={storageEnabled ? "Tester la connexion au stockage" : "Active d'abord le stockage objet dans la configuration backend"}
+              >
                 <RotateCw className="h-3 w-3" />
                 Tester connexion
               </Button>

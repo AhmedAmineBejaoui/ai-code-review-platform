@@ -9,16 +9,40 @@ from typing import Any, Literal
 from app.core.static_analysis.base import StaticRawFinding, StaticToolResult
 
 
+def _extract_json_payload(raw: str) -> str:
+    text = raw.strip()
+    if not text:
+        return ""
+    if (text.startswith("[") and text.endswith("]")) or (text.startswith("{") and text.endswith("}")):
+        return text
+
+    start_candidates = [index for index in (text.find("["), text.find("{")) if index >= 0]
+    if not start_candidates:
+        return text
+    start = min(start_candidates)
+
+    end_candidates = [index for index in (text.rfind("]"), text.rfind("}")) if index >= start]
+    if not end_candidates:
+        return text
+    end = max(end_candidates)
+    return text[start : end + 1]
+
+
 def parse_ruff_output(stdout: str) -> list[StaticRawFinding]:
     payload: Any
-    if not stdout.strip():
+    payload_raw = _extract_json_payload(stdout)
+    if not payload_raw:
         return []
-    payload = json.loads(stdout)
-    if not isinstance(payload, list):
+    payload = json.loads(payload_raw)
+
+    items: Any = payload
+    if isinstance(payload, dict):
+        items = payload.get("diagnostics")
+    if not isinstance(items, list):
         return []
 
     findings: list[StaticRawFinding] = []
-    for item in payload:
+    for item in items:
         if not isinstance(item, dict):
             continue
         rule_id = str(item.get("code") or "RUFF")
@@ -78,7 +102,24 @@ class RuffAnalyzer:
                 workspace_path=workspace,
             )
 
-        command = ["ruff", "check", "--output-format=json", *paths]
+        python_paths = [path for path in paths if path.lower().endswith((".py", ".pyi"))]
+        if not python_paths:
+            finished_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+            return StaticToolResult(
+                tool="ruff",
+                findings=[],
+                duration_ms=0,
+                scanned_files=0,
+                version=None,
+                status="SKIPPED",
+                started_at=started_at,
+                finished_at=finished_at,
+                command=[],
+                workspace_path=workspace,
+                warning="ruff skipped: no Python files to scan",
+            )
+
+        command = ["ruff", "check", "--output-format=json", *python_paths]
         warning: str | None = None
         findings: list[StaticRawFinding] = []
         version: str | None = None
@@ -138,7 +179,7 @@ class RuffAnalyzer:
             tool="ruff",
             findings=findings,
             duration_ms=duration_ms,
-            scanned_files=len(paths),
+            scanned_files=len(python_paths),
             version=version,
             status=status,
             started_at=started_at,

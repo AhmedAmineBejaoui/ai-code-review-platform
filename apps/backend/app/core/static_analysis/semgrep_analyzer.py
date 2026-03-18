@@ -9,10 +9,30 @@ from typing import Any, Literal
 from app.core.static_analysis.base import StaticRawFinding, StaticToolResult
 
 
+def _extract_json_payload(raw: str) -> str:
+    text = raw.strip()
+    if not text:
+        return ""
+    if (text.startswith("[") and text.endswith("]")) or (text.startswith("{") and text.endswith("}")):
+        return text
+
+    start_candidates = [index for index in (text.find("{"), text.find("[")) if index >= 0]
+    if not start_candidates:
+        return text
+    start = min(start_candidates)
+
+    end_candidates = [index for index in (text.rfind("}"), text.rfind("]")) if index >= start]
+    if not end_candidates:
+        return text
+    end = max(end_candidates)
+    return text[start : end + 1]
+
+
 def parse_semgrep_output(stdout: str) -> list[StaticRawFinding]:
-    if not stdout.strip():
+    payload_raw = _extract_json_payload(stdout)
+    if not payload_raw:
         return []
-    payload: Any = json.loads(stdout)
+    payload: Any = json.loads(payload_raw)
     if not isinstance(payload, dict):
         return []
     results = payload.get("results", [])

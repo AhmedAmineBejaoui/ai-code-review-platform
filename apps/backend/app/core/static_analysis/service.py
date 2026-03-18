@@ -20,6 +20,33 @@ from app.core.static_analysis.filtering import (
 from app.core.static_analysis.normalizer import normalize_raw_finding
 
 
+_IGNORED_PATH_PARTS = {
+    ".git",
+    ".venv",
+    "venv",
+    "node_modules",
+    "site-packages",
+    "__pycache__",
+    ".mypy_cache",
+    ".ruff_cache",
+    ".pytest_cache",
+    ".next",
+    "dist",
+    "build",
+    "vendor",
+}
+
+
+def _is_scannable_diff_path(path: str) -> bool:
+    normalized = normalize_diff_path(path)
+    if not normalized:
+        return False
+    parts = [part.strip().lower() for part in Path(normalized).parts if part and part.strip()]
+    if not parts:
+        return False
+    return not any(part in _IGNORED_PATH_PARTS for part in parts)
+
+
 def _normalize_tool_path(path: str, workspace: Path) -> str:
     raw = path.strip()
     if not raw:
@@ -64,6 +91,8 @@ class StaticAnalysisService:
             if file_item.is_binary:
                 continue
             rel = normalize_diff_path(file_item.path_new)
+            if not _is_scannable_diff_path(rel):
+                continue
             if not rel or rel in seen:
                 continue
             seen.add(rel)
