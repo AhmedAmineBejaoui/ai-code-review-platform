@@ -211,10 +211,10 @@
 }
 
 @keyframes trustedMarqueeLeftToRight {
-  from {
+  0% {
     transform: translate3d(-50%, 0, 0);
   }
-  to {
+  100% {
     transform: translate3d(0, 0, 0);
   }
 }
@@ -231,7 +231,11 @@
   width: max-content;
   transform: translate3d(-50%, 0, 0);
   will-change: transform;
-  animation: trustedMarqueeLeftToRight 14s linear infinite;
+  animation-name: trustedMarqueeLeftToRight;
+  animation-duration: 12s;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+  animation-direction: normal;
 }
 
 .trusted-marquee:hover .trusted-marquee-track {
