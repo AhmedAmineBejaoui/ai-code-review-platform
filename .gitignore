@@ -5,6 +5,7 @@ __pycache__/
 
 # Node
 node_modules/
+testsprite_tests/
 
 # Env
 .env
