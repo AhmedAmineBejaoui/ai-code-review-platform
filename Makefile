@@ -5,6 +5,8 @@
 .PHONY: help up down build build-no-cache migrate migrate-history \
         migrate-create logs logs-api logs-worker test test-ci api-shell \
         worker-shell generate-fernet-key ps clean db-shell dev-backend-ngrok \
+        dev-backend-cloudflare infra-core-up infra-core-down host-migrate \
+        host-api host-api-prod host-worker \
         prod-build prod-up prod-down prod-logs prod-migrate \
         langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback
 
@@ -38,6 +40,13 @@ help:
 	@echo "  make migrate-history    Show Alembic migration history"
 	@echo "  make migrate-create m=  Create new migration (m=<name>)"
 	@echo "  make dev-backend-ngrok  Start ngrok, rewrite env URLs, then run backend"
+	@echo "  make dev-backend-cloudflare  Start Cloudflare Quick Tunnel, rewrite env URL hints, then run backend"
+	@echo "  make infra-core-up      Start only db + redis + qdrant locally"
+	@echo "  make infra-core-down    Stop only db + redis + qdrant locally"
+	@echo "  make host-migrate       Run Alembic on the host Poetry env"
+	@echo "  make host-api           Run uvicorn on the host Poetry env with --reload"
+	@echo "  make host-api-prod      Run uvicorn on the host Poetry env without --reload"
+	@echo "  make host-worker        Run the Celery worker on the Windows host with -P solo"
 	@echo "  make test               Run pytest (local Poetry env)"
 	@echo "  make langchain-parity   Build a corpus-wide LangChain parity report"
 	@echo "  make langchain-qdrant-aliases  Show LangChain Qdrant alias targets"
@@ -125,6 +134,27 @@ test-ci:
 
 dev-backend-ngrok:
 	python scripts/dev_backend_ngrok.py
+
+dev-backend-cloudflare:
+	python scripts/dev_backend_cloudflare.py
+
+infra-core-up:
+	$(COMPOSE) up -d db redis qdrant
+
+infra-core-down:
+	$(COMPOSE) stop db redis qdrant
+
+host-migrate:
+	cd $(BACKEND_DIR) && poetry run alembic -c alembic.ini upgrade head
+
+host-api:
+	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --reload --port 8000
+
+host-api-prod:
+	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --port 8000
+
+host-worker:
+	cd $(BACKEND_DIR) && poetry run python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
 
 langchain-parity:
 	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_parity_report.py

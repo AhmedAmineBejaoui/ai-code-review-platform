@@ -431,7 +431,6 @@ Ce wrapper:
 
 - lance `ngrok http 8000`,
 - recupere la nouvelle URL publique HTTPS,
-<<<<<<< HEAD
 - met a jour `.env` (`BASE_URL`, `NGROK_PUBLIC_URL`),
 - puis lance `uvicorn app.main:app --reload --port 8000`.
 
@@ -442,22 +441,51 @@ Si tu veux vraiment forcer les cibles backend sur l'URL publique ngrok:
 ```bash
 python scripts/dev_backend_ngrok.py --sync-backend-targets
 ```
-
-=======
-- met a jour `.env` (`BASE_URL`, `BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_URL`),
-- met a jour `apps/dashboard/.env.local` (`BACKEND_API_URL`, `NEXT_PUBLIC_BACKEND_URL`) si le fichier existe,
-- puis lance `uvicorn app.main:app --reload --port 8000`.
-
->>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
 Prerequis:
 
 - binaire `ngrok` disponible dans le `PATH`,
 - backend Poetry installe dans `apps/backend`,
-<<<<<<< HEAD
 - redemarrer le dashboard si tu utilises `--sync-backend-targets` et que `apps/dashboard/.env.local` a ete modifie.
-=======
-- redemarrer le dashboard si `apps/dashboard/.env.local` a ete modifie et que Next.js tourne deja.
->>>>>>> 3547d3d582ee15df2cc029eab7840538a941b10f
+
+### 9.2.2 Backend host + Cloudflare Quick Tunnel
+
+Pour garder le backend en local tout en exposant une URL HTTPS publique via `trycloudflare.com`:
+
+```bash
+python scripts/dev_backend_cloudflare.py
+```
+
+Ou via Makefile:
+
+```bash
+make dev-backend-cloudflare
+```
+
+Ce wrapper:
+
+- lance un Quick Tunnel Cloudflare vers `http://127.0.0.1:8000`,
+- recupere l'URL publique `https://<random>.trycloudflare.com`,
+- met a jour `.env` (`BASE_URL`, `CLOUDFLARE_QUICK_TUNNEL_URL`),
+- puis lance `uvicorn app.main:app --reload --port 8000`.
+
+Par defaut, il ne touche pas `BACKEND_API_URL` ni `NEXT_PUBLIC_BACKEND_URL` pour eviter que le dashboard local parle a une URL publique temporaire ou offline au lieu du backend local.
+
+Si tu veux quand meme forcer les cibles backend sur l'URL publique du tunnel:
+
+```bash
+python scripts/dev_backend_cloudflare.py --sync-backend-targets
+```
+
+Prerequis:
+
+- binaire `cloudflared` disponible dans le `PATH`,
+- backend Poetry installe dans `apps/backend`,
+- redemarrer le dashboard si tu utilises `--sync-backend-targets` et que `apps/dashboard/.env.local` a ete modifie,
+- recopier manuellement la nouvelle URL `trycloudflare.com` dans les variables Vercel `BACKEND_API_URL` et `NEXT_PUBLIC_BACKEND_URL` si le tunnel a change.
+
+Guide dedie:
+
+- `docs/vercel-cloudflare-quick-tunnel.md`
 
 ### 9.3 Worker sur host
 
