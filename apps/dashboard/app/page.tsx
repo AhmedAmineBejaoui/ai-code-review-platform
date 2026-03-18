@@ -203,8 +203,8 @@ function ReviewsTable({
 const NAV_LINKS = [
   { label: "Features", href: "#features", hasDropdown: true },
   { label: "Product", href: "#preview", hasDropdown: true },
-  { label: "Changelog", href: "#changelog", hasDropdown: false },
-  { label: "Docs", href: "https://docs.trustreview.ai", hasDropdown: false },
+  { label: "Changelog", href: "/changelog", hasDropdown: false },
+  { label: "Docs", href: "/documentation", hasDropdown: false },
   { label: "Pricing", href: "#pricing", hasDropdown: false },
 ]
 
@@ -446,8 +446,8 @@ export default function HomePage() {
                 </Link>
               </Button>
             </SignedIn>
-              <Button variant="outline" className="h-12 rounded-2xl border-slate-300 px-7 text-base text-slate-800">
-                View Demo
+              <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-300 px-7 text-base text-slate-800">
+                <Link href="#preview">View Demo</Link>
               </Button>
             </motion.div>
 
@@ -735,9 +735,18 @@ export default function HomePage() {
             <br className="hidden md:inline" />
             Start your 14-day free trial — no credit card required.
           </p>
-          <Button className="mt-8 h-12 rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg hover:bg-indigo-50">
-            Get Started Now
-          </Button>
+          <SignedOut>
+            <SignUpButton mode="redirect">
+              <Button className="mt-8 h-12 rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg hover:bg-indigo-50">
+                Get Started Now
+              </Button>
+            </SignUpButton>
+          </SignedOut>
+          <SignedIn>
+            <Button asChild className="mt-8 h-12 rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg hover:bg-indigo-50">
+              <Link href="/auth/role-redirect">Open Dashboard</Link>
+            </Button>
+          </SignedIn>
           <p className="mt-5 text-sm text-indigo-200">Free for open source projects.</p>
         </motion.div>
       </section>
@@ -778,9 +787,18 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button className="mt-8 h-12 w-full rounded-2xl bg-white text-indigo-600 shadow hover:bg-indigo-50">
-                Start free
-              </Button>
+              <SignedOut>
+                <SignUpButton mode="redirect">
+                  <Button className="mt-8 h-12 w-full rounded-2xl bg-white text-indigo-600 shadow hover:bg-indigo-50">
+                    Start free
+                  </Button>
+                </SignUpButton>
+              </SignedOut>
+              <SignedIn>
+                <Button asChild className="mt-8 h-12 w-full rounded-2xl bg-white text-indigo-600 shadow hover:bg-indigo-50">
+                  <Link href="/auth/role-redirect">Go to Dashboard</Link>
+                </Button>
+              </SignedIn>
             </CardContent>
           </Card>
           </motion.div>
@@ -802,8 +820,8 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button className="mt-8 h-12 w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow hover:from-indigo-600 hover:to-purple-700">
-                Join waitlist
+              <Button asChild className="mt-8 h-12 w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow hover:from-indigo-600 hover:to-purple-700">
+                <Link href="/contact">Join waitlist</Link>
               </Button>
             </CardContent>
           </Card>
@@ -825,39 +843,63 @@ export default function HomePage() {
               Automated, explainable code reviews powered by LLMs and grounded in your documentation.
             </p>
             <div className="mt-5 flex items-center gap-4 text-slate-400">
-              <Twitter className="h-4 w-4 cursor-pointer transition hover:text-slate-600" />
-              <Github className="h-4 w-4 cursor-pointer transition hover:text-slate-600" />
-              <Linkedin className="h-4 w-4 cursor-pointer transition hover:text-slate-600" />
+              <a
+                href="https://x.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="TrustReview on X"
+                className="transition hover:text-slate-600"
+              >
+                <Twitter className="h-4 w-4" />
+              </a>
+              <a
+                href="https://github.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="TrustReview on GitHub"
+                className="transition hover:text-slate-600"
+              >
+                <Github className="h-4 w-4" />
+              </a>
+              <a
+                href="https://www.linkedin.com"
+                target="_blank"
+                rel="noreferrer"
+                aria-label="TrustReview on LinkedIn"
+                className="transition hover:text-slate-600"
+              >
+                <Linkedin className="h-4 w-4" />
+              </a>
             </div>
           </div>
 
           <div>
             <h4 className="mb-3 font-semibold text-slate-900">Product</h4>
             <ul className="space-y-1.5 text-sm text-slate-500">
-              <li className="cursor-pointer hover:text-slate-700">Features</li>
-              <li className="cursor-pointer hover:text-slate-700">Integrations</li>
-              <li className="cursor-pointer hover:text-slate-700">Pricing</li>
-              <li className="cursor-pointer hover:text-slate-700">Changelog</li>
+              <li><Link href="/features" className="hover:text-slate-700">Features</Link></li>
+              <li><Link href="/integrations" className="hover:text-slate-700">Integrations</Link></li>
+              <li><Link href="/pricing" className="hover:text-slate-700">Pricing</Link></li>
+              <li><Link href="/changelog" className="hover:text-slate-700">Changelog</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="mb-3 font-semibold text-slate-900">Resources</h4>
             <ul className="space-y-1.5 text-sm text-slate-500">
-              <li className="cursor-pointer hover:text-slate-700">Documentation</li>
-              <li className="cursor-pointer hover:text-slate-700">API Reference</li>
-              <li className="cursor-pointer hover:text-slate-700">Blog</li>
-              <li className="cursor-pointer hover:text-slate-700">Community</li>
+              <li><Link href="/documentation" className="hover:text-slate-700">Documentation</Link></li>
+              <li><Link href="/api-reference" className="hover:text-slate-700">API Reference</Link></li>
+              <li><Link href="/blog" className="hover:text-slate-700">Blog</Link></li>
+              <li><Link href="/community" className="hover:text-slate-700">Community</Link></li>
             </ul>
           </div>
 
           <div>
             <h4 className="mb-3 font-semibold text-slate-900">Company</h4>
             <ul className="space-y-1.5 text-sm text-slate-500">
-              <li className="cursor-pointer hover:text-slate-700">About</li>
-              <li className="cursor-pointer hover:text-slate-700">Careers</li>
-              <li className="cursor-pointer hover:text-slate-700">Legal</li>
-              <li className="cursor-pointer hover:text-slate-700">Contact</li>
+              <li><Link href="/about" className="hover:text-slate-700">About</Link></li>
+              <li><Link href="/careers" className="hover:text-slate-700">Careers</Link></li>
+              <li><Link href="/legal" className="hover:text-slate-700">Legal</Link></li>
+              <li><Link href="/contact" className="hover:text-slate-700">Contact</Link></li>
             </ul>
           </div>
         </div>
@@ -865,8 +907,8 @@ export default function HomePage() {
         <div className="flex flex-col gap-4 pt-7 text-sm text-slate-500 md:flex-row md:items-center md:justify-between">
           <p>&copy; {new Date().getFullYear()} TrustReview Inc. All rights reserved.</p>
           <div className="flex items-center gap-6">
-            <span className="cursor-pointer hover:text-slate-700">Privacy Policy</span>
-            <span className="cursor-pointer hover:text-slate-700">Terms of Service</span>
+            <Link href="/privacy" className="hover:text-slate-700">Privacy Policy</Link>
+            <Link href="/terms" className="hover:text-slate-700">Terms of Service</Link>
           </div>
         </div>
       </footer>
