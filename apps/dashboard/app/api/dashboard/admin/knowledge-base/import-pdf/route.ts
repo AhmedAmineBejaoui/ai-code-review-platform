@@ -40,10 +40,7 @@ type PdfScriptFailure = {
 
 type PdfScriptResponse = PdfScriptSuccess | PdfScriptFailure
 
-type UploadedPdfFile = {
-  name: string
-  arrayBuffer: () => Promise<ArrayBuffer>
-}
+type UploadedPdfFile = File
 
 function extractErrorText(value: unknown): string | null {
   if (typeof value === "string") {
@@ -92,11 +89,7 @@ async function parseBackendError(response: Response): Promise<string> {
 }
 
 function isUploadedPdfFile(value: FormDataEntryValue): value is UploadedPdfFile {
-  if (!value || typeof value !== "object") {
-    return false
-  }
-  const candidate = value as Record<string, unknown>
-  return typeof candidate.name === "string" && typeof candidate.arrayBuffer === "function"
+  return typeof File !== "undefined" && value instanceof File
 }
 
 function resolvePdfExtractorScript(): string {
@@ -117,7 +110,7 @@ function parsePdfScriptOutput(stdout: string, stderr: string): PdfScriptResponse
     return { ok: false, error: "PDF extractor returned no output." }
   }
   try {
-    const parsed = JSON.parse(raw) as Partial<PdfScriptResponse>
+    const parsed = JSON.parse(raw) as Record<string, unknown>
     if (parsed.ok === true) {
       return { ok: true, text: typeof parsed.text === "string" ? parsed.text : "" }
     }
