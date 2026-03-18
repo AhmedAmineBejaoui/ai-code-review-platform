@@ -211,16 +211,20 @@ const NAV_LINKS = [
 export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const { scrollY } = useScroll()
-  const navbarY = useSpring(useTransform(scrollY, [0, 260], [0, -34]), {
+  const navbarScale = useSpring(useTransform(scrollY, [0, 260], [1, 0.992]), {
     stiffness: 140,
     damping: 26,
     mass: 0.28,
   })
-  const navbarScale = useSpring(useTransform(scrollY, [0, 260], [1, 0.985]), {
-    stiffness: 140,
-    damping: 26,
-    mass: 0.28,
-  })
+  const navbarShadow = useTransform(
+    scrollY,
+    [0, 60, 260],
+    [
+      "0 1px 3px rgba(0,0,0,0.04)",
+      "0 12px 30px rgba(15,23,42,0.08)",
+      "0 14px 34px rgba(15,23,42,0.1)",
+    ],
+  )
   const previewRef = useRef<HTMLDivElement | null>(null)
   const { scrollYProgress: previewProgressRaw } = useScroll({
     target: previewRef,
@@ -252,10 +256,12 @@ export default function HomePage() {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.45, ease: "easeOut" }}
-        style={{ y: navbarY, scale: navbarScale, transformOrigin: "center top" }}
-        className="navbar-notch relative z-40 w-full px-4 pt-3 sm:px-6 lg:px-10"
+        className="navbar-notch sticky top-0 z-50 w-full px-4 pt-3 sm:px-6 lg:px-10"
       >
-        <div className="mx-auto flex w-full max-w-[1240px] items-center justify-between overflow-hidden rounded-[16px] border border-slate-200 bg-white px-4 py-2.5 shadow-[0_1px_3px_rgba(0,0,0,0.04)] md:px-5">
+        <motion.div
+          style={{ scale: navbarScale, boxShadow: navbarShadow, transformOrigin: "center top" }}
+          className="mx-auto flex w-full max-w-[1240px] items-center justify-between overflow-hidden rounded-[16px] border border-slate-200/80 bg-white/90 px-4 py-2.5 backdrop-blur md:px-5"
+        >
 
           {/* ── Logo ── */}
           <Link href="/" className="flex shrink-0 items-center gap-2.5">
@@ -320,7 +326,7 @@ export default function HomePage() {
               {mobileMenuOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
-        </div>
+        </motion.div>
 
         {/* ── Mobile menu ── */}
         {mobileMenuOpen && (
