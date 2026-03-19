@@ -155,6 +155,7 @@ class _WebContentParser(HTMLParser):
         self._active_heading_level: int | None = None
         self._buffer: list[str] = []
         self._title_buffer: list[str] = []
+        self._inside_title = False
 
     def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         lowered = tag.lower()
@@ -165,6 +166,7 @@ class _WebContentParser(HTMLParser):
             return
         if lowered == "title":
             self._title_buffer = []
+            self._inside_title = True
             return
         if lowered in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             self._flush_section()
@@ -186,6 +188,7 @@ class _WebContentParser(HTMLParser):
             if candidate:
                 self.title = candidate
             self._title_buffer = []
+            self._inside_title = False
             return
         if lowered in {"h1", "h2", "h3", "h4", "h5", "h6"}:
             heading_text = _normalize_text("".join(self._buffer))
@@ -205,7 +208,7 @@ class _WebContentParser(HTMLParser):
     def handle_data(self, data: str) -> None:
         if self._skip_depth > 0:
             return
-        if self._title_buffer is not None and self.get_starttag_text() == "<title>":
+        if self._inside_title:
             self._title_buffer.append(data)
             return
         self._buffer.append(data)

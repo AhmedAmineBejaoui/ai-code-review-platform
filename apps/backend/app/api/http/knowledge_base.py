@@ -244,7 +244,7 @@ class DocumentIngestRequest(BaseModel):
     title: str = Field(min_length=1, max_length=500)
     source_type: str = Field(default="markdown", min_length=1, max_length=64)
     path_or_url: str | None = Field(default=None, max_length=4096)
-    content: str = Field(min_length=1, max_length=2_000_000)
+    content: str = Field(default="", max_length=2_000_000)
     tags: list[str] = Field(default_factory=list, max_length=64)
     doc_version: int = Field(default=1, ge=1, le=10_000)
     source_uri: str | None = Field(default=None, max_length=4096)
