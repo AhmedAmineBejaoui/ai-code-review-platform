@@ -992,8 +992,11 @@ export function KnowledgeBase() {
               <div className="space-y-2 rounded-xl border border-gray-200/60 bg-white/70 p-4 dark:border-gray-700/60 dark:bg-gray-900/60">
                 {queryResults.slice(0, 6).map((chunk, index) => (
                   <div key={`${chunk.path ?? "chunk"}-${index}`} className="rounded-lg border border-gray-200/50 p-3 dark:border-gray-700/50">
+                    {chunk.title ? (
+                      <div className="mb-1 text-xs font-medium text-gray-800 dark:text-gray-200">{chunk.title}</div>
+                    ) : null}
                     <div className="mb-1 flex items-center gap-2 text-xs">
-                      <Badge variant="outline">{chunk.path ?? "unknown"}</Badge>
+                      <Badge variant="outline">{chunk.path ?? chunk.title ?? "unknown"}</Badge>
                       {chunk.source_type ? <Badge variant="outline">{chunk.source_type.replaceAll("_", " ")}</Badge> : null}
                       {chunk.page !== null && typeof chunk.page === "number" ? <Badge variant="secondary">page {chunk.page}</Badge> : null}
                       {chunk.entity_name ? (
@@ -1002,6 +1005,7 @@ export function KnowledgeBase() {
                           {chunk.entity_name}
                         </Badge>
                       ) : null}
+                      {chunk.document_version ? <Badge variant="outline">{chunk.document_version}</Badge> : null}
                       {formatChunkLineRange(chunk) ? <Badge variant="outline">{formatChunkLineRange(chunk)}</Badge> : null}
                       <Badge variant="secondary">score {(chunk.score ?? 0).toFixed(2)}</Badge>
                     </div>

@@ -8,8 +8,14 @@ class QueryRoute(str, Enum):
     AUTO = "auto"
     DIFF_REVIEW = "diff_review"
     REPO_QUERY = "repo_query"
+    CODE_QUERY = "code_query"
     POLICY_QUERY = "policy_query"
     DOCUMENT_QUERY = "document_query"
+    PDF_QUERY = "pdf_query"
+    WEB_QUERY = "web_query"
+    MARKDOWN_QUERY = "markdown_query"
+    SQL_QUERY = "sql_query"
+    MULTI_SOURCE_QUERY = "multi_source_query"
     GENERIC_HYBRID_QUERY = "generic_hybrid_query"
 
 
@@ -36,6 +42,15 @@ class RetrievedContextChunk:
     chunk_id: str | None = None
     document_version: str | None = None
     section_title: str | None = None
+    heading_path: tuple[str, ...] = ()
+    page: int | None = None
+    source_uri: str | None = None
+    content_hash: str | None = None
+    version: str | None = None
+    entity_type: str | None = None
+    entity_name: str | None = None
+    domain: str | None = None
+    crawl_timestamp: str | None = None
     retrieval_reason: str | None = None
     retriever_channel: str | None = None
     score_raw: float | None = None

@@ -77,6 +77,7 @@ class LexicalRetriever:
         candidates: list[RetrievalCandidate] = []
         for row in rows:
             score = max(row.lexical_score, 0.1)
+            metadata = dict(row.metadata or {})
             chunk = RetrievedContextChunk(
                 score=score,
                 path=row.path_or_url or row.title,
@@ -95,7 +96,16 @@ class LexicalRetriever:
                 source_id=row.doc_id,
                 chunk_id=f"{row.doc_id}:{row.chunk_index}",
                 document_version=row.doc_version,
-                section_title=row.title,
+                section_title=_as_optional_str(metadata.get("section_title")) or row.title,
+                heading_path=_normalize_heading_path(metadata.get("heading_path")),
+                page=_as_optional_int(metadata.get("page")),
+                source_uri=_as_optional_str(metadata.get("source_uri")) or row.path_or_url,
+                content_hash=_as_optional_str(metadata.get("content_hash")),
+                version=_as_optional_str(metadata.get("version")) or row.doc_version,
+                entity_type=_as_optional_str(metadata.get("entity_type")),
+                entity_name=_as_optional_str(metadata.get("entity_name")),
+                domain=_as_optional_str(metadata.get("domain")),
+                crawl_timestamp=_as_optional_str(metadata.get("crawl_timestamp")),
                 retrieval_reason="lexical_match:document",
                 retriever_channel="lexical_document",
                 score_raw=score,
@@ -121,6 +131,7 @@ class LexicalRetriever:
         candidates: list[RetrievalCandidate] = []
         for row in rows:
             score = max(row.lexical_score, 0.1)
+            metadata = dict(row.metadata or {})
             chunk = RetrievedContextChunk(
                 score=score,
                 path=row.path_or_url or row.title,
@@ -139,7 +150,16 @@ class LexicalRetriever:
                 source_id=row.doc_id,
                 chunk_id=f"{row.doc_id}:{row.chunk_index}",
                 document_version=row.doc_version,
-                section_title=row.title,
+                section_title=_as_optional_str(metadata.get("section_title")) or row.title,
+                heading_path=_normalize_heading_path(metadata.get("heading_path")),
+                page=_as_optional_int(metadata.get("page")),
+                source_uri=_as_optional_str(metadata.get("source_uri")) or row.path_or_url,
+                content_hash=_as_optional_str(metadata.get("content_hash")),
+                version=_as_optional_str(metadata.get("version")) or row.doc_version,
+                entity_type=_as_optional_str(metadata.get("entity_type")),
+                entity_name=_as_optional_str(metadata.get("entity_name")),
+                domain=_as_optional_str(metadata.get("domain")),
+                crawl_timestamp=_as_optional_str(metadata.get("crawl_timestamp")),
                 retrieval_reason="lexical_match:global_document",
                 retriever_channel="lexical_global_document",
                 score_raw=score,
@@ -154,3 +174,36 @@ class LexicalRetriever:
                 )
             )
         return candidates
+
+
+def _as_optional_int(value: object) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _as_optional_str(value: object) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_heading_path(value: object) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, tuple):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        parts = [item.strip() for item in value.split(">") if item.strip()]
+        return tuple(parts)
+    return ()

@@ -289,6 +289,11 @@ export function RagCitations() {
                               {reference.domain}
                             </Badge>
                           ) : null}
+                          {reference.documentVersion ? (
+                            <Badge variant="outline" className="text-xs">
+                              {reference.documentVersion}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
 
@@ -315,6 +320,9 @@ export function RagCitations() {
                       {location ? <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{location}</div> : null}
                       {entity ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entity}</div> : null}
                       {headingPath ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{headingPath}</div> : null}
+                      {reference.crawlTimestamp ? (
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{reference.crawlTimestamp}</div>
+                      ) : null}
                     </div>
 
                     {reference.tags.length > 0 ? (

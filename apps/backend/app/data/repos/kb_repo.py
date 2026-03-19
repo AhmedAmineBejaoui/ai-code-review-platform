@@ -26,6 +26,7 @@ class KBDocumentChunkRow:
     lexical_score: float = 0.0
     repo_id: str | None = None
     doc_version: str | None = None
+    metadata: dict[str, Any] | None = None
 
 
 class KBRepo:
@@ -65,6 +66,7 @@ class KBRepo:
                                 c.chunk_index,
                                 COALESCE(c.content, c.text) AS content,
                                 COALESCE(c.token_count, GREATEST(1, LENGTH(COALESCE(c.content, c.text, '')) / 4)) AS token_count,
+                                c.metadata_json,
                                 ts_rank_cd(
                                     to_tsvector('simple', COALESCE(c.content, c.text)),
                                     plainto_tsquery('simple', :query)
@@ -132,7 +134,8 @@ class KBRepo:
                                 d.tags_json,
                                 c.chunk_index,
                                 COALESCE(c.content, c.text) AS content,
-                                COALESCE(c.token_count, GREATEST(1, LENGTH(COALESCE(c.content, c.text, '')) / 4)) AS token_count
+                                COALESCE(c.token_count, GREATEST(1, LENGTH(COALESCE(c.content, c.text, '')) / 4)) AS token_count,
+                                c.metadata_json
                             FROM kb_documents d
                             JOIN kb_chunks c ON c.doc_id = d.id
                             WHERE (:repo_id IS NULL OR COALESCE(d.tags_json->>'repo_id', '') = :repo_id)
@@ -165,6 +168,18 @@ def _row_to_document_chunk(row: RowMapping) -> KBDocumentChunkRow:
 
     raw_tags = tags_payload.get("tags")
     tags = [str(tag).strip() for tag in raw_tags if str(tag).strip()] if isinstance(raw_tags, list) else []
+    raw_metadata_json = row.get("metadata_json")
+    if isinstance(raw_metadata_json, dict):
+        chunk_metadata = raw_metadata_json
+    elif isinstance(raw_metadata_json, str):
+        try:
+            parsed_metadata = json.loads(raw_metadata_json)
+        except json.JSONDecodeError:
+            chunk_metadata = {}
+        else:
+            chunk_metadata = parsed_metadata if isinstance(parsed_metadata, dict) else {}
+    else:
+        chunk_metadata = {}
 
     return KBDocumentChunkRow(
         doc_id=str(row["doc_id"]),
@@ -178,4 +193,5 @@ def _row_to_document_chunk(row: RowMapping) -> KBDocumentChunkRow:
         token_count=int(row["token_count"]),
         tags=tags,
         lexical_score=float(row.get("lexical_score") or 0.0),
+        metadata=chunk_metadata,
     )
