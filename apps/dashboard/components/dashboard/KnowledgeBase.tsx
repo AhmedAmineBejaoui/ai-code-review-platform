@@ -766,7 +766,7 @@ export function KnowledgeBase() {
                 <Textarea
                   value={sourceNotes}
                   onChange={(event) => setSourceNotes(event.target.value)}
-                  placeholder="Décrivez le contenu à indexer..."
+                  placeholder={selectedSourceDetails.notesPlaceholder}
                   className="bg-white dark:bg-gray-800"
                 />
               </div>
@@ -774,7 +774,7 @@ export function KnowledgeBase() {
               <div className="flex flex-wrap gap-2">
                 <Button type="button" className="gap-2 bg-gradient-to-r from-emerald-600 to-teal-600" onClick={() => void createSource()} disabled={busyAction !== null}>
                   {sourceType === "code" ? <Code2 className="h-4 w-4" /> : sourceType === "pdf" ? <FileText className="h-4 w-4" /> : sourceType === "markdown" ? <FileCode2 className="h-4 w-4" /> : sourceType === "web" ? <Globe className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-                  Enregistrer la source
+                  {selectedSourceDetails.submitLabel}
                 </Button>
                 <Button
                   type="button"
@@ -976,6 +976,12 @@ export function KnowledgeBase() {
                 <Input placeholder="Ex: SQL injection prevention" value={retrievalQuery} onChange={(event) => setRetrievalQuery(event.target.value)} className="bg-white dark:bg-gray-800" />
               </div>
             </div>
+            <div className="rounded-xl border border-blue-200/50 bg-blue-50/70 p-3 text-sm text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/20 dark:text-blue-100">
+              <div className="font-medium">Scope de recherche</div>
+              <p className="mt-1 text-xs text-blue-700 dark:text-blue-200">
+                Le test utilise la source selectionnee ci-dessus et reste compatible avec les anciens chunks retournes par le backend.
+              </p>
+            </div>
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
               <Button type="button" className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" onClick={() => void runRetrievalTest()} disabled={busyAction === "retrieval"}>
                 <Search className="h-4 w-4" />
@@ -988,8 +994,29 @@ export function KnowledgeBase() {
                   <div key={`${chunk.path ?? "chunk"}-${index}`} className="rounded-lg border border-gray-200/50 p-3 dark:border-gray-700/50">
                     <div className="mb-1 flex items-center gap-2 text-xs">
                       <Badge variant="outline">{chunk.path ?? "unknown"}</Badge>
+                      {chunk.source_type ? <Badge variant="outline">{chunk.source_type.replaceAll("_", " ")}</Badge> : null}
+                      {chunk.page !== null && typeof chunk.page === "number" ? <Badge variant="secondary">page {chunk.page}</Badge> : null}
+                      {chunk.entity_name ? (
+                        <Badge variant="secondary">
+                          {chunk.entity_type ? `${chunk.entity_type}: ` : ""}
+                          {chunk.entity_name}
+                        </Badge>
+                      ) : null}
+                      {formatChunkLineRange(chunk) ? <Badge variant="outline">{formatChunkLineRange(chunk)}</Badge> : null}
                       <Badge variant="secondary">score {(chunk.score ?? 0).toFixed(2)}</Badge>
                     </div>
+                    {formatSourceMeta(chunk) ? (
+                      <div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{formatSourceMeta(chunk)}</div>
+                    ) : null}
+                    {chunk.section_title ? (
+                      <div className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">{chunk.section_title}</div>
+                    ) : null}
+                    {formatHeadingPath(chunk.heading_path) ? (
+                      <div className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">{formatHeadingPath(chunk.heading_path)}</div>
+                    ) : null}
+                    {chunk.source_uri ? (
+                      <div className="mb-2 text-[11px] font-mono break-all text-gray-500 dark:text-gray-400">{chunk.source_uri}</div>
+                    ) : null}
                     <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-3">{chunk.content ?? ""}</p>
                   </div>
                 ))}
