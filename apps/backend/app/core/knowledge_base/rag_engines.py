@@ -298,7 +298,9 @@ class LangChainRagEngine:
         counts: dict[str, int] = {}
         candidates = []
 
-        if route in {QueryRoute.REPO_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+        document_source_type = _document_source_type_for_route(route)
+
+        if route in {QueryRoute.REPO_QUERY, QueryRoute.CODE_QUERY, QueryRoute.GENERIC_HYBRID_QUERY, QueryRoute.MULTI_SOURCE_QUERY}:
             exact_hint = self._exact.retrieve_query_hints(repo_id=repo_id, query=query, limit=settings.KB_EXACT_TOP_K)
             counts["file_exact"] = len(exact_hint)
             candidates.extend(exact_hint)
@@ -327,16 +329,27 @@ class LangChainRagEngine:
                 filter_payload={"type": "kb_document_chunk"},
                 limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
                 source="semantic_global_document",
+                source_type=document_source_type,
             )
             counts["semantic_global_document"] = len(semantic_global)
             candidates.extend(semantic_global)
 
-        if route in {QueryRoute.POLICY_QUERY, QueryRoute.DOCUMENT_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+        if route in {
+            QueryRoute.POLICY_QUERY,
+            QueryRoute.DOCUMENT_QUERY,
+            QueryRoute.PDF_QUERY,
+            QueryRoute.WEB_QUERY,
+            QueryRoute.MARKDOWN_QUERY,
+            QueryRoute.SQL_QUERY,
+            QueryRoute.GENERIC_HYBRID_QUERY,
+            QueryRoute.MULTI_SOURCE_QUERY,
+        }:
             desired_tags = ["policy", "security", "compliance"] if route == QueryRoute.POLICY_QUERY else []
             lexical_docs = self._lexical.retrieve_documents(
                 repo_id=repo_id,
                 query=query,
                 limit=max(4, settings.KB_LEXICAL_TOP_K // 2),
+                source_type=document_source_type,
                 tags=desired_tags or None,
             )
             counts["lexical_document"] = len(lexical_docs)
@@ -346,6 +359,7 @@ class LangChainRagEngine:
                 filter_payload={"repo_id": repo_id, "type": "kb_document_chunk"},
                 limit=max(4, settings.KB_SEMANTIC_TOP_K // 2),
                 source="semantic_document",
+                source_type=document_source_type,
                 required_tags=set(desired_tags),
             )
             counts["semantic_document"] = len(semantic_docs)
@@ -430,12 +444,16 @@ class LangChainRagEngine:
         filter_payload: dict[str, Any],
         limit: int,
         source: str,
+        source_type: str | None = None,
         changed_files: set[str] | None = None,
         required_tags: set[str] | None = None,
     ) -> list[Any]:
+        query_filter = dict(filter_payload)
+        if source_type:
+            query_filter["source_type"] = source_type
         docs = await self._search_vector_documents(
             query_text=query_text,
-            filter_payload=filter_payload,
+            filter_payload=query_filter,
             limit=max(limit * 4, limit),
             source=source,
         )
@@ -561,6 +579,17 @@ def _kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
         "source_type": item.source_type,
         "chunk_type": item.chunk_type,
         "symbol_name": item.symbol_name,
+        "source_uri": item.source_uri,
+        "page": item.page,
+        "section_title": item.section_title,
+        "heading_path": list(item.heading_path),
+        "entity_type": item.entity_type,
+        "entity_name": item.entity_name,
+        "line_start": item.start_line,
+        "line_end": item.end_line,
+        "domain": item.domain,
+        "document_version": item.document_version or item.version,
+        "crawl_timestamp": item.crawl_timestamp,
         "score": round(float(item.score_final or item.score), 4),
         "tags": list(item.tags),
     }
@@ -580,6 +609,13 @@ def _internal_kb_reference(item: RetrievedContextChunk) -> dict[str, Any]:
         "line_end": item.end_line,
         "document_version": item.document_version,
         "section_title": item.section_title or item.title,
+        "heading_path": list(item.heading_path),
+        "page": item.page,
+        "source_uri": item.source_uri,
+        "entity_type": item.entity_type,
+        "entity_name": item.entity_name,
+        "domain": item.domain,
+        "crawl_timestamp": item.crawl_timestamp,
         "retrieval_reason": item.retrieval_reason,
         "retriever_channel": item.retriever_channel or item.source,
         "score_raw": round(float(item.score_raw or item.score), 4),
@@ -637,3 +673,13 @@ def build_rag_engines(*, vector_store: QdrantClient) -> tuple[RagEngine, RagEngi
         return legacy, None
     langchain = LangChainRagEngine(vector_store=vector_store)
     return legacy, langchain if langchain.available else None
+
+
+def _document_source_type_for_route(route: QueryRoute) -> str | None:
+    mapping = {
+        QueryRoute.PDF_QUERY: "pdf",
+        QueryRoute.WEB_QUERY: "web",
+        QueryRoute.MARKDOWN_QUERY: "markdown",
+        QueryRoute.SQL_QUERY: "sql",
+    }
+    return mapping.get(route)
