@@ -77,6 +77,15 @@ def candidates_to_documents(candidates: list[RetrievalCandidate]) -> list[Docume
                     "chunk_id": chunk.chunk_id,
                     "document_version": chunk.document_version,
                     "section_title": chunk.section_title,
+                    "heading_path": list(chunk.heading_path),
+                    "page": chunk.page,
+                    "source_uri": chunk.source_uri,
+                    "content_hash": chunk.content_hash,
+                    "version": chunk.version,
+                    "entity_type": chunk.entity_type,
+                    "entity_name": chunk.entity_name,
+                    "domain": chunk.domain,
+                    "crawl_timestamp": chunk.crawl_timestamp,
                     "retrieval_reason": chunk.retrieval_reason,
                     "retriever_channel": chunk.retriever_channel,
                     "score_raw": chunk.score_raw,
@@ -120,6 +129,15 @@ def documents_to_candidates(documents: list[Document]) -> list[RetrievalCandidat
             chunk_id=str(metadata.get("chunk_id")) if metadata.get("chunk_id") else None,
             document_version=str(metadata.get("document_version")) if metadata.get("document_version") else None,
             section_title=str(metadata.get("section_title")) if metadata.get("section_title") else None,
+            heading_path=_normalize_heading_path(metadata.get("heading_path")),
+            page=_as_optional_int(metadata.get("page")),
+            source_uri=_as_optional_str(metadata.get("source_uri")),
+            content_hash=_as_optional_str(metadata.get("content_hash")),
+            version=_as_optional_str(metadata.get("version")),
+            entity_type=_as_optional_str(metadata.get("entity_type")),
+            entity_name=_as_optional_str(metadata.get("entity_name")),
+            domain=_as_optional_str(metadata.get("domain")),
+            crawl_timestamp=_as_optional_str(metadata.get("crawl_timestamp")),
             retrieval_reason=str(metadata.get("retrieval_reason")) if metadata.get("retrieval_reason") else None,
             retriever_channel=str(metadata.get("retriever_channel")) if metadata.get("retriever_channel") else None,
             score_raw=float(metadata.get("score_raw")) if metadata.get("score_raw") is not None else None,
@@ -171,6 +189,15 @@ def vector_hits_to_documents(hits: list[Any], *, source: str) -> list[Document]:
                     "chunk_id": str(payload.get("chunk_id")) if payload.get("chunk_id") else None,
                     "document_version": str(payload.get("document_version")) if payload.get("document_version") else None,
                     "section_title": str(payload.get("section_title") or payload.get("title")) if (payload.get("section_title") or payload.get("title")) else None,
+                    "heading_path": list(_normalize_heading_path(payload.get("heading_path"))),
+                    "page": _as_optional_int(payload.get("page")),
+                    "source_uri": _as_optional_str(payload.get("source_uri") or payload.get("path_or_url")),
+                    "content_hash": _as_optional_str(payload.get("content_hash")),
+                    "version": _as_optional_str(payload.get("version") or payload.get("document_version")),
+                    "entity_type": _as_optional_str(payload.get("entity_type")),
+                    "entity_name": _as_optional_str(payload.get("entity_name")),
+                    "domain": _as_optional_str(payload.get("domain")),
+                    "crawl_timestamp": _as_optional_str(payload.get("crawl_timestamp")),
                     "retrieval_reason": f"semantic_match:{source}",
                     "retriever_channel": source,
                     "score_raw": score,
@@ -183,3 +210,35 @@ def vector_hits_to_documents(hits: list[Any], *, source: str) -> list[Document]:
             )
         )
     return documents
+
+
+def _as_optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _as_optional_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_heading_path(value: Any) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, tuple):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        return tuple(part.strip() for part in value.split(">") if part.strip())
+    return ()

@@ -134,6 +134,15 @@ def _hits_to_candidates(hits: list[Any], *, source: str) -> list[RetrievalCandid
             chunk_id=str(payload.get("chunk_id")) if payload.get("chunk_id") else None,
             document_version=str(payload.get("document_version")) if payload.get("document_version") else None,
             section_title=str(payload.get("section_title") or payload.get("title")) if (payload.get("section_title") or payload.get("title")) else None,
+            heading_path=_normalize_heading_path(payload.get("heading_path")),
+            page=_as_optional_int(payload.get("page")),
+            source_uri=_as_optional_str(payload.get("source_uri") or payload.get("path_or_url")),
+            content_hash=_as_optional_str(payload.get("content_hash")),
+            version=_as_optional_str(payload.get("version") or payload.get("document_version")),
+            entity_type=_as_optional_str(payload.get("entity_type")),
+            entity_name=_as_optional_str(payload.get("entity_name")),
+            domain=_as_optional_str(payload.get("domain")),
+            crawl_timestamp=_as_optional_str(payload.get("crawl_timestamp")),
             retrieval_reason=f"semantic_match:{source}",
             retriever_channel=source,
             score_raw=score,
@@ -142,3 +151,35 @@ def _hits_to_candidates(hits: list[Any], *, source: str) -> list[RetrievalCandid
         )
         candidates.append(RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score))
     return candidates
+
+
+def _as_optional_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return int(value)
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value.strip())
+        except ValueError:
+            return None
+    return None
+
+
+def _as_optional_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    normalized = value.strip()
+    return normalized or None
+
+
+def _normalize_heading_path(value: Any) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, tuple):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        return tuple(part.strip() for part in value.split(">") if part.strip())
+    return ()

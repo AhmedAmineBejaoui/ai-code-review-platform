@@ -79,7 +79,7 @@ function formatReferenceLocation(reference: DashboardReviewContextReference): st
     formatLineRange(reference.lineStart, reference.lineEnd),
   ].filter((item): item is string => typeof item === "string" && item.trim().length > 0)
 
-  return parts.length > 0 ? parts.join(" · ") : null
+  return parts.length > 0 ? parts.join(" | ") : null
 }
 
 function formatReferenceEntity(reference: DashboardReviewContextReference): string | null {
