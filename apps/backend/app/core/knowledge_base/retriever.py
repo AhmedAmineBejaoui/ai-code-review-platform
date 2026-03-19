@@ -91,11 +91,12 @@ class RepoContextRetriever:
         route_hint: str = "auto",
     ) -> tuple[list[RetrievedContextChunk], dict[str, Any] | None]:
         route = self._router.route_query(query=query, route_hint=route_hint)
+        document_source_type = _document_source_type_for_route(route)
         changed_files_set = set(changed_files or [])
         candidates = []
         global_document_limit = max(3, settings.KB_LEXICAL_TOP_K // 2)
 
-        if route in {QueryRoute.REPO_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+        if route in {QueryRoute.REPO_QUERY, QueryRoute.CODE_QUERY, QueryRoute.GENERIC_HYBRID_QUERY, QueryRoute.MULTI_SOURCE_QUERY}:
             candidates.extend(
                 self._exact.retrieve_query_hints(
                     repo_id=repo_id,
@@ -129,16 +130,27 @@ class RepoContextRetriever:
                 await self._semantic.retrieve_global_documents(
                     query_text=query,
                     limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
+                    source_type=document_source_type,
                 )
             )
 
-        if route in {QueryRoute.POLICY_QUERY, QueryRoute.DOCUMENT_QUERY, QueryRoute.GENERIC_HYBRID_QUERY}:
+        if route in {
+            QueryRoute.POLICY_QUERY,
+            QueryRoute.DOCUMENT_QUERY,
+            QueryRoute.PDF_QUERY,
+            QueryRoute.WEB_QUERY,
+            QueryRoute.MARKDOWN_QUERY,
+            QueryRoute.SQL_QUERY,
+            QueryRoute.GENERIC_HYBRID_QUERY,
+            QueryRoute.MULTI_SOURCE_QUERY,
+        }:
             desired_tags = ["policy", "security", "compliance"] if route == QueryRoute.POLICY_QUERY else []
             candidates.extend(
                 self._lexical.retrieve_documents(
                     repo_id=repo_id,
                     query=query,
                     limit=max(4, settings.KB_LEXICAL_TOP_K // 2),
+                    source_type=document_source_type,
                     tags=desired_tags or None,
                 )
             )
@@ -147,6 +159,7 @@ class RepoContextRetriever:
                     repo_id=repo_id,
                     query_text=query,
                     limit=max(4, settings.KB_SEMANTIC_TOP_K // 2),
+                    source_type=document_source_type,
                     tags=desired_tags or None,
                 )
             )
@@ -154,6 +167,7 @@ class RepoContextRetriever:
                 self._lexical.retrieve_global_documents(
                     query=query,
                     limit=global_document_limit,
+                    source_type=document_source_type,
                     tags=desired_tags or None,
                 )
             )
@@ -161,6 +175,7 @@ class RepoContextRetriever:
                 await self._semantic.retrieve_global_documents(
                     query_text=query,
                     limit=max(3, settings.KB_SEMANTIC_TOP_K // 2),
+                    source_type=document_source_type,
                     tags=desired_tags or None,
                 )
             )
@@ -181,10 +196,10 @@ class RepoContextRetriever:
                 )
             )
 
-        if route == QueryRoute.DOCUMENT_QUERY:
+        if route in {QueryRoute.DOCUMENT_QUERY, QueryRoute.PDF_QUERY, QueryRoute.WEB_QUERY, QueryRoute.MARKDOWN_QUERY, QueryRoute.SQL_QUERY}:
             candidates.extend(self._exact.retrieve_query_hints(repo_id=repo_id, query=query, limit=2))
 
-        if route == QueryRoute.GENERIC_HYBRID_QUERY:
+        if route in {QueryRoute.GENERIC_HYBRID_QUERY, QueryRoute.MULTI_SOURCE_QUERY}:
             candidates.extend(
                 self._lexical.retrieve_code(
                     repo_id=repo_id,
@@ -291,7 +306,7 @@ class RepoContextRetriever:
         route = (
             QueryRoute.POLICY_QUERY
             if source_type == "policy" or policy_tags.intersection({"policy", "security", "compliance"})
-            else QueryRoute.DOCUMENT_QUERY
+            else _route_for_source_type(source_type) or QueryRoute.DOCUMENT_QUERY
         )
         candidates = [
             *self._lexical.retrieve_documents(
@@ -380,10 +395,16 @@ def format_context_section(item: RetrievedContextChunk) -> str:
     header_parts = [f"[FILE: {item.path}]"]
     if location:
         header_parts.append(location)
+    if item.page is not None:
+        header_parts.append(f"page={item.page}")
     if item.chunk_type:
         header_parts.append(f"type={item.chunk_type}")
     if item.symbol_name:
         header_parts.append(f"symbol={item.symbol_name}")
+    if item.section_title:
+        header_parts.append(f"section={item.section_title}")
+    if item.entity_type and item.entity_name:
+        header_parts.append(f"{item.entity_type}={item.entity_name}")
 
     return "\n".join([" | ".join(header_parts), item.content.strip()])
 
@@ -534,6 +555,15 @@ def _to_retrieved_chunks(hits: list[Any], *, source: str, fallback_score: float 
                 chunk_id=_as_optional_str(payload.get("chunk_id")),
                 document_version=_as_optional_str(payload.get("document_version")),
                 section_title=_as_optional_str(payload.get("section_title") or payload.get("title")),
+                heading_path=_normalize_heading_path(payload.get("heading_path")),
+                page=_as_optional_int(payload.get("page")),
+                source_uri=_as_optional_str(payload.get("source_uri") or payload.get("path_or_url")),
+                content_hash=_as_optional_str(payload.get("content_hash")),
+                version=_as_optional_str(payload.get("version") or payload.get("document_version")),
+                entity_type=_as_optional_str(payload.get("entity_type")),
+                entity_name=_as_optional_str(payload.get("entity_name")),
+                domain=_as_optional_str(payload.get("domain")),
+                crawl_timestamp=_as_optional_str(payload.get("crawl_timestamp")),
                 retrieval_reason=f"semantic_match:{source}",
                 retriever_channel=source,
                 score_raw=score,
@@ -564,3 +594,36 @@ def _as_optional_str(value: Any) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+def _normalize_heading_path(value: Any) -> tuple[str, ...]:
+    if isinstance(value, list):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, tuple):
+        return tuple(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        return tuple(part.strip() for part in value.split(">") if part.strip())
+    return ()
+
+
+def _route_for_source_type(source_type: str | None) -> QueryRoute | None:
+    normalized = (source_type or "").strip().lower()
+    mapping = {
+        "pdf": QueryRoute.PDF_QUERY,
+        "web": QueryRoute.WEB_QUERY,
+        "markdown": QueryRoute.MARKDOWN_QUERY,
+        "sql": QueryRoute.SQL_QUERY,
+        "code": QueryRoute.CODE_QUERY,
+        "policy": QueryRoute.POLICY_QUERY,
+    }
+    return mapping.get(normalized)
+
+
+def _document_source_type_for_route(route: QueryRoute) -> str | None:
+    mapping = {
+        QueryRoute.PDF_QUERY: "pdf",
+        QueryRoute.WEB_QUERY: "web",
+        QueryRoute.MARKDOWN_QUERY: "markdown",
+        QueryRoute.SQL_QUERY: "sql",
+    }
+    return mapping.get(route)
