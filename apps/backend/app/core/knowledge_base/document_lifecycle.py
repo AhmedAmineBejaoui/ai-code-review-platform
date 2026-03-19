@@ -575,6 +575,9 @@ def _mark_document_sync_failed(doc_id: str, tags_payload: dict[str, Any], error:
             text("UPDATE kb_documents SET tags_json = CAST(:tags_json AS jsonb) WHERE id = :doc_id"),
             {"doc_id": doc_id, "tags_json": json.dumps(updated_payload)},
         )
+    repo_id = _as_optional_str(tags_payload.get("repo_id"))
+    if repo_id:
+        _refresh_repo_profile_document_observability(repo_id)
 
 
 def _build_sync_payload(
