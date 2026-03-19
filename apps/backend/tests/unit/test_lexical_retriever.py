@@ -64,6 +64,11 @@ class _FakeKBRepo:
                 token_count=6,
                 tags=tags or ["policy"],
                 lexical_score=0.8,
+                metadata={
+                    "section_title": "Secrets",
+                    "source_uri": "https://docs.example.com/security",
+                    "page": 3,
+                },
             )
         ][:limit]
 
@@ -86,6 +91,7 @@ class _FakeKBRepo:
                 token_count=9,
                 tags=tags or ["pdf", "dashboard_upload"],
                 lexical_score=0.77,
+                metadata={"page": 5},
             )
         ][:limit]
 
@@ -116,6 +122,9 @@ def test_lexical_retriever_maps_document_results() -> None:
     assert len(candidates) == 1
     assert candidates[0].chunk.source_type == "policy"
     assert candidates[0].chunk.document_id == "doc_1"
+    assert candidates[0].chunk.section_title == "Secrets"
+    assert candidates[0].chunk.source_uri == "https://docs.example.com/security"
+    assert candidates[0].chunk.page == 3
 
 
 def test_lexical_retriever_maps_global_document_results() -> None:

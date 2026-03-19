@@ -78,6 +78,8 @@ def test_to_retrieved_chunks_supports_document_payloads() -> None:
                 "chunk_index": 2,
                 "source_type": "pdf",
                 "chunk_type": "document_chunk",
+                "page": 7,
+                "section_title": "Architecture",
             },
         )
     ]
@@ -88,3 +90,5 @@ def test_to_retrieved_chunks_supports_document_payloads() -> None:
     assert chunks[0].path == "design.pdf"
     assert chunks[0].file_type == "pdf"
     assert chunks[0].chunk_type == "document_chunk"
+    assert chunks[0].page == 7
+    assert chunks[0].section_title == "Architecture"
