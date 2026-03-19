@@ -91,7 +91,34 @@ type QueryResponse = {
   chunks?: QueryChunk[]
 }
 
+type SearchCitation = {
+  doc_id?: string
+  title?: string
+  source_type?: string
+  excerpt?: string
+  score?: number
+  path_or_url?: string | null
+  chunk_index?: number
+  source_uri?: string | null
+  page?: number | null
+  section_title?: string | null
+  heading_path?: string[] | string | null
+  entity_type?: string | null
+  entity_name?: string | null
+  line_start?: number | null
+  line_end?: number | null
+  domain?: string | null
+  document_version?: string | null
+  crawl_timestamp?: string | null
+  tags?: string[]
+}
+
+type SearchResponse = {
+  citations?: SearchCitation[]
+}
+
 type SourceType = "pdf" | "web" | "markdown" | "code" | "sql"
+type RetrievalSource = "auto" | SourceType
 
 const SOURCE_TYPES: Array<{
   value: SourceType
@@ -263,7 +290,7 @@ function formatSourceMeta(chunk: QueryChunk): string | null {
     formatChunkLineRange(chunk),
   ].filter((piece): piece is string => typeof piece === "string" && piece.trim().length > 0)
 
-  return pieces.length > 0 ? pieces.join(" · ") : null
+  return pieces.length > 0 ? pieces.join(" | ") : null
 }
 
 export function KnowledgeBase() {
@@ -275,6 +302,7 @@ export function KnowledgeBase() {
   const [loadingRepos, setLoadingRepos] = useState(true)
   const [selectedRepoId, setSelectedRepoId] = useState<string>("")
   const [retrievalQuery, setRetrievalQuery] = useState("")
+  const [retrievalSource, setRetrievalSource] = useState<RetrievalSource>("auto")
   const [queryResults, setQueryResults] = useState<QueryChunk[]>([])
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [busyAction, setBusyAction] = useState<string | null>(null)
@@ -453,9 +481,13 @@ export function KnowledgeBase() {
         title,
         source_type: kind,
         path_or_url: pathOrUrl || undefined,
+        source_uri: pathOrUrl || undefined,
         content,
         tags,
         doc_version: 1,
+        metadata: {
+          imported_from: "dashboard",
+        },
       }),
     })
     const payload = (await response.json().catch(() => ({}))) as DocumentIngestResponse
