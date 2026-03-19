@@ -71,8 +71,8 @@ class KBRepo:
                                 ) AS lexical_score
                             FROM kb_documents d
                             JOIN kb_chunks c ON c.doc_id = d.id
-                            WHERE (:repo_id IS NULL OR COALESCE(d.tags_json->>'repo_id', '') = :repo_id)
-                              AND (:source_type IS NULL OR d.source_type = :source_type)
+                            WHERE (CAST(:repo_id AS TEXT) IS NULL OR COALESCE(d.tags_json->>'repo_id', '') = CAST(:repo_id AS TEXT))
+                              AND (CAST(:source_type AS TEXT) IS NULL OR d.source_type = CAST(:source_type AS TEXT))
                               AND to_tsvector('simple', COALESCE(c.content, c.text)) @@ plainto_tsquery('simple', :query)
                             ORDER BY lexical_score DESC, c.chunk_index ASC
                             LIMIT :limit
