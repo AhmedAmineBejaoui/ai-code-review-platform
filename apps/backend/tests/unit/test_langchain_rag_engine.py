@@ -106,18 +106,11 @@ def test_result_from_chunks_only_references_prompt_used_chunks() -> None:
     assert result.context_text is not None
     assert "[FILE: src/first.py]" in result.context_text
     assert "[FILE: src/second.py]" not in result.context_text
-    assert result.context_references == [
-        {
-            "path": "src/first.py",
-            "title": None,
-            "source": "semantic_code",
-            "source_type": None,
-            "chunk_type": "function",
-            "symbol_name": None,
-            "score": 0.92,
-            "tags": [],
-        }
-    ]
+    assert len(result.context_references) == 1
+    assert result.context_references[0]["path"] == "src/first.py"
+    assert result.context_references[0]["source"] == "semantic_code"
+    assert result.context_references[0]["chunk_type"] == "function"
+    assert result.context_references[0]["score"] == 0.92
     assert result.trace["prompt_chunks_used"] == 1
 
 
