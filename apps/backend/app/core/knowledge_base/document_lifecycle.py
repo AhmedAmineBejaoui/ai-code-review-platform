@@ -111,8 +111,8 @@ def list_document_sources(
                     """
                     SELECT id, title, source_type, path_or_url, tags_json, doc_version, created_at
                     FROM kb_documents
-                    WHERE (:repo_id IS NULL OR COALESCE(tags_json->>'repo_id', '') = :repo_id)
-                      AND (:source_type IS NULL OR source_type = :source_type)
+                    WHERE (CAST(:repo_id AS TEXT) IS NULL OR COALESCE(tags_json->>'repo_id', '') = CAST(:repo_id AS TEXT))
+                      AND (CAST(:source_type AS TEXT) IS NULL OR source_type = CAST(:source_type AS TEXT))
                     ORDER BY created_at DESC
                     LIMIT :limit
                     """
