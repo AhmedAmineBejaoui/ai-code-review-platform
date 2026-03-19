@@ -99,16 +99,47 @@ def _bucket_for_candidate(candidate: RetrievalCandidate) -> str:
     tags = {tag.lower() for tag in chunk.tags}
     if chunk.source_type == "policy" or tags.intersection({"policy", "security", "compliance"}):
         return "policy"
-    if chunk.chunk_type == "document_chunk" or chunk.source_type in {"pdf", "markdown", "web", "sql"}:
+    if chunk.source_type in {"pdf", "markdown", "web", "sql"}:
+        return chunk.source_type
+    if chunk.chunk_type == "document_chunk":
         return "document"
     return "code"
 
 
 def _quotas_for_route(route: QueryRoute, max_chunks: int) -> dict[str, int]:
     if route == QueryRoute.DIFF_REVIEW:
-        return {"code": max_chunks, "test": max(2, max_chunks // 3), "document": 2, "policy": 2}
+        return {"code": max_chunks, "test": max(2, max_chunks // 3), "pdf": 1, "web": 1, "markdown": 1, "sql": 1, "policy": 2, "document": 2}
     if route == QueryRoute.POLICY_QUERY:
-        return {"policy": max_chunks, "document": max(3, max_chunks // 2), "code": 3, "test": 1}
+        return {"policy": max_chunks, "markdown": max(2, max_chunks // 2), "web": 2, "pdf": 2, "sql": 1, "code": 3, "test": 1, "document": max(3, max_chunks // 2)}
     if route == QueryRoute.DOCUMENT_QUERY:
-        return {"document": max_chunks, "policy": max(3, max_chunks // 2), "code": 3, "test": 1}
-    return {"code": max_chunks, "document": max(3, max_chunks // 2), "policy": 2, "test": 2}
+        return {"document": max_chunks, "pdf": max(2, max_chunks // 2), "web": max(2, max_chunks // 2), "markdown": max(2, max_chunks // 2), "sql": max(2, max_chunks // 3), "policy": max(3, max_chunks // 2), "code": 3, "test": 1}
+    if route == QueryRoute.PDF_QUERY:
+        return {"pdf": max_chunks, "web": 2, "markdown": 2, "policy": 2, "code": 2, "sql": 1}
+    if route == QueryRoute.WEB_QUERY:
+        return {"web": max_chunks, "markdown": 3, "pdf": 2, "policy": 2, "code": 2, "sql": 1}
+    if route == QueryRoute.MARKDOWN_QUERY:
+        return {"markdown": max_chunks, "web": 3, "pdf": 2, "policy": 2, "code": 2, "sql": 1}
+    if route == QueryRoute.SQL_QUERY:
+        return {"sql": max_chunks, "code": max(3, max_chunks // 2), "markdown": 2, "web": 1, "pdf": 1, "policy": 2}
+    if route == QueryRoute.MULTI_SOURCE_QUERY:
+        return _normalize_multi_source_quotas(max_chunks)
+    return {"code": max_chunks, "pdf": 2, "web": 2, "markdown": 2, "sql": 2, "document": max(3, max_chunks // 2), "policy": 2, "test": 2}
+
+
+def _normalize_multi_source_quotas(max_chunks: int) -> dict[str, int]:
+    base = {"code": 2, "pdf": 1, "web": 1, "markdown": 1, "sql": 1, "policy": 1, "test": 1}
+    if max_chunks <= 0:
+        return base
+    total = sum(base.values())
+    if total <= max_chunks:
+        remaining = max_chunks - total
+        base["code"] += remaining
+        return base
+    scaled: dict[str, int] = {}
+    for key, value in base.items():
+        scaled[key] = max(1, int((value / total) * max_chunks))
+    while sum(scaled.values()) > max_chunks:
+        for key in ("test", "policy", "pdf", "web", "markdown", "sql", "code"):
+            if scaled.get(key, 0) > 1 and sum(scaled.values()) > max_chunks:
+                scaled[key] -= 1
+    return scaled

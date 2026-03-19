@@ -17,6 +17,7 @@ from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, require_permission
 from app.data.database import get_engine
 from app.data.repos.analyses_repo import AnalysesRepo
+from app.core.knowledge_base.document_lifecycle import source_observability_summary
 from app.integrations.object_storage.s3_minio_client import S3MinioClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
@@ -1112,6 +1113,7 @@ def _collect_observability_payload() -> dict[str, Any]:
             }
             for row in queue_rows
         ],
+        "knowledgeBase": source_observability_summary(),
         "generatedAt": _utc_iso_now(),
     }
 

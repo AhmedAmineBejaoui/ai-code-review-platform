@@ -4,6 +4,7 @@ import asyncio
 from typing import Any
 
 from app.core.knowledge_base.ingestor import RepoContextIngestor
+from app.core.knowledge_base.document_lifecycle import resync_document_source, run_due_document_maintenance
 from app.core.knowledge_base.rag_engines import build_rag_engines
 from app.core.knowledge_base.retriever import build_llm_context
 from app.core.review_intelligence.engines import build_langchain_review_generation_engine, build_legacy_review_generation_engine
@@ -45,6 +46,31 @@ def run_repo_diff_processing(
             base_ref=base_ref,
             head_ref=head_ref,
             source=source,
+        )
+    )
+
+
+@celery_app.task(name="kb.resync_document", bind=True)
+def run_document_resync(self, doc_id: str, reason: str = "manual") -> dict[str, Any]:
+    _ = self
+    return asyncio.run(_run_document_resync_async(doc_id=doc_id, reason=reason))
+
+
+@celery_app.task(name="kb.maintain_documents", bind=True)
+def run_document_maintenance(
+    self,
+    repo_id: str | None = None,
+    source_type: str | None = None,
+    limit: int = 100,
+    reason: str = "scheduled",
+) -> dict[str, Any]:
+    _ = self
+    return asyncio.run(
+        _run_document_maintenance_async(
+            repo_id=repo_id,
+            source_type=source_type,
+            limit=limit,
+            reason=reason,
         )
     )
 
@@ -180,3 +206,22 @@ def _as_optional_str(value: Any) -> str | None:
         return None
     normalized = value.strip()
     return normalized or None
+
+
+async def _run_document_resync_async(*, doc_id: str, reason: str) -> dict[str, Any]:
+    return await resync_document_source(doc_id=doc_id, vector_store=QdrantClient(), reason=reason)
+
+
+async def _run_document_maintenance_async(
+    *,
+    repo_id: str | None,
+    source_type: str | None,
+    limit: int,
+    reason: str,
+) -> dict[str, Any]:
+    return await run_due_document_maintenance(
+        repo_id=repo_id,
+        source_type=source_type,
+        limit=limit,
+        reason=reason,
+    )

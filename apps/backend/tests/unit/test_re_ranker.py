@@ -50,3 +50,34 @@ def test_re_ranker_dedups_candidates(monkeypatch) -> None:
     )
 
     assert len(ranked) == 1
+
+
+def test_re_ranker_dedups_same_chunk_across_channels(monkeypatch) -> None:
+    reranker = ReRanker()
+    monkeypatch.setattr(reranker, "_get_model", lambda: None)
+
+    chunk = RetrievedContextChunk(
+        score=0.5,
+        path="docs/auth.md",
+        chunk_index=0,
+        language="markdown",
+        content="Reset passwords from the account page.",
+        token_count=6,
+        file_type="markdown",
+        chunk_type="document_chunk",
+        source_type="markdown",
+        chunk_id="doc-1:0",
+        source_id="doc-1",
+        source="semantic_document",
+    )
+    ranked = reranker.rank(
+        query="reset passwords",
+        candidates=[
+            RetrievalCandidate(chunk=chunk, channel="semantic_document", raw_score=0.5, score=0.5),
+            RetrievalCandidate(chunk=chunk, channel="lexical_document", raw_score=0.7, score=0.7),
+        ],
+        route=QueryRoute.MULTI_SOURCE_QUERY,
+        limit=4,
+    )
+
+    assert len(ranked) == 1

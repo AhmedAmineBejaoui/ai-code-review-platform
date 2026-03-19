@@ -36,8 +36,20 @@ from app.core.knowledge_base.document_ingestion import (
     chunk_metadata_for_storage,
     utc_iso_now,
 )
+from app.core.knowledge_base.document_lifecycle import (
+    build_document_tags_payload,
+    list_document_sources,
+    persist_document_ingestion,
+    run_due_document_maintenance,
+    source_observability_summary,
+)
 from sqlalchemy import text
-from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboarding
+from app.workers.tasks.ingest_kb import (
+    run_document_maintenance,
+    run_document_resync,
+    run_repo_diff_processing,
+    run_repo_onboarding,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -312,6 +324,53 @@ class CitationResponse(BaseModel):
 class DocumentSearchResponse(BaseModel):
     repo_id: str
     citations: list[CitationResponse]
+
+
+class DocumentMaintenanceRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    repo_id: str | None = Field(default=None, max_length=255)
+    source_type: str | None = Field(default=None, max_length=64)
+    only_due: bool = True
+    limit: int = Field(default=100, ge=1, le=1000)
+
+
+class DocumentResyncRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    doc_id: str | None = Field(default=None, max_length=255)
+    repo_id: str | None = Field(default=None, max_length=255)
+    source_type: str | None = Field(default=None, max_length=64)
+    only_due: bool = False
+    limit: int = Field(default=50, ge=1, le=500)
+
+
+class DocumentSourceResponse(BaseModel):
+    doc_id: str
+    repo_id: str | None = None
+    title: str
+    source_type: str
+    path_or_url: str | None = None
+    source_uri: str | None = None
+    doc_version: int
+    tags: list[str] = Field(default_factory=list)
+    resync_supported: bool = False
+    next_recrawl_at: str | None = None
+    last_sync_at: str | None = None
+    last_sync_status: str | None = None
+    last_sync_error: str | None = None
+
+
+class DocumentSourcesResponse(BaseModel):
+    items: list[DocumentSourceResponse]
+    observability: dict[str, Any]
+
+
+class DocumentAutomationResponse(BaseModel):
+    task_name: str
+    queued: int = 0
+    doc_ids: list[str] = Field(default_factory=list)
+    status: str = "QUEUED"
 
 
 DocumentIngestRequest.model_rebuild()
@@ -831,115 +890,28 @@ async def ingest_document(
         raise ApiError(status_code=400, code="INVALID_REQUEST", message="Document content is empty after cleaning")
 
     doc_id = f"doc_{uuid.uuid4().hex}"
-    await asyncio.to_thread(
-        _insert_kb_document,
-        repo_id=payload.repo_id,
+    await persist_document_ingestion(
         doc_id=doc_id,
+        repo_id=payload.repo_id,
         title=payload.title,
         source_type=normalized_source_type,
         path_or_url=payload.path_or_url,
         tags=normalized_tags,
         doc_version=payload.doc_version,
-        chunks=[{"content": item.content, "metadata": item.metadata} for item in ingestion_result.chunks],
-        source_uri=ingestion_result.source_uri,
-        content_hash=ingestion_result.content_hash,
-        version=ingestion_result.version,
-        domain=ingestion_result.domain,
+        ingestion_result=ingestion_result,
+        vector_store=vector_store,
+        existing_tags_payload=build_document_tags_payload(
+            repo_id=payload.repo_id,
+            source_type=normalized_source_type,
+            path_or_url=payload.path_or_url,
+            source_uri=ingestion_result.source_uri,
+            tags=normalized_tags,
+            content_hash=ingestion_result.content_hash,
+            version=ingestion_result.version or str(payload.doc_version),
+            sync={"last_sync_reason": "ingest"},
+        ),
+        sync_update={"last_sync_reason": "ingest"},
     )
-
-    if vector_store.enabled:
-        try:
-            collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
-            await vector_store.ensure_collection(collection_name=collection_name)
-            points: list[QdrantPoint] = []
-            for index, chunk in enumerate(ingestion_result.chunks):
-                token_count = max(1, len(chunk.content) // 4)
-                metadata = chunk_metadata_for_storage(dict(chunk.metadata))
-                points.append(
-                    QdrantPoint(
-                        id=build_document_chunk_point_id(repo_id=payload.repo_id, doc_id=doc_id, chunk_index=index),
-                        vector=hash_embed_text(chunk.embedding_text, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
-                        payload={
-                            "type": "kb_document_chunk",
-                            "repo_id": payload.repo_id,
-                            "doc_id": doc_id,
-                            "title": payload.title,
-                            "source_type": normalized_source_type,
-                            "path_or_url": payload.path_or_url,
-                            "path": payload.path_or_url or ingestion_result.source_uri or payload.title,
-                            "chunk_index": index,
-                            "content": chunk.content,
-                            "language": "text",
-                            "token_count": token_count,
-                            "file_type": normalized_source_type,
-                            "chunk_type": "document_chunk",
-                            "tags": normalized_tags,
-                            "source_uri": ingestion_result.source_uri,
-                            "content_hash": ingestion_result.content_hash,
-                            "version": ingestion_result.version,
-                            "document_version": ingestion_result.version,
-                            "page": metadata.get("page"),
-                            "section_title": metadata.get("section_title"),
-                            "heading_path": metadata.get("heading_path"),
-                            "entity_type": metadata.get("entity_type"),
-                            "entity_name": metadata.get("entity_name"),
-                            "line_start": metadata.get("line_start"),
-                            "line_end": metadata.get("line_end"),
-                            "domain": ingestion_result.domain,
-                            "crawl_timestamp": metadata.get("crawl_timestamp"),
-                            "source_id": doc_id,
-                            "chunk_id": f"{doc_id}:{index}",
-                        },
-                    )
-                )
-            await vector_store.upsert_points(collection_name=collection_name, points=points)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Skipping vector indexing for KB document %s in repo %s: %s",
-                doc_id,
-                payload.repo_id,
-                exc,
-            )
-
-    if settings.langchain_enabled:
-        try:
-            shadow_index = LangChainShadowIndexingService(vector_store=vector_store)
-            if shadow_index.available:
-                await shadow_index.upsert_kb_document_rows(
-                    repo_id=payload.repo_id,
-                    rows=[
-                        KBDocumentChunkRow(
-                            doc_id=doc_id,
-                            title=payload.title,
-                            source_type=normalized_source_type,
-                            path_or_url=payload.path_or_url,
-                            repo_id=payload.repo_id,
-                            doc_version=ingestion_result.version or str(payload.doc_version),
-                            chunk_index=index,
-                            content=chunk.content,
-                            token_count=max(1, len(chunk.content) // 4),
-                            tags=normalized_tags,
-                            metadata=chunk_metadata_for_storage(
-                                {
-                                    **dict(chunk.metadata),
-                                    "source_uri": ingestion_result.source_uri,
-                                    "content_hash": ingestion_result.content_hash,
-                                    "version": ingestion_result.version or str(payload.doc_version),
-                                    "document_version": ingestion_result.version or str(payload.doc_version),
-                                    "domain": ingestion_result.domain,
-                                }
-                            ),
-                        )
-                        for index, chunk in enumerate(ingestion_result.chunks)
-                    ],
-                )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning(
-                "Skipping LangChain shadow indexing for KB document %s in repo %s: %s",
-                doc_id,
-                payload.repo_id,
-                exc,
-            )
 
     repo_profiles = RepoProfilesRepo()
     existing_profile = await asyncio.to_thread(repo_profiles.get_profile, payload.repo_id)
@@ -1020,6 +992,38 @@ async def search_documents(
     return DocumentSearchResponse(repo_id=payload.repo_id, citations=citations)
 
 
+@router.get("/sources", response_model=DocumentSourcesResponse)
+async def list_sources(
+    repo_id: str | None = None,
+    source_type: str | None = None,
+    limit: int = 200,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+) -> DocumentSourcesResponse:
+    normalized_source_type = _normalize_source_type(source_type) if source_type else None
+    items = await asyncio.to_thread(list_document_sources, repo_id=repo_id, source_type=normalized_source_type, limit=limit)
+    return DocumentSourcesResponse(
+        items=[
+            DocumentSourceResponse(
+                doc_id=item.doc_id,
+                repo_id=item.repo_id,
+                title=item.title,
+                source_type=item.source_type,
+                path_or_url=item.path_or_url,
+                source_uri=item.source_uri,
+                doc_version=item.doc_version,
+                tags=item.tags,
+                resync_supported=bool(item.sync.get("resync_supported", False)),
+                next_recrawl_at=str(item.sync.get("next_recrawl_at")) if item.sync.get("next_recrawl_at") else None,
+                last_sync_at=str(item.sync.get("last_sync_at")) if item.sync.get("last_sync_at") else None,
+                last_sync_status=str(item.sync.get("last_sync_status")) if item.sync.get("last_sync_status") else None,
+                last_sync_error=str(item.sync.get("last_sync_error")) if item.sync.get("last_sync_error") else None,
+            )
+            for item in items
+        ],
+        observability=await asyncio.to_thread(source_observability_summary, repo_id=repo_id),
+    )
+
+
 @router.post("/automation/onboard", response_model=AutomationTaskResponse)
 async def automate_onboard_repo(
     payload: AutomationOnboardRequest,
@@ -1055,3 +1059,58 @@ async def automate_process_diff(
         return AutomationTaskResponse(task_name="kb.process_diff", task_id=str(async_result.id or ""))
     except Exception as exc:  # noqa: BLE001
         raise _to_api_error(exc) from exc
+
+
+@router.post("/automation/documents/resync", response_model=DocumentAutomationResponse)
+async def automate_document_resync(
+    payload: DocumentResyncRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+) -> DocumentAutomationResponse:
+    normalized_source_type = _normalize_source_type(payload.source_type) if payload.source_type else None
+    if payload.doc_id:
+        async_result = run_document_resync.apply_async(
+            args=[payload.doc_id, "manual"],
+            queue=settings.ANALYSIS_QUEUE_NAME,
+        )
+        return DocumentAutomationResponse(
+            task_name="kb.resync_document",
+            queued=1,
+            doc_ids=[payload.doc_id],
+            status=str(async_result.status or "QUEUED"),
+        )
+
+    sources = await asyncio.to_thread(
+        list_document_sources,
+        repo_id=payload.repo_id,
+        source_type=normalized_source_type,
+        only_due=payload.only_due,
+        limit=payload.limit,
+    )
+    for item in sources:
+        run_document_resync.apply_async(
+            args=[item.doc_id, "manual_batch"],
+            queue=settings.ANALYSIS_QUEUE_NAME,
+        )
+    return DocumentAutomationResponse(
+        task_name="kb.resync_document",
+        queued=len(sources),
+        doc_ids=[item.doc_id for item in sources],
+    )
+
+
+@router.post("/automation/documents/maintenance", response_model=DocumentAutomationResponse)
+async def automate_document_maintenance(
+    payload: DocumentMaintenanceRequest,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+) -> DocumentAutomationResponse:
+    normalized_source_type = _normalize_source_type(payload.source_type) if payload.source_type else None
+    async_result = run_document_maintenance.apply_async(
+        args=[payload.repo_id, normalized_source_type, payload.limit, "scheduled"],
+        queue=settings.ANALYSIS_QUEUE_NAME,
+    )
+    return DocumentAutomationResponse(
+        task_name="kb.maintain_documents",
+        queued=1,
+        doc_ids=[],
+        status=str(async_result.status or "QUEUED"),
+    )
