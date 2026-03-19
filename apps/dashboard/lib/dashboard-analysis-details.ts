@@ -44,6 +44,17 @@ export interface DashboardReviewContextReference {
   title: string | null
   score: number
   tags: string[]
+  sourceUri: string | null
+  page: number | null
+  sectionTitle: string | null
+  headingPath: string[]
+  entityType: string | null
+  entityName: string | null
+  lineStart: number | null
+  lineEnd: number | null
+  domain: string | null
+  documentVersion: string | null
+  crawlTimestamp: string | null
 }
 
 export interface DashboardAnalysisReviewOutput {

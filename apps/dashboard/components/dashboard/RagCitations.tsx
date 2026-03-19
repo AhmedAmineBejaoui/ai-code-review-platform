@@ -52,12 +52,61 @@ function formatTypeLabel(value: string | null): string | null {
   return value.replaceAll("_", " ")
 }
 
+function formatLineRange(start: number | null, end: number | null): string | null {
+  if (typeof start !== "number" && typeof end !== "number") {
+    return null
+  }
+  if (typeof start === "number" && typeof end === "number" && start !== end) {
+    return `L${start}-${end}`
+  }
+  if (typeof start === "number") {
+    return `L${start}`
+  }
+  return typeof end === "number" ? `L${end}` : null
+}
+
+function formatHeadingPath(path: string[] | null | undefined): string | null {
+  if (!Array.isArray(path) || path.length === 0) {
+    return null
+  }
+  return path.join(" > ")
+}
+
+function formatReferenceLocation(reference: DashboardReviewContextReference): string | null {
+  const parts = [
+    reference.page !== null ? `Page ${reference.page}` : null,
+    reference.sectionTitle?.trim() || null,
+    formatLineRange(reference.lineStart, reference.lineEnd),
+  ].filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+
+  return parts.length > 0 ? parts.join(" · ") : null
+}
+
+function formatReferenceEntity(reference: DashboardReviewContextReference): string | null {
+  if (reference.entityName && reference.entityType) {
+    return `${reference.entityType}: ${reference.entityName}`
+  }
+  return reference.entityName ?? reference.entityType
+}
+
+function formatReferenceSource(reference: DashboardReviewContextReference): string {
+  return reference.sourceUri?.trim().length ? reference.sourceUri : reference.path
+}
+
 function isExternalUrl(value: string): boolean {
   return /^https?:\/\//i.test(value)
 }
 
 function referenceKey(reference: DashboardReviewContextReference, index: number): string {
-  return `${reference.path}-${reference.source}-${reference.chunkType ?? "chunk"}-${index}`
+  return [
+    reference.path,
+    reference.source,
+    reference.sourceType ?? "source",
+    reference.chunkType ?? "chunk",
+    reference.page ?? "page",
+    reference.entityName ?? "entity",
+    index,
+  ].join("-")
 }
 
 export function RagCitations() {
@@ -195,9 +244,13 @@ export function RagCitations() {
         <div className="space-y-4">
           {topReferences.map((reference, index) => {
             const score = normalizeScore(reference.score)
-            const href = isExternalUrl(reference.path) ? reference.path : null
+            const sourceTarget = formatReferenceSource(reference)
+            const href = isExternalUrl(sourceTarget) ? sourceTarget : null
             const title = reference.title?.trim() || reference.path
             const subtitle = reference.title?.trim() ? reference.path : null
+            const location = formatReferenceLocation(reference)
+            const entity = formatReferenceEntity(reference)
+            const headingPath = formatHeadingPath(reference.headingPath)
 
             return (
               <motion.div
@@ -231,6 +284,11 @@ export function RagCitations() {
                               {formatTypeLabel(reference.chunkType)}
                             </Badge>
                           ) : null}
+                          {reference.domain ? (
+                            <Badge variant="outline" className="text-xs">
+                              {reference.domain}
+                            </Badge>
+                          ) : null}
                         </div>
                       </div>
 
@@ -252,8 +310,11 @@ export function RagCitations() {
                         Reference
                       </div>
                       <div className="text-sm font-mono leading-relaxed text-gray-700 dark:text-gray-300 break-all">
-                        {reference.path}
+                        {sourceTarget}
                       </div>
+                      {location ? <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{location}</div> : null}
+                      {entity ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entity}</div> : null}
+                      {headingPath ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{headingPath}</div> : null}
                     </div>
 
                     {reference.tags.length > 0 ? (
@@ -280,10 +341,10 @@ export function RagCitations() {
                         variant="outline"
                         size="sm"
                         className="gap-2"
-                        onClick={() => void copyReferencePath(reference.path)}
+                        onClick={() => void copyReferencePath(sourceTarget)}
                       >
                         <Copy className="h-3 w-3" />
-                        {copiedReference === reference.path ? "Copie" : "Copier la source"}
+                        {copiedReference === sourceTarget ? "Copie" : "Copier la source"}
                       </Button>
                     </div>
                   </CardContent>
@@ -312,6 +373,9 @@ export function RagCitations() {
                         {reference.title?.trim() || reference.path}
                       </div>
                       <div className="text-xs text-gray-500 dark:text-gray-400 break-all">{reference.path}</div>
+                      {formatReferenceLocation(reference) ? (
+                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatReferenceLocation(reference)}</div>
+                      ) : null}
                     </div>
                     <div className="flex items-center gap-2">
                       <Badge variant="outline" className="text-xs">

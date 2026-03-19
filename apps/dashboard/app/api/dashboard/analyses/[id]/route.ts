@@ -71,6 +71,17 @@ type BackendReviewContextReference = {
   title?: string | null
   score?: number
   tags?: string[]
+  source_uri?: string | null
+  page?: number | null
+  section_title?: string | null
+  heading_path?: string[] | string | null
+  entity_type?: string | null
+  entity_name?: string | null
+  line_start?: number | null
+  line_end?: number | null
+  domain?: string | null
+  document_version?: string | null
+  crawl_timestamp?: string | null
 }
 
 type BackendReviewOutput = {
@@ -123,6 +134,17 @@ type DashboardReviewContextReference = {
   title: string | null
   score: number
   tags: string[]
+  sourceUri: string | null
+  page: number | null
+  sectionTitle: string | null
+  headingPath: string[]
+  entityType: string | null
+  entityName: string | null
+  lineStart: number | null
+  lineEnd: number | null
+  domain: string | null
+  documentVersion: string | null
+  crawlTimestamp: string | null
 }
 
 type DashboardAnalysisReviewOutput = {
@@ -153,6 +175,19 @@ function normalizeOptionalObject(value: unknown): Record<string, unknown> {
     return {}
   }
   return value as Record<string, unknown>
+}
+
+function normalizeHeadingPath(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.filter((item): item is string => typeof item === "string" && item.trim().length > 0)
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value
+      .split(">")
+      .map((part) => part.trim())
+      .filter((part) => part.length > 0)
+  }
+  return []
 }
 
 function extractAuthorLabel(metadata: Record<string, unknown> | undefined): string | null {
@@ -348,6 +383,17 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
           tags: Array.isArray(reference.tags)
             ? reference.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
             : [],
+          sourceUri: typeof reference.source_uri === "string" ? reference.source_uri : null,
+          page: typeof reference.page === "number" ? reference.page : null,
+          sectionTitle: typeof reference.section_title === "string" ? reference.section_title : null,
+          headingPath: normalizeHeadingPath(reference.heading_path),
+          entityType: typeof reference.entity_type === "string" ? reference.entity_type : null,
+          entityName: typeof reference.entity_name === "string" ? reference.entity_name : null,
+          lineStart: typeof reference.line_start === "number" ? reference.line_start : null,
+          lineEnd: typeof reference.line_end === "number" ? reference.line_end : null,
+          domain: typeof reference.domain === "string" ? reference.domain : null,
+          documentVersion: typeof reference.document_version === "string" ? reference.document_version : null,
+          crawlTimestamp: typeof reference.crawl_timestamp === "string" ? reference.crawl_timestamp : null,
         }))
     : []
 

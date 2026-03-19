@@ -60,10 +60,26 @@ type DocumentIngestResponse = ApiErrorPayload & {
   title?: string
   chunks?: number
   source_type?: string
+  source_uri?: string
+  page?: number | null
+  section_title?: string | null
+  tags?: string[]
 }
 
 type QueryChunk = {
   path?: string
+  source_type?: string
+  source_uri?: string
+  title?: string
+  section_title?: string | null
+  heading_path?: string[] | string | null
+  page?: number | null
+  entity_type?: string | null
+  entity_name?: string | null
+  line_start?: number | null
+  line_end?: number | null
+  domain?: string | null
+  document_version?: string | null
   score?: number
   chunk_index?: number
   start_line?: number | null
@@ -81,12 +97,56 @@ const SOURCE_TYPES: Array<{
   value: SourceType
   label: string
   hint: string
+  pathLabel: string
+  pathPlaceholder: string
+  notesPlaceholder: string
+  submitLabel: string
 }> = [
-  { value: "pdf", label: "PDF", hint: "Importer un ou plusieurs fichiers PDF" },
-  { value: "web", label: "Pages web", hint: "Indexer du HTML ou du texte de page web" },
-  { value: "markdown", label: "Documentation markdown", hint: "Indexer des fichiers .md/.mdx ou du texte colle" },
-  { value: "code", label: "Code source", hint: "Repository local ou distant" },
-  { value: "sql", label: "Base SQL", hint: "Indexer un dump SQL ou une description de schema" },
+  {
+    value: "pdf",
+    label: "PDF",
+    hint: "Importer un ou plusieurs fichiers PDF",
+    pathLabel: "Chemin source / contexte",
+    pathPlaceholder: "ex: dossier, titre documentaire ou archive",
+    notesPlaceholder: "Ajoutez un contexte metier, une version documentaire ou des notes de cadrage.",
+    submitLabel: "Indexer les PDF",
+  },
+  {
+    value: "web",
+    label: "Pages web",
+    hint: "Indexer du HTML ou du texte de page web",
+    pathLabel: "URL de page ou domaine",
+    pathPlaceholder: "ex: https://docs.exemple.com/auth/login",
+    notesPlaceholder: "Collez le contenu de la page, un extrait HTML nettoye ou les notes de capture.",
+    submitLabel: "Indexer la page web",
+  },
+  {
+    value: "markdown",
+    label: "Documentation markdown",
+    hint: "Indexer des fichiers .md/.mdx ou du texte colle",
+    pathLabel: "Chemin du fichier ou dossier",
+    pathPlaceholder: "ex: docs/auth/login.md",
+    notesPlaceholder: "Collez le markdown nettoye ou decrivez la section a indexer.",
+    submitLabel: "Indexer la documentation",
+  },
+  {
+    value: "code",
+    label: "Code source",
+    hint: "Repository local ou distant",
+    pathLabel: "Chemin du repo",
+    pathPlaceholder: "ex: /srv/repos/mon-repo ou org/repo",
+    notesPlaceholder: "Ajoutez un commentaire de contexte ou une instruction de reindexation.",
+    submitLabel: "Indexer le code",
+  },
+  {
+    value: "sql",
+    label: "Base SQL",
+    hint: "Indexer un dump SQL ou une description de schema",
+    pathLabel: "Schema, dump ou source SQL",
+    pathPlaceholder: "ex: migrations/001_init.sql",
+    notesPlaceholder: "Collez le schema, les migrations ou la documentation des tables.",
+    submitLabel: "Indexer le SQL",
+  },
 ]
 
 function filesIndexed(item: RepoProfileItem): number {
@@ -169,6 +229,43 @@ function resolveApiErrorMessage(payload: unknown, fallback: string): string {
   )
 }
 
+function sourceTypeDetails(sourceType: SourceType) {
+  return SOURCE_TYPES.find((item) => item.value === sourceType) ?? SOURCE_TYPES[0]
+}
+
+function formatChunkLineRange(chunk: QueryChunk): string | null {
+  const start = typeof chunk.line_start === "number" ? chunk.line_start : chunk.start_line ?? null
+  const end = typeof chunk.line_end === "number" ? chunk.line_end : chunk.end_line ?? null
+  if (start !== null && end !== null && start !== end) {
+    return `L${start}-${end}`
+  }
+  if (start !== null) {
+    return `L${start}`
+  }
+  return end !== null ? `L${end}` : null
+}
+
+function formatHeadingPath(value: QueryChunk["heading_path"]): string | null {
+  if (Array.isArray(value)) {
+    return value.length > 0 ? value.join(" > ") : null
+  }
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value
+  }
+  return null
+}
+
+function formatSourceMeta(chunk: QueryChunk): string | null {
+  const pieces = [
+    chunk.source_type ? chunk.source_type.replaceAll("_", " ") : null,
+    chunk.page !== null && typeof chunk.page === "number" ? `page ${chunk.page}` : null,
+    chunk.section_title?.trim() || null,
+    formatChunkLineRange(chunk),
+  ].filter((piece): piece is string => typeof piece === "string" && piece.trim().length > 0)
+
+  return pieces.length > 0 ? pieces.join(" · ") : null
+}
+
 export function KnowledgeBase() {
   const [searchQuery, setSearchQuery] = useState("")
   const [insightsLoading, setInsightsLoading] = useState(true)
@@ -187,6 +284,7 @@ export function KnowledgeBase() {
   const [sourceLocation, setSourceLocation] = useState("")
   const [sourceNotes, setSourceNotes] = useState("")
   const [droppedFiles, setDroppedFiles] = useState<File[]>([])
+  const selectedSourceDetails = useMemo(() => sourceTypeDetails(sourceType), [sourceType])
 
   const loadRepos = useCallback(async () => {
     setLoadingRepos(true)
@@ -444,7 +542,7 @@ export function KnowledgeBase() {
     setActionMessage(null)
     try {
       const importedItems: Array<{ title: string; chunks: number }> = []
-      const baseTags = [sourceType, droppedFiles.length > 0 ? "dashboard_upload" : "dashboard_manual"]
+      const baseTags = [sourceType, `source:${sourceType}`, droppedFiles.length > 0 ? "dashboard_upload" : "dashboard_manual"]
 
       if (droppedFiles.length > 0) {
         for (const file of droppedFiles) {
@@ -609,13 +707,28 @@ export function KnowledgeBase() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Chemin local backend ou URL</label>
+                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">{selectedSourceDetails.pathLabel}</label>
                 <Input
                   value={sourceLocation}
                   onChange={(event) => setSourceLocation(event.target.value)}
-                  placeholder="ex: /srv/repos/mon-repo OU https://docs.exemple.com"
+                  placeholder={selectedSourceDetails.pathPlaceholder}
                   className="bg-white dark:bg-gray-800"
                 />
+              </div>
+
+              <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm text-gray-600 dark:text-gray-300">
+                <div className="font-medium text-emerald-700 dark:text-emerald-300">{selectedSourceDetails.label}</div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedSourceDetails.hint}</p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <div className="rounded-lg border border-emerald-400/20 bg-white/60 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Attendu</div>
+                    <div className="mt-1">{selectedSourceDetails.pathLabel}</div>
+                  </div>
+                  <div className="rounded-lg border border-emerald-400/20 bg-white/60 p-3 dark:bg-gray-900/40">
+                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Action</div>
+                    <div className="mt-1">{selectedSourceDetails.submitLabel}</div>
+                  </div>
+                </div>
               </div>
 
               <div
