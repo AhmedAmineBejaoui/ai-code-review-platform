@@ -127,19 +127,16 @@ def _quotas_for_route(route: QueryRoute, max_chunks: int) -> dict[str, int]:
 
 
 def _normalize_multi_source_quotas(max_chunks: int) -> dict[str, int]:
-    base = {"code": 2, "pdf": 1, "web": 1, "markdown": 1, "sql": 1, "policy": 1, "test": 1}
     if max_chunks <= 0:
-        return base
-    total = sum(base.values())
-    if total <= max_chunks:
-        remaining = max_chunks - total
-        base["code"] += remaining
-        return base
-    scaled: dict[str, int] = {}
-    for key, value in base.items():
-        scaled[key] = max(1, int((value / total) * max_chunks))
-    while sum(scaled.values()) > max_chunks:
-        for key in ("test", "policy", "pdf", "web", "markdown", "sql", "code"):
-            if scaled.get(key, 0) > 1 and sum(scaled.values()) > max_chunks:
-                scaled[key] -= 1
-    return scaled
+        return {"code": 1}
+
+    quotas = {"code": 1}
+    remaining = max_chunks - 1
+    for bucket in ("sql", "markdown", "web", "pdf", "policy", "test"):
+        if remaining <= 0:
+            break
+        quotas[bucket] = 1
+        remaining -= 1
+    if remaining > 0:
+        quotas["code"] += remaining
+    return quotas
