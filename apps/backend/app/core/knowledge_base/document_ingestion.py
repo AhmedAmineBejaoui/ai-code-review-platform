@@ -68,7 +68,12 @@ def build_document_ingestion_result(
     resolved_domain = _extract_domain(resolved_source_uri)
     resolved_metadata = dict(metadata or {})
     resolved_version = _normalize_optional_str(version) or (str(doc_version) if doc_version is not None else None)
-    resolved_hash = _normalize_optional_str(content_hash) or _hash_content(content)
+    hash_basis = content
+    if not hash_basis and pages:
+        hash_basis = "\n\f\n".join(pages)
+    if not hash_basis and sections:
+        hash_basis = "\n\n".join(section.content for section in sections)
+    resolved_hash = _normalize_optional_str(content_hash) or _hash_content(hash_basis)
     normalized_tags = tuple(_normalize_string_list(tags))
 
     if sections:
