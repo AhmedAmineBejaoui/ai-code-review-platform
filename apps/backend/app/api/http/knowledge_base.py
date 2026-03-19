@@ -30,6 +30,12 @@ from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoin
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.settings import settings
 from app.core.knowledge_base.embeddings import hash_embed_text
+from app.core.knowledge_base.document_ingestion import (
+    DocumentSectionInput,
+    build_document_ingestion_result,
+    chunk_metadata_for_storage,
+    utc_iso_now,
+)
 from sqlalchemy import text
 from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboarding
 
@@ -96,7 +102,18 @@ class ContextByQueryRequest(BaseModel):
     query: str = Field(min_length=1)
     changed_files: list[str] = Field(default_factory=list, max_length=200)
     limit: int = Field(default=8, ge=1, le=30)
-    route_hint: Literal["auto", "repo_query", "policy_query", "document_query"] = "auto"
+    route_hint: Literal[
+        "auto",
+        "repo_query",
+        "code_query",
+        "policy_query",
+        "document_query",
+        "pdf_query",
+        "web_query",
+        "markdown_query",
+        "sql_query",
+        "multi_source_query",
+    ] = "auto"
 
 
 class RepoBootstrapContextRequest(BaseModel):
@@ -135,6 +152,18 @@ class ContextChunkResponse(BaseModel):
     start_line: int | None = None
     end_line: int | None = None
     source: str | None = None
+    title: str | None = None
+    source_type: str | None = None
+    source_uri: str | None = None
+    page: int | None = None
+    section_title: str | None = None
+    heading_path: list[str] = Field(default_factory=list)
+    entity_type: str | None = None
+    entity_name: str | None = None
+    domain: str | None = None
+    document_version: str | None = None
+    crawl_timestamp: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class ContextResponse(BaseModel):
@@ -218,6 +247,26 @@ class DocumentIngestRequest(BaseModel):
     content: str = Field(min_length=1, max_length=2_000_000)
     tags: list[str] = Field(default_factory=list, max_length=64)
     doc_version: int = Field(default=1, ge=1, le=10_000)
+    source_uri: str | None = Field(default=None, max_length=4096)
+    content_hash: str | None = Field(default=None, max_length=256)
+    version: str | None = Field(default=None, max_length=255)
+    pages: list[str] = Field(default_factory=list, max_length=5000)
+    sections: list["DocumentSectionRequest"] = Field(default_factory=list, max_length=5000)
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class DocumentSectionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    content: str = Field(min_length=1, max_length=200_000)
+    section_title: str | None = Field(default=None, max_length=500)
+    heading_path: list[str] = Field(default_factory=list, max_length=16)
+    page: int | None = Field(default=None, ge=1, le=100_000)
+    entity_type: str | None = Field(default=None, max_length=64)
+    entity_name: str | None = Field(default=None, max_length=255)
+    line_start: int | None = Field(default=None, ge=1)
+    line_end: int | None = Field(default=None, ge=1)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class DocumentIngestResponse(BaseModel):
@@ -246,11 +295,26 @@ class CitationResponse(BaseModel):
     score: float
     path_or_url: str | None = None
     chunk_index: int
+    source_uri: str | None = None
+    page: int | None = None
+    section_title: str | None = None
+    heading_path: list[str] = Field(default_factory=list)
+    entity_type: str | None = None
+    entity_name: str | None = None
+    line_start: int | None = None
+    line_end: int | None = None
+    domain: str | None = None
+    document_version: str | None = None
+    crawl_timestamp: str | None = None
+    tags: list[str] = Field(default_factory=list)
 
 
 class DocumentSearchResponse(BaseModel):
     repo_id: str
     citations: list[CitationResponse]
+
+
+DocumentIngestRequest.model_rebuild()
 
 
 def _chunk_text(content: str, *, chunk_size: int = 2400, overlap: int = 250) -> list[str]:
@@ -323,7 +387,11 @@ def _insert_kb_document(
     path_or_url: str | None,
     tags: list[str],
     doc_version: int,
-    chunks: list[str],
+    chunks: list[dict[str, Any]],
+    source_uri: str | None,
+    content_hash: str | None,
+    version: str | None,
+    domain: str | None,
 ) -> None:
     engine = get_engine()
     with engine.begin() as conn:
@@ -350,6 +418,10 @@ def _insert_kb_document(
                         "repo_id": repo_id,
                         "source_type": source_type,
                         "path_or_url": path_or_url,
+                        "source_uri": source_uri,
+                        "content_hash": content_hash,
+                        "version": version,
+                        "domain": domain,
                         "tags": tags,
                     }
                 ),
@@ -358,6 +430,8 @@ def _insert_kb_document(
         )
         conn.execute(text("DELETE FROM kb_chunks WHERE doc_id = :doc_id"), {"doc_id": doc_id})
         for index, chunk in enumerate(chunks):
+            content = str(chunk.get("content") or "")
+            metadata = chunk_metadata_for_storage(dict(chunk.get("metadata") or {}))
             conn.execute(
                 text(
                     """
@@ -369,10 +443,10 @@ def _insert_kb_document(
                     "id": f"kbc_{uuid.uuid4().hex}",
                     "doc_id": doc_id,
                     "chunk_index": index,
-                    "text": chunk,
-                    "content": chunk,
-                    "token_count": max(1, len(chunk) // 4),
-                    "metadata_json": json.dumps({}),
+                    "text": content,
+                    "content": content,
+                    "token_count": max(1, len(content) // 4),
+                    "metadata_json": json.dumps(metadata),
                 },
             )
 
@@ -409,6 +483,18 @@ def _map_chunk(item: RetrievedContextChunk) -> ContextChunkResponse:
         start_line=item.start_line,
         end_line=item.end_line,
         source=item.source,
+        title=item.title,
+        source_type=item.source_type,
+        source_uri=item.source_uri,
+        page=item.page,
+        section_title=item.section_title,
+        heading_path=list(item.heading_path),
+        entity_type=item.entity_type,
+        entity_name=item.entity_name,
+        domain=item.domain,
+        document_version=item.document_version or item.version,
+        crawl_timestamp=item.crawl_timestamp,
+        tags=list(item.tags),
     )
 
 
@@ -710,8 +796,38 @@ async def ingest_document(
     if normalized_source_type == "policy" and "policy" not in normalized_tags:
         normalized_tags.append("policy")
 
-    chunks = _chunk_text(payload.content)
-    if not chunks:
+    normalized_metadata = dict(payload.metadata or {})
+    if normalized_source_type == "web" and not normalized_metadata.get("crawl_timestamp"):
+        normalized_metadata["crawl_timestamp"] = utc_iso_now()
+    sections = [
+        DocumentSectionInput(
+            content=item.content,
+            section_title=item.section_title,
+            heading_path=tuple(_normalize_string_list(item.heading_path)),
+            page=item.page,
+            entity_type=item.entity_type,
+            entity_name=item.entity_name,
+            line_start=item.line_start,
+            line_end=item.line_end,
+            metadata=dict(item.metadata or {}),
+        )
+        for item in payload.sections
+    ]
+    ingestion_result = build_document_ingestion_result(
+        title=payload.title,
+        source_type=normalized_source_type,
+        content=payload.content,
+        path_or_url=payload.path_or_url,
+        source_uri=payload.source_uri,
+        content_hash=payload.content_hash,
+        version=payload.version,
+        doc_version=payload.doc_version,
+        tags=normalized_tags,
+        metadata=normalized_metadata,
+        pages=payload.pages or None,
+        sections=sections or None,
+    )
+    if not ingestion_result.chunks:
         raise ApiError(status_code=400, code="INVALID_REQUEST", message="Document content is empty after cleaning")
 
     doc_id = f"doc_{uuid.uuid4().hex}"
@@ -724,7 +840,11 @@ async def ingest_document(
         path_or_url=payload.path_or_url,
         tags=normalized_tags,
         doc_version=payload.doc_version,
-        chunks=chunks,
+        chunks=[{"content": item.content, "metadata": item.metadata} for item in ingestion_result.chunks],
+        source_uri=ingestion_result.source_uri,
+        content_hash=ingestion_result.content_hash,
+        version=ingestion_result.version,
+        domain=ingestion_result.domain,
     )
 
     if vector_store.enabled:
@@ -732,12 +852,13 @@ async def ingest_document(
             collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
             await vector_store.ensure_collection(collection_name=collection_name)
             points: list[QdrantPoint] = []
-            for index, chunk in enumerate(chunks):
-                token_count = max(1, len(chunk) // 4)
+            for index, chunk in enumerate(ingestion_result.chunks):
+                token_count = max(1, len(chunk.content) // 4)
+                metadata = chunk_metadata_for_storage(dict(chunk.metadata))
                 points.append(
                     QdrantPoint(
                         id=build_document_chunk_point_id(repo_id=payload.repo_id, doc_id=doc_id, chunk_index=index),
-                        vector=hash_embed_text(chunk, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
+                        vector=hash_embed_text(chunk.embedding_text, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
                         payload={
                             "type": "kb_document_chunk",
                             "repo_id": payload.repo_id,
@@ -745,14 +866,29 @@ async def ingest_document(
                             "title": payload.title,
                             "source_type": normalized_source_type,
                             "path_or_url": payload.path_or_url,
-                            "path": payload.path_or_url or payload.title,
+                            "path": payload.path_or_url or ingestion_result.source_uri or payload.title,
                             "chunk_index": index,
-                            "content": chunk,
+                            "content": chunk.content,
                             "language": "text",
                             "token_count": token_count,
                             "file_type": normalized_source_type,
                             "chunk_type": "document_chunk",
                             "tags": normalized_tags,
+                            "source_uri": ingestion_result.source_uri,
+                            "content_hash": ingestion_result.content_hash,
+                            "version": ingestion_result.version,
+                            "document_version": ingestion_result.version,
+                            "page": metadata.get("page"),
+                            "section_title": metadata.get("section_title"),
+                            "heading_path": metadata.get("heading_path"),
+                            "entity_type": metadata.get("entity_type"),
+                            "entity_name": metadata.get("entity_name"),
+                            "line_start": metadata.get("line_start"),
+                            "line_end": metadata.get("line_end"),
+                            "domain": ingestion_result.domain,
+                            "crawl_timestamp": metadata.get("crawl_timestamp"),
+                            "source_id": doc_id,
+                            "chunk_id": f"{doc_id}:{index}",
                         },
                     )
                 )
@@ -778,13 +914,23 @@ async def ingest_document(
                             source_type=normalized_source_type,
                             path_or_url=payload.path_or_url,
                             repo_id=payload.repo_id,
-                            doc_version=payload.doc_version,
+                            doc_version=ingestion_result.version or str(payload.doc_version),
                             chunk_index=index,
-                            content=chunk,
-                            token_count=max(1, len(chunk) // 4),
+                            content=chunk.content,
+                            token_count=max(1, len(chunk.content) // 4),
                             tags=normalized_tags,
+                            metadata=chunk_metadata_for_storage(
+                                {
+                                    **dict(chunk.metadata),
+                                    "source_uri": ingestion_result.source_uri,
+                                    "content_hash": ingestion_result.content_hash,
+                                    "version": ingestion_result.version or str(payload.doc_version),
+                                    "document_version": ingestion_result.version or str(payload.doc_version),
+                                    "domain": ingestion_result.domain,
+                                }
+                            ),
                         )
-                        for index, chunk in enumerate(chunks)
+                        for index, chunk in enumerate(ingestion_result.chunks)
                     ],
                 )
         except Exception as exc:  # noqa: BLE001
@@ -809,7 +955,7 @@ async def ingest_document(
             "source_kinds": source_kinds,
             "files_indexed": _coerce_non_negative_int(profile_payload.get("files_indexed")) + 1,
             "documents_count": _coerce_non_negative_int(profile_payload.get("documents_count")) + 1,
-            "chunks_indexed": _coerce_non_negative_int(profile_payload.get("chunks_indexed")) + len(chunks),
+            "chunks_indexed": _coerce_non_negative_int(profile_payload.get("chunks_indexed")) + len(ingestion_result.chunks),
             "last_document_title": payload.title,
         }
     )
@@ -827,7 +973,7 @@ async def ingest_document(
         doc_id=doc_id,
         repo_id=payload.repo_id,
         title=payload.title,
-        chunks=len(chunks),
+        chunks=len(ingestion_result.chunks),
         source_type=normalized_source_type,
     )
 
@@ -856,6 +1002,18 @@ async def search_documents(
             score=item.score,
             path_or_url=item.path,
             chunk_index=item.chunk_index,
+            source_uri=item.source_uri,
+            page=item.page,
+            section_title=item.section_title,
+            heading_path=list(item.heading_path),
+            entity_type=item.entity_type,
+            entity_name=item.entity_name,
+            line_start=item.start_line,
+            line_end=item.end_line,
+            domain=item.domain,
+            document_version=item.document_version or item.version,
+            crawl_timestamp=item.crawl_timestamp,
+            tags=list(item.tags),
         )
         for item in chunks
     ]

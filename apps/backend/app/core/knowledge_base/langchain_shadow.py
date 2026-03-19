@@ -179,6 +179,7 @@ class LangChainShadowIndexingService:
 
     def _document_row_to_payload(self, *, repo_id: str | None, row: KBDocumentChunkRow) -> dict[str, Any]:
         resolved_repo_id = repo_id or row.repo_id
+        metadata = dict(row.metadata or {})
         return {
             "type": "kb_document_chunk",
             "repo_id": resolved_repo_id,
@@ -186,7 +187,7 @@ class LangChainShadowIndexingService:
             "title": row.title,
             "source_type": row.source_type,
             "path_or_url": row.path_or_url,
-            "path": row.path_or_url or row.title,
+            "path": metadata.get("source_uri") or row.path_or_url or row.title,
             "chunk_index": row.chunk_index,
             "content": row.content,
             "language": "text",
@@ -197,7 +198,18 @@ class LangChainShadowIndexingService:
             "source_id": row.doc_id,
             "chunk_id": f"{row.doc_id}:{row.chunk_index}",
             "document_version": row.doc_version,
-            "section_title": row.title,
+            "section_title": metadata.get("section_title") or row.title,
+            "heading_path": metadata.get("heading_path"),
+            "page": metadata.get("page"),
+            "source_uri": metadata.get("source_uri") or row.path_or_url,
+            "content_hash": metadata.get("content_hash"),
+            "version": metadata.get("version") or row.doc_version,
+            "entity_type": metadata.get("entity_type"),
+            "entity_name": metadata.get("entity_name"),
+            "line_start": metadata.get("line_start"),
+            "line_end": metadata.get("line_end"),
+            "domain": metadata.get("domain"),
+            "crawl_timestamp": metadata.get("crawl_timestamp"),
             "collection_version": self._physical_collection,
         }
 
@@ -214,6 +226,26 @@ class LangChainShadowIndexingService:
 
     @staticmethod
     def _build_document_embedding_text(row: KBDocumentChunkRow) -> str:
-        path = row.path_or_url or row.title
+        metadata = dict(row.metadata or {})
+        path = str(metadata.get("source_uri") or row.path_or_url or row.title)
         tags = ", ".join(row.tags)
-        return f"title:{row.title}\nsource_type:{row.source_type}\npath:{path}\ntags:{tags}\n{row.content}"
+        section_title = str(metadata.get("section_title") or row.title)
+        heading_path = metadata.get("heading_path")
+        heading_label = " > ".join(heading_path) if isinstance(heading_path, list) else ""
+        lines = [
+            f"title:{row.title}",
+            f"source_type:{row.source_type}",
+            f"path:{path}",
+            f"section:{section_title}",
+            f"tags:{tags}",
+        ]
+        if heading_label:
+            lines.append(f"heading_path:{heading_label}")
+        if metadata.get("page") is not None:
+            lines.append(f"page:{metadata.get('page')}")
+        if metadata.get("entity_type"):
+            lines.append(f"entity_type:{metadata.get('entity_type')}")
+        if metadata.get("entity_name"):
+            lines.append(f"entity_name:{metadata.get('entity_name')}")
+        lines.append(row.content)
+        return "\n".join(lines)
