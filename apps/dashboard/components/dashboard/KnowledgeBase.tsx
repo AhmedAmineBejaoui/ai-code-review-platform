@@ -646,20 +646,54 @@ export function KnowledgeBase() {
     setBusyAction("retrieval")
     setActionMessage(null)
     try {
-      const response = await fetch("/api/dashboard/admin/knowledge-base/query", {
+      const isDocumentRetrieval = retrievalSource !== "auto" && retrievalSource !== "code"
+      const response = await fetch(
+        isDocumentRetrieval
+          ? "/api/dashboard/admin/knowledge-base/search"
+          : "/api/dashboard/admin/knowledge-base/query",
+        {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
-          repo_id: selectedRepoId,
-          query: retrievalQuery.trim(),
-          limit: 8,
-        }),
-      })
-      const payload = (await response.json().catch(() => ({}))) as QueryResponse & ApiErrorPayload
+            repo_id: selectedRepoId,
+            query: retrievalQuery.trim(),
+            limit: 8,
+            ...(isDocumentRetrieval
+              ? { source_type: retrievalSource }
+              : { route_hint: retrievalSource === "code" ? "code_query" : "auto" }),
+          }),
+        },
+      )
+      const payload = (await response.json().catch(() => ({}))) as QueryResponse & SearchResponse & ApiErrorPayload
       if (!response.ok) {
         throw new Error(resolveApiErrorMessage(payload, "Test retrieval impossible."))
       }
-      setQueryResults(Array.isArray(payload.chunks) ? payload.chunks : [])
+      if (Array.isArray(payload.chunks)) {
+        setQueryResults(payload.chunks)
+      } else if (Array.isArray(payload.citations)) {
+        setQueryResults(
+          payload.citations.map((item) => ({
+            path: item.path_or_url ?? item.source_uri ?? item.title ?? "unknown",
+            source_type: item.source_type,
+            source_uri: item.source_uri ?? undefined,
+            title: item.title,
+            section_title: item.section_title ?? undefined,
+            heading_path: item.heading_path ?? undefined,
+            page: item.page ?? undefined,
+            entity_type: item.entity_type ?? undefined,
+            entity_name: item.entity_name ?? undefined,
+            line_start: item.line_start ?? undefined,
+            line_end: item.line_end ?? undefined,
+            domain: item.domain ?? undefined,
+            document_version: item.document_version ?? undefined,
+            chunk_index: item.chunk_index,
+            score: item.score,
+            content: item.excerpt,
+          })),
+        )
+      } else {
+        setQueryResults([])
+      }
       setActionMessage(`Retrieval termine sur ${selectedRepoId}.`)
     } catch (error) {
       setQueryResults([])
@@ -1008,11 +1042,31 @@ export function KnowledgeBase() {
                 <Input placeholder="Ex: SQL injection prevention" value={retrievalQuery} onChange={(event) => setRetrievalQuery(event.target.value)} className="bg-white dark:bg-gray-800" />
               </div>
             </div>
-            <div className="rounded-xl border border-blue-200/50 bg-blue-50/70 p-3 text-sm text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/20 dark:text-blue-100">
-              <div className="font-medium">Scope de recherche</div>
-              <p className="mt-1 text-xs text-blue-700 dark:text-blue-200">
-                Le test utilise la source selectionnee ci-dessus et reste compatible avec les anciens chunks retournes par le backend.
-              </p>
+            <div className="grid md:grid-cols-2 gap-3">
+              <div>
+                <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">Canal de retrieval</label>
+                <Select value={retrievalSource} onValueChange={(value: RetrievalSource) => setRetrievalSource(value)}>
+                  <SelectTrigger className="bg-white dark:bg-gray-800">
+                    <SelectValue placeholder="Selectionner un mode" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto</SelectItem>
+                    {SOURCE_TYPES.map((item) => (
+                      <SelectItem key={`retrieval-${item.value}`} value={item.value}>
+                        {item.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="rounded-xl border border-blue-200/50 bg-blue-50/70 p-3 text-sm text-blue-900 dark:border-blue-800/50 dark:bg-blue-950/20 dark:text-blue-100">
+                <div className="font-medium">Scope de recherche</div>
+                <p className="mt-1 text-xs text-blue-700 dark:text-blue-200">
+                  {retrievalSource === "auto" || retrievalSource === "code"
+                    ? "Le test utilise /context/query pour le code et le routing hybride."
+                    : `Le test utilise /search avec un filtre source_type=${retrievalSource}.`}
+                </p>
+              </div>
             </div>
             <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
               <Button type="button" className="gap-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700" onClick={() => void runRetrievalTest()} disabled={busyAction === "retrieval"}>
