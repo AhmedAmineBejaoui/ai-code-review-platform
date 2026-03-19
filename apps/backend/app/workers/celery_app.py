@@ -38,6 +38,14 @@ def configure_celery_app() -> None:
         "app.workers.tasks.analyze_pr",
         "app.workers.tasks.ingest_kb",
     )
+    if settings.KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES > 0:
+        celery_app.conf.beat_schedule = {
+            "kb-document-maintenance": {
+                "task": "kb.maintain_documents",
+                "schedule": settings.KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES * 60,
+                "kwargs": {"reason": "scheduled"},
+            }
+        }
 
 
 configure_celery_app()

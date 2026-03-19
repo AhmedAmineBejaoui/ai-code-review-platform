@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
     CELERY_TASK_EAGER_PROPAGATES: bool = True
     CELERY_WORKER_POOL: str | None = None
+    KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES: int = 60
     ANALYSIS_QUEUE_NAME: str = "analyses"
     DATABASE_URL: str | None = None
     MAX_DIFF_BYTES: int = 2_000_000  # 2 MB
