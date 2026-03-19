@@ -15,21 +15,17 @@ from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.database import get_engine
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
 from app.core.knowledge_base.rag_engines import RagEngine, build_rag_engines
-from app.core.knowledge_base.langchain_shadow import LangChainShadowIndexingService
-from app.core.knowledge_base.qdrant_ids import build_document_chunk_point_id
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
 from app.core.review_intelligence.engines import (
     ReviewGenerationEngine,
     build_langchain_review_generation_engine,
     build_legacy_review_generation_engine,
 )
-from app.data.repos.kb_repo import KBDocumentChunkRow
 from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
+from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.settings import settings
-from app.core.knowledge_base.embeddings import hash_embed_text
 from app.core.knowledge_base.document_ingestion import (
     DocumentSectionInput,
     build_document_ingestion_result,
@@ -40,7 +36,6 @@ from app.core.knowledge_base.document_lifecycle import (
     build_document_tags_payload,
     list_document_sources,
     persist_document_ingestion,
-    run_due_document_maintenance,
     source_observability_summary,
 )
 from sqlalchemy import text

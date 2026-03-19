@@ -598,7 +598,7 @@ def _build_sync_payload(
         {
             "resync_supported": resync_supported,
             "recrawl_interval_minutes": interval_minutes,
-            "last_indexed_at": payload.get("last_indexed_at") or now,
+            "last_indexed_at": now,
             "last_sync_at": now,
             "last_sync_status": "ok",
             "last_sync_error": None,
