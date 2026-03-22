@@ -1,29 +1,25 @@
-"use client";
-/* eslint-disable react/no-unescaped-entities */
+"use client"
 
-import { useEffect, useState, type ReactNode } from "react";
-import { SignOutButton } from "@clerk/nextjs";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useTheme } from "next-themes";
-import { motion } from "framer-motion";
-import { 
-  LayoutDashboard, 
-  List, 
-  Shield, 
-  Database,
-  Building2,
-  Users,
+import type { ReactNode } from "react"
+import { SignOutButton } from "@clerk/nextjs"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
   Activity,
+  Building2,
+  ChevronDown,
+  Database,
+  LayoutDashboard,
+  List,
   Plug,
-  Moon,
-  Sun,
+  Search,
   Settings,
-  ChevronRight,
-  Sparkles,
-} from "lucide-react";
-import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+  Shield,
+  Users,
+} from "lucide-react"
+
+import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -31,306 +27,148 @@ import {
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import { formatRoleLabel, getRoleHomePath } from "@/lib/roles";
+} from "@/components/ui/dropdown-menu"
+import { formatRoleLabel, getRoleHomePath } from "@/lib/roles"
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
-  const currentUser = useDashboardUser();
-  const pathname = usePathname();
-  const { resolvedTheme, setTheme } = useTheme();
-  const [mounted, setMounted] = useState(false);
+  const currentUser = useDashboardUser()
+  const pathname = usePathname()
 
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-  
-  const roleHomePath = getRoleHomePath(currentUser.role);
-  const dashboardHref = currentUser.role === "developer" ? "/dashboard" : roleHomePath;
+  const roleHomePath = getRoleHomePath(currentUser.role)
+  const dashboardHref = currentUser.role === "developer" ? "/dashboard" : roleHomePath
 
   const navigation = [
-    { name: 'Dashboard', href: dashboardHref, icon: LayoutDashboard, gradient: 'from-blue-500 to-cyan-500' },
-    { name: 'Analyses', href: '/dashboard/analyses', icon: List, gradient: 'from-purple-500 to-pink-500' },
-    { name: 'Workspace', href: '/dashboard/organization', icon: Building2, gradient: 'from-emerald-500 to-teal-500' },
-  ];
+    { name: "Dashboard", href: dashboardHref, icon: LayoutDashboard },
+    { name: "Analyses", href: "/dashboard/analyses", icon: List },
+    { name: "Workspace", href: "/dashboard/organization", icon: Building2 },
+  ]
 
   const adminNavigation = [
-    { name: 'Base de Connaissance', href: '/dashboard/admin/knowledge-base', icon: Database, gradient: 'from-emerald-500 to-teal-500' },
-    { name: 'Policies & Rules', href: '/dashboard/admin/policies', icon: Shield, gradient: 'from-orange-500 to-red-500' },
-    { name: 'Utilisateurs', href: '/dashboard/admin/users', icon: Users, gradient: 'from-indigo-500 to-purple-500' },
-    { name: 'Organizations', href: '/dashboard/admin/organization', icon: Building2, gradient: 'from-blue-500 to-indigo-500' },
-    { name: 'Observabilité', href: '/dashboard/admin/observability', icon: Activity, gradient: 'from-pink-500 to-rose-500' },
-    { name: 'Intégrations', href: '/dashboard/admin/integrations', icon: Plug, gradient: 'from-cyan-500 to-blue-500' },
-  ];
+    { name: "Base de Connaissance", href: "/dashboard/admin/knowledge-base", icon: Database },
+    { name: "Policies & Rules", href: "/dashboard/admin/policies", icon: Shield },
+    { name: "Utilisateurs", href: "/dashboard/admin/users", icon: Users },
+    { name: "Organizations", href: "/dashboard/admin/organization", icon: Building2 },
+    { name: "Observabilite", href: "/dashboard/admin/observability", icon: Activity },
+    { name: "Integrations", href: "/dashboard/admin/integrations", icon: Plug },
+  ]
 
   const isActive = (href: string) => {
-    if (href === dashboardHref) return pathname === dashboardHref;
-    if (href === '/dashboard') return pathname === '/dashboard';
-    return pathname.startsWith(href);
-  };
+    if (href === dashboardHref) return pathname === dashboardHref
+    if (href === "/dashboard") return pathname === "/dashboard"
+    return pathname.startsWith(href)
+  }
 
-  const isAdmin = currentUser.role === 'admin';
-  const isDark = mounted && resolvedTheme === "dark";
+  const isAdmin = currentUser.role === "admin"
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-50 via-blue-50/30 to-purple-50/20 dark:from-gray-950 dark:via-blue-950/30 dark:to-purple-950/20">
-      {/* Modern Sidebar */}
-      <motion.aside 
-        initial={{ x: -280 }}
-        animate={{ x: 0 }}
-        className="fixed left-0 top-0 h-screen w-[280px] border-r border-gray-200/50 dark:border-gray-800/50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-xl z-50"
-      >
-        <div className="flex flex-col h-full">
-          {/* Logo Section */}
-          <motion.div 
-            className="p-6 border-b border-gray-200/50 dark:border-gray-800/50"
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-          >
-            <Link href={dashboardHref} className="flex items-center gap-3 group">
-              <motion.div 
-                className="relative w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center"
-                whileHover={{ scale: 1.05, rotate: 5 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <Sparkles className="h-5 w-5 text-white" />
-                <motion.div 
-                  className="absolute inset-0 rounded-xl bg-gradient-to-br from-blue-400 to-purple-500 opacity-0 group-hover:opacity-100 blur-xl transition-opacity"
-                  initial={{ opacity: 0 }}
-                  whileHover={{ opacity: 0.6 }}
-                />
-              </motion.div>
-              <div>
-                <h1 className="font-bold text-lg bg-gradient-to-r from-gray-900 to-gray-600 dark:from-white dark:to-gray-300 bg-clip-text text-transparent">
-                  AI Review
-                </h1>
-                <p className="text-xs text-gray-500 dark:text-gray-400">Code Intelligence</p>
-              </div>
-            </Link>
-          </motion.div>
+    <div className="min-h-screen bg-[#f8f9fc] text-[#334155]">
+      <aside className="fixed left-0 top-0 z-50 flex h-screen w-[260px] flex-col border-r border-[#f1f5f9] bg-white">
+        <div className="flex h-[84px] items-center border-b border-[#f1f5f9] px-6">
+          <Link href={dashboardHref} className="flex items-center gap-3">
+            <div className="flex h-8 w-8 items-center justify-center rounded-md bg-[#6b5ce7] text-lg font-bold text-white">
+              A
+            </div>
+            <span className="text-[17px] font-semibold text-[#1e293b]">AI Review</span>
+          </Link>
+        </div>
 
-          {/* Main Navigation */}
-          <div className="flex-1 overflow-y-auto px-3 py-4 space-y-1">
-            <motion.div
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2 }}
-            >
-              {navigation.map((item, index) => {
-                const Icon = item.icon;
-                const active = isActive(item.href);
+        <div className="flex-1 space-y-1 overflow-y-auto px-4 py-6">
+          {navigation.map((item) => {
+            const active = isActive(item.href)
+            const Icon = item.icon
+            return (
+              <Link
+                key={item.name}
+                href={item.href}
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  active
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <Icon strokeWidth={2} className={`h-[18px] w-[18px] ${active ? "text-white" : "text-[#64748b]"}`} />
+                <span>{item.name}</span>
+              </Link>
+            )
+          })}
+
+          {isAdmin && (
+            <div className="pt-6">
+              <p className="mb-3 px-4 text-[12px] font-semibold uppercase tracking-widest text-[#94a3b8]">Administration</p>
+              {adminNavigation.map((item) => {
+                const active = isActive(item.href)
+                const Icon = item.icon
                 return (
-                  <Link key={item.name} href={item.href}>
-                    <motion.div
-                      initial={{ opacity: 0, x: -20 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: 0.1 * index }}
-                      whileHover={{ x: 4 }}
-                      whileTap={{ scale: 0.98 }}
-                      className="relative"
-                    >
-                      {active && (
-                        <motion.div
-                          layoutId="activeNav"
-                          className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 rounded-xl"
-                          transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                        />
-                      )}
-                      <div className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                        active 
-                          ? 'text-gray-900 dark:text-white' 
-                          : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                      }`}>
-                        <motion.div 
-                          className={`relative p-2 rounded-lg ${
-                            active 
-                              ? `bg-gradient-to-br ${item.gradient}` 
-                              : 'bg-gray-100 dark:bg-gray-800'
-                          }`}
-                          whileHover={{ scale: 1.1, rotate: 5 }}
-                        >
-                          <Icon className={`h-4 w-4 ${active ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`} />
-                        </motion.div>
-                        <span className="font-medium text-sm">{item.name}</span>
-                        {active && (
-                          <motion.div
-                            initial={{ opacity: 0, scale: 0 }}
-                            animate={{ opacity: 1, scale: 1 }}
-                            className="ml-auto"
-                          >
-                            <ChevronRight className="h-4 w-4" />
-                          </motion.div>
-                        )}
-                      </div>
-                    </motion.div>
+                  <Link
+                    key={item.name}
+                    href={item.href}
+                    className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                      active
+                        ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                        : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                    }`}
+                  >
+                    <Icon strokeWidth={2} className={`h-[18px] w-[18px] ${active ? "text-white" : "text-[#64748b]"}`} />
+                    <span>{item.name}</span>
                   </Link>
-                );
+                )
               })}
-            </motion.div>
+            </div>
+          )}
+        </div>
+      </aside>
 
-            {/* Admin Section */}
-            {isAdmin && (
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="pt-6"
-              >
-                <div className="px-4 mb-2">
-                  <p className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider">
-                    Administration
-                  </p>
-                </div>
-                {adminNavigation.map((item, index) => {
-                  const Icon = item.icon;
-                  const active = isActive(item.href);
-                  return (
-                    <Link key={item.name} href={item.href}>
-                      <motion.div
-                        initial={{ opacity: 0, x: -20 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: 0.1 * (index + 2) }}
-                        whileHover={{ x: 4 }}
-                        whileTap={{ scale: 0.98 }}
-                        className="relative"
-                      >
-                        {active && (
-                          <motion.div
-                            layoutId="activeNav"
-                            className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 rounded-xl"
-                            transition={{ type: "spring", stiffness: 300, damping: 30 }}
-                          />
-                        )}
-                        <div className={`relative flex items-center gap-3 px-4 py-3 rounded-xl transition-all ${
-                          active 
-                            ? 'text-gray-900 dark:text-white' 
-                            : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
-                        }`}>
-                          <motion.div 
-                            className={`relative p-2 rounded-lg ${
-                              active 
-                                ? `bg-gradient-to-br ${item.gradient}` 
-                                : 'bg-gray-100 dark:bg-gray-800'
-                            }`}
-                            whileHover={{ scale: 1.1, rotate: 5 }}
-                          >
-                            <Icon className={`h-4 w-4 ${active ? 'text-white' : 'text-gray-600 dark:text-gray-400'}`} />
-                          </motion.div>
-                          <span className="font-medium text-sm">{item.name}</span>
-                          {active && (
-                            <motion.div
-                              initial={{ opacity: 0, scale: 0 }}
-                              animate={{ opacity: 1, scale: 1 }}
-                              className="ml-auto"
-                            >
-                              <ChevronRight className="h-4 w-4" />
-                            </motion.div>
-                          )}
-                        </div>
-                      </motion.div>
-                    </Link>
-                  );
-                })}
-              </motion.div>
-            )}
+      <div className="ml-[260px] min-h-screen">
+        <header className="sticky top-0 z-40 flex h-[84px] items-center justify-between border-b border-[#f1f5f9] bg-white px-8">
+          <div className="relative w-full max-w-md">
+            <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#94a3b8]" strokeWidth={2} />
+            <input
+              type="text"
+              placeholder="Search anything..."
+              className="h-[42px] w-full rounded-full border border-[#e2e8f0] bg-[#f8f9fa] pl-10 pr-4 text-[14px] text-[#1e293b] outline-none transition-all placeholder:text-[#94a3b8] focus:border-[#6b5ce7] focus:bg-white focus:ring-1 focus:ring-[#6b5ce7]"
+            />
           </div>
 
-          {/* Bottom Section */}
-          <motion.div 
-            className="p-3 border-t border-gray-200/50 dark:border-gray-800/50 space-y-2"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.4 }}
-          >
-            <div className="rounded-xl border border-gray-200/70 bg-white/70 px-4 py-3 text-left dark:border-gray-800/70 dark:bg-gray-900/70">
-              <p className="text-[11px] uppercase tracking-wider text-gray-500 dark:text-gray-400">Workspace</p>
-              <p className="mt-1 truncate text-sm font-medium text-gray-900 dark:text-white">
-                {currentUser.organization?.name ?? currentUser.organization?.slug ?? "Personal"}
-              </p>
-              <p className="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
-                {currentUser.organization?.role ? `Role: ${currentUser.organization.role}` : "Mode personnel"}
-              </p>
-            </div>
-
-            {/* Theme Toggle */}
-            <motion.button
-              onClick={() => setTheme(isDark ? "light" : "dark")}
-              className="w-full flex items-center gap-3 px-4 py-3 rounded-xl text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
-              whileHover={{ x: 4 }}
-              whileTap={{ scale: 0.98 }}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button className="ml-6 flex items-center gap-3 rounded-[12px] border border-transparent p-2 transition-colors hover:border-[#f1f5f9] hover:bg-[#f8f9fa]">
+                <div className="hidden text-right sm:block">
+                  <p className="text-[14px] font-semibold text-[#1e293b]">{currentUser.name}</p>
+                  <p className="text-[12px] font-medium capitalize text-[#64748b]">{formatRoleLabel(currentUser.role)}</p>
+                </div>
+                <Avatar className="h-10 w-10 border border-[#e2e8f0]">
+                  <AvatarFallback className="bg-[#f8f9fa] text-[14px] font-bold text-[#6b5ce7]">{currentUser.avatar}</AvatarFallback>
+                </Avatar>
+                <ChevronDown className="h-4 w-4 text-[#94a3b8]" />
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-56 rounded-[12px] border border-[#f1f5f9] bg-white shadow-[0_4px_24px_rgba(0,0,0,0.08)]"
             >
-              <motion.div 
-                className="p-2 rounded-lg bg-gray-100 dark:bg-gray-800"
-                whileHover={{ scale: 1.1, rotate: 180 }}
-                transition={{ duration: 0.3 }}
-              >
-                {isDark ? (
-                  <Sun className="h-4 w-4" />
-                ) : (
-                  <Moon className="h-4 w-4" />
-                )}
-              </motion.div>
-              <span className="font-medium text-sm">
-                {isDark ? "Light Mode" : "Dark Mode"}
-              </span>
-            </motion.button>
-
-            {/* User Menu */}
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <motion.button
-                  className="w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-gray-100 dark:hover:bg-gray-800 transition-all"
-                  whileHover={{ x: 4 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <Avatar className="h-8 w-8 ring-2 ring-blue-500/20">
-                    <AvatarFallback className="bg-gradient-to-br from-blue-500 to-purple-600 text-white text-xs">
-                      {currentUser.avatar}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 text-left">
-                    <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
-                      {currentUser.name}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 capitalize">
-                      {formatRoleLabel(currentUser.role)}
-                    </p>
-                  </div>
-                  <ChevronRight className="h-4 w-4 text-gray-400" />
-                </motion.button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56">
-                <DropdownMenuLabel>
-                  <div className="flex flex-col">
-                    <span>{currentUser.name}</span>
-                    <span className="text-xs text-gray-500">{currentUser.email}</span>
-                    {currentUser.organization?.id ? (
-                      <span className="text-xs text-gray-500">
-                        {currentUser.organization.name ?? currentUser.organization.slug ?? currentUser.organization.id}
-                      </span>
-                    ) : (
-                      <span className="text-xs text-gray-500">Personal workspace</span>
-                    )}
-                  </div>
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem>
-                  <Settings className="mr-2 h-4 w-4" />
-                  Préférences
+              <DropdownMenuLabel>
+                <div className="flex flex-col gap-1 py-1">
+                  <span className="text-[14px] font-semibold text-[#1e293b]">{currentUser.name}</span>
+                  <span className="text-[12px] text-[#64748b]">{currentUser.email}</span>
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-[#f1f5f9]" />
+              <DropdownMenuItem className="cursor-pointer text-[14px] text-[#334155] focus:bg-[#f8f9fa] focus:text-[#6b5ce7]">
+                <Settings className="mr-2 h-4 w-4" />
+                Preferences
+              </DropdownMenuItem>
+              <DropdownMenuSeparator className="bg-[#f1f5f9]" />
+              <SignOutButton>
+                <DropdownMenuItem className="cursor-pointer text-[14px] text-[#d4183d] focus:bg-[#f8f9fa] focus:text-[#d4183d]">
+                  Sign out
                 </DropdownMenuItem>
-                <SignOutButton>
-                  <DropdownMenuItem>Sign out</DropdownMenuItem>
-                </SignOutButton>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </motion.div>
-        </div>
-      </motion.aside>
+              </SignOutButton>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </header>
 
-      {/* Main Content */}
-      <main className="ml-[280px] min-h-screen">
-        <div className="p-8">{children}</div>
-      </main>
+        <main className="mx-auto w-full max-w-[1100px] p-8">{children}</main>
+      </div>
     </div>
-  );
+  )
 }
