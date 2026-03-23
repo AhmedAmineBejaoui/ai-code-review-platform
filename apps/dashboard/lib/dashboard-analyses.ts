@@ -63,6 +63,16 @@ export function hasActiveDashboardAnalysis(items: DashboardAnalysisItem[]): bool
   })
 }
 
+function removeAnalysisFromCaches(analysisId: string): void {
+  for (const [size, items] of analysesCacheValueBySize.entries()) {
+    analysesCacheValueBySize.set(
+      size,
+      items.filter((item) => item.id !== analysisId),
+    )
+    analysesCacheExpiresAtBySize.set(size, Date.now() + ANALYSES_CACHE_TTL_MS)
+  }
+}
+
 export async function fetchDashboardAnalyses(options?: { force?: boolean; size?: number }): Promise<DashboardAnalysisItem[]> {
   const force = options?.force === true
   const size = normalizeSize(options?.size)
@@ -105,4 +115,27 @@ export async function fetchDashboardAnalyses(options?: { force?: boolean; size?:
 
   analysesInFlightBySize.set(size, request)
   return request
+}
+
+export async function deleteDashboardAnalysis(analysisId: string): Promise<void> {
+  const normalizedId = analysisId.trim()
+  if (!normalizedId) {
+    throw new Error("Invalid analysis id")
+  }
+
+  const response = await fetch(`/api/dashboard/analyses/${encodeURIComponent(normalizedId)}`, {
+    method: "DELETE",
+    cache: "no-store",
+    headers: { Accept: "application/json" },
+  })
+  const payload = (await response.json().catch(() => ({}))) as { error?: string }
+  if (!response.ok) {
+    throw new Error(
+      typeof payload.error === "string" && payload.error.trim().length > 0
+        ? payload.error
+        : "Suppression de l'analyse impossible.",
+    )
+  }
+
+  removeAnalysisFromCaches(normalizedId)
 }

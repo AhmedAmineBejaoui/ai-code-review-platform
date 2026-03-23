@@ -204,6 +204,21 @@ class AnalysesRepo:
             return None
         return self._row_to_model(row)
 
+    def delete(self, analysis_id: str) -> bool:
+        with _REPO_LOCK:
+            with self._engine.begin() as conn:
+                deleted_row = conn.execute(
+                    text(
+                        """
+                        DELETE FROM analyses
+                        WHERE id = :analysis_id
+                        RETURNING id
+                        """
+                    ),
+                    {"analysis_id": analysis_id},
+                ).mappings().first()
+        return deleted_row is not None
+
     def update_status(
         self,
         *,

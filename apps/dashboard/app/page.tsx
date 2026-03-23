@@ -407,13 +407,13 @@ export default function HomePage() {
 
             <motion.h1 
               variants={fadeInUp}
-              className="max-w-xl text-balance text-5xl font-extrabold leading-[1.04] text-slate-900 md:text-[4.25rem]"
+              className="max-w-xl text-balance text-5xl font-extrabold leading-[1.04] md:text-[4.25rem]"
             >
-              Ship code with
+              <span className="hero-title-gradient">Ship code with</span>
               <br />
-              absolute
+              <span className="hero-title-gradient-strong">absolute</span>
               <br />
-              confidence.
+              <span className="hero-title-gradient-strong">confidence.</span>
             </motion.h1>
 
             <motion.p 
@@ -476,13 +476,40 @@ export default function HomePage() {
           {/* Right – Abstract 3D illustration */}
           <div className="relative mx-auto w-full max-w-[560px]">
             <div className="relative flex h-[430px] items-center justify-center">
+              <div className="hero-blob-orbit hero-blob-orbit--outer" />
+              <div className="hero-blob-orbit hero-blob-orbit--inner" />
+              <div className="hero-scan-beam" />
+
               {/* Animated iridescent organic blob */}
               <div className="hero-blob-wrap">
                 <div className="hero-blob" />
                 <div className="hero-blob-highlight-1" />
                 <div className="hero-blob-highlight-2" />
+                <div className="hero-blob-core" />
               </div>
             </div>
+
+            <motion.div
+              className="absolute right-[3%] top-[22%]"
+              initial={{ opacity: 0, y: -8 }}
+              animate={{ opacity: 1, y: [0, -6, 0] }}
+              transition={{ duration: 4.2, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY, delay: 0.2 }}
+            >
+              <div className="rounded-full border border-cyan-200/80 bg-white/85 px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-lg shadow-cyan-500/10 backdrop-blur">
+                PR #842 reviewed
+              </div>
+            </motion.div>
+
+            <motion.div
+              className="absolute bottom-[18%] right-[-1%]"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: [0, 6, 0] }}
+              transition={{ duration: 4.8, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY, delay: 0.5 }}
+            >
+              <div className="rounded-full border border-emerald-200/80 bg-white/85 px-3 py-1.5 text-xs font-semibold text-emerald-700 shadow-lg shadow-emerald-500/10 backdrop-blur">
+                7 issues auto-fixed
+              </div>
+            </motion.div>
 
             {/* Floating card – Security Risk */}
             <motion.div
@@ -499,12 +526,30 @@ export default function HomePage() {
                     </span>
                     <div>
                       <p className="text-lg font-semibold leading-tight text-slate-900">Security Risk Detected</p>
-                      <p className="text-sm text-slate-500">SQL Injection Vulnerability</p>
+                      <p className="text-sm text-slate-500">SQL Injection in auth/login.ts</p>
                     </div>
                   </div>
                   <div className="h-1.5 w-full rounded-full bg-rose-100">
-                    <div className="h-1.5 w-4/5 rounded-full bg-rose-500" />
+                    <div className="hero-risk-bar h-1.5 w-4/5 rounded-full bg-rose-500" />
                   </div>
+                </CardContent>
+              </Card>
+            </motion.div>
+
+            <motion.div
+              className="absolute right-[6%] top-[52%] w-[44%]"
+              initial={{ opacity: 0, y: 6 }}
+              animate={{ opacity: 1, y: [0, 6, 0] }}
+              transition={{ duration: 4.6, ease: "easeInOut", repeat: Number.POSITIVE_INFINITY, delay: 0.15 }}
+            >
+              <Card className="rounded-2xl border-white/75 bg-white/72 shadow-xl shadow-slate-900/10 backdrop-blur-[8px]">
+                <CardContent className="space-y-2 p-3.5">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-semibold uppercase tracking-[0.12em] text-slate-500">AI Review Engine</p>
+                    <span className="rounded-full bg-cyan-100 px-2 py-0.5 text-[10px] font-semibold text-cyan-700">Live</span>
+                  </div>
+                  <p className="text-sm font-semibold text-slate-800">142 files analyzed</p>
+                  <p className="text-xs text-slate-500">3 critical • 5 warnings • 12 suggestions</p>
                 </CardContent>
               </Card>
             </motion.div>

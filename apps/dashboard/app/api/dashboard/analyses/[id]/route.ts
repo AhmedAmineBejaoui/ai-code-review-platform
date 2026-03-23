@@ -479,3 +479,82 @@ export async function GET(_request: Request, context: { params: { id: string } }
 
   return NextResponse.json(details, { status: 200 })
 }
+
+export async function DELETE(_request: Request, context: { params: { id: string } }) {
+  const analysisId = context.params.id
+  if (!analysisId || analysisId.trim().length === 0) {
+    return NextResponse.json({ error: "Invalid analysis id" }, { status: 400 })
+  }
+
+  const { userId, getToken, sessionClaims } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const [token, user] = await Promise.all([getToken(), currentUser()])
+  if (!token) {
+    return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
+  }
+
+  const role = resolveUserRole(user, sessionClaims)
+  const email =
+    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses[0]?.emailAddress
+
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${token}`,
+    "X-User-Id": userId,
+  }
+
+  let detailsResponse: Response
+  try {
+    detailsResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/analyses/${analysisId}`, {
+      method: "GET",
+      headers,
+      cache: "no-store",
+    })
+  } catch {
+    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
+  }
+
+  if (!detailsResponse.ok) {
+    return NextResponse.json({ error: "Analysis not found" }, { status: detailsResponse.status })
+  }
+
+  const detailsPayload = (await detailsResponse.json()) as BackendAnalysisDetails
+  const metadata = normalizeOptionalObject(detailsPayload.metadata)
+
+  if (
+    role === "developer" &&
+    hasOwnerIdentity(metadata) &&
+    !isOwnedByUser(metadata, {
+      userId,
+      email: email ?? undefined,
+    })
+  ) {
+    return NextResponse.json({ error: "Analysis not found" }, { status: 404 })
+  }
+
+  let deleteResponse: Response
+  try {
+    deleteResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/analyses/${analysisId}`, {
+      method: "DELETE",
+      headers,
+      cache: "no-store",
+    })
+  } catch {
+    return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
+  }
+
+  const rawDeleteBody = await deleteResponse.text()
+  let parsedDeleteBody: unknown = { analysis_id: analysisId, deleted: deleteResponse.ok }
+  if (rawDeleteBody) {
+    try {
+      parsedDeleteBody = JSON.parse(rawDeleteBody)
+    } catch {
+      parsedDeleteBody = { detail: rawDeleteBody }
+    }
+  }
+
+  return NextResponse.json(parsedDeleteBody, { status: deleteResponse.status })
+}

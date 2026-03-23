@@ -32,6 +32,7 @@ class AnalysesStore(Protocol):
     def find_duplicate(self, repo: str, diff_hash: str) -> str | None: ...
     def create(self, payload: CreateAnalysisInput) -> Analysis: ...
     def get_by_id(self, analysis_id: str) -> Analysis | None: ...
+    def delete(self, analysis_id: str) -> bool: ...
     def list_paginated(self, page: int, size: int) -> tuple[list[Analysis], int]: ...
     def update_status(
         self,
@@ -404,6 +405,25 @@ class AnalysisService:
             )
 
         return updated
+
+    async def delete_analysis(self, analysis_id: str) -> None:
+        await self.get_analysis(analysis_id)
+        try:
+            deleted = await asyncio.to_thread(self._repo_store.delete, analysis_id)
+        except Exception as exc:
+            raise ServiceError(
+                code="DB_UNAVAILABLE",
+                message="Database unavailable while deleting analysis",
+                status_code=503,
+            ) from exc
+
+        if not deleted:
+            raise ServiceError(
+                code="ANALYSIS_NOT_FOUND",
+                message="analysis_id not found",
+                status_code=404,
+                details={"analysis_id": analysis_id},
+            )
 
     async def create_finding(self, command: CreateFindingCommand) -> Finding:
         if command.severity not in {"INFO", "WARN", "BLOCKER"}:

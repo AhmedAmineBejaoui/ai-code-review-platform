@@ -57,6 +57,11 @@ class AnalyzeAcceptedResponse(BaseModel):
     task_id: str | None = None
 
 
+class DeleteAnalysisResponse(BaseModel):
+    analysis_id: str
+    deleted: bool
+
+
 class FindingResponse(BaseModel):
     id: str
     analysis_id: str
@@ -349,6 +354,48 @@ def _parse_metadata_query(raw: str | None) -> dict[str, Any]:
     return parsed
 
 
+def _has_owner_identity(metadata: dict[str, Any]) -> bool:
+    identity_candidates = [
+        metadata.get("author_id"),
+        metadata.get("user_id"),
+        metadata.get("actor_id"),
+        metadata.get("clerk_user_id"),
+        metadata.get("github_actor_id"),
+        metadata.get("author_email"),
+        metadata.get("user_email"),
+        metadata.get("actor_email"),
+    ]
+    return any(isinstance(candidate, str) and candidate.strip() for candidate in identity_candidates)
+
+
+def _is_owned_by_principal(metadata: dict[str, Any], principal: AuthenticatedPrincipal) -> bool:
+    id_candidates = [
+        metadata.get("author_id"),
+        metadata.get("user_id"),
+        metadata.get("actor_id"),
+        metadata.get("clerk_user_id"),
+        metadata.get("github_actor_id"),
+    ]
+    for candidate in id_candidates:
+        if isinstance(candidate, str) and candidate.strip() == principal.user_id:
+            return True
+
+    if _is_placeholder_email(principal.email):
+        return False
+
+    principal_email = principal.email.strip().lower()
+    email_candidates = [metadata.get("author_email"), metadata.get("user_email"), metadata.get("actor_email")]
+    for candidate in email_candidates:
+        if isinstance(candidate, str) and candidate.strip().lower() == principal_email:
+            return True
+    return False
+
+
+def _is_limited_to_own_analyses(principal: AuthenticatedPrincipal) -> bool:
+    normalized_roles = {role.strip().lower() for role in principal.roles}
+    return "admin" not in normalized_roles and "reviewer" not in normalized_roles
+
+
 def _to_finding_response(model: Finding) -> FindingResponse:
     return FindingResponse(
         id=model.id,
@@ -637,6 +684,37 @@ async def get_analysis(
         tool_runs=tool_runs,
         review_output=review_output,
     )
+
+
+@router.delete("/analyses/{analysis_id}", response_model=DeleteAnalysisResponse)
+async def delete_analysis(
+    analysis_id: str,
+    principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+    service: AnalysisService = Depends(get_analysis_service),
+) -> DeleteAnalysisResponse:
+    if principal is None:
+        raise ApiError(
+            status_code=401,
+            code="UNAUTHORIZED",
+            message="Missing authentication credentials",
+        )
+
+    try:
+        analysis = await service.get_analysis(analysis_id)
+        if _is_limited_to_own_analyses(principal):
+            metadata = analysis.metadata
+            if _has_owner_identity(metadata) and not _is_owned_by_principal(metadata, principal):
+                raise ApiError(
+                    status_code=404,
+                    code="ANALYSIS_NOT_FOUND",
+                    message="analysis_id not found",
+                    details={"analysis_id": analysis_id},
+                )
+        await service.delete_analysis(analysis_id)
+    except ServiceError as exc:
+        _raise_api_error(exc)
+
+    return DeleteAnalysisResponse(analysis_id=analysis_id, deleted=True)
 
 
 @router.get("/analyses/{analysis_id}/review", response_model=StructuredReviewOutput)

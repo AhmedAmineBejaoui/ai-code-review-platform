@@ -10,6 +10,7 @@ import {
   RotateCw,
   Eye,
   GitCompare,
+  Trash2,
   AlertCircle,
   AlertTriangle,
   Info,
@@ -21,6 +22,7 @@ import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights"
 import {
+  deleteDashboardAnalysis,
   fetchDashboardAnalyses,
   hasActiveDashboardAnalysis,
   type DashboardAnalysisItem,
@@ -65,8 +67,29 @@ export function AnalysisList() {
   const [searchQuery, setSearchQuery] = useState("")
   const [insightsLoading, setInsightsLoading] = useState(true)
   const [analysesLoading, setAnalysesLoading] = useState(true)
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
+  const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [insights, setInsights] = useState(() => emptyDashboardInsights())
   const [analyses, setAnalyses] = useState<DashboardAnalysisItem[]>([])
+
+  const handleDeleteAnalysis = async (analysisId: string) => {
+    const confirmed = window.confirm("Voulez-vous vraiment supprimer cette analyse ?")
+    if (!confirmed) {
+      return
+    }
+
+    setDeleteBusyId(analysisId)
+    setActionMessage(null)
+    try {
+      await deleteDashboardAnalysis(analysisId)
+      setAnalyses((previous) => previous.filter((item) => item.id !== analysisId))
+      setActionMessage("Analyse supprimee.")
+    } catch (error) {
+      setActionMessage(error instanceof Error ? error.message : "Suppression de l'analyse impossible.")
+    } finally {
+      setDeleteBusyId(null)
+    }
+  }
 
   const filteredAnalyses = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
@@ -218,6 +241,11 @@ export function AnalysisList() {
             </div>
           </CardHeader>
           <CardContent>
+            {actionMessage && (
+              <div className="mb-3 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+                {actionMessage}
+              </div>
+            )}
             <div className="rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
               <Table>
                 <TableHeader>
@@ -322,6 +350,20 @@ export function AnalysisList() {
                               <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
                                 <Button variant="ghost" size="icon" title="Download JSON">
                                   <Download className="h-4 w-4" />
+                                </Button>
+                              </motion.div>
+                              <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }}>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  title="Supprimer"
+                                  className="text-red-500 hover:text-red-600"
+                                  disabled={deleteBusyId === analysis.id}
+                                  onClick={() => {
+                                    void handleDeleteAnalysis(analysis.id)
+                                  }}
+                                >
+                                  <Trash2 className="h-4 w-4" />
                                 </Button>
                               </motion.div>
                             </div>
