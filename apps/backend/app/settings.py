@@ -139,6 +139,67 @@ class Settings(BaseSettings):
     MINIO_BUCKET: str = "ai-review-artifacts"
     MINIO_SECURE: bool = False
 
+    # ── Chunking Configuration ────────────────────────────────────────────────
+    # Code chunking (Hybride: AST pour Python/JS/TS, fixed pour autres)
+    CHUNK_CODE_SIZE: int = 1000
+    CHUNK_CODE_OVERLAP: int = 100
+    CHUNK_CODE_AST_LANGUAGES: str = "python,javascript,typescript"
+    CHUNK_CODE_USE_FIXED_FOR_OTHERS: bool = True
+
+    # Documentation chunking
+    CHUNK_DOC_SIZE: int = 1800
+    CHUNK_DOC_OVERLAP: int = 220
+
+    # PDF chunking
+    CHUNK_PDF_SIZE: int = 1800
+    CHUNK_PDF_OVERLAP: int = 220
+    CHUNK_PDF_USE_SECTIONS: bool = True
+
+    # API docs chunking
+    CHUNK_API_SIZE: int = 700
+    CHUNK_API_OVERLAP: int = 80
+
+    # ── RAG Agent Configuration ───────────────────────────────────────────────
+    RAG_AGENTS_ENABLED: bool = True
+    RAG_AGENT_CODE_CONTEXT_ENABLED: bool = True
+    RAG_AGENT_DOCUMENTATION_ENABLED: bool = True
+    RAG_AGENT_POLICY_RULES_ENABLED: bool = True
+    RAG_AGENT_SYNTHESIS_ENABLED: bool = True
+
+    # Agent orchestration
+    RAG_ORCHESTRATOR_PARALLEL_AGENTS: bool = True
+    RAG_ORCHESTRATOR_MAX_AGENTS_PER_QUERY: int = 3
+    RAG_ORCHESTRATOR_TIMEOUT_SECONDS: int = 60
+
+    # ── Qdrant Collections ────────────────────────────────────────────────────
+    QDRANT_COLLECTION_KB_DOCUMENTS: str = "kb_documents"
+    QDRANT_COLLECTION_PROJECT_PROFILES: str = "project_profiles"
+    QDRANT_COLLECTION_ORG_RULES: str = "org_rules"
+    QDRANT_COLLECTION_ANALYSIS_CONTEXT: str = "analysis_context"
+
+    # Collection vector sizes (mxbai-embed-large = 1024)
+    QDRANT_VECTOR_SIZE_KB_DOCUMENTS: int = 1024
+    QDRANT_VECTOR_SIZE_PROJECT_PROFILES: int = 1024
+    QDRANT_VECTOR_SIZE_ORG_RULES: int = 1024
+    QDRANT_VECTOR_SIZE_ANALYSIS_CONTEXT: int = 1024
+
+    # ── Anti-Hallucination Configuration ──────────────────────────────────────
+    ANTI_HALLUCINATION_REQUIRE_GROUNDING: bool = True
+    ANTI_HALLUCINATION_MIN_RELEVANCE_SCORE: float = 0.65
+    ANTI_HALLUCINATION_REQUIRE_KB_CITATIONS: bool = True
+    ANTI_HALLUCINATION_MAX_FINDINGS_WITHOUT_CITATION: int = 1
+    ANTI_HALLUCINATION_MIN_CONFIDENCE: float = 0.70
+    ANTI_HALLUCINATION_DISCARD_LOW_CONFIDENCE: bool = True
+    ANTI_HALLUCINATION_MAX_CONTEXT_AGE_HOURS: int = 168  # 7 days
+    ANTI_HALLUCINATION_CROSS_VALIDATE: bool = True
+    ANTI_HALLUCINATION_MIN_CROSS_VALIDATION_SCORE: float = 0.80
+
+    # ── Project Comprehension ─────────────────────────────────────────────────
+    PROJECT_COMPREHENSION_ENABLED: bool = True
+    PROJECT_COMPREHENSION_AUTO_ONBOARD: bool = True
+    PROJECT_COMPREHENSION_MAX_FILES: int = 10000
+    PROJECT_COMPREHENSION_MAX_FILE_SIZE: int = 500_000  # 500KB
+
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 
     @property
@@ -227,6 +288,14 @@ class Settings(BaseSettings):
         model_name = self.LANGCHAIN_OLLAMA_EMBEDDINGS_MODEL.strip().lower() or "default"
         sanitized = "".join(char if char.isalnum() else "_" for char in model_name).strip("_") or "default"
         return f"repo_context_lc_v1_{sanitized}"
+
+    @property
+    def chunk_code_ast_languages(self) -> list[str]:
+        """Languages that should use AST-aware chunking."""
+        raw = self.CHUNK_CODE_AST_LANGUAGES
+        if not raw or not raw.strip():
+            return ["python", "javascript", "typescript"]
+        return [lang.strip().lower() for lang in raw.split(",") if lang.strip()]
 
 
 settings = Settings()
