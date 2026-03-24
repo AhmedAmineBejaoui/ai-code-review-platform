@@ -44,6 +44,8 @@
       ],
       "problemMatcher": []
     },
+    {
+      "label": "Auto Start Dev Environment (Full)",
       "dependsOrder": "sequence",
       "dependsOn": [
         "Terminal 1 - Backend Install + Migrate",

@@ -514,7 +514,6 @@ Le dashboard de production se trouve dans `apps/dashboard` :
 ```bash
 cd apps/dashboard
 npm install
-cp .env.example .env.local  # Configurer les clÃ©s Clerk et API URL
 npm run dev
 ```
 
