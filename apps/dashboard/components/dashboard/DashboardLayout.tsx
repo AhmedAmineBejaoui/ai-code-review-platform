@@ -167,6 +167,20 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
 
               {isReviewerSeniorOrLeadRole && (
                 <Link
+                  href="/dashboard/reviewer/team-analytics"
+                  className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                    isActive("/dashboard/reviewer/team-analytics")
+                      ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                      : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                  }`}
+                >
+                  <Activity strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/team-analytics") ? "text-white" : "text-[#64748b]"}`} />
+                  <span>Team Analytics</span>
+                </Link>
+              )}
+
+              {isReviewerSeniorOrLeadRole && (
+                <Link
                   href="/dashboard/reviewer/templates"
                   className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
                     isActive("/dashboard/reviewer/templates")

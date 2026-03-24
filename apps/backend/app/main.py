@@ -5,7 +5,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.errors import register_exception_handlers
-from app.api.http import admin, analyses, internal_analysis_engine, knowledge_base, review_queue, reviews, webhook_github
+from app.api.http import admin, analyses, internal_analysis_engine, knowledge_base, review_queue, reviews, reviewer_metrics, webhook_github
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
 
@@ -60,6 +60,7 @@ app.include_router(webhook_github.router)
 app.include_router(analyses.router)
 app.include_router(reviews.router)
 app.include_router(review_queue.router)
+app.include_router(reviewer_metrics.router)
 app.include_router(knowledge_base.router)
 app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)

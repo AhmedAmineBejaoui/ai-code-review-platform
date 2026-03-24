@@ -1,0 +1,324 @@
+from __future__ import annotations
+
+from datetime import date, timedelta
+from typing import Any
+
+from fastapi import APIRouter, Depends, HTTPException, Query
+
+from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.data.repos.reviewer_metrics_repo import ReviewerMetricsRepo
+from app.services.reviewer_metrics_calculator import ReviewerMetricsCalculator
+
+router = APIRouter(prefix="/v1/reviews/metrics", tags=["metrics"])
+
+
+@router.get("/personal", response_model=dict[str, Any])
+async def get_personal_metrics(
+    period_days: int = Query(30, ge=7, le=365, description="Période en jours (7-365)"),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Récupère les métriques personnelles du reviewer connecté.
+    """
+    await require_permission(principal, "metrics.read_self")
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=period_days)
+
+    repo = ReviewerMetricsRepo()
+    calculator = ReviewerMetricsCalculator()
+
+    # Récupérer métriques de la période
+    metrics = repo.get_metrics_for_period(principal.user_id, start_date, end_date)
+
+    if not metrics:
+        # Aucune métrique trouvée, retourner des valeurs par défaut
+        return {
+            "reviewer_id": principal.user_id,
+            "period": {
+                "start": start_date.isoformat(),
+                "end": end_date.isoformat(),
+                "days": period_days,
+            },
+            "current_period": {
+                "reviews_completed": 0,
+                "avg_review_time_minutes": 0,
+                "avg_comments_per_review": 0,
+                "sla_compliance_rate": 0,
+                "approvals": 0,
+                "warnings": 0,
+                "blocks": 0,
+            },
+            "trends": await calculator.get_reviewer_trends(principal.user_id, periods=4),
+            "rankings": {
+                "reviews_count": 0,
+                "quality_score": 0,
+                "response_time": 0,
+            },
+        }
+
+    # Agréger les métriques de la période
+    total_completed = sum(m["reviews_completed"] for m in metrics)
+    total_within_sla = sum(m["reviews_within_sla"] for m in metrics)
+    total_breached_sla = sum(m["reviews_breached_sla"] for m in metrics)
+
+    avg_times = [m["avg_review_time_minutes"] for m in metrics if m["avg_review_time_minutes"]]
+    avg_review_time = int(sum(avg_times) / len(avg_times)) if avg_times else 0
+
+    avg_comments = [float(m["avg_comments_per_review"] or 0) for m in metrics]
+    avg_comments_per_review = round(sum(avg_comments) / len(avg_comments), 2) if avg_comments else 0
+
+    sla_compliance = (
+        (total_within_sla / (total_within_sla + total_breached_sla))
+        if (total_within_sla + total_breached_sla) > 0 else 1.0
+    )
+
+    # Récupérer tendances
+    trends = await calculator.get_reviewer_trends(principal.user_id, periods=4)
+
+    return {
+        "reviewer_id": principal.user_id,
+        "period": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "days": period_days,
+        },
+        "current_period": {
+            "reviews_completed": total_completed,
+            "avg_review_time_minutes": avg_review_time,
+            "avg_comments_per_review": avg_comments_per_review,
+            "sla_compliance_rate": round(sla_compliance, 3),
+            "approvals": sum(m["approvals"] for m in metrics),
+            "warnings": sum(m["warnings"] for m in metrics),
+            "blocks": sum(m["blocks"] for m in metrics),
+            "findings_identified": sum(m["findings_identified"] for m in metrics),
+        },
+        "trends": trends,
+        "rankings": {
+            "reviews_count": 0,  # À implémenter avec leaderboard
+            "quality_score": 0,
+            "response_time": 0,
+        },
+    }
+
+
+@router.get("/team", response_model=dict[str, Any])
+async def get_team_metrics(
+    period_days: int = Query(30, ge=7, le=365),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Récupère les métriques d'équipe (Lead/Admin seulement).
+    """
+    await require_permission(principal, "metrics.read_team")
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=period_days)
+
+    repo = ReviewerMetricsRepo()
+
+    # Récupérer résumé d'équipe pour la période
+    team_summary = repo.get_team_summary(start_date, end_date)
+
+    # Récupérer métriques individuelles pour le leaderboard
+    all_metrics = repo.get_metrics_by_period(start_date, end_date)
+
+    # Créer leaderboard par nombre de reviews complétées
+    leaderboard_data = []
+    reviewer_totals = {}
+
+    for metric in all_metrics:
+        reviewer_id = metric["reviewer_id"]
+        if reviewer_id not in reviewer_totals:
+            reviewer_totals[reviewer_id] = {
+                "reviewer_id": reviewer_id,
+                "reviews_completed": 0,
+                "avg_review_time": 0,
+                "sla_compliance": 0,
+                "comment_count": 0,
+            }
+
+        reviewer_totals[reviewer_id]["reviews_completed"] += metric["reviews_completed"]
+        reviewer_totals[reviewer_id]["comment_count"] += metric["comments_created"]
+
+        if metric["avg_review_time_minutes"]:
+            reviewer_totals[reviewer_id]["avg_review_time"] = metric["avg_review_time_minutes"]
+
+        within_sla = metric["reviews_within_sla"]
+        breached_sla = metric["reviews_breached_sla"]
+        if within_sla + breached_sla > 0:
+            reviewer_totals[reviewer_id]["sla_compliance"] = within_sla / (within_sla + breached_sla)
+
+    # Trier par nombre de reviews complétées
+    leaderboard_data = sorted(
+        reviewer_totals.values(),
+        key=lambda x: x["reviews_completed"],
+        reverse=True
+    )[:10]  # Top 10
+
+    return {
+        "period": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "days": period_days,
+        },
+        "team_overview": team_summary,
+        "leaderboard": leaderboard_data,
+        "capacity_analysis": {
+            "total_capacity": 0,  # À calculer en fonction des users.reviewer_capacity
+            "utilization_rate": 0,
+            "bottlenecks": [],  # À implémenter avec analyse des assignments
+        },
+    }
+
+
+@router.get("/leaderboard", response_model=list[dict[str, Any]])
+async def get_leaderboard(
+    metric: str = Query("reviews_completed", description="Métrique pour le classement"),
+    period_days: int = Query(30, ge=7, le=365),
+    limit: int = Query(10, ge=5, le=50),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> list[dict[str, Any]]:
+    """
+    Récupère le leaderboard des reviewers pour une métrique donnée.
+    """
+    await require_permission(principal, "metrics.read_team")
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=period_days)
+
+    repo = ReviewerMetricsRepo()
+
+    try:
+        leaderboard = repo.get_leaderboard(start_date, end_date, metric, limit)
+        return [dict(entry) for entry in leaderboard]
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/trends", response_model=dict[str, Any])
+async def get_metrics_trends(
+    reviewer_id: str | None = Query(None, description="ID du reviewer (défaut: utilisateur connecté)"),
+    periods: int = Query(8, ge=2, le=24, description="Nombre de périodes hebdomadaires"),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Récupère les tendances de métriques sur plusieurs périodes.
+    """
+    target_reviewer_id = reviewer_id or principal.user_id
+
+    # Vérifier permissions
+    if target_reviewer_id != principal.user_id:
+        await require_permission(principal, "metrics.read_team")
+    else:
+        await require_permission(principal, "metrics.read_self")
+
+    calculator = ReviewerMetricsCalculator()
+    trends = await calculator.get_reviewer_trends(target_reviewer_id, periods)
+
+    return {
+        "reviewer_id": target_reviewer_id,
+        "periods": periods,
+        "trends": trends,
+    }
+
+
+@router.post("/refresh", status_code=202)
+async def refresh_metrics(
+    reviewer_id: str | None = Query(None, description="ID du reviewer (défaut: tous)"),
+    target_date: date | None = Query(None, description="Date cible (défaut: hier)"),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Déclenche un recalcul des métriques (Admin seulement).
+    """
+    await require_permission(principal, "metrics.refresh")
+
+    calculator = ReviewerMetricsCalculator()
+
+    if reviewer_id:
+        # Recalculer pour un reviewer spécifique
+        if target_date is None:
+            target_date = date.today() - timedelta(days=1)
+
+        metrics = await calculator.calculate_reviewer_metrics(
+            reviewer_id, target_date, target_date
+        )
+
+        return {
+            "message": "Metrics recalculated for reviewer",
+            "reviewer_id": reviewer_id,
+            "date": target_date.isoformat(),
+            "metrics_id": metrics["id"] if metrics else None,
+        }
+    else:
+        # Recalculer pour tous les reviewers (job quotidien)
+        processed_count = await calculator.calculate_daily_metrics(target_date)
+
+        return {
+            "message": "Daily metrics calculation triggered",
+            "date": (target_date or date.today() - timedelta(days=1)).isoformat(),
+            "reviewers_processed": processed_count,
+        }
+
+
+@router.get("/summary", response_model=dict[str, Any])
+async def get_metrics_summary(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Récupère un résumé global des métriques (Admin/Lead seulement).
+    """
+    await require_permission(principal, "metrics.read_all")
+
+    repo = ReviewerMetricsRepo()
+    summary = repo.get_metrics_summary()
+
+    return summary
+
+
+@router.get("/reviewer/{reviewer_id}", response_model=dict[str, Any])
+async def get_reviewer_metrics(
+    reviewer_id: str,
+    period_days: int = Query(30, ge=7, le=365),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Récupère les métriques d'un reviewer spécifique (Lead/Admin seulement).
+    """
+    await require_permission(principal, "metrics.read_all")
+
+    end_date = date.today()
+    start_date = end_date - timedelta(days=period_days)
+
+    repo = ReviewerMetricsRepo()
+    calculator = ReviewerMetricsCalculator()
+
+    # Récupérer métriques
+    metrics = repo.get_metrics_for_period(reviewer_id, start_date, end_date)
+    trends = await calculator.get_reviewer_trends(reviewer_id, periods=6)
+
+    if not metrics:
+        raise HTTPException(status_code=404, detail="No metrics found for this reviewer")
+
+    # Agréger métriques
+    total_completed = sum(m["reviews_completed"] for m in metrics)
+    avg_times = [m["avg_review_time_minutes"] for m in metrics if m["avg_review_time_minutes"]]
+    avg_review_time = int(sum(avg_times) / len(avg_times)) if avg_times else 0
+
+    return {
+        "reviewer_id": reviewer_id,
+        "period": {
+            "start": start_date.isoformat(),
+            "end": end_date.isoformat(),
+            "days": period_days,
+        },
+        "summary": {
+            "total_reviews": total_completed,
+            "avg_review_time": avg_review_time,
+            "total_comments": sum(m["comments_created"] for m in metrics),
+            "total_change_requests": sum(m["change_requests_created"] for m in metrics),
+        },
+        "trends": trends,
+        "detailed_metrics": [dict(m) for m in metrics],
+    }

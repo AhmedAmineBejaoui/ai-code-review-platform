@@ -312,6 +312,86 @@ class ReviewerMetricsRepo:
             result = conn.execute(query, params)
             return result.rowcount > 0
 
+    def upsert_metrics_obj(self, metrics_obj) -> str:
+        """
+        Insert or update metrics using PostgreSQL UPSERT.
+        Compatible with the ReviewerMetricsCalculator service.
+        """
+        metrics_id = f"met_{uuid.uuid4().hex[:16]}"
+        now = datetime.now(timezone.utc).isoformat()
+
+        query = text("""
+            INSERT INTO reviewer_metrics (
+                id, reviewer_id, period_start, period_end,
+                reviews_assigned, reviews_completed, reviews_declined,
+                comments_created, change_requests_created,
+                avg_review_time_minutes, avg_comments_per_review,
+                findings_identified, false_positives,
+                approvals, warnings, blocks, overrides_received,
+                reviews_within_sla, reviews_breached_sla, avg_response_time_minutes,
+                created_at, updated_at
+            )
+            VALUES (
+                :id, :reviewer_id, :period_start, :period_end,
+                :reviews_assigned, :reviews_completed, :reviews_declined,
+                :comments_created, :change_requests_created,
+                :avg_review_time_minutes, :avg_comments_per_review,
+                :findings_identified, :false_positives,
+                :approvals, :warnings, :blocks, :overrides_received,
+                :reviews_within_sla, :reviews_breached_sla, :avg_response_time_minutes,
+                :created_at, :updated_at
+            )
+            ON CONFLICT (reviewer_id, period_start, period_end) DO UPDATE SET
+                reviews_assigned = EXCLUDED.reviews_assigned,
+                reviews_completed = EXCLUDED.reviews_completed,
+                reviews_declined = EXCLUDED.reviews_declined,
+                comments_created = EXCLUDED.comments_created,
+                change_requests_created = EXCLUDED.change_requests_created,
+                avg_review_time_minutes = EXCLUDED.avg_review_time_minutes,
+                avg_comments_per_review = EXCLUDED.avg_comments_per_review,
+                findings_identified = EXCLUDED.findings_identified,
+                false_positives = EXCLUDED.false_positives,
+                approvals = EXCLUDED.approvals,
+                warnings = EXCLUDED.warnings,
+                blocks = EXCLUDED.blocks,
+                overrides_received = EXCLUDED.overrides_received,
+                reviews_within_sla = EXCLUDED.reviews_within_sla,
+                reviews_breached_sla = EXCLUDED.reviews_breached_sla,
+                avg_response_time_minutes = EXCLUDED.avg_response_time_minutes,
+                updated_at = :updated_at
+            RETURNING id
+        """)
+
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                query,
+                {
+                    "id": metrics_id,
+                    "reviewer_id": metrics_obj.reviewer_id,
+                    "period_start": metrics_obj.period_start,
+                    "period_end": metrics_obj.period_end,
+                    "reviews_assigned": getattr(metrics_obj, 'reviews_assigned', 0),
+                    "reviews_completed": getattr(metrics_obj, 'reviews_completed', 0),
+                    "reviews_declined": getattr(metrics_obj, 'reviews_declined', 0),
+                    "comments_created": getattr(metrics_obj, 'comments_created', 0),
+                    "change_requests_created": getattr(metrics_obj, 'change_requests_created', 0),
+                    "avg_review_time_minutes": getattr(metrics_obj, 'avg_review_time_minutes', None),
+                    "avg_comments_per_review": getattr(metrics_obj, 'avg_comments_per_review', None),
+                    "findings_identified": getattr(metrics_obj, 'findings_identified', 0),
+                    "false_positives": getattr(metrics_obj, 'false_positives', 0),
+                    "approvals": getattr(metrics_obj, 'approvals', 0),
+                    "warnings": getattr(metrics_obj, 'warnings', 0),
+                    "blocks": getattr(metrics_obj, 'blocks', 0),
+                    "overrides_received": getattr(metrics_obj, 'overrides_received', 0),
+                    "reviews_within_sla": getattr(metrics_obj, 'reviews_within_sla', 0),
+                    "reviews_breached_sla": getattr(metrics_obj, 'reviews_breached_sla', 0),
+                    "avg_response_time_minutes": getattr(metrics_obj, 'avg_response_time_minutes', None),
+                    "created_at": now,
+                    "updated_at": now,
+                },
+            )
+            return result.scalar_one()
+
     def upsert_metrics(
         self,
         reviewer_id: str,
@@ -347,6 +427,58 @@ class ReviewerMetricsRepo:
         else:
             # Create new
             return self.create_metrics(metrics_data)
+
+    def get_metrics_for_period(
+        self,
+        reviewer_id: str,
+        period_start: date,
+        period_end: date,
+    ) -> list[RowMapping]:
+        """Get metrics for a reviewer within a date range"""
+        query = text("""
+            SELECT * FROM reviewer_metrics
+            WHERE reviewer_id = :reviewer_id
+            AND period_start >= :period_start
+            AND period_end <= :period_end
+            ORDER BY period_start ASC
+        """)
+
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                query,
+                {
+                    "reviewer_id": reviewer_id,
+                    "period_start": period_start,
+                    "period_end": period_end,
+                },
+            )
+            return list(result.mappings().all())
+
+    def get_metrics_range(
+        self,
+        reviewer_id: str,
+        start_date: date,
+        end_date: date,
+    ) -> list[RowMapping]:
+        """Get all metrics for a reviewer in a date range"""
+        query = text("""
+            SELECT * FROM reviewer_metrics
+            WHERE reviewer_id = :reviewer_id
+            AND period_start >= :start_date
+            AND period_end <= :end_date
+            ORDER BY period_start ASC
+        """)
+
+        with self._engine.connect() as conn:
+            result = conn.execute(
+                query,
+                {
+                    "reviewer_id": reviewer_id,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                },
+            )
+            return list(result.mappings().all())
 
     def get_leaderboard(
         self,
