@@ -696,7 +696,7 @@ export function DeveloperDashboard() {
       {/* Hero Section - Professional design with gradient background */}
       <motion.div
         variants={item}
-        className="relative overflow-hidden rounded-3xl bg-gradient-hero p-8 shadow-pro-lg"
+        className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-blue-600 via-blue-700 to-blue-800 p-8 shadow-2xl"
       >
         {/* Background decoration */}
         <div className="absolute inset-0 bg-gradient-to-br from-primary/20 via-transparent to-accent/20" />
@@ -769,7 +769,7 @@ export function DeveloperDashboard() {
               <Button
                 variant="shine"
                 size="lg"
-                className="gap-2 bg-white text-primary hover:bg-white/90 shadow-pro-md"
+                className="gap-2 bg-white text-primary hover:bg-white/90 shadow-lg"
                 onClick={openLaunchDialog}
                 disabled={isSubmittingAnalysis}
               >
@@ -804,7 +804,8 @@ export function DeveloperDashboard() {
           value={atRiskPRs.reduce((acc, a) => acc + a.blockerCount, 0)}
           icon={AlertCircle}
           iconColor="red"
-          trend={{ value: atRiskPRs.length, label: "PRs à risque" }}
+          trend={{ value: atRiskPRs.length, isPositive: false }}
+          description="PRs à risque"
           variant="elevated"
         />
 
@@ -813,7 +814,8 @@ export function DeveloperDashboard() {
           value={analysisRows.reduce((acc, analysis) => acc + analysis.warnCount, 0)}
           icon={AlertTriangle}
           iconColor="amber"
-          trend={{ value: 0, label: "Warnings détectés" }}
+          trend={{ value: 0, isPositive: undefined }}
+          description="Warnings détectés"
           variant="elevated"
         />
 
@@ -822,7 +824,8 @@ export function DeveloperDashboard() {
           value={analysisRows.filter((analysis) => normalizeStatus(analysis.status) === "COMPLETED").length}
           icon={CheckCircle2}
           iconColor="green"
-          trend={{ value: analysisRows.length, label: `sur ${analysisRows.length} analyses` }}
+          trend={{ value: analysisRows.length, isPositive: true }}
+          description={`sur ${analysisRows.length} analyses`}
           variant="elevated"
         />
       </motion.div>
@@ -852,7 +855,7 @@ export function DeveloperDashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <Card className="hover:shadow-pro-lg transition-all duration-300 border-border shadow-pro-md hover:-translate-y-2">
+              <Card className="hover:shadow-xl transition-all duration-300 border-border shadow-lg hover:-translate-y-2">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
@@ -892,10 +895,10 @@ export function DeveloperDashboard() {
 
       {/* LLM PR Summaries - Enhanced */}
       <motion.div variants={item}>
-        <Card className="glass-pro border-primary/10">
+        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-primary/10">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-blue-800">
                 <Sparkles className="h-4 w-4 text-white" />
               </div>
               {currentUser.role === "developer"
@@ -919,7 +922,7 @@ export function DeveloperDashboard() {
                     whileHover={{ y: -2 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <Card className="border-muted/40 shadow-pro-sm hover:shadow-pro-md transition-all duration-200">
+                    <Card className="border-muted/40 shadow-sm hover:shadow-md transition-all duration-200">
                       <CardContent className="p-4">
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                           <Badge variant="outline">{summary.repo}</Badge>

@@ -16,10 +16,10 @@ import {
   Shield,
   Users,
   ClipboardCheck,
-  QueueList,
-  DocumentCheck,
+  ListChecks,
+  FileCheck,
   ChartBar,
-  DocumentDuplicate,
+  Files,
   Cog,
 } from "lucide-react"
 
@@ -166,7 +166,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 {isActive("/dashboard/reviewer/queue") && (
                   <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 )}
-                <QueueList
+                <ListChecks
                   strokeWidth={2}
                   className={cn(
                     "relative z-10 h-5 w-5 transition-transform duration-300",
@@ -193,7 +193,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                 {isActive("/dashboard/reviewer/my-reviews") && (
                   <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                 )}
-                <DocumentCheck
+                <FileCheck
                   strokeWidth={2}
                   className={cn(
                     "relative z-10 h-5 w-5 transition-transform duration-300",
@@ -262,7 +262,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
                   {isActive("/dashboard/reviewer/templates") && (
                     <div className="absolute inset-0 rounded-2xl bg-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
                   )}
-                  <DocumentDuplicate
+                  <Files
                     strokeWidth={2}
                     className={cn(
                       "relative z-10 h-5 w-5 transition-transform duration-300",

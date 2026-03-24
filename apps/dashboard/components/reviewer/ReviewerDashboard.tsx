@@ -9,7 +9,7 @@ import {
   Users,
   TrendingUp,
   Calendar,
-  Alert,
+  AlertTriangle,
   ChevronRight,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -253,7 +253,7 @@ export function ReviewerDashboard() {
                             </Badge>
                             {isUrgent && (
                               <Badge variant="destructive">
-                                <Alert className="h-3 w-3 mr-1" />
+                                <AlertTriangle className="h-3 w-3 mr-1" />
                                 Due in {timeUntilDue}h
                               </Badge>
                             )}
