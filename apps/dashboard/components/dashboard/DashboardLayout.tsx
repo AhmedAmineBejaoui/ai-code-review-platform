@@ -16,6 +16,12 @@ import {
   Settings,
   Shield,
   Users,
+  ClipboardCheck,
+  QueueList,
+  DocumentCheck,
+  ChartBar,
+  DocumentDuplicate,
+  Cog,
 } from "lucide-react"
 
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
@@ -28,7 +34,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { formatRoleLabel, getRoleHomePath } from "@/lib/roles"
+import { formatRoleLabel, getRoleHomePath, isReviewer, isReviewerSeniorOrLead } from "@/lib/roles"
 
 export function DashboardLayout({ children }: { children: ReactNode }) {
   const currentUser = useDashboardUser()
@@ -59,6 +65,12 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
   }
 
   const isAdmin = currentUser.role === "admin"
+  const isReviewerRole = isReviewer(currentUser.role)
+  const isReviewerSeniorOrLeadRole = isReviewerSeniorOrLead(currentUser.role)
+
+  // Mock data for badges - would come from API
+  const pendingReviewsCount = 5
+  const overdueCount = 1
 
   return (
     <div className="min-h-screen bg-[#f8f9fc] text-[#334155]">
@@ -91,6 +103,95 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               </Link>
             )
           })}
+
+          {isReviewerRole && (
+            <div className="pt-6">
+              <p className="mb-3 px-4 text-[12px] font-semibold uppercase tracking-widest text-[#94a3b8]">Review Management</p>
+              <Link
+                href="/dashboard/reviewer"
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  isActive("/dashboard/reviewer") && pathname === "/dashboard/reviewer"
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <ClipboardCheck strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer") && pathname === "/dashboard/reviewer" ? "text-white" : "text-[#64748b]"}`} />
+                <span>Dashboard</span>
+                {pendingReviewsCount > 0 && (
+                  <span className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-full bg-orange-500 text-[10px] font-bold text-white">
+                    {pendingReviewsCount}
+                  </span>
+                )}
+              </Link>
+
+              <Link
+                href="/dashboard/reviewer/queue"
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  isActive("/dashboard/reviewer/queue")
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <QueueList strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/queue") ? "text-white" : "text-[#64748b]"}`} />
+                <span>Review Queue</span>
+                {overdueCount > 0 && (
+                  <span className="ml-auto inline-flex h-5 w-5 items-center justify-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                    {overdueCount}
+                  </span>
+                )}
+              </Link>
+
+              <Link
+                href="/dashboard/reviewer/my-reviews"
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  isActive("/dashboard/reviewer/my-reviews")
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <DocumentCheck strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/my-reviews") ? "text-white" : "text-[#64748b]"}`} />
+                <span>My Reviews</span>
+              </Link>
+
+              <Link
+                href="/dashboard/reviewer/analytics"
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  isActive("/dashboard/reviewer/analytics")
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <ChartBar strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/analytics") ? "text-white" : "text-[#64748b]"}`} />
+                <span>Analytics</span>
+              </Link>
+
+              {isReviewerSeniorOrLeadRole && (
+                <Link
+                  href="/dashboard/reviewer/templates"
+                  className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                    isActive("/dashboard/reviewer/templates")
+                      ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                      : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                  }`}
+                >
+                  <DocumentDuplicate strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/templates") ? "text-white" : "text-[#64748b]"}`} />
+                  <span>Templates</span>
+                </Link>
+              )}
+
+              <Link
+                href="/dashboard/reviewer/settings"
+                className={`flex items-center gap-3 rounded-[12px] px-4 py-3 text-[14px] transition-colors ${
+                  isActive("/dashboard/reviewer/settings")
+                    ? "bg-[#6b5ce7] font-semibold text-white shadow-[0_4px_14px_rgba(107,92,231,0.25)]"
+                    : "font-medium text-[#64748b] hover:bg-[#f8f9fa] hover:text-[#1e293b]"
+                }`}
+              >
+                <Cog strokeWidth={2} className={`h-[18px] w-[18px] ${isActive("/dashboard/reviewer/settings") ? "text-white" : "text-[#64748b]"}`} />
+                <span>Settings</span>
+              </Link>
+            </div>
+          )}
 
           {isAdmin && (
             <div className="pt-6">
