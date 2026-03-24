@@ -640,6 +640,8 @@ export function DeveloperDashboard() {
       setIsSubmittingAnalysis(false);
     }
   };
+
+  const refreshDashboardData = async () => {
     setInsightsLoading(true);
     try {
       const [insightsPayload, analysesPayload] = await Promise.all([
@@ -783,7 +785,7 @@ export function DeveloperDashboard() {
       {/* Error/Success Messages */}
       {(formError || actionMessage) && (
         <motion.div variants={item}>
-          <Card variant={formError ? "elevated" : "elevated"} className={formError ? "border-red-200 bg-red-50/70 dark:border-red-900/50 dark:bg-red-950/20" : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20"}>
+          <Card className={formError ? "border-red-200 bg-red-50/70 dark:border-red-900/50 dark:bg-red-950/20" : "border-emerald-200 bg-emerald-50/70 dark:border-emerald-900/50 dark:bg-emerald-950/20"}>
             <CardContent className="pt-4">
               {formError ? (
                 <p className="text-sm font-medium text-red-700 dark:text-red-300">{formError}</p>
@@ -850,7 +852,7 @@ export function DeveloperDashboard() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: index * 0.1 }}
             >
-              <Card variant="elevated" className="hover:shadow-pro-lg transition-all duration-300">
+              <Card className="hover:shadow-pro-lg transition-all duration-300 border-border shadow-pro-md hover:-translate-y-2">
                 <CardContent className="p-6">
                   <div className="flex items-center justify-between">
                     <div className="space-y-1">
@@ -890,7 +892,7 @@ export function DeveloperDashboard() {
 
       {/* LLM PR Summaries - Enhanced */}
       <motion.div variants={item}>
-        <Card variant="glass" className="border-primary/10">
+        <Card className="glass-pro border-primary/10">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-primary">
@@ -917,7 +919,7 @@ export function DeveloperDashboard() {
                     whileHover={{ y: -2 }}
                     transition={{ duration: 0.2 }}
                   >
-                    <Card variant="elevated" className="border-muted/40">
+                    <Card className="border-muted/40 shadow-pro-sm hover:shadow-pro-md transition-all duration-200">
                       <CardContent className="p-4">
                         <div className="mb-3 flex flex-wrap items-center gap-2">
                           <Badge variant="outline">{summary.repo}</Badge>
