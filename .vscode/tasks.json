@@ -3,7 +3,7 @@
   "tasks": [
     {
       "label": "Auto Start Dev Environment (Light)",
-      "dependsOrder": "parallel",
+      "dependsOrder": "sequence",
       "dependsOn": [
         "Terminal 1 - Backend Install + Migrate",
         "Terminal 2 - Ngrok Script",
@@ -13,14 +13,38 @@
         "Terminal 8 - Cloudflared Tunnel",
         "Terminal 9 - Make Dev Backend Cloudflare"
       ],
-      "runOptions": {
-        "runOn": "folderOpen"
-      },
       "problemMatcher": []
     },
     {
-      "label": "Auto Start Dev Environment (Full)",
-      "dependsOrder": "parallel",
+      "label": "Dev Mode - Minimal (Frontend Only)",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Terminal 4 - Dashboard Dev"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev Mode - Backend Only",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Terminal 1 - Backend Install + Migrate",
+        "Terminal 5 - Infra Core Only",
+        "Terminal 10 - Backend API Only"
+      ],
+      "problemMatcher": []
+    },
+    {
+      "label": "Dev Mode - Essential",
+      "dependsOrder": "sequence",
+      "dependsOn": [
+        "Terminal 1 - Backend Install + Migrate",
+        "Terminal 4 - Dashboard Dev",
+        "Terminal 5 - Infra Core Only",
+        "Terminal 10 - Backend API Only"
+      ],
+      "problemMatcher": []
+    },
+      "dependsOrder": "sequence",
       "dependsOn": [
         "Terminal 1 - Backend Install + Migrate",
         "Terminal 2 - Ngrok Script",
@@ -157,6 +181,34 @@
         "reveal": "always",
         "panel": "dedicated",
         "group": "auto-start"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 5 - Infra Core Only",
+      "type": "shell",
+      "command": "make infra-core-up",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "minimal"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Terminal 10 - Backend API Only",
+      "type": "shell",
+      "command": "cd apps/backend && poetry run uvicorn app.main:app --reload --port 8000",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "group": "minimal"
       },
       "problemMatcher": []
     }

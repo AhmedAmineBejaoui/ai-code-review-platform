@@ -11,7 +11,9 @@
         langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback
 
 COMPOSE_FILE = infra/local/docker-compose.yml
+COMPOSE_MINIMAL_FILE = infra/local/docker-compose.minimal.yml
 COMPOSE      = docker compose --env-file .env -f $(COMPOSE_FILE)
+COMPOSE_MINIMAL = docker compose --env-file .env -f $(COMPOSE_MINIMAL_FILE)
 PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
 PROD_ENV_FILE = infra/cloud/oracle/.env.prod
 PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
@@ -28,7 +30,9 @@ help:
 	@echo "  Stack Control"
 	@echo "  -----------------------------------------------------"
 	@echo "  make up                 Start all services (detached)"
+	@echo "  make up-minimal         Start minimal services only (db+redis+qdrant)"
 	@echo "  make down               Stop and remove containers"
+	@echo "  make down-minimal       Stop minimal services"
 	@echo "  make build              Build Docker images (with cache)"
 	@echo "  make build-no-cache     Build Docker images (no cache)"
 	@echo "  make ps                 Show running service status"
@@ -96,8 +100,23 @@ up:
 	@echo "  Hint: run 'make migrate' to apply DB migrations."
 	@echo ""
 
+up-minimal:
+	$(COMPOSE_MINIMAL) up -d
+	@echo ""
+	@echo "  Minimal services started:"
+	@echo "  -------------------------------------------------------"
+	@echo "  PostgreSQL:     localhost:5432    (postgres / simplepass)"
+	@echo "  Redis:          localhost:6380"
+	@echo "  Qdrant:         http://localhost:6333/dashboard"
+	@echo "  -------------------------------------------------------"
+	@echo "  Hint: run 'make host-migrate' then 'make host-api' to start backend."
+	@echo ""
+
 down:
 	$(COMPOSE) down
+
+down-minimal:
+	$(COMPOSE_MINIMAL) down
 
 build:
 	$(COMPOSE) build
