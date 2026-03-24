@@ -1,18 +1,22 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.document_lifecycle import resync_document_source, run_due_document_maintenance
 from app.core.knowledge_base.rag_engines import build_rag_engines
 from app.core.knowledge_base.retriever import build_llm_context
+from app.core.project_comprehension.service import ProjectComprehensionService
 from app.core.review_intelligence.engines import build_langchain_review_generation_engine, build_legacy_review_generation_engine
 from app.core.summarization import SummaryService
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app
+
+logger = logging.getLogger(__name__)
 
 
 def _select_primary_review_engine():
@@ -83,6 +87,23 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
     review_engine = _select_primary_review_engine()
 
     index_result = await ingestor.onboard_repo(repo_id=repo_id, repo_path=repo_path, source=source, force_full=True)
+
+    # Run project comprehension analysis
+    comprehension_service = ProjectComprehensionService(qdrant_client=qdrant_client)
+    comprehension_profile = None
+    comprehension_error = None
+    try:
+        comprehension_profile = await comprehension_service.analyze_repository(
+            repo_path=repo_path,
+            repo_id=repo_id,
+        )
+        # Store profile in Qdrant
+        await comprehension_service.store_profile(comprehension_profile)
+        logger.info(f"Project comprehension completed for {repo_id}: status={comprehension_profile.analysis_status}")
+    except Exception as e:
+        comprehension_error = str(e)
+        logger.warning(f"Project comprehension failed for {repo_id}: {e}")
+
     bootstrap_result = await rag_engine.retrieve_for_repo_bootstrap(repo_id=repo_id, limit=16)
     overview_chunks = bootstrap_result.chunks
     profile = bootstrap_result.profile
@@ -138,6 +159,14 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
         "overview_summary": overview_summary,
         "summary_source": summary_source,
         "summary_fallback": summary_fallback,
+        "comprehension": {
+            "status": comprehension_profile.analysis_status if comprehension_profile else "skipped",
+            "error": comprehension_error,
+            "context_version": comprehension_profile.context_version if comprehension_profile else None,
+            "architecture": comprehension_profile.architecture.pattern.value if comprehension_profile and comprehension_profile.architecture else None,
+            "languages": comprehension_profile.structure.main_languages if comprehension_profile and comprehension_profile.structure else [],
+            "frameworks": comprehension_profile.structure.frameworks_detected if comprehension_profile and comprehension_profile.structure else [],
+        },
     }
 
 

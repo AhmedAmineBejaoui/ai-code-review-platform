@@ -353,3 +353,54 @@ def _extract_text_snippets(*, results: list[Any], limit: int) -> list[str]:
         if len(snippets) >= limit:
             break
     return snippets
+
+
+async def setup_rag_collections(client: QdrantClient) -> dict[str, bool]:
+    """Initialize all RAG collections with their schemas.
+
+    Returns a dict of collection_name -> success status.
+    """
+    from app.integrations.vector_store.collection_schemas import (
+        ALL_COLLECTION_SCHEMAS,
+        get_collection_create_body,
+        get_payload_index_body,
+    )
+
+    results: dict[str, bool] = {}
+
+    for schema in ALL_COLLECTION_SCHEMAS:
+        try:
+            # Check if collection exists
+            existing = await client.get_collection_info(collection_name=schema.name)
+
+            if existing is None:
+                # Create collection
+                body = get_collection_create_body(schema)
+                await client._request(
+                    method="PUT",
+                    path=f"/collections/{schema.name}",
+                    json_body=body,
+                )
+                logger.info("Created Qdrant collection: %s", schema.name)
+
+            # Create payload indexes
+            for index_def in schema.payload_indexes:
+                try:
+                    index_body = get_payload_index_body(index_def)
+                    await client._request(
+                        method="PUT",
+                        path=f"/collections/{schema.name}/index",
+                        json_body=index_body,
+                    )
+                except Exception as idx_exc:
+                    # Index may already exist
+                    logger.debug("Index creation skipped for %s.%s: %s", schema.name, index_def["field_name"], idx_exc)
+
+            results[schema.name] = True
+            logger.info("Qdrant collection ready: %s", schema.name)
+
+        except Exception as exc:
+            logger.error("Failed to setup collection %s: %s", schema.name, exc)
+            results[schema.name] = False
+
+    return results

@@ -5,7 +5,18 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.errors import register_exception_handlers
-from app.api.http import admin, analyses, internal_analysis_engine, knowledge_base, review_queue, reviews, reviewer_metrics, webhook_github
+from app.api.http import (
+    admin,
+    analyses,
+    internal_analysis_engine,
+    knowledge_base,
+    project_comprehension,
+    rag_query,
+    review_queue,
+    reviews,
+    reviewer_metrics,
+    webhook_github,
+)
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
 
@@ -37,6 +48,8 @@ app = FastAPI(
         {"name": "analyses", "description": "Analysis intake and read APIs."},
         {"name": "reviews", "description": "Review management, assignments, comments, and change requests APIs."},
         {"name": "knowledge-base", "description": "Repo context onboarding and retrieval APIs."},
+        {"name": "projects", "description": "Project comprehension and context management APIs."},
+        {"name": "rag", "description": "RAG query and intelligent code analysis APIs."},
     ],
 )
 register_exception_handlers(app)
@@ -64,6 +77,8 @@ app.include_router(reviewer_metrics.router)
 app.include_router(knowledge_base.router)
 app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
+app.include_router(project_comprehension.router)
+app.include_router(rag_query.router)
 
 
 @app.get("/__routes")
