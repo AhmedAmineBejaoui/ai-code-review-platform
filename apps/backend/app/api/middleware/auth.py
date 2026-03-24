@@ -35,10 +35,25 @@ _ROLE_ALIASES: dict[str, str] = {
     "superadmin": "admin",
     "super-admin": "admin",
     "super_admin": "admin",
-    "reviewer": "reviewer",
-    "review": "reviewer",
-    "code-reviewer": "reviewer",
-    "code_reviewer": "reviewer",
+    # Reviewer levels
+    "reviewer_lead": "reviewer_lead",
+    "reviewer-lead": "reviewer_lead",
+    "lead_reviewer": "reviewer_lead",
+    "lead-reviewer": "reviewer_lead",
+    "reviewer_senior": "reviewer_senior",
+    "reviewer-senior": "reviewer_senior",
+    "senior_reviewer": "reviewer_senior",
+    "senior-reviewer": "reviewer_senior",
+    "reviewer_junior": "reviewer_junior",
+    "reviewer-junior": "reviewer_junior",
+    "junior_reviewer": "reviewer_junior",
+    "junior-reviewer": "reviewer_junior",
+    # Generic reviewer (maps to senior by default for backward compatibility)
+    "reviewer": "reviewer_senior",
+    "review": "reviewer_senior",
+    "code-reviewer": "reviewer_senior",
+    "code_reviewer": "reviewer_senior",
+    # Developer
     "developer": "developer",
     "dev": "developer",
     "member": "developer",
@@ -47,9 +62,75 @@ _ROLE_ALIASES: dict[str, str] = {
 }
 
 _ROLE_PERMISSIONS: dict[str, set[str]] = {
-    "admin": {"analyses.read", "analyses.create", "analyses.write", "secrets.manage"},
-    "reviewer": {"analyses.read", "analyses.create", "analyses.write"},
-    "developer": {"analyses.read", "analyses.create"},
+    "admin": {
+        # Core permissions
+        "analyses.read", "analyses.create", "analyses.write", "secrets.manage",
+        # All review permissions
+        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
+        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
+        "reviews.request_changes", "reviews.suggest_changes", "reviews.escalate",
+        # All collaboration permissions
+        "comments.create", "comments.read", "comments.resolve", "comments.edit", "comments.reply",
+        "threads.create", "threads.participate", "threads.moderate",
+        # All assignment permissions
+        "assignments.view_own", "assignments.view_all", "assignments.create", "assignments.modify",
+        # All metrics permissions
+        "metrics.read_self", "metrics.read_team", "metrics.read_all",
+        # Template permissions
+        "templates.create", "templates.use",
+    },
+    "reviewer_lead": {
+        # Core permissions
+        "analyses.read", "analyses.create", "analyses.write",
+        # Advanced review permissions
+        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
+        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
+        "reviews.request_changes", "reviews.escalate",
+        # Collaboration permissions
+        "comments.create", "comments.read", "comments.resolve", "comments.edit",
+        "threads.create", "threads.moderate",
+        # Assignment permissions
+        "assignments.view_all", "assignments.create", "assignments.modify",
+        # Metrics permissions
+        "metrics.read_self", "metrics.read_team",
+        # Template permissions
+        "templates.create", "templates.use",
+    },
+    "reviewer_senior": {
+        # Core permissions
+        "analyses.read", "analyses.create", "analyses.write",
+        # Review permissions (can block)
+        "reviews.approve", "reviews.block", "reviews.warn",
+        "reviews.claim", "reviews.request_changes",
+        # Collaboration permissions
+        "comments.create", "comments.read", "comments.resolve",
+        "threads.create", "threads.participate",
+        # Assignment permissions
+        "assignments.view_own",
+        # Metrics permissions
+        "metrics.read_self",
+        # Template permissions
+        "templates.use",
+    },
+    "reviewer_junior": {
+        # Core permissions
+        "analyses.read", "analyses.create", "analyses.write",
+        # Review permissions (cannot block)
+        "reviews.approve", "reviews.warn", "reviews.claim", "reviews.suggest_changes",
+        # Collaboration permissions
+        "comments.create", "comments.read",
+        "threads.participate",
+        # Assignment permissions
+        "assignments.view_own",
+        # Metrics permissions
+        "metrics.read_self",
+    },
+    "developer": {
+        "analyses.read", "analyses.create",
+        # Basic collaboration
+        "comments.read", "comments.reply",
+        "threads.participate",
+    },
 }
 
 
