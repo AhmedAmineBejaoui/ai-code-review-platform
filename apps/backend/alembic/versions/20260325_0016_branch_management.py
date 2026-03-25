@@ -1,7 +1,7 @@
 """branch management system with protection, policies, and audit
 
 Revision ID: 20260325_0016
-Revises: 56a10e831bc2
+Revises: b8c2f1e34597
 Create Date: 2026-03-25 10:00:00
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260325_0016"
-down_revision = "56a10e831bc2"
+down_revision = "b8c2f1e34597"
 branch_labels = None
 depends_on = None
 
