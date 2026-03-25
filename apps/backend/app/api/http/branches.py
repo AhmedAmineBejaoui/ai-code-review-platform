@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
@@ -289,12 +289,12 @@ async def update_branch(
     return BranchResponse(**_serialize_branch(updated_branch))
 
 
-@router.delete("/{branch_id}", status_code=204)
+@router.delete("/{branch_id}", status_code=204, response_model=None)
 async def delete_branch(
     branch_id: str,
     force: bool = Query(False, description="Force delete even if protected"),
     current_user: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> None:
+) -> Response:
     """
     Supprime une branche.
 
@@ -341,6 +341,7 @@ async def delete_branch(
             )
 
     branch_repo.delete(branch_id)
+    return Response(status_code=204)
 
 
 @router.post("/{branch_id}/set-default", response_model=BranchResponse)
