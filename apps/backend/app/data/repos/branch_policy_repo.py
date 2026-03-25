@@ -42,6 +42,7 @@ class UpdateBranchPolicyInput:
     """Input pour mettre à jour une politique."""
 
     policy_id: str
+    policy_name: str | None = None
     branch_naming_patterns: dict[str, str] | None = None
     enforce_naming: bool | None = None
     require_base_branch: bool | None = None
@@ -141,6 +142,10 @@ class BranchPolicyRepo:
 
         return dict(row) if row else None
 
+    def get_by_org_and_name(self, org_id: str, policy_name: str) -> dict[str, Any] | None:
+        """Alias for get_by_name for API consistency."""
+        return self.get_by_name(org_id, policy_name)
+
     def list_policies(
         self, org_id: str, policy_type: str | None = None, is_active: bool | None = None
     ) -> list[dict[str, Any]]:
@@ -211,6 +216,10 @@ class BranchPolicyRepo:
         """Met à jour une politique."""
         update_fields = []
         params: dict[str, Any] = {"policy_id": payload.policy_id}
+
+        if payload.policy_name is not None:
+            update_fields.append("policy_name = :policy_name")
+            params["policy_name"] = payload.policy_name
 
         if payload.branch_naming_patterns is not None:
             update_fields.append("branch_naming_patterns = CAST(:branch_naming_patterns AS jsonb)")
