@@ -24,6 +24,7 @@ import {
 } from "lucide-react"
 
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { NotificationBell } from "@/components/notifications/NotificationBell"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import {
   DropdownMenu,
@@ -345,8 +346,13 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
             <InputSearch placeholder="Search anything..." />
           </div>
 
-          {/* User Profile Dropdown */}
-          <DropdownMenu>
+          {/* Right side: Notifications + User Profile */}
+          <div className="flex items-center gap-3">
+            {/* Notification Bell */}
+            <NotificationBell />
+
+            {/* User Profile Dropdown */}
+            <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <button className="ml-6 flex items-center gap-3 rounded-2xl border border-transparent p-2 transition-all duration-300 hover:border-border hover:bg-sidebar-accent hover:shadow-pro-sm">
                 <div className="hidden text-right sm:block">
@@ -384,6 +390,7 @@ export function DashboardLayout({ children }: { children: ReactNode }) {
               </SignOutButton>
             </DropdownMenuContent>
           </DropdownMenu>
+          </div>
         </header>
 
         {/* Main content with better spacing */}

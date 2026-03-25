@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Any, Dict, List, Optional
 
 from app.data.database import get_engine
+from app.services.email_service import EmailService
+from app.services.slack_service import SlackService
+
+logger = logging.getLogger(__name__)
 
 
 class NotificationType(Enum):
@@ -201,44 +206,90 @@ class NotificationService:
         return success
 
     async def _send_email_notification(self, notification_data: Dict[str, Any]):
-        """Send email notification."""
+        """Send email notification using EmailService."""
         recipient_id = notification_data["recipient_id"]
 
         # Get user email and preferences
+        user_email = await self._get_user_email(recipient_id)
+        if not user_email:
+            logger.warning(f"No email found for user {recipient_id}")
+            return
+
         user_prefs = await self._get_user_notification_preferences(recipient_id)
 
         if not user_prefs.get("email", True):
+            logger.debug(f"Email notifications disabled for user {recipient_id}")
             return  # User has disabled email notifications
 
-        # TODO: Implement actual email sending
-        # This would integrate with your email service (SendGrid, SES, etc.)
-        print(f"[EMAIL] To: {recipient_id}")
-        print(f"[EMAIL] Subject: {notification_data['title']}")
-        print(f"[EMAIL] Body: {notification_data['message']}")
+        email_service = EmailService()
+        notification_type = notification_data["type"]
+        data = notification_data.get("data", {})
+
+        try:
+            if notification_type == NotificationType.ASSIGNMENT_NEW.value:
+                await email_service.send_assignment_email(user_email, data)
+            elif notification_type == NotificationType.COMMENT_REPLY.value:
+                await email_service.send_comment_reply_email(user_email, data)
+            elif notification_type == NotificationType.CHANGE_REQUEST_CREATED.value:
+                await email_service.send_changes_requested_email(user_email, data)
+            else:
+                # Generic email for other notification types
+                await email_service.send_email(
+                    to=user_email,
+                    subject=notification_data["title"],
+                    html=f"<p>{notification_data['message']}</p>",
+                )
+            logger.info(f"Email notification sent to {user_email}")
+        except Exception as e:
+            logger.error(f"Failed to send email notification: {e}")
+
+    async def _get_user_email(self, user_id: str) -> str | None:
+        """Get user's email address."""
+        from sqlalchemy import text
+
+        query = text("""
+            SELECT email
+            FROM users
+            WHERE id = :user_id
+        """)
+
+        try:
+            with self._engine.connect() as conn:
+                result = conn.execute(query, {"user_id": user_id})
+                row = result.mappings().first()
+                if row:
+                    return row.get("email")
+        except Exception as e:
+            logger.error(f"Failed to get user email: {e}")
+        return None
 
     async def _send_in_app_notification(self, notification_data: Dict[str, Any]):
         """Send in-app notification."""
+        from sqlalchemy import text
+
         # Store notification in database for user to see in notification center
-        query = """
+        query = text("""
             INSERT INTO notifications (
                 id, user_id, type, title, message, data, read, created_at
             ) VALUES (
                 gen_random_uuid(), :user_id, :type, :title, :message, :data, false, :created_at
             )
-        """
+        """)
 
-        with self._engine.begin() as conn:
-            conn.execute(query, {
-                "user_id": notification_data["recipient_id"],
-                "type": notification_data["type"],
-                "title": notification_data["title"],
-                "message": notification_data["message"],
-                "data": json.dumps(notification_data.get("data", {})),
-                "created_at": datetime.now(timezone.utc),
-            })
+        try:
+            with self._engine.begin() as conn:
+                conn.execute(query, {
+                    "user_id": notification_data["recipient_id"],
+                    "type": notification_data["type"],
+                    "title": notification_data["title"],
+                    "message": notification_data["message"],
+                    "data": json.dumps(notification_data.get("data", {})),
+                    "created_at": datetime.now(timezone.utc),
+                })
 
-        # TODO: Send real-time update via WebSocket if user is online
-        print(f"[IN-APP] Notification stored for user {notification_data['recipient_id']}")
+            logger.info(f"In-app notification stored for user {notification_data['recipient_id']}")
+        except Exception as e:
+            logger.error(f"Failed to store in-app notification: {e}")
 
     async def _send_push_notification(self, notification_data: Dict[str, Any]):
         """Send push notification."""
@@ -252,46 +303,67 @@ class NotificationService:
 
         # TODO: Implement actual push notification
         # This would integrate with FCM, APNs, or web push service
-        print(f"[PUSH] To: {recipient_id}")
-        print(f"[PUSH] Title: {notification_data['title']}")
-        print(f"[PUSH] Body: {notification_data['message']}")
+        logger.info(f"Push notification would be sent to {recipient_id}: {notification_data['title']}")
 
     async def _send_slack_notification(self, notification_data: Dict[str, Any]):
-        """Send Slack notification via webhook."""
-        # TODO: Implement Slack webhook integration
-        # This would send to user's connected Slack account or team channel
-        print(f"[SLACK] Notification: {notification_data['title']} - {notification_data['message']}")
+        """Send Slack notification using SlackService."""
+        slack_service = SlackService()
+        notification_type = notification_data["type"]
+        data = notification_data.get("data", {})
+
+        try:
+            if notification_type == NotificationType.ASSIGNMENT_NEW.value:
+                await slack_service.notify_new_review(data)
+            elif notification_type == NotificationType.REVIEW_OVERDUE.value:
+                await slack_service.notify_attention_required(data)
+            elif notification_type == NotificationType.CHANGE_REQUEST_CREATED.value:
+                await slack_service.notify_changes_requested(data)
+            else:
+                # Generic Slack message for other notification types
+                await slack_service.send_message(
+                    text=f"{notification_data['title']}: {notification_data['message']}"
+                )
+            logger.info("Slack notification sent")
+        except Exception as e:
+            logger.error(f"Failed to send Slack notification: {e}")
 
     async def _get_user_notification_preferences(self, user_id: str) -> Dict[str, bool]:
         """Get user's notification preferences."""
-        query = """
+        from sqlalchemy import text
+
+        query = text("""
             SELECT notification_preferences
             FROM users
             WHERE id = :user_id
-        """
+        """)
 
-        with self._engine.connect() as conn:
-            result = conn.execute(query, {"user_id": user_id})
-            row = result.mappings().first()
+        try:
+            with self._engine.connect() as conn:
+                result = conn.execute(query, {"user_id": user_id})
+                row = result.mappings().first()
 
-            if row and row.get("notification_preferences"):
-                return row["notification_preferences"]
+                if row and row.get("notification_preferences"):
+                    return row["notification_preferences"]
+        except Exception as e:
+            logger.error(f"Failed to get user notification preferences: {e}")
 
-            # Default preferences
-            return {
-                "email": True,
-                "push": True,
-                "realtime": True,
-            }
+        # Default preferences
+        return {
+            "email": True,
+            "push": True,
+            "realtime": True,
+        }
 
     async def mark_notifications_read(self, user_id: str, notification_ids: List[str] = None) -> bool:
         """Mark notifications as read."""
+        from sqlalchemy import text
+
         if notification_ids:
-            query = """
+            query = text("""
                 UPDATE notifications
                 SET read = true, read_at = :read_at
                 WHERE user_id = :user_id AND id = ANY(:notification_ids)
-            """
+            """)
             params = {
                 "user_id": user_id,
                 "notification_ids": notification_ids,
@@ -299,11 +371,11 @@ class NotificationService:
             }
         else:
             # Mark all as read
-            query = """
+            query = text("""
                 UPDATE notifications
                 SET read = true, read_at = :read_at
                 WHERE user_id = :user_id AND read = false
-            """
+            """)
             params = {
                 "user_id": user_id,
                 "read_at": datetime.now(timezone.utc),
@@ -314,7 +386,7 @@ class NotificationService:
                 conn.execute(query, params)
             return True
         except Exception as e:
-            print(f"Failed to mark notifications as read: {e}")
+            logger.error(f"Failed to mark notifications as read: {e}")
             return False
 
     async def get_user_notifications(
@@ -325,35 +397,43 @@ class NotificationService:
         offset: int = 0,
     ) -> List[Dict[str, Any]]:
         """Get notifications for a user."""
+        from sqlalchemy import text
+
         conditions = ["user_id = :user_id"]
-        params = {"user_id": user_id, "limit": limit, "offset": offset}
+        params: Dict[str, Any] = {"user_id": user_id, "limit": limit, "offset": offset}
 
         if unread_only:
             conditions.append("read = false")
 
-        query = f"""
-            SELECT id, type, title, message, data, read, created_at, read_at
+        query = text(f"""
+            SELECT id, user_id, type, title, message, data, read, created_at, read_at
             FROM notifications
             WHERE {" AND ".join(conditions)}
             ORDER BY created_at DESC
             LIMIT :limit OFFSET :offset
-        """
+        """)
 
-        with self._engine.connect() as conn:
-            result = conn.execute(query, params)
-            return [dict(row) for row in result.mappings()]
+        try:
+            with self._engine.connect() as conn:
+                result = conn.execute(query, params)
+                return [dict(row) for row in result.mappings()]
+        except Exception as e:
+            logger.error(f"Failed to get user notifications: {e}")
+            return []
 
     async def cleanup_old_notifications(self, days: int = 30) -> int:
         """Clean up notifications older than specified days."""
-        query = """
+        from sqlalchemy import text
+
+        query = text(f"""
             DELETE FROM notifications
-            WHERE created_at < NOW() - INTERVAL '%s days'
-        """ % days
+            WHERE created_at < NOW() - INTERVAL '{days} days'
+        """)
 
         try:
             with self._engine.begin() as conn:
                 result = conn.execute(query)
                 return result.rowcount
         except Exception as e:
-            print(f"Failed to cleanup notifications: {e}")
+            logger.error(f"Failed to cleanup notifications: {e}")
             return 0
