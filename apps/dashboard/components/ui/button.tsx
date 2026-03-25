@@ -58,7 +58,10 @@ function Button({
     asChild?: boolean;
     loading?: boolean;
   }) {
-  const Comp = asChild ? Slot : "button";
+  const hasSingleChildElement =
+    React.Children.count(children) === 1 && React.isValidElement(children);
+  const useSlot = asChild && hasSingleChildElement && !loading;
+  const Comp = useSlot ? Slot : "button";
 
   return (
     <Comp

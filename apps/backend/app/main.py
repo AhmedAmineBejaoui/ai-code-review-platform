@@ -8,6 +8,8 @@ from app.api.errors import register_exception_handlers
 from app.api.http import (
     admin,
     analyses,
+    branch_protection,
+    branches,
     internal_analysis_engine,
     knowledge_base,
     project_comprehension,
@@ -46,6 +48,8 @@ app = FastAPI(
     lifespan=lifespan,
     openapi_tags=[
         {"name": "analyses", "description": "Analysis intake and read APIs."},
+        {"name": "branches", "description": "Branch management and operations APIs."},
+        {"name": "branch-protection", "description": "Branch protection rules and validation APIs."},
         {"name": "reviews", "description": "Review management, assignments, comments, and change requests APIs."},
         {"name": "knowledge-base", "description": "Repo context onboarding and retrieval APIs."},
         {"name": "projects", "description": "Project comprehension and context management APIs."},
@@ -71,6 +75,8 @@ async def health():
 
 app.include_router(webhook_github.router)
 app.include_router(analyses.router)
+app.include_router(branches.router)
+app.include_router(branch_protection.router)
 app.include_router(reviews.router)
 app.include_router(review_queue.router)
 app.include_router(reviewer_metrics.router)

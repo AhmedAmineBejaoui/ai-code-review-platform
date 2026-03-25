@@ -3,7 +3,7 @@
 import { useRef, useState } from "react"
 import { motion, useScroll, useSpring, useTransform } from "framer-motion"
 import Link from "next/link"
-import { SignInButton, SignOutButton, SignUpButton, SignedIn, SignedOut } from "@clerk/nextjs"
+import { SignedIn, SignedOut, useClerk } from "@clerk/nextjs"
 import {
   ArrowRight,
   BookOpen,
@@ -37,7 +37,6 @@ import {
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 /* ─── DATA ─── */
@@ -210,6 +209,7 @@ const NAV_LINKS = [
 
 export default function HomePage() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const { signOut } = useClerk()
   const { scrollY } = useScroll()
   const navbarScale = useSpring(useTransform(scrollY, [0, 260], [1, 0.992]), {
     stiffness: 140,
@@ -290,24 +290,22 @@ export default function HomePage() {
           {/* ── Right side ── */}
           <div className="flex items-center gap-3">
             <SignedOut>
-              <SignInButton mode="redirect">
-                <button className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex">
-                  Sign in
-                </button>
-              </SignInButton>
-              <SignUpButton mode="redirect">
-                <button className="inline-flex items-center gap-1 rounded-[10px] border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
-                  Dashboard
-                  <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
-                </button>
-              </SignUpButton>
+              <Link href="/sign-in" className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex">
+                Sign in
+              </Link>
+              <Link href="/sign-up" className="inline-flex items-center gap-1 rounded-[10px] border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
+                Dashboard
+                <ArrowRight className="h-3.5 w-3.5 text-slate-500" />
+              </Link>
             </SignedOut>
             <SignedIn>
-              <SignOutButton>
-                <button className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex">
-                  Sign out
-                </button>
-              </SignOutButton>
+              <button
+                type="button"
+                onClick={() => void signOut()}
+                className="hidden text-sm font-normal text-slate-800 transition-colors hover:text-black sm:inline-flex"
+              >
+                Sign out
+              </button>
               <Link
                 href="/auth/role-redirect"
                 className="inline-flex items-center gap-1 rounded-[10px] border border-slate-300 bg-white px-3.5 py-1.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50"
@@ -352,16 +350,12 @@ export default function HomePage() {
             </nav>
             <div className="mt-4 flex flex-col gap-2 border-t border-slate-200 pt-4">
               <SignedOut>
-                <SignInButton mode="redirect">
-                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50">
-                    Sign in
-                  </button>
-                </SignInButton>
-                <SignUpButton mode="redirect">
-                  <button className="w-full rounded-[10px] border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
-                    Dashboard
-                  </button>
-                </SignUpButton>
+                <Link href="/sign-in" className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50">
+                  Sign in
+                </Link>
+                <Link href="/sign-up" className="w-full rounded-[10px] border border-slate-300 bg-white px-4 py-2.5 text-sm font-medium text-slate-900 transition-colors hover:bg-slate-50">
+                  Dashboard
+                </Link>
               </SignedOut>
               <SignedIn>
                 <Link
@@ -371,11 +365,13 @@ export default function HomePage() {
                 >
                   Dashboard
                 </Link>
-                <SignOutButton>
-                  <button className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50">
-                    Sign out
-                  </button>
-                </SignOutButton>
+                <button
+                  type="button"
+                  onClick={() => void signOut()}
+                  className="w-full rounded-lg px-3 py-2.5 text-left text-sm font-normal text-slate-800 hover:bg-slate-50"
+                >
+                  Sign out
+                </button>
               </SignedIn>
             </div>
           </motion.div>
@@ -428,27 +424,20 @@ export default function HomePage() {
 
             <motion.div variants={fadeInUp} className="flex flex-wrap items-center gap-3">
             <SignedOut>
-              <SignUpButton mode="redirect">
-                <Button className="h-12 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700">
-                  Analyze My Repo
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Button>
-              </SignUpButton>
+              <Link href="/sign-up" className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all duration-300 hover:from-indigo-600 hover:to-purple-700">
+                Analyze My Repo
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </SignedOut>
             <SignedIn>
-              <Button
-                asChild
-                className="h-12 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 hover:from-indigo-600 hover:to-purple-700"
-              >
-                <Link href="#preview">
-                  Analyze My Repo
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
-              </Button>
+              <Link href="#preview" className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 px-7 text-base font-semibold text-white shadow-lg shadow-indigo-500/20 transition-all duration-300 hover:from-indigo-600 hover:to-purple-700">
+                Analyze My Repo
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
             </SignedIn>
-              <Button asChild variant="outline" className="h-12 rounded-2xl border-slate-300 px-7 text-base text-slate-800">
-                <Link href="#preview">View Demo</Link>
-              </Button>
+              <Link href="#preview" className="inline-flex h-12 items-center justify-center gap-2 whitespace-nowrap rounded-2xl border-2 border-slate-300 bg-white px-7 text-base font-medium text-slate-800 transition-all duration-300 hover:bg-slate-50">
+                View Demo
+              </Link>
             </motion.div>
 
             {/* Social proof */}
@@ -781,16 +770,14 @@ export default function HomePage() {
             Start your 14-day free trial — no credit card required.
           </p>
           <SignedOut>
-            <SignUpButton mode="redirect">
-              <Button className="mt-8 h-12 rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg hover:bg-indigo-50">
-                Get Started Now
-              </Button>
-            </SignUpButton>
+            <Link href="/sign-up" className="mt-8 inline-flex h-12 items-center justify-center whitespace-nowrap rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg transition-all duration-300 hover:bg-indigo-50">
+              Get Started Now
+            </Link>
           </SignedOut>
           <SignedIn>
-            <Button asChild className="mt-8 h-12 rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg hover:bg-indigo-50">
-              <Link href="/auth/role-redirect">Open Dashboard</Link>
-            </Button>
+            <Link href="/auth/role-redirect" className="mt-8 inline-flex h-12 items-center justify-center whitespace-nowrap rounded-2xl bg-white px-8 text-base font-semibold text-indigo-700 shadow-lg transition-all duration-300 hover:bg-indigo-50">
+              Open Dashboard
+            </Link>
           </SignedIn>
           <p className="mt-5 text-sm text-indigo-200">Free for open source projects.</p>
         </motion.div>
@@ -833,16 +820,14 @@ export default function HomePage() {
                 ))}
               </ul>
               <SignedOut>
-                <SignUpButton mode="redirect">
-                  <Button className="mt-8 h-12 w-full rounded-2xl bg-white text-indigo-600 shadow hover:bg-indigo-50">
-                    Start free
-                  </Button>
-                </SignUpButton>
+                <Link href="/sign-up" className="mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-2xl bg-white text-indigo-600 shadow transition-all duration-300 hover:bg-indigo-50">
+                  Start free
+                </Link>
               </SignedOut>
               <SignedIn>
-                <Button asChild className="mt-8 h-12 w-full rounded-2xl bg-white text-indigo-600 shadow hover:bg-indigo-50">
-                  <Link href="/auth/role-redirect">Go to Dashboard</Link>
-                </Button>
+                <Link href="/auth/role-redirect" className="mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-2xl bg-white text-indigo-600 shadow transition-all duration-300 hover:bg-indigo-50">
+                  Go to Dashboard
+                </Link>
               </SignedIn>
             </CardContent>
           </Card>
@@ -865,9 +850,9 @@ export default function HomePage() {
                   </li>
                 ))}
               </ul>
-              <Button asChild className="mt-8 h-12 w-full rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow hover:from-indigo-600 hover:to-purple-700">
-                <Link href="/contact">Join waitlist</Link>
-              </Button>
+              <Link href="/contact" className="mt-8 inline-flex h-12 w-full items-center justify-center whitespace-nowrap rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white shadow transition-all duration-300 hover:from-indigo-600 hover:to-purple-700">
+                Join waitlist
+              </Link>
             </CardContent>
           </Card>
           </motion.div>
