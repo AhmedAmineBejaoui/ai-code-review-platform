@@ -200,6 +200,25 @@ class Settings(BaseSettings):
     PROJECT_COMPREHENSION_MAX_FILES: int = 10000
     PROJECT_COMPREHENSION_MAX_FILE_SIZE: int = 500_000  # 500KB
 
+    # ── Email Notifications ────────────────────────────────────────────────────
+    EMAIL_ENABLED: bool = False
+    EMAIL_PROVIDER: str = "sendgrid"  # "sendgrid" or "smtp"
+    SENDGRID_API_KEY: str | None = None
+    SENDGRID_FROM_EMAIL: str = "noreply@ai-code-review.com"
+    SENDGRID_FROM_NAME: str = "AI Code Review"
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USERNAME: str | None = None
+    SMTP_PASSWORD: str | None = None
+    SMTP_USE_TLS: bool = True
+    SMTP_FROM_EMAIL: str | None = None
+
+    # ── Slack Notifications ────────────────────────────────────────────────────
+    SLACK_ENABLED: bool = False
+    SLACK_WEBHOOK_URL: str | None = None
+    SLACK_DEFAULT_CHANNEL: str = "#code-reviews"
+    SLACK_BOT_TOKEN: str | None = None
+
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 
     @property
