@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync:clerk-assets": "node scripts/sync-clerk-assets.cjs",
-    "clean:next": "node scripts/reset-next-cache.cjs",
+    "sync:clerk-assets": "node ../../tools/frontend/sync-clerk-assets.cjs",
+    "clean:next": "node ../../tools/frontend/reset-next-cache.cjs",
     "predev": "npm run sync:clerk-assets",
     "predev:reset": "npm run sync:clerk-assets",
     "prebuild": "npm run sync:clerk-assets",
