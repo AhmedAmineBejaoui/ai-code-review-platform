@@ -16,6 +16,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@carbon/icons-react": "^11.77.0",
     "@clerk/clerk-js": "5.125.4",
     "@clerk/nextjs": "^6.39.0",
     "@radix-ui/react-accordion": "^1.2.3",
@@ -44,6 +45,7 @@
     "@radix-ui/react-toggle": "^1.1.2",
     "@radix-ui/react-toggle-group": "^1.1.2",
     "@radix-ui/react-tooltip": "^1.1.8",
+    "@types/three": "^0.183.1",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
@@ -53,6 +55,7 @@
     "iconsax-react": "^0.0.8",
     "input-otp": "^1.4.2",
     "lucide-react": "^0.554.0",
+    "motion": "^12.38.0",
     "next": "^14.2.16",
     "next-themes": "^0.4.6",
     "pdf-parse": "^2.4.5",
@@ -61,9 +64,11 @@
     "react-dom": "^18.3.1",
     "react-hook-form": "^7.55.0",
     "react-resizable-panels": "^2.1.7",
+    "react-use-measure": "^2.1.7",
     "recharts": "^2.15.2",
     "sonner": "^2.0.3",
     "tailwind-merge": "^2.6.0",
+    "three": "^0.183.2",
     "vaul": "^1.1.2"
   },
   "devDependencies": {

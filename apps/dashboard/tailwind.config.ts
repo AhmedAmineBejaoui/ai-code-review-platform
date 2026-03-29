@@ -59,24 +59,18 @@ const config: Config = {
         "chart-3": "var(--chart-3)",
         "chart-4": "var(--chart-4)",
         "chart-5": "var(--chart-5)",
-        // Modern vibrant palette
-        indigo: {
-          400: "#818cf8",
-          500: "#6366f1",
-          600: "#4f46e5",
-          700: "#4338ca",
-        },
-        purple: {
-          400: "#a78bfa",
-          500: "#8b5cf6",
-          600: "#7c3aed",
-          700: "#6d28d9",
-        },
-        cyan: {
-          400: "#22d3ee",
-          500: "#06b6d4",
-          600: "#0ea5e9",
-          700: "#0284c7",
+        // Dark minimalist palette
+        gray: {
+          50: "#fafafa",
+          100: "#f5f5f5",
+          200: "#e5e5e5",
+          300: "#d4d4d4",
+          400: "#a3a3a3",
+          500: "#737373",
+          600: "#525252",
+          700: "#404040",
+          800: "#262626",
+          900: "#171717",
         },
       },
       borderRadius: {
@@ -85,20 +79,15 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        // Modern shadow system with vibrant colors
-        glow: "0 0 32px rgba(99, 102, 241, 0.5), 0 0 64px rgba(139, 92, 246, 0.3)",
-        "glow-strong": "0 0 48px rgba(99, 102, 241, 0.7), 0 0 96px rgba(139, 92, 246, 0.5)",
-        "glow-purple": "0 0 32px rgba(139, 92, 246, 0.6)",
-        "glow-cyan": "0 0 32px rgba(6, 182, 212, 0.6)",
-        "pro-xs": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
-        "pro-sm":
-          "0 2px 8px -2px rgba(99, 102, 241, 0.1), 0 4px 16px -4px rgba(0, 0, 0, 0.05)",
-        "pro-md":
-          "0 4px 16px -4px rgba(99, 102, 241, 0.15), 0 8px 24px -8px rgba(0, 0, 0, 0.1)",
-        "pro-lg":
-          "0 8px 32px -8px rgba(99, 102, 241, 0.2), 0 16px 48px -12px rgba(0, 0, 0, 0.15)",
-        "pro-xl":
-          "0 20px 48px -12px rgba(99, 102, 241, 0.3), 0 24px 64px -16px rgba(0, 0, 0, 0.2)",
+        // Dark minimal shadow system with subtle white glows
+        glow: "0 0 32px rgba(255, 255, 255, 0.1), 0 0 64px rgba(255, 255, 255, 0.05)",
+        "glow-strong": "0 0 48px rgba(255, 255, 255, 0.15), 0 0 96px rgba(255, 255, 255, 0.08)",
+        "glow-white": "0 0 32px rgba(255, 255, 255, 0.12)",
+        "pro-xs": "0 1px 2px 0 rgba(0, 0, 0, 0.5)",
+        "pro-sm": "0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2)",
+        "pro-md": "0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.3)",
+        "pro-lg": "0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 16px 48px -12px rgba(0, 0, 0, 0.4)",
+        "pro-xl": "0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 24px 64px -16px rgba(0, 0, 0, 0.5)",
       },
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",
@@ -125,11 +114,11 @@ const config: Config = {
         },
         pulseGlow: {
           "0%, 100%": {
-            boxShadow: "0 0 0 0 rgba(99, 102, 241, 0.7)",
+            boxShadow: "0 0 0 0 rgba(255, 255, 255, 0.3)",
             transform: "scale(1)",
           },
           "50%": {
-            boxShadow: "0 0 0 10px rgba(99, 102, 241, 0)",
+            boxShadow: "0 0 0 10px rgba(255, 255, 255, 0)",
             transform: "scale(1.05)",
           },
         },
@@ -198,20 +187,20 @@ const config: Config = {
         },
         borderGlow: {
           "0%, 100%": {
-            borderColor: "rgba(99, 102, 241, 0.3)",
-            boxShadow: "0 0 20px rgba(99, 102, 241, 0.3)",
+            borderColor: "rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 0 20px rgba(255, 255, 255, 0.05)",
           },
           "50%": {
-            borderColor: "rgba(139, 92, 246, 0.6)",
-            boxShadow: "0 0 40px rgba(139, 92, 246, 0.5)",
+            borderColor: "rgba(255, 255, 255, 0.2)",
+            boxShadow: "0 0 40px rgba(255, 255, 255, 0.1)",
           },
         },
         glowPulse: {
           "0%, 100%": {
-            boxShadow: "0 0 20px rgba(99, 102, 241, 0.4), 0 0 40px rgba(139, 92, 246, 0.2)",
+            boxShadow: "0 0 20px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 255, 255, 0.05)",
           },
           "50%": {
-            boxShadow: "0 0 40px rgba(99, 102, 241, 0.8), 0 0 80px rgba(139, 92, 246, 0.5)",
+            boxShadow: "0 0 40px rgba(255, 255, 255, 0.15), 0 0 80px rgba(255, 255, 255, 0.08)",
           },
         },
         tiltIn: {

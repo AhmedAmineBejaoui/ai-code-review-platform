@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server"
-import { proxyBackendRequest } from "@/lib/backend-admin"
+import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 
 // GET /api/dashboard/rag/agents/status
 export async function GET(request: NextRequest) {
+  const authResult = await requireBackendAuth()
+  if (!authResult.ok) {
+    return authResult.response
+  }
+
   try {
     return proxyBackendRequest({
-      request,
-      endpoint: "/api/rag/agents/status",
+      path: "/api/rag/agents/status",
       method: "GET",
+      token: authResult.token,
+      userId: authResult.userId,
     })
   } catch (error) {
     console.error("Error getting agents status:", error)

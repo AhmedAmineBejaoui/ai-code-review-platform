@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from "next/server"
-import { proxyBackendRequest } from "@/lib/backend-admin"
+import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 
 // POST /api/dashboard/rag/query/documentation
 export async function POST(request: NextRequest) {
+  const authResult = await requireBackendAuth()
+  if (!authResult.ok) {
+    return authResult.response
+  }
+
   try {
+    const body = await request.json().catch(() => ({}))
     return proxyBackendRequest({
-      request,
-      endpoint: "/api/rag/query/documentation",
+      path: "/api/rag/query/documentation",
       method: "POST",
+      token: authResult.token,
+      userId: authResult.userId,
+      body,
     })
   } catch (error) {
     console.error("Error querying documentation:", error)

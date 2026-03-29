@@ -337,12 +337,12 @@ export function RagCitations() {
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       {href ? (
-                        <Button asChild variant="outline" size="sm" className="gap-2">
-                          <a href={href} target="_blank" rel="noopener noreferrer">
+                        <a href={href} target="_blank" rel="noopener noreferrer">
+                          <Button variant="outline" size="sm" className="gap-2">
                             <ExternalLink className="h-3 w-3" />
                             Ouvrir
-                          </a>
-                        </Button>
+                          </Button>
+                        </a>
                       ) : null}
 
                       <Button

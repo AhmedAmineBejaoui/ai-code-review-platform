@@ -16,7 +16,7 @@ export function IconsaxExample() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Icon name="security" variant="Bold" size="lg" color="rgb(59, 130, 246)" />
-            Icônes Iconsax - Exemples d'Usage
+            Icônes Iconsax - Exemples d&apos;Usage
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
