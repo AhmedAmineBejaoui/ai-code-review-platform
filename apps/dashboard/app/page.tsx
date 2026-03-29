@@ -968,6 +968,7 @@ export default function HomePage() {
             <div className="flex items-center gap-6">
               <Link href="/privacy" className="transition hover:text-indigo-600 dark:hover:text-indigo-400">Privacy Policy</Link>
               <Link href="/terms" className="transition hover:text-indigo-600 dark:hover:text-indigo-400">Terms of Service</Link>
+            </div>
           </div>
         </div>
       </footer>
