@@ -152,10 +152,10 @@ test-ci:
 	cd $(BACKEND_DIR) && poetry run pytest tests/ -v --tb=short --no-header -q
 
 dev-backend-ngrok:
-	python scripts/dev_backend_ngrok.py
+	python tools/dev/dev_backend_ngrok.py
 
 dev-backend-cloudflare:
-	python scripts/dev_backend_cloudflare.py
+	python tools/dev/dev_backend_cloudflare.py
 
 infra-core-up:
 	$(COMPOSE) up -d db redis qdrant
@@ -176,18 +176,18 @@ host-worker:
 	cd $(BACKEND_DIR) && poetry run python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
 
 langchain-parity:
-	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_parity_report.py
+	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_parity_report.py
 
 langchain-qdrant-aliases:
-	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py show
+	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_qdrant_aliases.py show
 
 langchain-promote:
 	@if [ -z "$(collection)" ]; then echo "Usage: make langchain-promote collection=<collection_name>"; exit 1; fi
-	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py promote --collection "$(collection)"
+	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_qdrant_aliases.py promote --collection "$(collection)"
 
 langchain-rollback:
 	@if [ -z "$(collection)" ]; then echo "Usage: make langchain-rollback collection=<collection_name>"; exit 1; fi
-	cd $(BACKEND_DIR) && poetry run python ../../scripts/langchain_qdrant_aliases.py rollback --collection "$(collection)"
+	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_qdrant_aliases.py rollback --collection "$(collection)"
 
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 

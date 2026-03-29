@@ -59,18 +59,18 @@ const config: Config = {
         "chart-3": "var(--chart-3)",
         "chart-4": "var(--chart-4)",
         "chart-5": "var(--chart-5)",
-        // Professional blue palette
-        "blue-pro": {
-          50: "#eff6ff",
-          100: "#dbeafe",
-          200: "#bfdbfe",
-          300: "#93c5fd",
-          400: "#60a5fa",
-          500: "#3b82f6",
-          600: "#2563eb",
-          700: "#1d4ed8",
-          800: "#1e40af",
-          900: "#1e3a8a",
+        // Dark minimalist palette
+        gray: {
+          50: "#fafafa",
+          100: "#f5f5f5",
+          200: "#e5e5e5",
+          300: "#d4d4d4",
+          400: "#a3a3a3",
+          500: "#737373",
+          600: "#525252",
+          700: "#404040",
+          800: "#262626",
+          900: "#171717",
         },
       },
       borderRadius: {
@@ -79,24 +79,24 @@ const config: Config = {
         sm: "calc(var(--radius) - 4px)",
       },
       boxShadow: {
-        // Professional shadow system with blue tint
-        glow: "0 0 32px rgba(37, 99, 235, 0.4)",
-        "glow-strong": "0 0 48px rgba(37, 99, 235, 0.6)",
-        "pro-xs": "0 1px 2px 0 rgba(0, 0, 0, 0.05)",
-        "pro-sm":
-          "0 2px 8px -2px rgba(37, 99, 235, 0.1), 0 4px 16px -4px rgba(0, 0, 0, 0.05)",
-        "pro-md":
-          "0 4px 16px -4px rgba(37, 99, 235, 0.15), 0 8px 24px -8px rgba(0, 0, 0, 0.1)",
-        "pro-lg":
-          "0 8px 32px -8px rgba(37, 99, 235, 0.2), 0 16px 48px -12px rgba(0, 0, 0, 0.15)",
-        "pro-xl":
-          "0 20px 48px -12px rgba(37, 99, 235, 0.25), 0 24px 64px -16px rgba(0, 0, 0, 0.2)",
+        // Dark minimal shadow system with subtle white glows
+        glow: "0 0 32px rgba(255, 255, 255, 0.1), 0 0 64px rgba(255, 255, 255, 0.05)",
+        "glow-strong": "0 0 48px rgba(255, 255, 255, 0.15), 0 0 96px rgba(255, 255, 255, 0.08)",
+        "glow-white": "0 0 32px rgba(255, 255, 255, 0.12)",
+        "pro-xs": "0 1px 2px 0 rgba(0, 0, 0, 0.5)",
+        "pro-sm": "0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2)",
+        "pro-md": "0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.3)",
+        "pro-lg": "0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 16px 48px -12px rgba(0, 0, 0, 0.4)",
+        "pro-xl": "0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 24px 64px -16px rgba(0, 0, 0, 0.5)",
       },
       backgroundImage: {
         "gradient-primary": "var(--gradient-primary)",
         "gradient-accent": "var(--gradient-accent)",
         "gradient-hero": "var(--gradient-hero)",
         "gradient-success": "var(--gradient-success)",
+        "gradient-mesh": "var(--gradient-mesh)",
+        "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
+        "gradient-conic": "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
       },
       keyframes: {
         "accordion-down": {
@@ -107,18 +107,18 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
-        // Professional animations
+        // Modern animations
         shimmerPro: {
           "0%": { backgroundPosition: "-200% 0" },
           "100%": { backgroundPosition: "200% 0" },
         },
         pulseGlow: {
           "0%, 100%": {
-            boxShadow: "0 0 0 0 rgba(37, 99, 235, 0.7)",
+            boxShadow: "0 0 0 0 rgba(255, 255, 255, 0.3)",
             transform: "scale(1)",
           },
           "50%": {
-            boxShadow: "0 0 0 10px rgba(37, 99, 235, 0)",
+            boxShadow: "0 0 0 10px rgba(255, 255, 255, 0)",
             transform: "scale(1.05)",
           },
         },
@@ -180,11 +180,44 @@ const config: Config = {
           from: { transform: "rotate(0deg)" },
           to: { transform: "rotate(360deg)" },
         },
+        gradientFlow: {
+          "0%": { backgroundPosition: "0% 50%" },
+          "50%": { backgroundPosition: "100% 50%" },
+          "100%": { backgroundPosition: "0% 50%" },
+        },
+        borderGlow: {
+          "0%, 100%": {
+            borderColor: "rgba(255, 255, 255, 0.1)",
+            boxShadow: "0 0 20px rgba(255, 255, 255, 0.05)",
+          },
+          "50%": {
+            borderColor: "rgba(255, 255, 255, 0.2)",
+            boxShadow: "0 0 40px rgba(255, 255, 255, 0.1)",
+          },
+        },
+        glowPulse: {
+          "0%, 100%": {
+            boxShadow: "0 0 20px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 255, 255, 0.05)",
+          },
+          "50%": {
+            boxShadow: "0 0 40px rgba(255, 255, 255, 0.15), 0 0 80px rgba(255, 255, 255, 0.08)",
+          },
+        },
+        tiltIn: {
+          from: {
+            transform: "perspective(1000px) rotateX(10deg) rotateY(5deg)",
+            opacity: "0",
+          },
+          to: {
+            transform: "perspective(1000px) rotateX(0) rotateY(0)",
+            opacity: "1",
+          },
+        },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        // Professional animations
+        // Modern animations
         shimmerPro: "shimmerPro 2s ease-in-out infinite",
         "pulse-glow": "pulseGlow 2s ease-in-out infinite",
         float: "float 3s ease-in-out infinite",
@@ -195,6 +228,10 @@ const config: Config = {
         "fade-in-up": "fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
         "spin-smooth": "spinSmooth 0.6s ease-in-out",
         "spin-smooth-infinite": "spinSmooth 1s linear infinite",
+        "gradient-flow": "gradientFlow 8s ease infinite",
+        "border-glow": "borderGlow 3s ease-in-out infinite",
+        "glow-pulse": "glowPulse 2s ease-in-out infinite",
+        "tilt-in": "tiltIn 0.6s cubic-bezier(0.22, 1, 0.36, 1)",
       },
     },
   },

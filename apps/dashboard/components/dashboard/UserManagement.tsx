@@ -370,12 +370,12 @@ export function UserManagement() {
           <p className="text-gray-600 dark:text-gray-400">Gestion des acces et permissions (RBAC)</p>
         </div>
         <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Button asChild className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
-            <Link href="/dashboard/admin/organization">
+          <Link href="/dashboard/admin/organization">
+            <Button className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
               <Plus className="h-4 w-4" />
               Ajouter utilisateur
-            </Link>
-          </Button>
+            </Button>
+          </Link>
         </motion.div>
       </motion.div>
 

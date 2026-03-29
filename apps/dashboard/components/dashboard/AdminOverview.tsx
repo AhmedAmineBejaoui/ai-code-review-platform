@@ -134,12 +134,12 @@ export function AdminOverview() {
           {SECTIONS.map((section) => {
             const Icon = section.icon
             return (
-              <Button key={section.href} asChild variant="outline" className="justify-start gap-2">
-                <Link href={section.href}>
+              <Link key={section.href} href={section.href}>
+                <Button variant="outline" className="w-full justify-start gap-2">
                   <Icon className="h-4 w-4" />
                   {section.label}
-                </Link>
-              </Button>
+                </Button>
+              </Link>
             )
           })}
         </CardContent>

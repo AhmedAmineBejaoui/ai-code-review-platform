@@ -1,40 +1,23 @@
-from __future__ import annotations
+#!/usr/bin/env python3
+"""
+Backward compatibility wrapper for langchain_parity_report.py
+This script has been moved to tools/kb/langchain_parity_report.py
 
-import argparse
-import json
+This wrapper will be removed after 1-2 sprint cycles once all team members
+have migrated to the new structure.
+"""
 import sys
 from pathlib import Path
 
+# Add tools/kb to path
+sys.path.insert(0, str(Path(__file__).parent.parent / "tools" / "kb"))
 
-ROOT = Path(__file__).resolve().parents[1]
-BACKEND_APP = ROOT / "apps" / "backend"
-if str(BACKEND_APP) not in sys.path:
-    sys.path.insert(0, str(BACKEND_APP))
-
-from app.core.langchain_runtime import LangChainParityCampaignService  # noqa: E402
-
-
-def main() -> int:
-    parser = argparse.ArgumentParser(description="Build a corpus-wide LangChain parity report from completed analyses.")
-    parser.add_argument("--limit", type=int, default=200, help="Maximum number of completed analyses to inspect.")
-    parser.add_argument("--since-days", type=int, default=14, help="Only inspect analyses updated in the last N days.")
-    parser.add_argument("--repo", type=str, default=None, help="Optional repo filter (owner/name).")
-    parser.add_argument("--output", type=str, default=None, help="Optional JSON file path for the full report.")
-    args = parser.parse_args()
-
-    report = LangChainParityCampaignService().build_report(
-        limit=args.limit,
-        since_days=args.since_days,
-        repo=args.repo,
-    ).payload
-
-    if args.output:
-        output_path = Path(args.output).expanduser().resolve()
-        output_path.write_text(json.dumps(report, indent=2), encoding="utf-8")
-
-    print(json.dumps(report, indent=2))
-    return 0
-
+# Import and run the actual script
+from langchain_parity_report import main
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    print("⚠️  WARNING: scripts/langchain_parity_report.py is deprecated!")
+    print("   Please use: tools/kb/langchain_parity_report.py")
+    print("   Or run via Makefile: make langchain-parity")
+    print("   This wrapper will be removed in future releases.\n")
+    main()
