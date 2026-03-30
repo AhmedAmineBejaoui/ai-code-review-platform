@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
@@ -289,11 +289,11 @@ async def update_protection_rule(
     return ProtectionRuleResponse(**_serialize_rule(updated_rule))
 
 
-@router.delete("/{rule_id}", status_code=204)
+@router.delete("/{rule_id}", status_code=204, response_model=None)
 async def delete_protection_rule(
     rule_id: str,
     current_user: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> None:
+) -> Response:
     """
     Supprime une règle de protection.
 
@@ -309,6 +309,7 @@ async def delete_protection_rule(
         raise HTTPException(status_code=404, detail={"error": "rule_not_found", "message": "Protection rule not found"})
 
     repo.delete(rule_id)
+    return Response(status_code=204)
 
 
 @router.post("/validate", response_model=ValidateOperationResponse)

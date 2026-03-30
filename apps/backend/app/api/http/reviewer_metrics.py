@@ -119,6 +119,26 @@ async def get_team_metrics(
 
     # Récupérer résumé d'équipe pour la période
     team_summary = repo.get_team_summary(start_date, end_date)
+    
+    # Fournir des valeurs par défaut si pas de données
+    default_team_overview = {
+        "reviewer_count": 0,
+        "total_assigned": 0,
+        "total_completed": 0,
+        "total_declined": 0,
+        "total_comments": 0,
+        "total_change_requests": 0,
+        "avg_team_review_time": 0,
+        "avg_team_response_time": 0,
+        "total_findings": 0,
+        "total_approvals": 0,
+        "total_warnings": 0,
+        "total_blocks": 0,
+        "team_sla_rate": 0,
+    }
+    
+    # Fusionner les valeurs par défaut avec les données existantes
+    team_overview = {**default_team_overview, **{k: v for k, v in team_summary.items() if v is not None}}
 
     # Récupérer métriques individuelles pour le leaderboard
     all_metrics = repo.get_metrics_by_period(start_date, end_date)
@@ -162,7 +182,7 @@ async def get_team_metrics(
             "end": end_date.isoformat(),
             "days": period_days,
         },
-        "team_overview": team_summary,
+        "team_overview": team_overview,
         "leaderboard": leaderboard_data,
         "capacity_analysis": {
             "total_capacity": 0,  # À calculer en fonction des users.reviewer_capacity

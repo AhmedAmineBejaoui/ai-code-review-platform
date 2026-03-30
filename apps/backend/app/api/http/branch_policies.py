@@ -6,7 +6,7 @@ import uuid
 from datetime import datetime
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
@@ -317,11 +317,11 @@ async def update_policy(
     return PolicyResponse(**_serialize_policy(updated_policy))
 
 
-@router.delete("/{policy_id}", status_code=204)
+@router.delete("/{policy_id}", status_code=204, response_model=None)
 async def delete_policy(
     policy_id: str,
     current_user: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> None:
+) -> Response:
     """
     Supprime une politique de branche.
 
@@ -340,6 +340,7 @@ async def delete_policy(
         )
 
     repo.delete(policy_id)
+    return Response(status_code=204)
 
 
 @router.post("/validate-naming", response_model=NamingValidationResponse)

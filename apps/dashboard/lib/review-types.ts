@@ -282,3 +282,53 @@ export type CommentStatus = "open" | "resolved" | "wontfix"
 export type ChangeRequestStatus = "open" | "in_progress" | "resolved" | "declined"
 export type ReviewPriority = "low" | "medium" | "high" | "critical"
 export type ReviewerLevel = "junior" | "senior" | "lead"
+
+// Pending Comment (for batched review submission)
+export interface PendingComment {
+  id: string // temporary UUID for tracking in UI
+  file_path: string
+  line_start: number
+  line_end?: number
+  code_snippet?: string
+  content: string
+  comment_type: "comment" | "suggestion" | "question" | "praise" | "change_request"
+  severity?: "info" | "warn" | "blocker"
+  is_blocking: boolean
+}
+
+// Review Verdict Types
+export type ReviewVerdict = "approve" | "request_changes" | "comment_only"
+
+// Review Submission Request
+export interface ReviewSubmissionRequest {
+  analysis_id: string
+  verdict: ReviewVerdict
+  summary: string
+  comments: PendingComment[]
+}
+
+// Notification Types
+export interface Notification {
+  id: string
+  user_id: string
+  type: string
+  title: string
+  message: string
+  data: Record<string, any>
+  read: boolean
+  created_at: string
+  read_at: string | null
+}
+
+// Comment Thread (grouped comments)
+export interface CommentThread {
+  root: ReviewComment
+  replies: ReviewComment[]
+}
+
+// Author info for displaying in comments
+export interface CommentAuthor {
+  id: string
+  name: string
+  avatar?: string
+}

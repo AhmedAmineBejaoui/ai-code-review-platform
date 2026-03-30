@@ -528,21 +528,21 @@ class ReviewerMetricsRepo:
         """Get team-wide summary metrics for a period"""
         query = text("""
             SELECT
-                COUNT(*) as reviewer_count,
-                SUM(reviews_assigned) as total_assigned,
-                SUM(reviews_completed) as total_completed,
-                SUM(reviews_declined) as total_declined,
-                SUM(comments_created) as total_comments,
-                SUM(change_requests_created) as total_change_requests,
-                AVG(avg_review_time_minutes) as avg_team_review_time,
-                AVG(avg_response_time_minutes) as avg_team_response_time,
-                SUM(findings_identified) as total_findings,
-                SUM(approvals) as total_approvals,
-                SUM(warnings) as total_warnings,
-                SUM(blocks) as total_blocks,
-                (SUM(reviews_within_sla)::float / NULLIF(SUM(reviews_within_sla + reviews_breached_sla), 0)) as team_sla_rate
+                COUNT(DISTINCT reviewer_id) as reviewer_count,
+                COALESCE(SUM(reviews_assigned), 0) as total_assigned,
+                COALESCE(SUM(reviews_completed), 0) as total_completed,
+                COALESCE(SUM(reviews_declined), 0) as total_declined,
+                COALESCE(SUM(comments_created), 0) as total_comments,
+                COALESCE(SUM(change_requests_created), 0) as total_change_requests,
+                COALESCE(AVG(avg_review_time_minutes), 0) as avg_team_review_time,
+                COALESCE(AVG(avg_response_time_minutes), 0) as avg_team_response_time,
+                COALESCE(SUM(findings_identified), 0) as total_findings,
+                COALESCE(SUM(approvals), 0) as total_approvals,
+                COALESCE(SUM(warnings), 0) as total_warnings,
+                COALESCE(SUM(blocks), 0) as total_blocks,
+                COALESCE(SUM(reviews_within_sla)::float / NULLIF(SUM(reviews_within_sla + reviews_breached_sla), 0), 0) as team_sla_rate
             FROM reviewer_metrics
-            WHERE period_start = :period_start AND period_end = :period_end
+            WHERE period_start >= :period_start AND period_end <= :period_end
         """)
 
         with self._engine.connect() as conn:

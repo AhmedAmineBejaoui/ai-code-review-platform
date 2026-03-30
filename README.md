@@ -245,7 +245,7 @@ graph TD
   PR --> GF
 ```
 
-Pour un schÃ©ma encore plus dÃ©taillÃ©: `docs/architecture.md`.
+Pour un schÃ©ma encore plus dÃ©taillÃ©: `docs/architecture/architecture.md`.
 
 ---
 
@@ -485,7 +485,7 @@ Prerequis:
 
 Guide dedie:
 
-- `docs/vercel-cloudflare-quick-tunnel.md`
+- `docs/guides/vercel-cloudflare-quick-tunnel.md`
 
 ### 9.3 Worker sur host
 
@@ -648,7 +648,7 @@ PrÃ©fixe principal: `/v1`
 
 ### 12.3 Test manuel PowerShell
 
-Guide complet: `docs/manual-test-windows.md`.
+Guide complet: `docs/runbooks/manual-test-windows.md`.
 
 Exemple rapide:
 
@@ -882,8 +882,8 @@ VÃ©rifier:
 
 ## RÃ©fÃ©rences internes
 
-- Architecture dÃ©taillÃ©e: `docs/architecture.md`
-- Test manuel Windows: `docs/manual-test-windows.md`
+- Architecture dÃ©taillÃ©e: `docs/architecture/architecture.md`
+- Test manuel Windows: `docs/runbooks/manual-test-windows.md`
 - Guide cloud: `infra/cloud/README.md`
 - Stack locale Docker: `infra/local/docker-compose.yml`
 - Variables d'environnement: `.env.example`

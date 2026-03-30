@@ -21,6 +21,7 @@ import {
   Loader2,
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { isReviewer as isReviewerRole } from "@/lib/roles"
 import { fetchDashboardAnalysisDetails, type DashboardAnalysisDetails } from "@/lib/dashboard-analysis-details"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -185,7 +186,7 @@ export function GlobalReport() {
     }
   }, [id])
 
-  const isReviewer = currentUser.role === "reviewer" || currentUser.role === "admin"
+  const isReviewer = isReviewerRole(currentUser.role) || currentUser.role === "admin"
 
   const findings = useMemo(() => analysis?.findings ?? [], [analysis])
   const files = useMemo(() => analysis?.files ?? [], [analysis])

@@ -111,8 +111,46 @@ export default function TemplatesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<ReviewTemplate | null>(null)
 
-  // Check permissions
-  if (!isReviewerSeniorOrLead(currentUser.role)) {
+  const hasPermission = isReviewerSeniorOrLead(currentUser.role)
+
+  useEffect(() => {
+    if (!hasPermission) return
+
+    const fetchTemplates = async () => {
+      try {
+        setLoading(true)
+        // Mock API call - would fetch from /api/v1/reviews/templates
+        await new Promise(resolve => setTimeout(resolve, 1000))
+        setTemplates(DEFAULT_TEMPLATES)
+      } catch (err) {
+        console.error("Failed to fetch templates:", err)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchTemplates()
+  }, [hasPermission])
+
+  useEffect(() => {
+    let filtered = templates
+
+    if (searchTerm) {
+      filtered = filtered.filter(template =>
+        template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        template.description.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    }
+
+    if (selectedCategory !== "all") {
+      filtered = filtered.filter(template => template.category === selectedCategory)
+    }
+
+    setFilteredTemplates(filtered)
+  }, [templates, searchTerm, selectedCategory])
+
+  // Check permissions after hooks
+  if (!hasPermission) {
     return (
       <div className="flex items-center justify-center h-96">
         <Card className="w-full max-w-md">
@@ -131,40 +169,6 @@ export default function TemplatesPage() {
       </div>
     )
   }
-
-  const fetchTemplates = async () => {
-    try {
-      setLoading(true)
-      // Mock API call - would fetch from /api/v1/reviews/templates
-      await new Promise(resolve => setTimeout(resolve, 1000))
-      setTemplates(DEFAULT_TEMPLATES)
-    } catch (err) {
-      console.error("Failed to fetch templates:", err)
-    } finally {
-      setLoading(false)
-    }
-  }
-
-  useEffect(() => {
-    fetchTemplates()
-  }, [])
-
-  useEffect(() => {
-    let filtered = templates
-
-    if (searchTerm) {
-      filtered = filtered.filter(template =>
-        template.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        template.description.toLowerCase().includes(searchTerm.toLowerCase())
-      )
-    }
-
-    if (selectedCategory !== "all") {
-      filtered = filtered.filter(template => template.category === selectedCategory)
-    }
-
-    setFilteredTemplates(filtered)
-  }, [templates, searchTerm, selectedCategory])
 
   const getCategoryIcon = (category: string) => {
     const categoryConfig = TEMPLATE_CATEGORIES.find(cat => cat.value === category)
@@ -262,7 +266,7 @@ export default function TemplatesPage() {
     })
   }
 
-  const updateChecklistItem = (itemId: string, updates: Partial<typeof editingTemplate.checklist_items[0]>) => {
+  const updateChecklistItem = (itemId: string, updates: Partial<ReviewTemplate['checklist_items'][0]>) => {
     if (!editingTemplate) return
 
     setEditingTemplate({
@@ -364,9 +368,9 @@ export default function TemplatesPage() {
                   </div>
                   <div className="flex items-center space-x-1">
                     {template.is_public ? (
-                      <Globe className="h-4 w-4 text-green-600" title="Public" />
+                      <Globe className="h-4 w-4 text-green-600" aria-label="Public" />
                     ) : (
-                      <Lock className="h-4 w-4 text-gray-400" title="Private" />
+                      <Lock className="h-4 w-4 text-gray-400" aria-label="Private" />
                     )}
                   </div>
                 </div>

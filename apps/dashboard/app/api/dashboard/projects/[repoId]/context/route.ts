@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
-import { proxyBackendRequest } from "@/lib/backend-admin"
+import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 
 // GET /api/dashboard/projects/[repoId]/context/status
 export async function GET(
   request: NextRequest,
   { params }: { params: { repoId: string } }
 ) {
+  const authResult = await requireBackendAuth()
+  if (!authResult.ok) {
+    return authResult.response
+  }
+
   try {
     return proxyBackendRequest({
-      request,
-      endpoint: `/api/projects/${params.repoId}/context/status`,
+      path: `/api/projects/${params.repoId}/context/status`,
       method: "GET",
+      token: authResult.token,
+      userId: authResult.userId,
     })
   } catch (error) {
     console.error("Error fetching context status:", error)
@@ -26,11 +32,17 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { repoId: string } }
 ) {
+  const authResult = await requireBackendAuth()
+  if (!authResult.ok) {
+    return authResult.response
+  }
+
   try {
     return proxyBackendRequest({
-      request,
-      endpoint: `/api/projects/${params.repoId}/context/refresh`,
+      path: `/api/projects/${params.repoId}/context/refresh`,
       method: "POST",
+      token: authResult.token,
+      userId: authResult.userId,
     })
   } catch (error) {
     console.error("Error refreshing project context:", error)

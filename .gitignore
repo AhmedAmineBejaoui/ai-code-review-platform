@@ -2,10 +2,16 @@
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.venv/
+venv/
 
 # Node
 node_modules/
 testsprite_tests/
+.next/
 
 # Env
 .env
@@ -14,3 +20,13 @@ testsprite_tests/
 .env.prod
 *.env.prod
 .runtime/
+
+# Runtime artifacts (tmp/ directory)
+tmp/
+*.log
+reports/
+scans/
+
+# IDE
+.vscode/.history/
+.idea/

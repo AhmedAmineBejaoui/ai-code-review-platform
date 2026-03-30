@@ -73,28 +73,11 @@ export default function TeamAnalyticsPage() {
   const [leaderboardMetric, setLeaderboardMetric] = useState("reviews_completed")
   const [error, setError] = useState<string | null>(null)
 
-  // Check permissions
-  if (!isReviewerSeniorOrLead(currentUser.role)) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-6">
-            <div className="text-center space-y-4">
-              <Shield className="h-12 w-12 text-yellow-500 mx-auto" />
-              <div>
-                <h3 className="font-semibold text-lg">Access Restricted</h3>
-                <p className="text-sm text-gray-600 mt-2">
-                  Team analytics are only available to Senior and Lead Reviewers.
-                </p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    )
-  }
+  const hasPermission = isReviewerSeniorOrLead(currentUser.role)
 
   const fetchTeamMetrics = async () => {
+    if (!hasPermission) return
+    
     try {
       setLoading(true)
       const [teamResponse, leaderboardResponse] = await Promise.all([
@@ -123,7 +106,29 @@ export default function TeamAnalyticsPage() {
 
   useEffect(() => {
     fetchTeamMetrics()
-  }, [period, leaderboardMetric])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [period, leaderboardMetric, hasPermission])
+
+  // Check permissions after hooks
+  if (!hasPermission) {
+    return (
+      <div className="flex items-center justify-center h-96">
+        <Card className="w-full max-w-md">
+          <CardContent className="pt-6">
+            <div className="text-center space-y-4">
+              <Shield className="h-12 w-12 text-yellow-500 mx-auto" />
+              <div>
+                <h3 className="font-semibold text-lg">Access Restricted</h3>
+                <p className="text-sm text-gray-600 mt-2">
+                  Team analytics are only available to Senior and Lead Reviewers.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
 
   const formatMinutes = (minutes: number) => {
     const hours = Math.floor(minutes / 60)

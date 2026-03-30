@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from "next/server"
-import { proxyBackendRequest } from "@/lib/backend-admin"
+import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 
 // GET /api/dashboard/projects/[repoId]/profile
 export async function GET(
   request: NextRequest,
   { params }: { params: { repoId: string } }
 ) {
+  const authResult = await requireBackendAuth()
+  if (!authResult.ok) {
+    return authResult.response
+  }
+
   try {
     return proxyBackendRequest({
-      request,
-      endpoint: `/api/projects/${params.repoId}/profile`,
+      path: `/api/projects/${params.repoId}/profile`,
       method: "GET",
+      token: authResult.token,
+      userId: authResult.userId,
     })
   } catch (error) {
     console.error("Error fetching project profile:", error)

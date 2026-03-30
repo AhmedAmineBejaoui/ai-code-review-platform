@@ -13,6 +13,7 @@ from app.api.http import (
     branches,
     internal_analysis_engine,
     knowledge_base,
+    notifications,
     project_comprehension,
     rag_query,
     review_queue,
@@ -83,6 +84,7 @@ app.include_router(branch_policies.router)
 app.include_router(reviews.router)
 app.include_router(review_queue.router)
 app.include_router(reviewer_metrics.router)
+app.include_router(notifications.router)
 app.include_router(knowledge_base.router)
 app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
