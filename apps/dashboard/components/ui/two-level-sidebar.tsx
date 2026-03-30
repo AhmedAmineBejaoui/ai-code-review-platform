@@ -56,7 +56,8 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { formatRoleLabel, getRoleHomePath, isReviewer, isReviewerSeniorOrLead, type AppRole } from "@/lib/roles";
-import { cn } from "@/components/ui/utils";
+import { cn } from "@/lib/utils";
+import { Theme } from "@/components/ui/theme";
 
 /** ======================= Local SVG paths (inline) ======================= */
 const svgPaths = {
@@ -860,6 +861,13 @@ function DetailSidebar({
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-sidebar-border" />
+              <div className="px-2 py-2">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm text-sidebar-foreground">Theme</span>
+                </div>
+                <Theme variant="switch" size="sm" showLabel />
+              </div>
+              <DropdownMenuSeparator className="bg-sidebar-border" />
               <DropdownMenuItem className="cursor-pointer rounded-lg text-sm text-sidebar-foreground">
                 <SettingsIcon size={14} className="mr-2" />
                 Preferences
@@ -1080,6 +1088,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <Theme variant="button" size="sm" />
             <NotificationBell />
           </div>
         </header>

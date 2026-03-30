@@ -21,6 +21,7 @@ import {
   FileCode,
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { isReviewer } from "@/lib/roles"
 import {
   fetchDashboardAnalysisDetails,
   type DashboardAnalysisDetails,
@@ -254,7 +255,7 @@ export function AnnotatedDiff() {
 
   const ragReferenceCount = analysis?.reviewOutput?.contextReferences.length ?? 0
 
-  const isReviewer = currentUser.role === "reviewer" || currentUser.role === "admin"
+  const canReview = isReviewer(currentUser.role) || currentUser.role === "admin"
 
   const toggleResolved = (findingId: string) => {
     const next = new Set(resolvedFindings)
@@ -546,7 +547,7 @@ export function AnnotatedDiff() {
                             >
                               {/* Line number with add comment button */}
                               <span className="inline-flex items-center w-12 text-right pr-2 text-gray-400 dark:text-gray-600 select-none relative">
-                                {isReviewer && hoveredLine === lineNumber && activeCommentLine !== lineNumber && (
+                                {canReview && hoveredLine === lineNumber && activeCommentLine !== lineNumber && (
                                   <Button
                                     variant="ghost"
                                     size="sm"
@@ -721,7 +722,7 @@ export function AnnotatedDiff() {
                               </motion.div>
                             </div>
 
-                            {isReviewer && (
+                            {canReview && (
                               <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3 space-y-2">
                                 <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Actions Reviewer</div>
                                 <Textarea

@@ -89,7 +89,7 @@ export function AnalysesPageHeader({ filter, status, view, action }: AnalysesPag
 
   let title = "All Analyses"
   let description = "View and manage all code review analyses"
-  let Icon = Filter
+  let Icon: React.ElementType = Filter
 
   if (filter && filterLabels[filter]) {
     title = filterLabels[filter].title

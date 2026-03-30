@@ -150,9 +150,22 @@ export function MetricsChart({
         )
 
       default:
-        return null
+        return (
+          <BarChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="name" />
+            <YAxis />
+            <Tooltip />
+            <Legend />
+            {(Array.isArray(dataKey) ? dataKey : [dataKey]).map((key, index) => (
+              <Bar key={key} dataKey={key} fill={colors[index % colors.length]} />
+            ))}
+          </BarChart>
+        )
     }
   }
+
+  const chart = renderChart()
 
   return (
     <div className="w-full">
@@ -160,7 +173,7 @@ export function MetricsChart({
         <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
-        {renderChart()}
+        {chart}
       </ResponsiveContainer>
     </div>
   )

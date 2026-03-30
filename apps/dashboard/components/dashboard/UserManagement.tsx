@@ -18,6 +18,21 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type AdminUser = {
   id: string
@@ -115,8 +130,17 @@ function primaryRole(user: AdminUser): string {
   if (user.roles.includes("admin")) {
     return "admin"
   }
+  if (user.roles.includes("reviewer_lead")) {
+    return "reviewer_lead"
+  }
+  if (user.roles.includes("reviewer_senior")) {
+    return "reviewer_senior"
+  }
+  if (user.roles.includes("reviewer_junior")) {
+    return "reviewer_junior"
+  }
   if (user.roles.includes("reviewer")) {
-    return "reviewer"
+    return "reviewer_senior" // Backward compatibility
   }
   if (user.roles.includes("developer")) {
     return "developer"
@@ -124,12 +148,21 @@ function primaryRole(user: AdminUser): string {
   return user.roles[0] ?? "viewer"
 }
 
-function roleToUi(role: string): "admin" | "reviewer" | "dev" | "viewer" {
+function roleToUi(role: string): "admin" | "reviewer_lead" | "reviewer_senior" | "reviewer_junior" | "dev" | "viewer" {
   if (role === "admin") {
     return "admin"
   }
+  if (role === "reviewer_lead") {
+    return "reviewer_lead"
+  }
+  if (role === "reviewer_senior") {
+    return "reviewer_senior"
+  }
+  if (role === "reviewer_junior") {
+    return "reviewer_junior"
+  }
   if (role === "reviewer") {
-    return "reviewer"
+    return "reviewer_senior" // Backward compatibility
   }
   if (role === "developer") {
     return "dev"
@@ -141,16 +174,25 @@ function roleGradient(role: string): string {
   if (role === "admin") {
     return "from-red-500 to-orange-500"
   }
-  if (role === "reviewer") {
+  if (role === "reviewer_lead") {
+    return "from-amber-500 to-orange-500"
+  }
+  if (role === "reviewer_senior") {
     return "from-purple-500 to-pink-500"
   }
-  if (role === "developer") {
+  if (role === "reviewer_junior") {
     return "from-blue-500 to-cyan-500"
+  }
+  if (role === "reviewer") {
+    return "from-purple-500 to-pink-500" // Backward compatibility
+  }
+  if (role === "developer") {
+    return "from-green-500 to-emerald-500"
   }
   return "from-gray-500 to-slate-500"
 }
 
-const ROLE_CYCLE = ["developer", "reviewer", "admin", "viewer"] as const
+const ROLE_CYCLE = ["developer", "reviewer_junior", "reviewer_senior", "reviewer_lead", "admin", "viewer"] as const
 
 export function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -169,6 +211,9 @@ export function UserManagement() {
     developers: 0,
     activeUsers: 0,
   })
+  const [roleDialogOpen, setRoleDialogOpen] = useState(false)
+  const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
+  const [selectedRole, setSelectedRole] = useState<string>("")
 
   const loadData = async () => {
     setLoading(true)
@@ -238,8 +283,14 @@ export function UserManagement() {
     if (normalizedRole === "admin") {
       return <Badge variant="destructive">admin</Badge>
     }
-    if (normalizedRole === "reviewer") {
-      return <Badge variant="secondary">reviewer</Badge>
+    if (normalizedRole === "reviewer_lead") {
+      return <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none">Lead Reviewer</Badge>
+    }
+    if (normalizedRole === "reviewer_senior") {
+      return <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">Senior Reviewer</Badge>
+    }
+    if (normalizedRole === "reviewer_junior") {
+      return <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">Junior Reviewer</Badge>
     }
     if (normalizedRole === "dev") {
       return <Badge variant="outline">dev</Badge>
@@ -280,6 +331,19 @@ export function UserManagement() {
     const index = ROLE_CYCLE.indexOf(current as (typeof ROLE_CYCLE)[number])
     const nextRole = ROLE_CYCLE[(index + 1 + ROLE_CYCLE.length) % ROLE_CYCLE.length]
     await patchUser(user.id, { role: nextRole })
+  }
+
+  const openRoleDialog = (user: AdminUser) => {
+    setSelectedUser(user)
+    setSelectedRole(primaryRole(user))
+    setRoleDialogOpen(true)
+  }
+
+  const saveRole = async () => {
+    if (!selectedUser || !selectedRole) return
+    await patchUser(selectedUser.id, { role: selectedRole })
+    setRoleDialogOpen(false)
+    setSelectedUser(null)
   }
 
   const toggleActive = async (user: AdminUser) => {
@@ -477,7 +541,7 @@ export function UserManagement() {
                           <TableCell className="text-right">
                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void rotateRole(user)} disabled={isBusy}>
+                                <Button variant="ghost" size="icon" onClick={() => openRoleDialog(user)} disabled={isBusy}>
                                   <Edit className="h-4 w-4 text-blue-600" />
                                 </Button>
                               </motion.div>
@@ -584,6 +648,133 @@ export function UserManagement() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* Role Selection Dialog */}
+      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Modifier le rôle de l&apos;utilisateur</DialogTitle>
+            <DialogDescription>
+              Sélectionnez le nouveau rôle pour {selectedUser?.displayName || selectedUser?.email}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <Select value={selectedRole} onValueChange={setSelectedRole}>
+              <SelectTrigger className="w-full">
+                <SelectValue placeholder="Sélectionner un rôle" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="viewer">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-gray-500 to-slate-500"></div>
+                    <span>Viewer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="developer">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-green-500 to-emerald-500"></div>
+                    <span>Developer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="reviewer_junior">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500"></div>
+                    <span>Junior Reviewer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="reviewer_senior">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"></div>
+                    <span>Senior Reviewer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="reviewer_lead">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-amber-500 to-orange-500"></div>
+                    <span>Lead Reviewer</span>
+                  </div>
+                </SelectItem>
+                <SelectItem value="admin">
+                  <div className="flex items-center gap-2">
+                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-red-500 to-orange-500"></div>
+                    <span>Admin</span>
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            
+            {/* Role Description */}
+            <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-900">
+              {selectedRole === "viewer" && (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Accès en lecture seule aux projets et analyses.
+                </p>
+              )}
+              {selectedRole === "developer" && (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Peut créer des analyses, voir les résultats et participer aux discussions.
+                </p>
+              )}
+              {selectedRole === "reviewer_junior" && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Junior Reviewer</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Peut approuver les PRs, suggérer des changements, et escalader les reviews complexes. Ne peut pas bloquer les PRs.
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    <Badge variant="outline" className="text-xs">Approuver</Badge>
+                    <Badge variant="outline" className="text-xs">Suggérer</Badge>
+                    <Badge variant="outline" className="text-xs">Escalader</Badge>
+                  </div>
+                </div>
+              )}
+              {selectedRole === "reviewer_senior" && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Senior Reviewer</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Peut approuver, bloquer les PRs, et demander des changements obligatoires. Plus d&apos;autorité sur les décisions.
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    <Badge variant="outline" className="text-xs">Approuver</Badge>
+                    <Badge variant="outline" className="text-xs">Bloquer</Badge>
+                    <Badge variant="outline" className="text-xs">Demander changements</Badge>
+                    <Badge variant="outline" className="text-xs">Escalader</Badge>
+                  </div>
+                </div>
+              )}
+              {selectedRole === "reviewer_lead" && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Lead Reviewer</p>
+                  <p className="text-sm text-gray-600 dark:text-gray-400">
+                    Accès complet: gestion d&apos;équipe, assignation de reviews, création de templates, et accès aux analytics d&apos;équipe.
+                  </p>
+                  <div className="flex flex-wrap gap-1 mt-2">
+                    <Badge variant="outline" className="text-xs">Approuver</Badge>
+                    <Badge variant="outline" className="text-xs">Bloquer</Badge>
+                    <Badge variant="outline" className="text-xs">Assigner</Badge>
+                    <Badge variant="outline" className="text-xs">Déléguer</Badge>
+                    <Badge variant="outline" className="text-xs">Templates</Badge>
+                    <Badge variant="outline" className="text-xs">Analytics équipe</Badge>
+                  </div>
+                </div>
+              )}
+              {selectedRole === "admin" && (
+                <p className="text-sm text-gray-600 dark:text-gray-400">
+                  Accès complet à toutes les fonctionnalités de la plateforme, incluant la gestion des utilisateurs, intégrations, et configuration.
+                </p>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
+              Annuler
+            </Button>
+            <Button onClick={() => void saveRole()} disabled={!selectedRole}>
+              Enregistrer
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   )
 }

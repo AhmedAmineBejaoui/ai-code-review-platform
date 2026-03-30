@@ -10,9 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
+import { Theme } from "@/components/ui/theme"
 import {
   Settings, User, Bell, Zap, Code, Mail, Smartphone,
-  CheckCircle, Clock, Target, Shield, Save, AlertCircle
+  CheckCircle, Clock, Target, Shield, Save, AlertCircle, Palette
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 
@@ -556,6 +557,61 @@ export default function ReviewerSettingsPage() {
               <Button variant="outline" size="sm">
                 Install Extension
               </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Theme Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Palette className="h-5 w-5 mr-2 text-pink-600" />
+            Theme Settings
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div>
+            <Label className="text-sm font-medium mb-3 block">Choose Your Theme</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">Quick Toggle</h4>
+                <Theme variant="button" size="md" showLabel />
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">Switch Style</h4>
+                <Theme variant="switch" size="md" showLabel />
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">Dropdown</h4>
+                <Theme variant="dropdown" size="md" showLabel />
+              </div>
+            </div>
+          </div>
+          
+          <div>
+            <Label className="text-sm font-medium mb-3 block">Advanced Theme Options</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">Tabs Style</h4>
+                <Theme variant="tabs" size="md" showLabel />
+              </div>
+              <div className="space-y-3">
+                <h4 className="text-sm font-medium text-gray-700">Grid Layout</h4>
+                <Theme variant="grid" size="sm" />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <Label className="text-sm font-medium mb-3 block">Extended Themes</Label>
+            <div className="space-y-4">
+              <Theme 
+                variant="radial" 
+                size="md" 
+                showLabel 
+                themes={["light", "dark", "system", "sunset", "forest", "ocean"]} 
+              />
             </div>
           </div>
         </CardContent>

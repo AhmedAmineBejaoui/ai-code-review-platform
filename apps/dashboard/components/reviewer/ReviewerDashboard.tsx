@@ -11,12 +11,23 @@ import {
   Calendar,
   AlertTriangle,
   ChevronRight,
+  Shield,
+  UserPlus,
+  GitPullRequest,
+  BarChart3,
+  Settings,
+  Crown,
+  Star,
+  Zap,
 } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
+import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { isReviewerSeniorOrLead, isReviewerLead, type AppRole } from "@/lib/roles"
 
 // Static data for now - would be fetched from API
 const mockDashboardData = {
@@ -59,11 +70,85 @@ const mockDashboardData = {
     { type: "comment", repo: "backend/auth", time: "4h ago" },
     { type: "assigned", repo: "mobile/ios", time: "6h ago" },
   ],
+  // Team data for Lead/Senior reviewers
+  teamStats: {
+    totalReviewers: 8,
+    activeReviewers: 6,
+    pendingAssignments: 12,
+    avgTeamResponseTime: 35,
+    teamCompletionRate: 0.92,
+  },
+  teamMembers: [
+    { id: "1", name: "Alice Chen", role: "reviewer_senior", pendingReviews: 3, completedThisWeek: 8 },
+    { id: "2", name: "Bob Smith", role: "reviewer_junior", pendingReviews: 2, completedThisWeek: 5 },
+    { id: "3", name: "Carol Davis", role: "reviewer_senior", pendingReviews: 1, completedThisWeek: 10 },
+    { id: "4", name: "David Lee", role: "reviewer_junior", pendingReviews: 4, completedThisWeek: 4 },
+  ],
+  unassignedReviews: [
+    { id: "unrev_001", repo: "backend/api", pr_label: "PR #890", priority: "high", waiting_since: "2h" },
+    { id: "unrev_002", repo: "frontend/dashboard", pr_label: "PR #891", priority: "medium", waiting_since: "4h" },
+  ],
+}
+
+// Role-specific capabilities
+const ROLE_CAPABILITIES = {
+  reviewer_junior: {
+    canApprove: true,
+    canBlock: false,
+    canAssign: false,
+    canDelegate: false,
+    canAccessTeamAnalytics: false,
+    canCreateTemplates: false,
+    canEscalate: true,
+    label: "Junior Reviewer",
+    description: "Peut approuver, suggerer des changements, et escalader les reviews complexes",
+    color: "from-blue-500 to-cyan-500",
+    icon: Star,
+  },
+  reviewer_senior: {
+    canApprove: true,
+    canBlock: true,
+    canAssign: false,
+    canDelegate: false,
+    canAccessTeamAnalytics: false,
+    canCreateTemplates: false,
+    canEscalate: true,
+    label: "Senior Reviewer",
+    description: "Peut approuver, bloquer, et demander des changements obligatoires",
+    color: "from-purple-500 to-pink-500",
+    icon: Shield,
+  },
+  reviewer_lead: {
+    canApprove: true,
+    canBlock: true,
+    canAssign: true,
+    canDelegate: true,
+    canAccessTeamAnalytics: true,
+    canCreateTemplates: true,
+    canEscalate: false,
+    label: "Lead Reviewer",
+    description: "Acces complet: gestion d'equipe, assignations, templates et analytics",
+    color: "from-amber-500 to-orange-500",
+    icon: Crown,
+  },
+}
+
+function getRoleCapabilities(role: AppRole) {
+  if (role === "reviewer_lead" || role === "reviewer_senior" || role === "reviewer_junior") {
+    return ROLE_CAPABILITIES[role]
+  }
+  return ROLE_CAPABILITIES.reviewer_junior
 }
 
 export function ReviewerDashboard() {
+  const currentUser = useDashboardUser()
   const [dashboardData, setDashboardData] = useState(mockDashboardData)
   const [loading, setLoading] = useState(false)
+
+  const capabilities = getRoleCapabilities(currentUser.role)
+  const isSeniorOrLead = isReviewerSeniorOrLead(currentUser.role)
+  const isLead = isReviewerLead(currentUser.role)
+  const RoleIcon = capabilities.icon
 
   // In real implementation, this would fetch from API
   useEffect(() => {
@@ -76,10 +161,55 @@ export function ReviewerDashboard() {
     fetchData()
   }, [])
 
-  const { kpis, activeReviews, recentActivity } = dashboardData
+  const { kpis, activeReviews, recentActivity, teamStats, teamMembers, unassignedReviews } = dashboardData
 
   return (
     <div className="space-y-6">
+      {/* Role Banner */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className={`relative overflow-hidden rounded-xl bg-gradient-to-r ${capabilities.color} p-6 text-white`}
+      >
+        <div className="absolute right-0 top-0 opacity-10">
+          <RoleIcon className="h-32 w-32 -mr-8 -mt-8" />
+        </div>
+        <div className="relative z-10">
+          <div className="flex items-center gap-3 mb-2">
+            <RoleIcon className="h-6 w-6" />
+            <h2 className="text-xl font-bold">{capabilities.label}</h2>
+          </div>
+          <p className="text-white/80 text-sm max-w-xl">{capabilities.description}</p>
+          <div className="flex flex-wrap gap-2 mt-4">
+            {capabilities.canApprove && (
+              <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                <CheckCircle className="h-3 w-3 mr-1" /> Approuver
+              </Badge>
+            )}
+            {capabilities.canBlock && (
+              <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                <Shield className="h-3 w-3 mr-1" /> Bloquer
+              </Badge>
+            )}
+            {capabilities.canAssign && (
+              <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                <UserPlus className="h-3 w-3 mr-1" /> Assigner
+              </Badge>
+            )}
+            {capabilities.canDelegate && (
+              <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                <Users className="h-3 w-3 mr-1" /> Deleguer
+              </Badge>
+            )}
+            {capabilities.canEscalate && (
+              <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                <Zap className="h-3 w-3 mr-1" /> Escalader
+              </Badge>
+            )}
+          </div>
+        </div>
+      </motion.div>
+
       {/* KPIs Row */}
       <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4">
         <motion.div
@@ -92,12 +222,12 @@ export function ReviewerDashboard() {
               <div className="flex items-center space-x-2">
                 <Clock className="h-4 w-4 text-blue-500" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Pending</p>
+                  <p className="text-sm font-medium text-muted-foreground">En attente</p>
                   <p className="text-2xl font-bold">{kpis.pending_reviews}</p>
                 </div>
                 {kpis.overdue_reviews > 0 && (
                   <Badge variant="destructive" className="text-xs">
-                    {kpis.overdue_reviews} overdue
+                    {kpis.overdue_reviews} en retard
                   </Badge>
                 )}
               </div>
@@ -115,7 +245,7 @@ export function ReviewerDashboard() {
               <div className="flex items-center space-x-2">
                 <AlertCircle className="h-4 w-4 text-orange-500" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">In Progress</p>
+                  <p className="text-sm font-medium text-muted-foreground">En cours</p>
                   <p className="text-2xl font-bold">{kpis.in_progress_reviews}</p>
                 </div>
               </div>
@@ -133,7 +263,7 @@ export function ReviewerDashboard() {
               <div className="flex items-center space-x-2">
                 <CheckCircle className="h-4 w-4 text-green-500" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">This Week</p>
+                  <p className="text-sm font-medium text-muted-foreground">Cette semaine</p>
                   <p className="text-2xl font-bold">{kpis.completed_this_week}</p>
                 </div>
               </div>
@@ -151,7 +281,7 @@ export function ReviewerDashboard() {
               <div className="flex items-center space-x-2">
                 <TrendingUp className="h-4 w-4 text-purple-500" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">Avg Time</p>
+                  <p className="text-sm font-medium text-muted-foreground">Temps moyen</p>
                   <p className="text-2xl font-bold">{kpis.avg_review_time_minutes}m</p>
                 </div>
               </div>
@@ -169,7 +299,7 @@ export function ReviewerDashboard() {
               <div className="flex items-center space-x-2">
                 <Calendar className="h-4 w-4 text-indigo-500" />
                 <div>
-                  <p className="text-sm font-medium text-muted-foreground">SLA Compliance</p>
+                  <p className="text-sm font-medium text-muted-foreground">Conformite SLA</p>
                   <p className="text-2xl font-bold">{Math.round(kpis.sla_compliance_rate * 100)}%</p>
                 </div>
               </div>
@@ -187,7 +317,7 @@ export function ReviewerDashboard() {
               <div className="flex items-center justify-center">
                 <Link href="/dashboard/reviewer/queue">
                   <Button size="sm" className="w-full">
-                    View Queue
+                    Voir la file
                     <ChevronRight className="h-4 w-4 ml-1" />
                   </Button>
                 </Link>
@@ -196,6 +326,130 @@ export function ReviewerDashboard() {
           </Card>
         </motion.div>
       </div>
+
+      {/* Lead-only: Team Management Section */}
+      {isLead && (
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.3 }}
+        >
+          <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Crown className="h-5 w-5 text-amber-600" />
+                Gestion d&apos;équipe
+              </CardTitle>
+              <CardDescription>
+                Superviser les reviewers et gerer les assignations
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
+                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
+                  <p className="text-2xl font-bold text-amber-600">{teamStats.totalReviewers}</p>
+                  <p className="text-sm text-muted-foreground">Reviewers</p>
+                </div>
+                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
+                  <p className="text-2xl font-bold text-green-600">{teamStats.activeReviewers}</p>
+                  <p className="text-sm text-muted-foreground">Actifs</p>
+                </div>
+                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
+                  <p className="text-2xl font-bold text-blue-600">{teamStats.pendingAssignments}</p>
+                  <p className="text-sm text-muted-foreground">A assigner</p>
+                </div>
+                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
+                  <p className="text-2xl font-bold text-purple-600">{Math.round(teamStats.teamCompletionRate * 100)}%</p>
+                  <p className="text-sm text-muted-foreground">Taux completion</p>
+                </div>
+              </div>
+
+              {/* Unassigned Reviews */}
+              {unassignedReviews.length > 0 && (
+                <div className="mb-4">
+                  <h4 className="font-medium mb-2 flex items-center gap-2">
+                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    Reviews non assignees ({unassignedReviews.length})
+                  </h4>
+                  <div className="space-y-2">
+                    {unassignedReviews.map((review) => (
+                      <div
+                        key={review.id}
+                        className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border"
+                      >
+                        <div className="flex items-center gap-3">
+                          <GitPullRequest className="h-4 w-4 text-muted-foreground" />
+                          <div>
+                            <p className="font-medium">{review.repo}</p>
+                            <p className="text-sm text-muted-foreground">{review.pr_label} - En attente depuis {review.waiting_since}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Badge variant={review.priority === "high" ? "destructive" : "secondary"}>
+                            {review.priority}
+                          </Badge>
+                          <Button size="sm" variant="outline">
+                            <UserPlus className="h-4 w-4 mr-1" />
+                            Assigner
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Team Members */}
+              <div>
+                <h4 className="font-medium mb-2">Membres de l&apos;équipe</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {teamMembers.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between p-3 bg-white dark:bg-gray-900 rounded-lg border"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-full bg-gradient-to-br from-primary to-primary/80 flex items-center justify-center text-white text-sm font-bold">
+                          {member.name.split(" ").map(n => n[0]).join("")}
+                        </div>
+                        <div>
+                          <p className="font-medium">{member.name}</p>
+                          <Badge variant="outline" className="text-xs">
+                            {member.role === "reviewer_senior" ? "Senior" : "Junior"}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className="text-sm">
+                          <span className="text-amber-600 font-medium">{member.pendingReviews}</span> en attente
+                        </p>
+                        <p className="text-xs text-muted-foreground">
+                          {member.completedThisWeek} cette semaine
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-4">
+                <Link href="/dashboard/reviewer/team-analytics">
+                  <Button variant="outline" size="sm">
+                    <BarChart3 className="h-4 w-4 mr-2" />
+                    Analytics equipe
+                  </Button>
+                </Link>
+                <Link href="/dashboard/reviewer/templates">
+                  <Button variant="outline" size="sm">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Gerer templates
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </motion.div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Active Reviews */}
@@ -208,7 +462,7 @@ export function ReviewerDashboard() {
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Users className="h-5 w-5" />
-                <span>Active Reviews</span>
+                <span>Reviews actives</span>
                 <Badge variant="outline">{activeReviews.length}</Badge>
               </CardTitle>
             </CardHeader>
@@ -216,8 +470,8 @@ export function ReviewerDashboard() {
               {activeReviews.length === 0 ? (
                 <div className="text-center py-8 text-muted-foreground">
                   <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                  <p>No active reviews</p>
-                  <p className="text-sm">Great job staying on top of your queue!</p>
+                  <p>Aucune review active</p>
+                  <p className="text-sm">Excellent travail!</p>
                 </div>
               ) : (
                 activeReviews.map((review) => {
@@ -232,7 +486,7 @@ export function ReviewerDashboard() {
                   return (
                     <div
                       key={review.id}
-                      className={`p-4 border rounded-lg ${isUrgent ? "border-red-200 bg-red-50" : "border-gray-200"}`}
+                      className={`p-4 border rounded-lg ${isUrgent ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30" : "border-gray-200 dark:border-gray-800"}`}
                     >
                       <div className="flex items-start justify-between">
                         <div>
@@ -243,7 +497,7 @@ export function ReviewerDashboard() {
                             {review.analysis.repo}
                           </Link>
                           <p className="text-sm text-muted-foreground">
-                            {review.analysis.pr_label} by {review.analysis.author}
+                            {review.analysis.pr_label} par {review.analysis.author}
                           </p>
                           <div className="flex items-center space-x-2 mt-2">
                             <Badge
@@ -254,18 +508,25 @@ export function ReviewerDashboard() {
                             {isUrgent && (
                               <Badge variant="destructive">
                                 <AlertTriangle className="h-3 w-3 mr-1" />
-                                Due in {timeUntilDue}h
+                                Due dans {timeUntilDue}h
                               </Badge>
                             )}
                           </div>
                         </div>
                         <div className="text-right text-sm text-muted-foreground">
-                          <p>{timeElapsed}m elapsed</p>
-                          <Link href={`/dashboard/review/${review.analysis.id}`}>
-                            <Button size="sm" variant="outline" className="mt-2">
-                              Resume
-                            </Button>
-                          </Link>
+                          <p>{timeElapsed}m ecoule</p>
+                          <div className="flex gap-2 mt-2">
+                            <Link href={`/dashboard/review/${review.analysis.id}`}>
+                              <Button size="sm" variant="outline">
+                                Reprendre
+                              </Button>
+                            </Link>
+                            {capabilities.canBlock && (
+                              <Button size="sm" variant="destructive">
+                                Bloquer
+                              </Button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -274,7 +535,7 @@ export function ReviewerDashboard() {
               )}
               <Link href="/dashboard/reviewer/my-reviews">
                 <Button variant="outline" size="sm" className="w-full">
-                  View All My Reviews
+                  Voir toutes mes reviews
                 </Button>
               </Link>
             </CardContent>
@@ -293,7 +554,7 @@ export function ReviewerDashboard() {
               <CardHeader>
                 <CardTitle className="flex items-center space-x-2">
                   <Clock className="h-5 w-5" />
-                  <span>Recent Activity</span>
+                  <span>Activite recente</span>
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
@@ -305,7 +566,10 @@ export function ReviewerDashboard() {
                     }`} />
                     <div className="flex-1">
                       <p className="text-sm">
-                        <span className="font-medium capitalize">{activity.type}</span> review for{" "}
+                        <span className="font-medium capitalize">
+                          {activity.type === "completed" ? "Termine" : 
+                           activity.type === "comment" ? "Commentaire" : "Assigne"}
+                        </span> review pour{" "}
                         <span className="font-medium">{activity.repo}</span>
                       </p>
                       <p className="text-xs text-muted-foreground">{activity.time}</p>
@@ -318,33 +582,87 @@ export function ReviewerDashboard() {
             {/* Quick Actions */}
             <Card>
               <CardHeader>
-                <CardTitle>Quick Actions</CardTitle>
+                <CardTitle>Actions rapides</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
                 <Link href="/dashboard/reviewer/queue">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <Clock className="h-4 w-4 mr-2" />
-                    Review Queue
+                    File d&apos;attente
                   </Button>
                 </Link>
                 <Link href="/dashboard/reviewer/queue?tab=available">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <Users className="h-4 w-4 mr-2" />
-                    Available Reviews
+                    Reviews disponibles
                   </Button>
                 </Link>
                 <Link href="/dashboard/reviewer/analytics">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <TrendingUp className="h-4 w-4 mr-2" />
-                    My Analytics
+                    Mes analytics
                   </Button>
                 </Link>
-                <Link href="/dashboard/reviewer/templates">
-                  <Button variant="outline" size="sm" className="w-full justify-start">
-                    <CheckCircle className="h-4 w-4 mr-2" />
-                    review Templates
+                {isSeniorOrLead && (
+                  <>
+                    <Link href="/dashboard/reviewer/team-analytics">
+                      <Button variant="outline" size="sm" className="w-full justify-start">
+                        <BarChart3 className="h-4 w-4 mr-2" />
+                        Analytics equipe
+                      </Button>
+                    </Link>
+                    <Link href="/dashboard/reviewer/templates">
+                      <Button variant="outline" size="sm" className="w-full justify-start">
+                        <Settings className="h-4 w-4 mr-2" />
+                        Templates de review
+                      </Button>
+                    </Link>
+                  </>
+                )}
+                {capabilities.canEscalate && (
+                  <Button variant="outline" size="sm" className="w-full justify-start text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950/30">
+                    <Zap className="h-4 w-4 mr-2" />
+                    Escalader une review
                   </Button>
-                </Link>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Role-specific capabilities card */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <RoleIcon className="h-5 w-5" />
+                  Vos permissions
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className={`flex items-center gap-2 ${capabilities.canApprove ? "text-green-600" : "text-gray-400"}`}>
+                    <CheckCircle className="h-4 w-4" />
+                    Approuver
+                  </div>
+                  <div className={`flex items-center gap-2 ${capabilities.canBlock ? "text-green-600" : "text-gray-400"}`}>
+                    <Shield className="h-4 w-4" />
+                    Bloquer
+                  </div>
+                  <div className={`flex items-center gap-2 ${capabilities.canAssign ? "text-green-600" : "text-gray-400"}`}>
+                    <UserPlus className="h-4 w-4" />
+                    Assigner
+                  </div>
+                  <div className={`flex items-center gap-2 ${capabilities.canDelegate ? "text-green-600" : "text-gray-400"}`}>
+                    <Users className="h-4 w-4" />
+                    Deleguer
+                  </div>
+                  <div className={`flex items-center gap-2 ${capabilities.canAccessTeamAnalytics ? "text-green-600" : "text-gray-400"}`}>
+                    <BarChart3 className="h-4 w-4" />
+                    Analytics equipe
+                  </div>
+                  <div className={`flex items-center gap-2 ${capabilities.canCreateTemplates ? "text-green-600" : "text-gray-400"}`}>
+                    <Settings className="h-4 w-4" />
+                    Creer templates
+                  </div>
+                </div>
               </CardContent>
             </Card>
           </div>

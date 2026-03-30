@@ -7,12 +7,15 @@ import {
   Check,
   ChevronDown,
   Monitor,
-  Moon,
+  Moon, 
   Sun,
+  Sunset,
+  Trees,
+  Waves,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 
-import { cn } from "@/components/ui/utils"
+import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -21,31 +24,34 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 
-export type ThemeOption = "light" | "dark" | "system"
-
 const themeIcons = {
   light: Sun,
   dark: Moon,
   system: Monitor,
+  sunset: Sunset,
+  ocean: Waves,
+  forest: Trees,
 }
 
 export type ThemeToggleVariant =
   | "button"
   | "switch"
   | "dropdown"
-  | "tabs"
+  | "tabs" 
   | "grid"
-  | "radial"
-  | "cards"
+  | "radial"  
+  | "cards" 
 export type ThemeToggleSize = "sm" | "md" | "lg"
 
 interface ThemeToggleProps {
   variant?: ThemeToggleVariant
   size?: ThemeToggleSize
   showLabel?: boolean
-  themes?: ThemeOption[]
+  themes?: Theme[]
   className?: string
 }
+
+export type Theme = "light" | "dark" | "system" | "sunset" | "ocean" | "forest"
 
 export type ThemeConfig = {
   name: string
@@ -62,7 +68,7 @@ export type ThemeConfig = {
   }
 }
 
-export const themeConfigs: Record<ThemeOption, ThemeConfig> = {
+export const themeConfigs: Record<Theme, ThemeConfig> = {
   light: {
     name: "light",
     label: "Light",
@@ -105,6 +111,48 @@ export const themeConfigs: Record<ThemeOption, ThemeConfig> = {
       card: "#ffffff",
     },
   },
+  sunset: {
+    name: "sunset",
+    label: "Sunset",
+    colors: {
+      background: "#fef7cd",
+      foreground: "#7c2d12",
+      primary: "#ea580c",
+      secondary: "#dc2626",
+      accent: "#f59e0b",
+      muted: "#fef3c7",
+      border: "#fed7aa",
+      card: "#fef7cd",
+    },
+  },
+  ocean: {
+    name: "ocean",
+    label: "Ocean",
+    colors: {
+      background: "#cffafe",
+      foreground: "#134e4a",
+      primary: "#0891b2",
+      secondary: "#0e7490",
+      accent: "#06b6d4",
+      muted: "#a7f3d0",
+      border: "#67e8f9",
+      card: "#cffafe",
+    },
+  },
+  forest: {
+    name: "forest",
+    label: "Forest",
+    colors: {
+      background: "#dcfce7",
+      foreground: "#14532d",
+      primary: "#16a34a",
+      secondary: "#15803d",
+      accent: "#22c55e",
+      muted: "#bbf7d0",
+      border: "#86efac",
+      card: "#dcfce7",
+    },
+  },
 }
 
 export function Theme({
@@ -136,16 +184,16 @@ export function Theme({
 
   if (!isMounted) return null
 
-  function isTheme(value: unknown): value is ThemeOption {
-    return (
-      typeof value === "string" && ["light", "dark", "system"].includes(value)
-    )
-  }
-
-  const safeTheme: ThemeOption =
-    isTheme(theme) && themes.includes(theme) ? theme : "light"
-
   if (variant === "button") {
+    function isTheme(value: unknown): value is Theme {
+      return (
+        typeof value === "string" && ["light", "dark", "system"].includes(value)
+      )
+    }
+
+    const safeTheme: Theme =
+      isTheme(theme) && themes.includes(theme) ? theme : "light"
+
     const nextTheme = themes[(themes.indexOf(safeTheme) + 1) % themes.length]
     const Icon = themeIcons[safeTheme]
 
@@ -228,6 +276,15 @@ export function Theme({
   }
 
   if (variant === "dropdown") {
+    function isTheme(value: unknown): value is Theme {
+      return (
+        typeof value === "string" && ["light", "dark", "system"].includes(value)
+      )
+    }
+
+    const safeTheme: Theme =
+      isTheme(theme) && themes?.includes(theme) ? theme : "light"
+
     return (
       <div className="relative">
         <DropdownMenu>
@@ -358,7 +415,7 @@ export function Theme({
       <div className={cn("flex justify-center", className)}>
         <RadioGroup
           value={theme}
-          onValueChange={(value) => setTheme(value as ThemeOption)}
+          onValueChange={(value) => setTheme(value as Theme)}
           className="flex gap-2"
         >
           {themes.map((themeOption) => {
@@ -416,6 +473,15 @@ export function Theme({
   if (variant === "radial") {
     const radius = size === "sm" ? 60 : size === "md" ? 80 : 100
     const centerSize = size === "sm" ? 40 : size === "md" ? 48 : 56
+
+    function isTheme(value: unknown): value is Theme {
+      return (
+        typeof value === "string" && ["light", "dark", "system"].includes(value)
+      )
+    }
+
+    const safeTheme: Theme =
+      isTheme(theme) && themes?.includes(theme) ? theme : "light"
 
     return (
       <div className={cn("relative", className)}>
@@ -493,6 +559,6 @@ export function Theme({
       </div>
     )
   }
-
+   
   return null
 }

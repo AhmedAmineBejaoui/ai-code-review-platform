@@ -54,13 +54,18 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
   }
 
   const user = await currentUser()
-  const claimsRole = extractRoleFromClaims(sessionClaims)
-
+  
+  // IMPORTANT: Prioritize publicMetadata.role over sessionClaims
+  // sessionClaims are cached in JWT and may be stale after role updates
+  // publicMetadata is fetched fresh from Clerk and reflects the latest role
   const userRoleCandidate =
     user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
 
   const metadataRole = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : "developer"
-  const baseRole = claimsRole !== "developer" ? claimsRole : metadataRole
+  
+  // Only fall back to sessionClaims if publicMetadata doesn't have a role
+  const claimsRole = metadataRole === "developer" ? extractRoleFromClaims(sessionClaims) : "developer"
+  const baseRole = metadataRole !== "developer" ? metadataRole : claimsRole
   const primaryEmailAddressId = user?.primaryEmailAddressId
   const primaryEmail =
     user?.emailAddresses.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??

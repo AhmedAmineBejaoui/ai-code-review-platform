@@ -1,6 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-import { extractRoleFromClaims } from "@/lib/roles"
+import { extractRoleFromClaims, normalizeRole } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -78,9 +78,21 @@ export async function POST() {
     user?.fullName ?? undefined,
     user?.username ?? undefined,
   )
-  const extractedRole = extractRoleFromClaims(sessionClaims)
+  
+  // IMPORTANT: Prioritize publicMetadata.role over sessionClaims
+  // sessionClaims are cached in JWT and may be stale after role updates
+  // publicMetadata is fetched fresh from Clerk and reflects the latest role
+  const userRoleCandidate = user?.publicMetadata?.role
+  const metadataRole = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : "developer"
+  
+  // Only fall back to sessionClaims if publicMetadata doesn't have a valid role
+  const claimsRole = metadataRole === "developer" ? extractRoleFromClaims(sessionClaims) : "developer"
+  const baseRole = metadataRole !== "developer" ? metadataRole : claimsRole
+  
+  // Check for admin email overrides
   const roleCandidate =
-    primaryEmail && ADMIN_EMAIL_OVERRIDES.has(primaryEmail.trim().toLowerCase()) ? "admin" : extractedRole
+    primaryEmail && ADMIN_EMAIL_OVERRIDES.has(primaryEmail.trim().toLowerCase()) ? "admin" : baseRole
+    
   const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
   const orgNameCandidate = firstNonEmpty(
     typeof claims.org_name === "string" ? claims.org_name : undefined,
