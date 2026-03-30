@@ -113,3 +113,4 @@ function DotPulse({ className, variant = "primary", ...props }: DotPulseProps) {
 }
 
 export { Spinner, DotPulse, spinnerVariants };
+export { CircuitLoader } from "./circuit-loader";

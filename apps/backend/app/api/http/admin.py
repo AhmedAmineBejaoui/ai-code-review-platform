@@ -35,7 +35,7 @@ _TOKEN_PREFIX_LEN = 12
 class AdminUserUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    role: Literal["admin", "reviewer", "developer", "viewer"] | None = None
+    role: Literal["admin", "reviewer_lead", "reviewer_senior", "reviewer_junior", "reviewer", "developer", "viewer"] | None = None
     isActive: bool | None = None
 
 

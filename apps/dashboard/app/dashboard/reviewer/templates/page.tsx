@@ -368,9 +368,9 @@ export default function TemplatesPage() {
                   </div>
                   <div className="flex items-center space-x-1">
                     {template.is_public ? (
-                      <Globe className="h-4 w-4 text-green-600" title="Public" />
+                      <Globe className="h-4 w-4 text-green-600" aria-label="Public" />
                     ) : (
-                      <Lock className="h-4 w-4 text-gray-400" title="Private" />
+                      <Lock className="h-4 w-4 text-gray-400" aria-label="Private" />
                     )}
                   </div>
                 </div>

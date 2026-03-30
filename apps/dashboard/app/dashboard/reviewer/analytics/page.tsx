@@ -11,8 +11,10 @@ import {
 } from "recharts"
 import {
   TrendingUp, TrendingDown, Clock, CheckCircle, AlertTriangle, Target,
-  Award, MessageCircle, FileEdit, Calendar
+  Award, MessageCircle, FileEdit, Calendar, Shield, Star, Crown
 } from "lucide-react"
+import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
+import { motion } from "framer-motion"
 
 interface PersonalMetrics {
   reviewer_id: string
@@ -46,6 +48,7 @@ interface PersonalMetrics {
 }
 
 export default function ReviewerAnalyticsPage() {
+  const currentUser = useDashboardUser()
   const [metrics, setMetrics] = useState<PersonalMetrics | null>(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState("30")
@@ -155,12 +158,116 @@ export default function ReviewerAnalyticsPage() {
 
   const slaStatus = getSLAStatus(metrics.current_period.sla_compliance_rate)
 
+  // Role-based badge
+  const getRoleBadge = () => {
+    if (currentUser.role === "reviewer_junior") {
+      return (
+        <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">
+          <Star className="h-3 w-3 mr-1" />
+          Junior Reviewer
+        </Badge>
+      )
+    }
+    if (currentUser.role === "reviewer_senior") {
+      return (
+        <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">
+          <Shield className="h-3 w-3 mr-1" />
+          Senior Reviewer
+        </Badge>
+      )
+    }
+    if (currentUser.role === "reviewer_lead") {
+      return (
+        <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none">
+          <Crown className="h-3 w-3 mr-1" />
+          Lead Reviewer
+        </Badge>
+      )
+    }
+    return null
+  }
+
+  // Role-specific insights
+  const getRoleSpecificInsight = () => {
+    if (currentUser.role === "reviewer_junior") {
+      return (
+        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Star className="h-5 w-5 text-blue-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
+                  Junior Reviewer Progress
+                </h4>
+                <p className="text-sm text-blue-800 dark:text-blue-200">
+                  Great work! Complete {50 - metrics.current_period.reviews_completed} more reviews to 
+                  unlock Senior Reviewer recommendations. Focus on maintaining your SLA compliance above 90%.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+    if (currentUser.role === "reviewer_senior") {
+      const blockRate = metrics.current_period.blocks > 0 
+        ? ((metrics.current_period.blocks / metrics.current_period.reviews_completed) * 100).toFixed(1)
+        : "0.0"
+      return (
+        <Card className="bg-purple-50 dark:bg-purple-950/20 border-purple-200 dark:border-purple-800">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Shield className="h-5 w-5 text-purple-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-1">
+                  Senior Reviewer Impact
+                </h4>
+                <p className="text-sm text-purple-800 dark:text-purple-200">
+                  You've blocked {blockRate}% of PRs this period, demonstrating strong code quality enforcement. 
+                  Your block decisions protect the codebase from {metrics.current_period.blocks * 3} potential issues.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+    if (currentUser.role === "reviewer_lead") {
+      return (
+        <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+          <CardContent className="pt-6">
+            <div className="flex items-start gap-3">
+              <Crown className="h-5 w-5 text-amber-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
+                  Leadership Impact
+                </h4>
+                <p className="text-sm text-amber-800 dark:text-amber-200">
+                  Your reviews set the quality standard for the team. Access team analytics to track 
+                  overall performance and identify coaching opportunities.
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )
+    }
+    return null
+  }
+
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header with Role Badge */}
+      <motion.div 
+        className="flex items-center justify-between"
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+      >
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
+          <div className="flex items-center gap-3 mb-2">
+            <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
+            {getRoleBadge()}
+          </div>
           <p className="text-gray-600 mt-1">
             Performance metrics for the last {metrics.period.days} days
           </p>
@@ -182,7 +289,10 @@ export default function ReviewerAnalyticsPage() {
             Refresh
           </Button>
         </div>
-      </div>
+      </motion.div>
+
+      {/* Role-specific insight card */}
+      {getRoleSpecificInsight()}
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -417,12 +527,18 @@ export default function ReviewerAnalyticsPage() {
               </div>
               <div className="text-sm text-gray-600 mt-1">Warnings</div>
             </div>
-            <div className="text-center">
-              <div className="text-2xl font-bold text-red-600">
-                {metrics.current_period.blocks}
+            {/* Only show blocks for Senior and Lead reviewers */}
+            {(currentUser.role === "reviewer_senior" || currentUser.role === "reviewer_lead") && (
+              <div className="text-center">
+                <div className="text-2xl font-bold text-red-600">
+                  {metrics.current_period.blocks}
+                </div>
+                <div className="text-sm text-gray-600 mt-1">Blocks</div>
+                <Badge variant="outline" className="mt-1 text-xs">
+                  Senior+ Only
+                </Badge>
               </div>
-              <div className="text-sm text-gray-600 mt-1">Blocks</div>
-            </div>
+            )}
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600">
                 {metrics.current_period.findings_identified}

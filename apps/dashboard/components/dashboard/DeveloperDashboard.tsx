@@ -20,7 +20,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider";
-import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights";
+import { emptyDashboardInsights, fetchDashboardInsights, type DashboardRole } from "@/lib/dashboard-insights";
+import { isReviewer } from "@/lib/roles";
 import {
   fetchDashboardAnalyses,
   hasActiveDashboardAnalysis,
@@ -248,10 +249,11 @@ function formatBytes(bytes: number): string {
 export function DeveloperDashboard() {
   const router = useRouter();
   const currentUser = useDashboardUser();
+  const insightsRole: DashboardRole = currentUser.role === "admin" ? "admin" : isReviewer(currentUser.role) ? "reviewer" : "developer";
   const [timeFilter, setTimeFilter] = useState("7");
   const [severityFilter, setSeverityFilter] = useState("all");
   const [insightsLoading, setInsightsLoading] = useState(true);
-  const [insights, setInsights] = useState(() => emptyDashboardInsights(currentUser.role));
+  const [insights, setInsights] = useState(() => emptyDashboardInsights(insightsRole));
   const [analysisRows, setAnalysisRows] = useState<DashboardAnalysisItem[]>([]);
   const [analysisDialogOpen, setAnalysisDialogOpen] = useState(false);
   const [repoInput, setRepoInput] = useState("");
@@ -719,7 +721,7 @@ export function DeveloperDashboard() {
                     AI Code Review
                   </h1>
                   <p className="text-lg text-white/80">
-                    {currentUser.role === 'reviewer' || currentUser.role === 'admin'
+                    {isReviewer(currentUser.role) || currentUser.role === 'admin'
                       ? 'Vue d\'ensemble des analyses de l\'équipe'
                       : 'Tableau de bord développeur'}
                   </p>
@@ -862,8 +864,8 @@ export function DeveloperDashboard() {
                       <div className="flex items-center gap-2">
                         {getStatusIcon(analysis.status)}
                         <h3 className="font-semibold">{analysis.repo}</h3>
-                        {analysis.prNumber && (
-                          <Badge variant="outline">PR #{analysis.prNumber}</Badge>
+                        {analysis.prLabel && analysis.prLabel !== "Commit" && (
+                          <Badge variant="outline">{analysis.prLabel}</Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground">

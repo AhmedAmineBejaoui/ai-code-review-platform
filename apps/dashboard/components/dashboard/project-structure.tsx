@@ -19,7 +19,7 @@ import {
   ChevronRight,
   ChevronDown,
   Database,
-  Docker,
+  Container,
   Workflow
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -306,7 +306,7 @@ export function ProjectStructure({
                 )}
                 {architecture.docker_detected && (
                   <div className="flex items-center gap-1 text-sm text-muted-foreground">
-                    <Docker className="h-4 w-4 text-cyan-500" />
+                    <Container className="h-4 w-4 text-cyan-500" />
                     Docker
                   </div>
                 )}

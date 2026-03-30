@@ -1,6 +1,12 @@
+import { clerkClient } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
 import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
+
+type UpdatePayload = {
+  role?: string
+  isActive?: boolean
+}
 
 export async function PATCH(request: Request, context: { params: { id: string } }) {
   const userId = context.params.id
@@ -13,13 +19,35 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     return authContext.response
   }
 
-  let payload: unknown
+  let payload: UpdatePayload
   try {
     payload = await request.json()
   } catch {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
   }
 
+  // If role is being updated, sync to Clerk publicMetadata first
+  if (payload.role) {
+    try {
+      const client = await clerkClient()
+      await client.users.updateUser(userId, {
+        publicMetadata: {
+          role: payload.role,
+        },
+      })
+    } catch (clerkError) {
+      console.error("Failed to update Clerk user metadata:", clerkError)
+      return NextResponse.json(
+        {
+          error: "Failed to update role in authentication system",
+          details: clerkError instanceof Error ? clerkError.message : "Unknown error",
+        },
+        { status: 500 },
+      )
+    }
+  }
+
+  // Then proxy to backend to update PostgreSQL
   return proxyBackendRequest({
     method: "PATCH",
     path: `/v1/admin/users/${encodeURIComponent(userId)}`,
