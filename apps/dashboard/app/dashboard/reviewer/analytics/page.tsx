@@ -223,7 +223,7 @@ export default function ReviewerAnalyticsPage() {
                   Senior Reviewer Impact
                 </h4>
                 <p className="text-sm text-purple-800 dark:text-purple-200">
-                  You've blocked {blockRate}% of PRs this period, demonstrating strong code quality enforcement. 
+                  You&apos;ve blocked {blockRate}% of PRs this period, demonstrating strong code quality enforcement. 
                   Your block decisions protect the codebase from {metrics.current_period.blocks * 3} potential issues.
                 </p>
               </div>

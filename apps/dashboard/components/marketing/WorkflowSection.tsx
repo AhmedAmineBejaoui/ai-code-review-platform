@@ -123,7 +123,7 @@ export function WorkflowSection() {
                 </div>
                 <div className="mb-2 flex gap-2 text-gray-500">
                   <span>3</span>
-                  <span className="ml-4 text-gray-400">// TODO: validate amount</span>
+                  <span className="ml-4 text-gray-400">{/* TODO: validate amount */}</span>
                 </div>
                 <div className="mb-2 flex gap-2 text-gray-500">
                   <span>4</span>
@@ -138,7 +138,7 @@ export function WorkflowSection() {
                 </div>
                 <div className="mb-2 flex gap-2 text-gray-500">
                   <span>6</span>
-                  <span className="ml-8 text-gray-700">currency: "usd",</span>
+                  <span className="ml-8 text-gray-700">currency: &quot;usd&quot;,</span>
                 </div>
                 <div className="mb-2 flex gap-2 text-gray-500">
                   <span>7</span>

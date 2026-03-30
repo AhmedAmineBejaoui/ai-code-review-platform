@@ -26,15 +26,53 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
   }
 
-  // If role is being updated, sync to Clerk publicMetadata first
+  // If role is being updated, try to sync to Clerk publicMetadata
+  // But don't fail if the user doesn't exist in Clerk (might be a local-only user)
   if (payload.role) {
     try {
       const client = await clerkClient()
-      await client.users.updateUser(userId, {
-        publicMetadata: {
-          role: payload.role,
-        },
-      })
+      
+      // Check if the userId looks like a Clerk ID (starts with "user_")
+      const isClerkUserId = userId.startsWith("user_")
+      
+      if (isClerkUserId) {
+        try {
+          // First, get the current user to preserve existing publicMetadata
+          const existingUser = await client.users.getUser(userId)
+          const existingMetadata = (existingUser.publicMetadata as Record<string, unknown>) || {}
+          
+          // Merge existing metadata with the new role
+          const updatedMetadata = {
+            ...existingMetadata,
+            role: payload.role,
+          }
+          
+          // Update the user with merged metadata
+          await client.users.updateUser(userId, {
+            publicMetadata: updatedMetadata,
+          })
+          
+          console.log(`[RBAC] Updated Clerk publicMetadata for user ${userId}: role=${payload.role}`)
+        } catch (clerkError: unknown) {
+          // Check if it's a "user not found" error (404)
+          const isNotFoundError = 
+            clerkError && 
+            typeof clerkError === "object" && 
+            "status" in clerkError && 
+            clerkError.status === 404
+          
+          if (isNotFoundError) {
+            // User doesn't exist in Clerk - this is OK, continue with backend update
+            console.warn(`[RBAC] User ${userId} not found in Clerk, skipping metadata update`)
+          } else {
+            // Re-throw other Clerk errors
+            throw clerkError
+          }
+        }
+      } else {
+        // Not a Clerk user ID - skip Clerk update
+        console.log(`[RBAC] User ${userId} is not a Clerk user, skipping Clerk metadata update`)
+      }
     } catch (clerkError) {
       console.error("Failed to update Clerk user metadata:", clerkError)
       return NextResponse.json(

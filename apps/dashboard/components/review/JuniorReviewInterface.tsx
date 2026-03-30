@@ -235,7 +235,7 @@ export async function fetchData() {
         <Info className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-blue-900 dark:text-blue-100">
           <strong>Junior Reviewer Mode:</strong> You can approve changes and suggest improvements. 
-          If you find critical issues, use the "Escalate to Senior" button.
+          If you find critical issues, use the &quot;Escalate to Senior&quot; button.
         </AlertDescription>
       </Alert>
 

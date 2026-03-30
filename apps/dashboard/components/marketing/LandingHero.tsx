@@ -51,7 +51,7 @@ export function LandingHero() {
             transition={{ delay: 0.4 }}
             className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-gray-600"
           >
-            Traditional reviews weren't built for AI-scale code. Get instant reviews with clear summaries and fixes.
+            Traditional reviews weren&apos;t built for AI-scale code. Get instant reviews with clear summaries and fixes.
             Catch bugs and security issues before they reach production.
           </motion.p>
 

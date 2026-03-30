@@ -46,7 +46,7 @@ export function AIEraSection() {
             Code Review for the AI Era
           </h2>
           <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-            Traditional reviews weren't built for AI-scale code. Sourcery is.
+            Traditional reviews weren&apos;t built for AI-scale code. Sourcery is.
           </p>
 
           {/* Progress Dots */}

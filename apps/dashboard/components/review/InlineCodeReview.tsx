@@ -76,7 +76,7 @@ export function InlineCodeReview() {
           {/* Line 3 - with error */}
           <div className="mb-2 flex gap-3 rounded bg-red-50">
             <span className="w-8 text-right text-gray-400">3</span>
-            <span className="ml-4 text-gray-500">// TODO: validate amount</span>
+            <span className="ml-4 text-gray-500">{/* TODO: validate amount */}</span>
             <AlertTriangle className="ml-auto h-4 w-4 text-red-500" />
           </div>
 
@@ -98,7 +98,7 @@ export function InlineCodeReview() {
           {/* Line 6 - with warning */}
           <div className="mb-2 flex gap-3 rounded bg-amber-50">
             <span className="w-8 text-right text-gray-400">6</span>
-            <span className="ml-8 text-gray-700">currency: "usd",</span>
+            <span className="ml-8 text-gray-700">currency: &quot;usd&quot;,</span>
             <Info className="ml-auto h-4 w-4 text-amber-500" />
           </div>
 
@@ -200,7 +200,7 @@ export function InlineCodeReview() {
                   </span>
                 </div>
                 <p className="text-sm text-blue-800">
-                  Replace the hard-coded "usd" string with a constant or enum value for better maintainability
+                  Replace the hard-coded &quot;usd&quot; string with a constant or enum value for better maintainability
                 </p>
               </div>
             </div>

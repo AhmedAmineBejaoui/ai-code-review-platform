@@ -95,10 +95,10 @@ export function ReviewEverywhereSection() {
                       <span className="text-xs text-gray-500">bot 2 days ago</span>
                     </div>
                     <p className="mb-2 text-xs font-medium text-gray-800">
-                      suggestion (code_refinement): Refactor 'handleDrop' to avoid redundant code and improve maintainability.
+                      suggestion (code_refinement): Refactor &apos;handleDrop&apos; to avoid redundant code and improve maintainability.
                     </p>
                     <p className="text-xs text-gray-600">
-                      The 'handleDrop' function contains multiple responsibilities and repeated code blocks...
+                      The &apos;handleDrop&apos; function contains multiple responsibilities and repeated code blocks...
                     </p>
                   </div>
                 </div>
