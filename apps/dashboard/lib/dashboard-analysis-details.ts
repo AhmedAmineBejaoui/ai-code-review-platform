@@ -61,6 +61,17 @@ export interface DashboardAnalysisReviewOutput {
   contextReferences: DashboardReviewContextReference[]
 }
 
+export interface DashboardRagChunkReference {
+  path: string | null
+  title: string | null
+  source: string | null
+  sourceType: string | null
+  chunkType: string | null
+  symbolName: string | null
+  score: number | null
+  tags: string[]
+}
+
 export interface DashboardAnalysisDetails {
   id: string
   repo: string
@@ -78,6 +89,9 @@ export interface DashboardAnalysisDetails {
   reviewOutput: DashboardAnalysisReviewOutput | null
   findings: DashboardAnalysisFinding[]
   files: DashboardAnalysisDiffFile[]
+  ragContext: DashboardRagChunkReference[]
+  ragContextChunksCount: number
+  ragRetrievalMode: string | null
 }
 
 export async function fetchDashboardAnalysisDetails(analysisId: string): Promise<DashboardAnalysisDetails | null> {

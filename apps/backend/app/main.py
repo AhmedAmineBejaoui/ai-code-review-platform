@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.errors import register_exception_handlers
+from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.http import (
     admin,
     analyses,
@@ -60,6 +61,7 @@ app = FastAPI(
     ],
 )
 register_exception_handlers(app)
+app.add_middleware(RateLimitMiddleware)
 
 # ─── Prometheus metrics ────────────────────────────────────────────────────────
 # Exposes /metrics endpoint for Prometheus scraping.
