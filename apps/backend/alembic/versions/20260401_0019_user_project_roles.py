@@ -1,7 +1,7 @@
 """add_user_project_roles_pivot_table
 
 Revision ID: 20260401_0019
-Revises: 20260401_0018_project_settings_auto_analysis
+Revises: 20260401_0018
 Create Date: 2026-04-01 10:00:00
 
 This migration adds the user_project_roles pivot table for multi-role per project support.
@@ -14,7 +14,7 @@ from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "20260401_0019"
-down_revision = "20260401_0018_project_settings_auto_analysis"
+down_revision = "20260401_0018"
 branch_labels = None
 depends_on = None
 
