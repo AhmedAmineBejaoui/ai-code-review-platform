@@ -253,8 +253,11 @@ def check_vector_db():
             client = QdrantClient()
             # Try to get collection info
             try:
-                collections = await client.list_collections()
-                print(f"✅ Qdrant connected. Collections: {len(collections) if collections else 0}")
+                collection_info = await client.get_collection_info(collection_name=client.default_collection)
+                if collection_info:
+                    print(f"✅ Qdrant connected. Collection: {client.default_collection}")
+                else:
+                    print(f"⚠️  Qdrant connected but collection '{client.default_collection}' not found")
                 return True
             except Exception as e:
                 print(f"❌ Qdrant connection failed: {e}")
