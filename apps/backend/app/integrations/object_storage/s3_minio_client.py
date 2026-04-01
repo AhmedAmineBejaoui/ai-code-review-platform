@@ -105,3 +105,104 @@ class S3MinioClient:
         except Exception as exc:  # noqa: BLE001
             logger.warning("MinIO delete_object failed (%s): %s", object_name, exc)
             return False
+
+    def health_check(self) -> dict:
+        """Check MinIO connectivity and bucket availability.
+
+        Returns a dict with status, enabled flag, and details.
+        """
+        result = {
+            "enabled": self._enabled,
+            "status": "disabled",
+            "endpoint": self._endpoint,
+            "bucket": self._bucket,
+            "details": None,
+        }
+
+        if not self._enabled:
+            return result
+
+        try:
+            client = self._get_client()
+            bucket_exists = client.bucket_exists(self._bucket)  # type: ignore[attr-defined]
+
+            if bucket_exists:
+                result["status"] = "healthy"
+                result["details"] = "Bucket exists and is accessible"
+            else:
+                # Try to create the bucket
+                client.make_bucket(self._bucket)  # type: ignore[attr-defined]
+                result["status"] = "healthy"
+                result["details"] = "Bucket created successfully"
+
+            return result
+        except ImportError:
+            result["status"] = "error"
+            result["details"] = "minio package not installed"
+            return result
+        except Exception as exc:  # noqa: BLE001
+            result["status"] = "unhealthy"
+            result["details"] = str(exc)
+            logger.warning("MinIO health check failed: %s", exc)
+            return result
+
+    def list_objects(self, prefix: str = "", max_keys: int = 100) -> list[dict] | None:
+        """List objects in the bucket with optional prefix filter.
+
+        Returns None when object storage is disabled or on error.
+        """
+        if not self._enabled:
+            return None
+
+        try:
+            client = self._get_client()
+            self._ensure_bucket()
+            objects = client.list_objects(self._bucket, prefix=prefix)  # type: ignore[attr-defined]
+            result = []
+            for obj in objects:
+                if len(result) >= max_keys:
+                    break
+                result.append({
+                    "name": obj.object_name,
+                    "size": obj.size,
+                    "last_modified": obj.last_modified.isoformat() if obj.last_modified else None,
+                    "etag": obj.etag,
+                })
+            return result
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MinIO list_objects failed: %s", exc)
+            return None
+
+    def get_presigned_url(self, object_name: str, expires_seconds: int = 3600) -> str | None:
+        """Generate a presigned URL for downloading an object.
+
+        Returns None when object storage is disabled or on error.
+        """
+        if not self._enabled:
+            return None
+
+        try:
+            from datetime import timedelta
+
+            client = self._get_client()
+            url = client.presigned_get_object(  # type: ignore[attr-defined]
+                self._bucket,
+                object_name,
+                expires=timedelta(seconds=expires_seconds),
+            )
+            return url
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("MinIO get_presigned_url failed (%s): %s", object_name, exc)
+            return None
+
+
+# Singleton instance for easy access
+_minio_client: S3MinioClient | None = None
+
+
+def get_minio_client() -> S3MinioClient:
+    """Get the singleton MinIO client instance."""
+    global _minio_client
+    if _minio_client is None:
+        _minio_client = S3MinioClient()
+    return _minio_client

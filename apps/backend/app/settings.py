@@ -219,6 +219,11 @@ class Settings(BaseSettings):
     SLACK_DEFAULT_CHANNEL: str = "#code-reviews"
     SLACK_BOT_TOKEN: str | None = None
 
+    # ── Microsoft Teams Notifications ─────────────────────────────────────────
+    TEAMS_ENABLED: bool = False
+    TEAMS_WEBHOOK_URL: str | None = None
+    TEAMS_DEFAULT_CHANNEL: str = "Code Reviews"
+
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 
     @property

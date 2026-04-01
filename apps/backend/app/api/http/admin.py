@@ -561,6 +561,144 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
     }
 
 
+def _cascade_delete_user(user_id: str, actor_id: str) -> dict[str, Any]:
+    """
+    Completely delete a user and ALL related data from the system.
+    
+    This performs a hard cascade delete across all tables that reference the user.
+    Tables with ON DELETE CASCADE will be handled automatically by PostgreSQL.
+    Other tables need explicit deletion.
+    
+    Order of deletion matters due to FK constraints.
+    """
+    engine = get_engine()
+    with engine.begin() as conn:
+        # First verify user exists and capture info for audit
+        user_row = (
+            conn.execute(
+                text("SELECT id, email, display_name FROM users WHERE id = :user_id LIMIT 1"),
+                {"user_id": user_id},
+            )
+            .mappings()
+            .first()
+        )
+        if user_row is None:
+            raise ApiError(
+                status_code=404,
+                code="USER_NOT_FOUND",
+                message="User not found",
+                details={"user_id": user_id},
+            )
+        
+        user_email = str(user_row["email"])
+        user_display_name = user_row.get("display_name")
+        
+        # Collect statistics about what will be deleted for the response
+        deletion_stats: dict[str, int] = {}
+        
+        # 1. Delete from tables that DON'T have ON DELETE CASCADE
+        # (or where we want explicit control/counting)
+        
+        # review_templates (created_by has no CASCADE)
+        result = conn.execute(
+            text("DELETE FROM review_templates WHERE created_by = :user_id"),
+            {"user_id": user_id},
+        )
+        deletion_stats["review_templates"] = result.rowcount
+        
+        # review_sessions (initiator_id has no CASCADE)
+        result = conn.execute(
+            text("DELETE FROM review_sessions WHERE initiator_id = :user_id"),
+            {"user_id": user_id},
+        )
+        deletion_stats["review_sessions"] = result.rowcount
+        
+        # Update resolved_by references to NULL before deleting user
+        # (review_comments.resolved_by and change_requests.resolved_by don't have CASCADE)
+        conn.execute(
+            text("UPDATE review_comments SET resolved_by = NULL WHERE resolved_by = :user_id"),
+            {"user_id": user_id},
+        )
+        conn.execute(
+            text("UPDATE change_requests SET resolved_by = NULL WHERE resolved_by = :user_id"),
+            {"user_id": user_id},
+        )
+        
+        # Update assigner_id in review_assignments (nullable FK without CASCADE)
+        conn.execute(
+            text("UPDATE review_assignments SET assigner_id = NULL WHERE assigner_id = :user_id"),
+            {"user_id": user_id},
+        )
+        
+        # 2. Count records in tables with ON DELETE CASCADE (for stats)
+        # These will be auto-deleted when we delete the user
+        
+        cascade_tables = [
+            ("user_roles", "user_id"),
+            ("user_project_roles", "user_id"),
+            ("organization_memberships", "user_id"),
+            ("notifications", "user_id"),
+            ("reviewer_metrics", "reviewer_id"),
+            ("review_assignments", "reviewer_id"),
+            ("review_comments", "author_id"),
+            ("change_requests", "reviewer_id"),
+        ]
+        
+        for table_name, column_name in cascade_tables:
+            try:
+                count_row = (
+                    conn.execute(
+                        text(f"SELECT COUNT(*) AS cnt FROM {table_name} WHERE {column_name} = :user_id"),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .first()
+                )
+                deletion_stats[table_name] = int(count_row["cnt"]) if count_row else 0
+            except Exception:
+                # Table might not exist in some environments
+                deletion_stats[table_name] = 0
+        
+        # 3. Log the deletion BEFORE actually deleting (so we have a record)
+        _insert_audit_log(
+            conn,
+            actor=actor_id,
+            action="admin.user.delete",
+            target_type="user",
+            target_id=user_id,
+            meta={
+                "email": user_email,
+                "displayName": user_display_name,
+                "deletionStats": deletion_stats,
+                "cascadeDelete": True,
+            },
+        )
+        
+        # 4. Delete the user - this will CASCADE to:
+        # - user_roles
+        # - user_project_roles  
+        # - organization_memberships
+        # - notifications
+        # - reviewer_metrics
+        # - review_assignments (reviewer_id)
+        # - review_comments (author_id)
+        # - change_requests (reviewer_id)
+        conn.execute(
+            text("DELETE FROM users WHERE id = :user_id"),
+            {"user_id": user_id},
+        )
+        
+        return {
+            "deleted": True,
+            "userId": user_id,
+            "email": user_email,
+            "displayName": user_display_name,
+            "deletedAt": _utc_iso_now(),
+            "deletedBy": actor_id,
+            "stats": deletion_stats,
+        }
+
+
 def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: str) -> dict[str, Any]:
     engine = get_engine()
     with engine.begin() as conn:
@@ -1470,6 +1608,38 @@ async def patch_admin_user(
 
     updated = await asyncio.to_thread(_update_admin_user, user_id, payload, principal.user_id)
     return {"item": updated}
+
+
+@router.delete("/users/{user_id}")
+async def delete_admin_user(
+    user_id: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """
+    Permanently delete a user and ALL their associated data.
+    
+    This is a destructive operation that cannot be undone.
+    It will cascade delete:
+    - User roles and permissions
+    - Project-specific roles
+    - Organization memberships
+    - Notifications
+    - Review assignments, comments, and change requests
+    - Reviewer metrics
+    - Review templates and sessions created by user
+    
+    An audit log entry is created before deletion.
+    """
+    # Prevent self-deletion
+    if principal.user_id == user_id:
+        raise ApiError(
+            status_code=400,
+            code="SELF_DELETE_FORBIDDEN",
+            message="Cannot delete your own account",
+        )
+    
+    result = await asyncio.to_thread(_cascade_delete_user, user_id, principal.user_id)
+    return result
 
 
 @router.get("/policies")

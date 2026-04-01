@@ -33,6 +33,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { GroupedPermissions } from "./GroupedPermissions"
 
 type AdminUser = {
   id: string
@@ -569,38 +570,7 @@ export function UserManagement() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Sparkles className="h-5 w-5 text-purple-500" />
-              Permissions disponibles
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-3">
-              {permissions.map((permission, index) => (
-                <motion.div key={permission.code} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.55 + index * 0.04 }} whileHover={{ x: 4 }} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent border border-gray-200/50 dark:border-gray-700/50">
-                  <div className="flex items-center gap-4">
-                    <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-500">
-                      <Shield className="h-5 w-5 text-white" />
-                    </div>
-                    <div>
-                      <span className="font-medium text-gray-900 dark:text-white">{permission.description}</span>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        Permission ID:{" "}
-                        <code className="bg-white dark:bg-gray-800 px-2 py-1 rounded text-xs border border-gray-200 dark:border-gray-700">
-                          {permission.code}
-                        </code>
-                      </p>
-                    </div>
-                  </div>
-                  <Badge variant="secondary">{permission.userCount} utilisateur(s)</Badge>
-                </motion.div>
-              ))}
-              {permissions.length === 0 && <p className="text-sm text-gray-500">Aucune permission chargee.</p>}
-            </div>
-          </CardContent>
-        </Card>
+        <GroupedPermissions permissions={permissions} />
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
