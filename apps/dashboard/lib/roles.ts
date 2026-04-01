@@ -1,5 +1,6 @@
 export const APP_ROLES = [
   "admin",
+  "tech_lead",
   "reviewer_lead",
   "reviewer_senior",
   "reviewer_junior",
@@ -11,6 +12,10 @@ export type AppRole = (typeof APP_ROLES)[number]
 // Reviewer levels for easier checking
 export const REVIEWER_ROLES = ["reviewer_lead", "reviewer_senior", "reviewer_junior"] as const
 export type ReviewerRole = (typeof REVIEWER_ROLES)[number]
+
+// Roles that can modify project settings
+export const PROJECT_SETTINGS_WRITE_ROLES = ["admin", "tech_lead"] as const
+export type ProjectSettingsWriteRole = (typeof PROJECT_SETTINGS_WRITE_ROLES)[number]
 
 // Helper functions
 export function isReviewer(role: AppRole): role is ReviewerRole {
@@ -25,6 +30,10 @@ export function isReviewerLead(role: AppRole): boolean {
   return role === "reviewer_lead"
 }
 
+export function canModifyProjectSettings(role: AppRole): boolean {
+  return PROJECT_SETTINGS_WRITE_ROLES.includes(role as ProjectSettingsWriteRole)
+}
+
 const ROLE_ALIASES: Record<string, AppRole> = {
   // Admin aliases
   admin: "admin",
@@ -33,6 +42,14 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   superadmin: "admin",
   "super-admin": "admin",
   super_admin: "admin",
+
+  // Tech Lead aliases
+  tech_lead: "tech_lead",
+  "tech-lead": "tech_lead",
+  techlead: "tech_lead",
+  lead: "tech_lead",
+  team_lead: "tech_lead",
+  "team-lead": "tech_lead",
 
   // Reviewer level aliases
   reviewer_lead: "reviewer_lead",
@@ -139,6 +156,8 @@ export function getRoleHomePath(role: AppRole): string {
   switch (role) {
     case "admin":
       return "/dashboard/admin/knowledge-base"
+    case "tech_lead":
+      return "/dashboard/admin/knowledge-base"
     case "reviewer_lead":
     case "reviewer_senior":
     case "reviewer_junior":
@@ -152,6 +171,8 @@ export function formatRoleLabel(role: AppRole): string {
   switch (role) {
     case "admin":
       return "Admin"
+    case "tech_lead":
+      return "Tech Lead"
     case "reviewer_lead":
       return "Lead Reviewer"
     case "reviewer_senior":

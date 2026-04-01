@@ -15,10 +15,15 @@ from app.api.http import (
     knowledge_base,
     notifications,
     project_comprehension,
+    project_settings,
     rag_query,
+    repositories,
     review_queue,
     reviews,
     reviewer_metrics,
+    security,
+    statistics,
+    teams,
     webhook_github,
 )
 from app.core.security.secret_store import get_secret_store
@@ -56,6 +61,7 @@ app = FastAPI(
         {"name": "reviews", "description": "Review management, assignments, comments, and change requests APIs."},
         {"name": "knowledge-base", "description": "Repo context onboarding and retrieval APIs."},
         {"name": "projects", "description": "Project comprehension and context management APIs."},
+        {"name": "project-settings", "description": "Project settings including auto-analysis toggle management."},
         {"name": "rag", "description": "RAG query and intelligent code analysis APIs."},
     ],
 )
@@ -89,7 +95,12 @@ app.include_router(knowledge_base.router)
 app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
 app.include_router(project_comprehension.router)
+app.include_router(project_settings.router, prefix="/api/v1", tags=["project-settings"])
 app.include_router(rag_query.router)
+app.include_router(repositories.router)
+app.include_router(statistics.router)
+app.include_router(security.router)
+app.include_router(teams.router)
 
 
 @app.get("/__routes")
