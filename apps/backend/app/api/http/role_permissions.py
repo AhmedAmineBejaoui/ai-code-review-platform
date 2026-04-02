@@ -5,13 +5,11 @@ Allows admins to enable/disable permissions for specific roles.
 from __future__ import annotations
 
 import logging
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from app.api.dependencies.auth import get_current_user_optional
-from app.data.repos.rbac_repo import RBACRepo
+from app.api.middleware.auth import get_rbac_repo
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +35,11 @@ class RoleWithPermissions(BaseModel):
     code: str
     label: str
     is_system: bool
-    permissions: List[PermissionDetail]
+    permissions: list[PermissionDetail]
 
 
 class AllRolesPermissionsResponse(BaseModel):
-    roles: List[RoleWithPermissions]
+    roles: list[RoleWithPermissions]
     total_roles: int
     total_permissions: int
 
@@ -49,7 +47,7 @@ class AllRolesPermissionsResponse(BaseModel):
 class RolePermissionsResponse(BaseModel):
     role_id: str
     role_code: str | None = None
-    permissions: List[PermissionDetail]
+    permissions: list[PermissionDetail]
     total: int
 
 
@@ -70,13 +68,13 @@ class TogglePermissionResponse(BaseModel):
 
 @router.get("/permissions", response_model=AllRolesPermissionsResponse)
 async def get_all_roles_with_permissions(
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get all roles with their permissions (including enabled/disabled status).
     
     This is the main endpoint for the admin UI to manage role permissions.
     """
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     roles = repo.get_all_roles_with_permissions()
     
     total_permissions = sum(len(role.get("permissions", [])) for role in roles)
@@ -113,7 +111,7 @@ async def get_all_roles_with_permissions(
 async def get_role_permissions(
     role_id: str,
     include_disabled: bool = False,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get all permissions for a specific role.
     
@@ -121,7 +119,7 @@ async def get_role_permissions(
         role_id: The role ID
         include_disabled: If True, include disabled permissions (default: False)
     """
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     permissions = repo.get_role_permissions(role_id, include_disabled=include_disabled)
     
     return RolePermissionsResponse(
@@ -151,7 +149,7 @@ async def toggle_role_permission(
     role_id: str,
     permission_id: str,
     request: TogglePermissionRequest,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Toggle a permission for a role (enable/disable).
     
@@ -162,13 +160,11 @@ async def toggle_role_permission(
         permission_id: The permission ID
         request: Toggle request with enabled status and optional reason
     """
-    repo = RBACRepo()
-    
-    # Get current user ID for audit trail
+    repo = get_rbac_repo()
+
+    # TODO: Get current user ID for audit trail from auth context
     updated_by = "system"
-    if _user and isinstance(_user, dict):
-        updated_by = _user.get("user_id") or _user.get("id") or "system"
-    
+
     result = repo.toggle_role_permission(
         role_id=role_id,
         permission_id=permission_id,
@@ -203,14 +199,13 @@ async def enable_role_permission(
     role_id: str,
     permission_id: str,
     reason: str | None = None,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Convenience endpoint to enable a permission for a role."""
     return await toggle_role_permission(
         role_id=role_id,
         permission_id=permission_id,
         request=TogglePermissionRequest(enabled=True, reason=reason),
-        _user=_user,
     )
 
 
@@ -219,12 +214,11 @@ async def disable_role_permission(
     role_id: str,
     permission_id: str,
     reason: str | None = None,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Convenience endpoint to disable a permission for a role."""
     return await toggle_role_permission(
         role_id=role_id,
         permission_id=permission_id,
         request=TogglePermissionRequest(enabled=False, reason=reason),
-        _user=_user,
     )

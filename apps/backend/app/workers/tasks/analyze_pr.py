@@ -337,6 +337,27 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "error_code": "ANALYSIS_NOT_FOUND",
         }
 
+    # Idempotence guard: prevent re-processing completed or in-progress analyses
+    current_status = analysis.status
+    current_task_id = (analysis.metadata or {}).get("pipeline", {}).get("task_id")
+
+    if current_status == "COMPLETED":
+        return {
+            "analysis_id": analysis_id,
+            "status": "ALREADY_COMPLETED",
+            "message": "Analysis already completed, skipping re-run",
+        }
+
+    if current_status == "RUNNING":
+        # Allow retry if same task_id (Celery retry), block if different task
+        if current_task_id and current_task_id != self.request.id:
+            return {
+                "analysis_id": analysis_id,
+                "status": "ALREADY_RUNNING",
+                "message": f"Analysis already running by task {current_task_id}",
+                "running_task_id": current_task_id,
+            }
+
     try:
         repo.update_status(
             analysis_id=analysis_id,

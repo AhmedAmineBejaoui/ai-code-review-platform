@@ -25,7 +25,7 @@ from app.data.repos.change_requests_repo import (
     UpdateChangeRequestInput,
 )
 
-router = APIRouter(prefix="/v1/reviews", tags=["reviews"])
+router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
 
 # Review Assignment Models

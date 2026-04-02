@@ -7,12 +7,10 @@ Provides configuration management and test endpoints for third-party integration
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel
 
-from app.api.dependencies.auth import get_current_user_optional
 from app.services.slack_service import SlackService
 from app.services.teams_service import TeamsService
 from app.settings import settings
@@ -63,7 +61,7 @@ class TeamsConfigResponse(BaseModel):
 
 @router.get("/status", response_model=IntegrationsStatusResponse)
 async def get_integrations_status(
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get status of all integrations."""
     return IntegrationsStatusResponse(
@@ -95,7 +93,7 @@ async def get_integrations_status(
 
 @router.get("/slack/config", response_model=SlackConfigResponse)
 async def get_slack_config(
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get Slack integration configuration (safe values only)."""
     return SlackConfigResponse(
@@ -108,7 +106,7 @@ async def get_slack_config(
 @router.post("/slack/test", response_model=TestMessageResponse)
 async def test_slack_integration(
     request: TestMessageRequest,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Send a test message to Slack."""
     if not settings.SLACK_ENABLED:
@@ -161,7 +159,7 @@ async def test_slack_integration(
 @router.post("/slack/notify/review", response_model=TestMessageResponse)
 async def send_slack_review_notification(
     data: dict,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Send a review notification to Slack (for testing/manual triggering)."""
     if not settings.SLACK_ENABLED:
@@ -183,7 +181,7 @@ async def send_slack_review_notification(
 
 @router.get("/teams/config", response_model=TeamsConfigResponse)
 async def get_teams_config(
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get Microsoft Teams integration configuration (safe values only)."""
     return TeamsConfigResponse(
@@ -196,7 +194,7 @@ async def get_teams_config(
 @router.post("/teams/test", response_model=TestMessageResponse)
 async def test_teams_integration(
     request: TestMessageRequest,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Send a test message to Microsoft Teams."""
     if not settings.TEAMS_ENABLED:
@@ -241,7 +239,7 @@ async def test_teams_integration(
 @router.post("/teams/notify/review", response_model=TestMessageResponse)
 async def send_teams_review_notification(
     data: dict,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Send a review notification to Microsoft Teams (for testing/manual triggering)."""
     if not settings.TEAMS_ENABLED:

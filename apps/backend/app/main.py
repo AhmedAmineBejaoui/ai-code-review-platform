@@ -20,6 +20,7 @@ from app.api.http import (
     project_roles,
     rag_query,
     repositories,
+    reviewer_metrics,
     review_queue,
     reviews,
     role_permissions,

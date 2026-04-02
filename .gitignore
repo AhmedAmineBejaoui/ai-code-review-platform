@@ -30,3 +30,8 @@ scans/
 # IDE
 .vscode/.history/
 .idea/
+
+# Qdrant local storage (embedded mode)
+qdrant_storage/
+apps/backend/qdrant_storage/
+.claude/worktrees/silly-shockley

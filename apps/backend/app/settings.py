@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
     CELERY_TASK_EAGER_PROPAGATES: bool = True
     CELERY_WORKER_POOL: str | None = None
+    CELERY_ENQUEUE_REQUIRE_WORKER: bool = True
+    CELERY_ENQUEUE_INSPECT_TIMEOUT_SECONDS: float = 1.5
     KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES: int = 60
     ANALYSIS_QUEUE_NAME: str = "analyses"
     DATABASE_URL: str | None = None
@@ -75,16 +77,16 @@ class Settings(BaseSettings):
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_MAX_TOKENS: int = 2048
     OLLAMA_BASE_URL: str = "http://localhost:11434"
-    OLLAMA_MODEL: str = "deepseek-r1:8b"
-    OLLAMA_TIMEOUT_SECONDS: int = 60
-    OLLAMA_TEMPERATURE: float = 0.2
-    OLLAMA_NUM_PREDICT: int = 400
+    OLLAMA_MODEL: str = "deepseek-coder"
+    OLLAMA_TIMEOUT_SECONDS: int = 120
+    OLLAMA_TEMPERATURE: float = 0.1
+    OLLAMA_NUM_PREDICT: int = 2048
     LANGCHAIN_ENABLED: bool = False
     LANGCHAIN_SHADOW_MODE: bool = True
     LANGCHAIN_PRIMARY_STACK: str = "legacy"
     LANGCHAIN_ALLOW_LEGACY_FALLBACK: bool = True
     LANGCHAIN_OLLAMA_BASE_URL: str | None = None
-    LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY: str = "deepseek-r1:8b"
+    LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY: str = "deepseek-coder"
     LANGCHAIN_OLLAMA_CHAT_MODEL_FALLBACK: str | None = None
     LANGCHAIN_OLLAMA_EMBEDDINGS_MODEL: str = "mxbai-embed-large"
     LANGCHAIN_QDRANT_COLLECTION_ALIAS_ACTIVE: str = "repo_context_langchain_active"
@@ -111,7 +113,9 @@ class Settings(BaseSettings):
 
     # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
     QDRANT_ENABLED: bool = False
-    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_MODE: str = "http"  # "http" for remote server, "local" for embedded in-process
+    QDRANT_URL: str = "http://localhost:6333"  # Used when QDRANT_MODE=http
+    QDRANT_LOCAL_PATH: str = "./qdrant_storage"  # Used when QDRANT_MODE=local
     QDRANT_COLLECTION: str = "code_review_rules"
     QDRANT_REPO_CONTEXT_COLLECTION: str = "repo_context"
     QDRANT_API_KEY: str | None = None

@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
 from app.services.notifications import NotificationService
 
-router = APIRouter(prefix="/v1/notifications", tags=["notifications"])
+router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
 class NotificationResponse(BaseModel):

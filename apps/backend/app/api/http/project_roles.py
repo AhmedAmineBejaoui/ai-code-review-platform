@@ -7,13 +7,11 @@ Provides endpoints to assign, remove, and query project-specific roles.
 from __future__ import annotations
 
 import logging
-from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from app.api.dependencies.auth import get_current_user_optional
-from app.data.repos.rbac_repo import RBACRepo
+from app.api.middleware.auth import get_rbac_repo
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +47,20 @@ class ProjectRoleResponse(BaseModel):
 
 class ProjectMembersResponse(BaseModel):
     project_id: str
-    members: List[ProjectRoleResponse]
+    members: list[ProjectRoleResponse]
     total: int
 
 
 class UserProjectRolesResponse(BaseModel):
     user_id: str
-    roles: List[ProjectRoleResponse]
+    roles: list[ProjectRoleResponse]
     total: int
 
 
 class ProjectPermissionsResponse(BaseModel):
     user_id: str
     project_id: str
-    permissions: List[str]
+    permissions: list[str]
 
 
 class CheckPermissionResponse(BaseModel):
@@ -77,10 +75,10 @@ class CheckPermissionResponse(BaseModel):
 @router.get("/{project_id}/members", response_model=ProjectMembersResponse)
 async def get_project_members(
     project_id: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get all members with roles in a specific project."""
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     members = repo.get_project_members(project_id)
     
     return ProjectMembersResponse(
@@ -111,19 +109,16 @@ async def get_project_members(
 async def assign_project_role(
     project_id: str,
     request: AssignProjectRoleRequest,
-    _user: dict | None = Depends(get_current_user_optional),
 ):
     """Assign a role to a user for a specific project.
     
     This allows users to have different roles in different projects.
     For example, a user might be a Developer in Project A but a Lead Reviewer in Project B.
     """
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     
-    # Get current user ID for assigned_by (if authenticated)
+    # TODO: Get current user ID for assigned_by from auth context
     assigned_by = None
-    if _user and isinstance(_user, dict):
-        assigned_by = _user.get("user_id") or _user.get("id")
     
     result = repo.assign_project_role(
         user_id=request.user_id,
@@ -158,10 +153,10 @@ async def assign_project_role(
 async def remove_project_role(
     project_id: str,
     user_id: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Remove a user's role from a specific project."""
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     success = repo.remove_project_role(user_id, project_id)
     
     if not success:
@@ -177,10 +172,10 @@ async def remove_project_role(
 async def get_user_project_role(
     project_id: str,
     user_id: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get a specific user's role in a project."""
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     role = repo.get_user_project_role(user_id, project_id)
     
     if role is None:
@@ -208,13 +203,13 @@ async def get_user_project_role(
 async def get_user_permissions_for_project(
     project_id: str,
     user_id: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get all permissions a user has for a specific project.
     
     This combines global permissions and project-specific role permissions.
     """
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     permissions = repo.get_user_permissions_for_project(user_id, project_id)
     
     return ProjectPermissionsResponse(
@@ -229,10 +224,10 @@ async def check_permission_for_project(
     project_id: str,
     user_id: str,
     permission_code: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Check if a user has a specific permission for a project."""
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     has_permission = repo.check_user_has_permission_for_project(user_id, project_id, permission_code)
     
     return CheckPermissionResponse(
@@ -248,10 +243,10 @@ async def check_permission_for_project(
 @router.get("/users/{user_id}/project-roles", response_model=UserProjectRolesResponse)
 async def get_user_all_project_roles(
     user_id: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Get all project-specific roles for a user."""
-    repo = RBACRepo()
+    repo = get_rbac_repo()
     roles = repo.get_user_project_roles(user_id)
     
     return UserProjectRolesResponse(

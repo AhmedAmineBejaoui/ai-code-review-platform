@@ -7,12 +7,10 @@ Provides health check, file upload/download, and management APIs.
 from __future__ import annotations
 
 import logging
-from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 
-from app.api.dependencies.auth import get_current_user_optional
 from app.integrations.object_storage.s3_minio_client import get_minio_client
 
 logger = logging.getLogger(__name__)
@@ -75,8 +73,8 @@ async def storage_health():
 @router.post("/upload", response_model=UploadResponse)
 async def upload_file(
     file: UploadFile = File(...),
-    path: Annotated[str | None, Query(description="Custom path/name for the object")] = None,
-    _user: dict | None = Depends(get_current_user_optional),
+    path: str | None = Query(default=None, description="Custom path/name for the object"),
+
 ):
     """Upload a file to object storage.
 
@@ -121,7 +119,7 @@ async def upload_file(
 @router.get("/download/{object_name:path}")
 async def download_file(
     object_name: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Download a file from object storage.
 
@@ -163,8 +161,8 @@ async def download_file(
 @router.get("/presigned-url/{object_name:path}", response_model=PresignedUrlResponse)
 async def get_presigned_url(
     object_name: str,
-    expires_in: Annotated[int, Query(ge=60, le=86400, description="URL expiry in seconds")] = 3600,
-    _user: dict | None = Depends(get_current_user_optional),
+    expires_in: int = Query(default=3600, ge=60, le=86400, description="URL expiry in seconds"),
+
 ):
     """Generate a presigned URL for downloading an object.
 
@@ -193,9 +191,9 @@ async def get_presigned_url(
 
 @router.get("/list", response_model=ListObjectsResponse)
 async def list_objects(
-    prefix: Annotated[str, Query(description="Filter objects by prefix")] = "",
-    max_keys: Annotated[int, Query(ge=1, le=1000, description="Maximum objects to return")] = 100,
-    _user: dict | None = Depends(get_current_user_optional),
+    prefix: str = Query(default="", description="Filter objects by prefix"),
+    max_keys: int = Query(default=100, ge=1, le=1000, description="Maximum objects to return"),
+
 ):
     """List objects in the storage bucket.
 
@@ -229,7 +227,7 @@ async def list_objects(
 @router.delete("/delete/{object_name:path}", response_model=DeleteResponse)
 async def delete_file(
     object_name: str,
-    _user: dict | None = Depends(get_current_user_optional),
+
 ):
     """Delete an object from storage.
 

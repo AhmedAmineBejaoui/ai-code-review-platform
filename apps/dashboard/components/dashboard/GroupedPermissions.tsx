@@ -4,14 +4,13 @@ import { useState, useMemo } from "react"
 import { motion, AnimatePresence } from "framer-motion"
 import { 
   ChevronDown, 
-  ChevronRight, 
   Shield, 
   Users, 
   FileCode, 
   MessageSquare, 
   ClipboardList, 
   BarChart3,
-  FileTemplate,
+  FileText,
   Settings,
   Lock
 } from "lucide-react"
@@ -42,7 +41,7 @@ const PERMISSION_GROUPS_CONFIG: Record<string, { label: string; icon: React.Comp
   threads: { label: "Discussions", icon: Users, gradient: "from-indigo-500 to-purple-500" },
   assignments: { label: "Assignments", icon: ClipboardList, gradient: "from-amber-500 to-orange-500" },
   metrics: { label: "Metrics", icon: BarChart3, gradient: "from-green-500 to-emerald-500" },
-  templates: { label: "Templates", icon: FileTemplate, gradient: "from-rose-500 to-red-500" },
+  templates: { label: "Templates", icon: FileText, gradient: "from-rose-500 to-red-500" },
   analyses: { label: "Analyses", icon: Settings, gradient: "from-teal-500 to-cyan-500" },
   admin: { label: "Administration", icon: Shield, gradient: "from-red-500 to-orange-500" },
   other: { label: "Other", icon: Lock, gradient: "from-gray-500 to-slate-500" },
