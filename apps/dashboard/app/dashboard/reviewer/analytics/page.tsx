@@ -75,6 +75,7 @@ export default function ReviewerAnalyticsPage() {
 
   useEffect(() => {
     fetchMetrics()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [period])
 
   const formatTrendData = () => {
@@ -265,10 +266,10 @@ export default function ReviewerAnalyticsPage() {
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold text-gray-900">Analytics</h1>
+            <h1 className="text-3xl font-bold">My Analytics</h1>
             {getRoleBadge()}
           </div>
-          <p className="text-gray-600 mt-1">
+          <p className="text-muted-foreground mt-1">
             Performance metrics for the last {metrics.period.days} days
           </p>
         </div>
@@ -300,9 +301,9 @@ export default function ReviewerAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Reviews Completed</p>
+                <p className="text-sm font-medium text-muted-foreground">Reviews Completed</p>
                 <div className="flex items-center mt-2">
-                  <span className="text-2xl font-bold text-gray-900">
+                  <span className="text-2xl font-bold">
                     {metrics.current_period.reviews_completed}
                   </span>
                   {metrics.rankings.reviews_count > 0 && (
@@ -312,8 +313,8 @@ export default function ReviewerAnalyticsPage() {
                   )}
                 </div>
               </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-blue-600" />
+              <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -323,9 +324,9 @@ export default function ReviewerAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Avg Review Time</p>
+                <p className="text-sm font-medium text-muted-foreground">Avg Review Time</p>
                 <div className="flex items-center mt-2">
-                  <span className="text-2xl font-bold text-gray-900">
+                  <span className="text-2xl font-bold">
                     {formatMinutes(metrics.current_period.avg_review_time_minutes)}
                   </span>
                   {metrics.rankings.response_time > 0 && (
@@ -335,8 +336,8 @@ export default function ReviewerAnalyticsPage() {
                   )}
                 </div>
               </div>
-              <div className="h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
-                <Clock className="h-6 w-6 text-purple-600" />
+              <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
+                <Clock className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </CardContent>
@@ -346,9 +347,9 @@ export default function ReviewerAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">SLA Compliance</p>
+                <p className="text-sm font-medium text-muted-foreground">SLA Compliance</p>
                 <div className="flex items-center mt-2">
-                  <span className="text-2xl font-bold text-gray-900">
+                  <span className="text-2xl font-bold">
                     {Math.round(metrics.current_period.sla_compliance_rate * 100)}%
                   </span>
                   <Badge className={`ml-2 text-white ${slaStatus.color}`}>
@@ -356,8 +357,8 @@ export default function ReviewerAnalyticsPage() {
                   </Badge>
                 </div>
               </div>
-              <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                <Target className="h-6 w-6 text-green-600" />
+              <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <Target className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -367,9 +368,9 @@ export default function ReviewerAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Avg Comments Per Review</p>
+                <p className="text-sm font-medium text-muted-foreground">Avg Comments Per Review</p>
                 <div className="flex items-center mt-2">
-                  <span className="text-2xl font-bold text-gray-900">
+                  <span className="text-2xl font-bold">
                     {metrics.current_period.avg_comments_per_review.toFixed(1)}
                   </span>
                   {metrics.rankings.quality_score > 0 && (
@@ -379,8 +380,8 @@ export default function ReviewerAnalyticsPage() {
                   )}
                 </div>
               </div>
-              <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
-                <MessageCircle className="h-6 w-6 text-orange-600" />
+              <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
+                <MessageCircle className="h-6 w-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
           </CardContent>
@@ -509,41 +510,41 @@ export default function ReviewerAnalyticsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
-            <FileEdit className="h-5 w-5 mr-2 text-indigo-600" />
+            <FileEdit className="h-5 w-5 mr-2 text-indigo-600 dark:text-indigo-400" />
             Detailed Performance Stats
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600">
+              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                 {metrics.current_period.approvals}
               </div>
-              <div className="text-sm text-gray-600 mt-1">Approvals</div>
+              <div className="text-sm text-muted-foreground mt-1">Approvals</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600">
+              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
                 {metrics.current_period.warnings}
               </div>
-              <div className="text-sm text-gray-600 mt-1">Warnings</div>
+              <div className="text-sm text-muted-foreground mt-1">Warnings</div>
             </div>
             {/* Only show blocks for Senior and Lead reviewers */}
             {(currentUser.role === "reviewer_senior" || currentUser.role === "reviewer_lead") && (
               <div className="text-center">
-                <div className="text-2xl font-bold text-red-600">
+                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
                   {metrics.current_period.blocks}
                 </div>
-                <div className="text-sm text-gray-600 mt-1">Blocks</div>
+                <div className="text-sm text-muted-foreground mt-1">Blocks</div>
                 <Badge variant="outline" className="mt-1 text-xs">
                   Senior+ Only
                 </Badge>
               </div>
             )}
             <div className="text-center">
-              <div className="text-2xl font-bold text-purple-600">
+              <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
                 {metrics.current_period.findings_identified}
               </div>
-              <div className="text-sm text-gray-600 mt-1">Findings Identified</div>
+              <div className="text-sm text-muted-foreground mt-1">Findings Identified</div>
             </div>
           </div>
         </CardContent>

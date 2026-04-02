@@ -24,6 +24,10 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
     toggleStar,
   } = useProjectDetail(projectId)
 
+  const handleRunAnalysis = async () => {
+    await runAnalysis()
+  }
+
   if (error) {
     return (
       <div className="space-y-6">
@@ -49,7 +53,7 @@ export default function ProjectLayout({ children }: ProjectLayoutProps) {
       <ProjectHeader
         project={project}
         loading={loading}
-        onRunAnalysis={runAnalysis}
+        onRunAnalysis={handleRunAnalysis}
         onToggleStar={toggleStar}
       />
       {children}
