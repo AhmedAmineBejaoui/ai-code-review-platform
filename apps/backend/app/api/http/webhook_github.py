@@ -4,11 +4,13 @@ import asyncio
 import hashlib
 import hmac
 import logging
+from functools import lru_cache
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Request
 
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
+from app.data.repos.project_settings_repo import ProjectSettingsRepo
 from app.services.branch_sync import BranchSyncService, BranchSyncResult
 from app.settings import settings
 from app.workers.tasks.ingest_kb import run_repo_diff_processing, run_repo_onboarding
@@ -18,6 +20,12 @@ logger = logging.getLogger(__name__)
 
 # Branch sync service instance
 _branch_sync_service: BranchSyncService | None = None
+
+
+@lru_cache(maxsize=1)
+def get_project_settings_repo() -> ProjectSettingsRepo:
+    """Get singleton instance of ProjectSettingsRepo."""
+    return ProjectSettingsRepo()
 
 
 def get_branch_sync_service() -> BranchSyncService:
@@ -127,6 +135,27 @@ async def github_webhook(request: Request):
             "duplicate": False,
             "automation": "skipped",
             "reason": "missing_repo_mapping",
+        }
+
+    # ─────────────────────────────────────────────────────────────────────────
+    # Check auto-analysis toggle before processing analysis-triggering events
+    # ─────────────────────────────────────────────────────────────────────────
+    auto_analysis_check = await _check_auto_analysis_enabled(repo_full_name, event)
+    if not auto_analysis_check["allowed"]:
+        logger.info(
+            "Auto-analysis disabled for repo=%s, event=%s. Reason: %s",
+            repo_full_name,
+            event,
+            auto_analysis_check.get("reason", "unknown"),
+        )
+        return {
+            "ok": True,
+            "event": event,
+            "duplicate": False,
+            "automation": "skipped",
+            "reason": auto_analysis_check.get("reason", "auto_analysis_disabled"),
+            "auto_analysis_state": auto_analysis_check.get("state"),
+            "branch_sync": branch_results if branch_results else None,
         }
 
     if event == "repository":
@@ -250,6 +279,98 @@ def _extract_org_id(payload: dict) -> str | None:
         if org_id is not None:
             return str(org_id)
     return None
+
+
+async def _check_auto_analysis_enabled(
+    repo_full_name: str,
+    event: str,
+) -> dict[str, Any]:
+    """Check if auto-analysis is enabled for a repository.
+    
+    This function checks the project settings to determine if automatic
+    code analysis should be triggered for the given event.
+    
+    Args:
+        repo_full_name: The repository identifier (e.g., "owner/repo")
+        event: The GitHub event type (e.g., "pull_request", "push")
+        
+    Returns:
+        Dictionary with:
+        - allowed: bool - Whether analysis should proceed
+        - reason: str - Human-readable reason if not allowed
+        - state: str - The effective state of auto-analysis
+    """
+    # Events that trigger analysis
+    analysis_events = {"pull_request", "push", "repository"}
+    
+    # If event doesn't trigger analysis, allow it (it's just metadata sync)
+    if event not in analysis_events:
+        return {
+            "allowed": True,
+            "reason": None,
+            "state": "not_applicable",
+        }
+    
+    try:
+        repo = get_project_settings_repo()
+        settings = await asyncio.to_thread(repo.get_settings, repo_full_name)
+        
+        if settings is None:
+            # No settings = default behavior (enabled)
+            return {
+                "allowed": True,
+                "reason": None,
+                "state": "enabled_default",
+            }
+        
+        effective_state = settings.effective_state.value
+        
+        if settings.is_analysis_allowed:
+            return {
+                "allowed": True,
+                "reason": None,
+                "state": effective_state,
+            }
+        
+        # Analysis not allowed - determine the reason
+        if not settings.auto_analysis_enabled:
+            return {
+                "allowed": False,
+                "reason": "auto_analysis_disabled",
+                "state": effective_state,
+                "disabled_reason": settings.auto_analysis_disabled_reason,
+            }
+        
+        if settings.auto_analysis_disabled_until is not None:
+            remaining = settings.temporary_disable_remaining_seconds
+            return {
+                "allowed": False,
+                "reason": "auto_analysis_temporarily_disabled",
+                "state": effective_state,
+                "disabled_until": settings.auto_analysis_disabled_until.isoformat(),
+                "remaining_seconds": remaining,
+                "disabled_reason": settings.auto_analysis_disabled_reason,
+            }
+        
+        return {
+            "allowed": False,
+            "reason": "auto_analysis_disabled_unknown",
+            "state": effective_state,
+        }
+        
+    except Exception as e:
+        # On error, allow analysis to proceed (fail-open for reliability)
+        logger.warning(
+            "Failed to check auto-analysis state for repo=%s: %s. Allowing analysis.",
+            repo_full_name,
+            str(e),
+        )
+        return {
+            "allowed": True,
+            "reason": None,
+            "state": "error_fallback",
+            "error": str(e),
+        }
 
 
 def _sync_result_to_dict(result: BranchSyncResult | None) -> dict[str, Any] | None:

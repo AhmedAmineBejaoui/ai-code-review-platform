@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
   Plus,
@@ -12,7 +13,10 @@ import {
   Archive,
   Folder,
   RefreshCw,
-  Download,
+  Loader2,
+  Github,
+  FileCode,
+  Zap,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -23,6 +27,7 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
+  DialogFooter,
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -33,12 +38,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { AnalysisPipeline } from "./AnalysisPipeline"
 
 interface AnalysesPageHeaderProps {
   filter?: string | null
   status?: string | null
   view?: string | null
   action?: string | null
+  period?: string | null
 }
 
 const filterLabels: Record<string, { title: string; description: string; icon: React.ElementType }> = {
@@ -64,6 +71,21 @@ const filterLabels: Record<string, { title: string; description: string; icon: R
   },
 }
 
+const periodLabels: Record<string, { title: string; description: string }> = {
+  "24h": {
+    title: "Last 24 Hours",
+    description: "Recent analyses from the past day",
+  },
+  "week": {
+    title: "This Week",
+    description: "Analyses from the past 7 days",
+  },
+  "month": {
+    title: "This Month",
+    description: "Analyses from the past 30 days",
+  },
+}
+
 const statusLabels: Record<string, { title: string; description: string; icon: React.ElementType }> = {
   in_progress: {
     title: "In Progress",
@@ -82,16 +104,68 @@ const statusLabels: Record<string, { title: string; description: string; icon: R
   },
 }
 
-export function AnalysesPageHeader({ filter, status, view, action }: AnalysesPageHeaderProps) {
+type GithubRepoOption = {
+  id: number
+  name: string
+  fullName: string
+  private: boolean
+  htmlUrl: string | null
+  defaultBranch: string | null
+  ownerLogin: string | null
+  updatedAt: string | null
+}
+
+export function AnalysesPageHeader({ filter, status, view, action, period }: AnalysesPageHeaderProps) {
+  const router = useRouter()
   const [isNewAnalysisOpen, setIsNewAnalysisOpen] = useState(action === "new")
-  const [newAnalysisUrl, setNewAnalysisUrl] = useState("")
-  const [newAnalysisProject, setNewAnalysisProject] = useState("")
+  const [repoInput, setRepoInput] = useState("")
+  const [prNumberInput, setPrNumberInput] = useState("")
+  const [analysisType, setAnalysisType] = useState<"full" | "quick">("full")
+  const [isSubmitting, setIsSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
+  const [startedAnalysisId, setStartedAnalysisId] = useState<string | null>(null)
+  
+  // GitHub repos state
+  const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([])
+  const [isLoadingRepos, setIsLoadingRepos] = useState(false)
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [selectedGithubRepo, setSelectedGithubRepo] = useState("")
+  const [inputMode, setInputMode] = useState<"github" | "manual">("github")
+
+  // Load GitHub repos when dialog opens
+  useEffect(() => {
+    if (!isNewAnalysisOpen) return
+    loadGithubRepos()
+  }, [isNewAnalysisOpen])
+
+  const loadGithubRepos = async () => {
+    setIsLoadingRepos(true)
+    try {
+      const response = await fetch("/api/dashboard/github/repos")
+      if (response.ok) {
+        const data = await response.json()
+        setGithubConnected(data.connected ?? false)
+        setGithubRepos(data.items ?? [])
+      } else {
+        setGithubConnected(false)
+      }
+    } catch {
+      setGithubConnected(false)
+    } finally {
+      setIsLoadingRepos(false)
+    }
+  }
 
   let title = "All Analyses"
   let description = "View and manage all code review analyses"
   let Icon: React.ElementType = Filter
 
-  if (filter && filterLabels[filter]) {
+  if (period && periodLabels[period]) {
+    title = periodLabels[period].title
+    description = periodLabels[period].description
+    Icon = Calendar
+  } else if (filter && filterLabels[filter]) {
     title = filterLabels[filter].title
     description = filterLabels[filter].description
     Icon = filterLabels[filter].icon
@@ -105,12 +179,127 @@ export function AnalysesPageHeader({ filter, status, view, action }: AnalysesPag
     Icon = Folder
   }
 
-  const handleNewAnalysis = () => {
-    // This would trigger the actual analysis
-    console.log("Starting new analysis:", { url: newAnalysisUrl, project: newAnalysisProject })
-    setIsNewAnalysisOpen(false)
-    setNewAnalysisUrl("")
-    setNewAnalysisProject("")
+  const parseGitHubUrl = (url: string): { owner: string; repo: string; prNumber?: number } | null => {
+    // Handle PR URL: https://github.com/owner/repo/pull/123
+    const prMatch = url.match(/github\.com\/([^/]+)\/([^/]+)\/pull\/(\d+)/)
+    if (prMatch) {
+      return { owner: prMatch[1], repo: prMatch[2], prNumber: parseInt(prMatch[3]) }
+    }
+    
+    // Handle repo URL: https://github.com/owner/repo
+    const repoMatch = url.match(/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?(?:\/|$)/)
+    if (repoMatch) {
+      return { owner: repoMatch[1], repo: repoMatch[2] }
+    }
+    
+    // Handle owner/repo format
+    const simpleMatch = url.match(/^([^/]+)\/([^/]+)$/)
+    if (simpleMatch) {
+      return { owner: simpleMatch[1], repo: simpleMatch[2] }
+    }
+    
+    return null
+  }
+
+  const handleStartAnalysis = async () => {
+    setSubmitError(null)
+    setSubmitSuccess(null)
+    
+    let repoFullName = ""
+    let prNumber: number | null = null
+    
+    if (inputMode === "github") {
+      if (!selectedGithubRepo) {
+        setSubmitError("Please select a repository")
+        return
+      }
+      repoFullName = selectedGithubRepo
+      if (prNumberInput.trim()) {
+        const num = parseInt(prNumberInput.trim())
+        if (isNaN(num) || num < 1) {
+          setSubmitError("PR number must be a positive integer")
+          return
+        }
+        prNumber = num
+      }
+    } else {
+      if (!repoInput.trim()) {
+        setSubmitError("Please enter a repository URL or owner/repo")
+        return
+      }
+      
+      const parsed = parseGitHubUrl(repoInput.trim())
+      if (!parsed) {
+        setSubmitError("Invalid format. Use owner/repo or a GitHub URL")
+        return
+      }
+      
+      repoFullName = `${parsed.owner}/${parsed.repo}`
+      prNumber = parsed.prNumber ?? null
+      
+      if (!prNumber && prNumberInput.trim()) {
+        const num = parseInt(prNumberInput.trim())
+        if (isNaN(num) || num < 1) {
+          setSubmitError("PR number must be a positive integer")
+          return
+        }
+        prNumber = num
+      }
+    }
+
+    setIsSubmitting(true)
+    
+    try {
+      const response = await fetch("/api/dashboard/analyses", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          repo: repoFullName,
+          pr_number: prNumber,
+          commit_sha: null,
+          diff_text: null,
+          metadata: {
+            triggered_from: "analyses_page",
+            analysis_type: analysisType,
+          },
+        }),
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || data.message || "Failed to start analysis")
+      }
+
+      const analysisId = data.analysis_id || data.id || null
+      setStartedAnalysisId(analysisId)
+      setSubmitSuccess(`Analysis started! ID: ${analysisId || "pending"}`)
+      
+      // Close dialog and refresh after longer delay to show pipeline progress
+      setTimeout(() => {
+        setIsNewAnalysisOpen(false)
+        resetForm()
+        router.refresh()
+      }, 5000)
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : "Failed to start analysis")
+    } finally {
+      setIsSubmitting(false)
+    }
+  }
+
+  const resetForm = () => {
+    setRepoInput("")
+    setPrNumberInput("")
+    setSelectedGithubRepo("")
+    setAnalysisType("full")
+    setSubmitError(null)
+    setSubmitSuccess(null)
+    setStartedAnalysisId(null)
+    setInputMode("github")
   }
 
   return (
@@ -130,77 +319,218 @@ export function AnalysesPageHeader({ filter, status, view, action }: AnalysesPag
       </div>
 
       <div className="flex items-center gap-2">
-        {(filter || status || view) && (
+        {(filter || status || view || period) && (
           <Badge variant="secondary" className="text-sm">
-            {filter || status || view}
+            {period || filter || status || view}
           </Badge>
         )}
-        
-        <Button variant="outline" className="gap-2">
-          <Download className="h-4 w-4" />
-          Export
-        </Button>
 
-        <Dialog open={isNewAnalysisOpen} onOpenChange={setIsNewAnalysisOpen}>
+        <Dialog open={isNewAnalysisOpen} onOpenChange={(open) => {
+          setIsNewAnalysisOpen(open)
+          if (!open) resetForm()
+        }}>
           <DialogTrigger asChild>
             <Button className="gap-2">
               <Plus className="h-4 w-4" />
               New Analysis
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
+          <DialogContent className="sm:max-w-[550px]">
             <DialogHeader>
-              <DialogTitle>Start New Analysis</DialogTitle>
+              <DialogTitle className="flex items-center gap-2">
+                <FileCode className="h-5 w-5" />
+                Start New Analysis
+              </DialogTitle>
               <DialogDescription>
                 Enter the repository URL or PR link to begin a new code review analysis.
               </DialogDescription>
             </DialogHeader>
+            
             <div className="space-y-4 py-4">
-              <div className="space-y-2">
-                <Label htmlFor="repo-url">Repository / PR URL</Label>
-                <Input
-                  id="repo-url"
-                  placeholder="https://github.com/org/repo/pull/123"
-                  value={newAnalysisUrl}
-                  onChange={(e) => setNewAnalysisUrl(e.target.value)}
-                />
+              {/* Input Mode Toggle */}
+              <div className="flex gap-2">
+                <Button
+                  variant={inputMode === "github" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setInputMode("github")}
+                  className="flex-1"
+                >
+                  <Github className="h-4 w-4 mr-2" />
+                  From GitHub
+                </Button>
+                <Button
+                  variant={inputMode === "manual" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setInputMode("manual")}
+                  className="flex-1"
+                >
+                  <FileCode className="h-4 w-4 mr-2" />
+                  Manual Entry
+                </Button>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="project">Project (Optional)</Label>
-                <Select value={newAnalysisProject} onValueChange={setNewAnalysisProject}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select a project" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="api-gateway">API Gateway</SelectItem>
-                    <SelectItem value="auth-service">Authentication Service</SelectItem>
-                    <SelectItem value="dashboard-ui">Dashboard UI</SelectItem>
-                    <SelectItem value="data-pipeline">Data Pipeline</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+
+              {inputMode === "github" ? (
+                <div className="space-y-3">
+                  {isLoadingRepos ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-muted-foreground">Loading repositories...</span>
+                    </div>
+                  ) : !githubConnected ? (
+                    <div className="text-center py-6 space-y-3">
+                      <Github className="h-12 w-12 mx-auto text-muted-foreground" />
+                      <p className="text-muted-foreground">
+                        Connect your GitHub account to select repositories
+                      </p>
+                      <Button variant="outline" asChild>
+                        <a href="/api/auth/github">Connect GitHub</a>
+                      </Button>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label>Select Repository</Label>
+                        <Select value={selectedGithubRepo} onValueChange={setSelectedGithubRepo}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Choose a repository..." />
+                          </SelectTrigger>
+                          <SelectContent className="max-h-[300px]">
+                            {githubRepos.map((repo) => (
+                              <SelectItem key={repo.id} value={repo.fullName}>
+                                {repo.fullName}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="pr-number">PR Number (Optional)</Label>
+                        <Input
+                          id="pr-number"
+                          type="number"
+                          min="1"
+                          placeholder="e.g., 123"
+                          value={prNumberInput}
+                          onChange={(e) => setPrNumberInput(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Leave empty to analyze the latest commit on default branch
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <Label htmlFor="repo-url">Repository / PR URL</Label>
+                    <Input
+                      id="repo-url"
+                      placeholder="https://github.com/org/repo/pull/123 or owner/repo"
+                      value={repoInput}
+                      onChange={(e) => setRepoInput(e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Enter a GitHub URL or &quot;owner/repo&quot; format
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="pr-number-manual">PR Number (Optional)</Label>
+                    <Input
+                      id="pr-number-manual"
+                      type="number"
+                      min="1"
+                      placeholder="e.g., 123"
+                      value={prNumberInput}
+                      onChange={(e) => setPrNumberInput(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {/* Analysis Type */}
               <div className="space-y-2">
                 <Label>Analysis Type</Label>
                 <div className="grid grid-cols-2 gap-2">
-                  <Button variant="outline" className="justify-start">
+                  <Button 
+                    type="button"
+                    variant={analysisType === "full" ? "default" : "outline"} 
+                    className="justify-start"
+                    onClick={() => setAnalysisType("full")}
+                  >
                     <CheckCircle2 className="h-4 w-4 mr-2 text-green-500" />
                     Full Review
                   </Button>
-                  <Button variant="outline" className="justify-start">
-                    <AlertTriangle className="h-4 w-4 mr-2 text-yellow-500" />
+                  <Button 
+                    type="button"
+                    variant={analysisType === "quick" ? "default" : "outline"} 
+                    className="justify-start"
+                    onClick={() => setAnalysisType("quick")}
+                  >
+                    <Zap className="h-4 w-4 mr-2 text-yellow-500" />
                     Quick Scan
                   </Button>
                 </div>
               </div>
+
+              {/* Error/Success Messages */}
+              {submitError && (
+                <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                  <AlertTriangle className="h-4 w-4" />
+                  {submitError}
+                </div>
+              )}
+              {submitSuccess && (
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm">
+                    <CheckCircle2 className="h-4 w-4" />
+                    {submitSuccess}
+                  </div>
+                  {/* Analysis Pipeline Progress */}
+                  <div className="p-4 rounded-lg bg-muted/30 border border-border/50">
+                    <p className="text-xs text-muted-foreground mb-3 text-center">
+                      Pipeline Progress - Real-time status
+                    </p>
+                    <AnalysisPipeline 
+                      analysisId={startedAnalysisId || undefined}
+                      analysisStatus="queued"
+                      compact
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-            <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsNewAnalysisOpen(false)}>
-                Cancel
-              </Button>
-              <Button onClick={handleNewAnalysis} disabled={!newAnalysisUrl}>
-                Start Analysis
-              </Button>
-            </div>
+
+            <DialogFooter>
+              {startedAnalysisId ? (
+                <Button onClick={() => { setIsNewAnalysisOpen(false); resetForm(); router.refresh(); }}>
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                  View in Timeline
+                </Button>
+              ) : (
+                <>
+                  <Button variant="outline" onClick={() => setIsNewAnalysisOpen(false)}>
+                    Cancel
+                  </Button>
+                  <Button 
+                    onClick={handleStartAnalysis} 
+                    disabled={isSubmitting || (inputMode === "github" ? !selectedGithubRepo : !repoInput.trim())}
+                  >
+                    {isSubmitting ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                        Starting...
+                      </>
+                    ) : (
+                      <>
+                        <Plus className="h-4 w-4 mr-2" />
+                        Start Analysis
+                      </>
+                    )}
+                  </Button>
+                </>
+              )}
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

@@ -1,23 +1,18 @@
 "use client"
 
-import { useState } from "react"
-import { motion } from "framer-motion"
+import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import {
   GitBranch,
-  GitCommit,
   GitPullRequest,
-  GitMerge,
   Star,
   StarOff,
   Eye,
   Code2,
   ExternalLink,
-  Clock,
-  Users,
   MoreHorizontal,
   Search,
   Plus,
-  Filter,
   RefreshCw,
   Lock,
   Unlock,
@@ -25,13 +20,14 @@ import {
   CheckCircle2,
   Settings,
   Copy,
-  Download,
+  Loader2,
+  Github,
+  FolderGit2,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { Progress } from "@/components/ui/progress"
+import { Label } from "@/components/ui/label"
 import {
   Select,
   SelectContent,
@@ -54,152 +50,83 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Badge } from "@/components/ui/badge"
 
-// Mock data for repositories
-const repositoriesData = [
-  {
-    id: 1,
-    name: "api-gateway",
-    fullName: "company/api-gateway",
-    description: "Main API gateway service",
-    language: "TypeScript",
-    visibility: "private",
-    starred: true,
-    lastPush: "2h ago",
-    branches: 12,
-    openPRs: 3,
-    issues: 5,
-    stars: 24,
-    forks: 8,
-    watchers: 15,
-    size: "45.2 MB",
-    defaultBranch: "main",
-    lastCommit: {
-      message: "feat: add rate limiting middleware",
-      author: "Alice Chen",
-      sha: "a1b2c3d",
-      time: "2h ago",
-    },
-    ciStatus: "passing",
-  },
-  {
-    id: 2,
-    name: "auth-service",
-    fullName: "company/auth-service",
-    description: "Authentication and authorization service",
-    language: "Go",
-    visibility: "private",
-    starred: true,
-    lastPush: "4h ago",
-    branches: 8,
-    openPRs: 1,
-    issues: 2,
-    stars: 18,
-    forks: 5,
-    watchers: 12,
-    size: "28.7 MB",
-    defaultBranch: "main",
-    lastCommit: {
-      message: "fix: token refresh race condition",
-      author: "Bob Smith",
-      sha: "d4e5f6g",
-      time: "4h ago",
-    },
-    ciStatus: "passing",
-  },
-  {
-    id: 3,
-    name: "dashboard-ui",
-    fullName: "company/dashboard-ui",
-    description: "Admin dashboard frontend",
-    language: "TypeScript",
-    visibility: "private",
-    starred: false,
-    lastPush: "1h ago",
-    branches: 15,
-    openPRs: 5,
-    issues: 8,
-    stars: 32,
-    forks: 12,
-    watchers: 20,
-    size: "112.4 MB",
-    defaultBranch: "develop",
-    lastCommit: {
-      message: "style: update theme colors",
-      author: "Carol Williams",
-      sha: "h7i8j9k",
-      time: "1h ago",
-    },
-    ciStatus: "failing",
-  },
-  {
-    id: 4,
-    name: "data-pipeline",
-    fullName: "company/data-pipeline",
-    description: "ETL and data processing",
-    language: "Python",
-    visibility: "private",
-    starred: false,
-    lastPush: "6h ago",
-    branches: 6,
-    openPRs: 2,
-    issues: 3,
-    stars: 15,
-    forks: 4,
-    watchers: 8,
-    size: "34.1 MB",
-    defaultBranch: "main",
-    lastCommit: {
-      message: "perf: optimize batch processing",
-      author: "David Brown",
-      sha: "l0m1n2o",
-      time: "6h ago",
-    },
-    ciStatus: "passing",
-  },
-  {
-    id: 5,
-    name: "mobile-app",
-    fullName: "company/mobile-app",
-    description: "Cross-platform mobile application",
-    language: "Dart",
-    visibility: "public",
-    starred: false,
-    lastPush: "2d ago",
-    branches: 4,
-    openPRs: 0,
-    issues: 12,
-    stars: 156,
-    forks: 45,
-    watchers: 89,
-    size: "87.3 MB",
-    defaultBranch: "main",
-    lastCommit: {
-      message: "docs: update README",
-      author: "Eva Martinez",
-      sha: "p3q4r5s",
-      time: "2d ago",
-    },
-    ciStatus: "passing",
-  },
-]
+// Types for repository data from backend
+interface Repository {
+  id: string
+  name: string
+  full_name: string
+  description: string | null
+  language: string | null
+  visibility: "public" | "private" | "internal"
+  default_branch: string | null
+  indexed_commit: string | null
+  ci_status: "passing" | "failing" | "unknown"
+  last_analysis_at: string | null
+  analysis_count: number
+  quality_score: number | null
+  security_score: number | null
+  total_findings: number
+  open_issues: number
+  created_at: string
+  updated_at: string
+}
+
+interface RepositoryListResponse {
+  items: Repository[]
+  total: number
+  page: number
+  limit: number
+  pages: number
+}
 
 const languageColors: Record<string, string> = {
   TypeScript: "bg-blue-500",
+  JavaScript: "bg-yellow-400",
   Go: "bg-cyan-500",
   Python: "bg-yellow-500",
+  Rust: "bg-orange-500",
+  Java: "bg-red-500",
+  "C#": "bg-purple-500",
+  Ruby: "bg-red-400",
+  PHP: "bg-indigo-400",
   Dart: "bg-teal-500",
 }
 
 const ciStatusConfig = {
   passing: { icon: CheckCircle2, className: "text-green-500" },
   failing: { icon: AlertCircle, className: "text-red-500" },
-  pending: { icon: RefreshCw, className: "text-yellow-500 animate-spin" },
+  unknown: { icon: RefreshCw, className: "text-gray-400" },
 }
 
-function RepositoryRow({ repo }: { repo: typeof repositoriesData[0] }) {
-  const [isStarred, setIsStarred] = useState(repo.starred)
-  const CiIcon = ciStatusConfig[repo.ciStatus as keyof typeof ciStatusConfig].icon
+function RepositoryRow({ repo }: { repo: Repository }) {
+  const [isStarred, setIsStarred] = useState(false)
+  const CiIcon = ciStatusConfig[repo.ci_status]?.icon || ciStatusConfig.unknown.icon
+  const ciClassName = ciStatusConfig[repo.ci_status]?.className || ciStatusConfig.unknown.className
+
+  const formatDate = (dateStr: string | null) => {
+    if (!dateStr) return "Never"
+    const date = new Date(dateStr)
+    const now = new Date()
+    const diffMs = now.getTime() - date.getTime()
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
+    const diffDays = Math.floor(diffHours / 24)
+    
+    if (diffHours < 1) return "Just now"
+    if (diffHours < 24) return `${diffHours}h ago`
+    if (diffDays < 7) return `${diffDays}d ago`
+    return date.toLocaleDateString()
+  }
 
   return (
     <TableRow className="group hover:bg-muted/50">
@@ -217,43 +144,51 @@ function RepositoryRow({ repo }: { repo: typeof repositoriesData[0] }) {
                 <Unlock className="h-3 w-3 text-muted-foreground" />
               )}
             </div>
-            <p className="text-xs text-muted-foreground">{repo.description}</p>
+            <p className="text-xs text-muted-foreground">
+              {repo.description || repo.full_name}
+            </p>
           </div>
         </div>
       </TableCell>
       <TableCell>
-        <div className="flex items-center gap-2">
-          <div className={`h-3 w-3 rounded-full ${languageColors[repo.language]}`} />
-          <span className="text-sm">{repo.language}</span>
-        </div>
+        {repo.language ? (
+          <div className="flex items-center gap-2">
+            <div className={`h-3 w-3 rounded-full ${languageColors[repo.language] || "bg-gray-400"}`} />
+            <span className="text-sm">{repo.language}</span>
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">Unknown</span>
+        )}
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-1">
-          <CiIcon className={`h-4 w-4 ${ciStatusConfig[repo.ciStatus as keyof typeof ciStatusConfig].className}`} />
-          <span className="text-sm capitalize">{repo.ciStatus}</span>
+          <CiIcon className={`h-4 w-4 ${ciClassName}`} />
+          <span className="text-sm capitalize">{repo.ci_status}</span>
         </div>
       </TableCell>
       <TableCell>
         <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" title="Analyses">
             <GitBranch className="h-4 w-4" />
-            {repo.branches}
+            {repo.analysis_count}
           </span>
-          <span className="flex items-center gap-1">
+          <span className="flex items-center gap-1" title="Total Findings">
             <GitPullRequest className="h-4 w-4" />
-            {repo.openPRs}
+            {repo.total_findings}
           </span>
-          <span className="flex items-center gap-1">
-            <Star className="h-4 w-4" />
-            {repo.stars}
+          <span className="flex items-center gap-1" title="Open Issues">
+            <AlertCircle className="h-4 w-4" />
+            {repo.open_issues}
           </span>
         </div>
       </TableCell>
       <TableCell>
         <div className="text-sm">
-          <p className="truncate max-w-[200px]">{repo.lastCommit.message}</p>
+          <p className="truncate max-w-[200px]">
+            {repo.default_branch || "main"}
+          </p>
           <p className="text-xs text-muted-foreground">
-            {repo.lastCommit.author} • {repo.lastCommit.time}
+            Last analysis: {formatDate(repo.last_analysis_at)}
           </p>
         </div>
       </TableCell>
@@ -302,25 +237,212 @@ function RepositoryRow({ repo }: { repo: typeof repositoriesData[0] }) {
   )
 }
 
+function RepositoryRowSkeleton() {
+  return (
+    <TableRow>
+      <TableCell>
+        <div className="flex items-center gap-3">
+          <Skeleton className="h-10 w-10 rounded-lg" />
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-48" />
+          </div>
+        </div>
+      </TableCell>
+      <TableCell><Skeleton className="h-4 w-20" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-16" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-24" /></TableCell>
+      <TableCell><Skeleton className="h-4 w-32" /></TableCell>
+      <TableCell><Skeleton className="h-8 w-16" /></TableCell>
+    </TableRow>
+  )
+}
+
+type GithubRepoOption = {
+  id: number
+  name: string
+  fullName: string
+  private: boolean
+  htmlUrl: string | null
+  defaultBranch: string | null
+  ownerLogin: string | null
+  updatedAt: string | null
+}
+
 export default function RepositoriesPage() {
+  const router = useRouter()
+  const [repositories, setRepositories] = useState<Repository[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
   const [languageFilter, setLanguageFilter] = useState("all")
   const [visibilityFilter, setVisibilityFilter] = useState("all")
+  const [page, setPage] = useState(1)
+  const [totalPages, setTotalPages] = useState(1)
+  const [total, setTotal] = useState(0)
 
-  const filteredRepos = repositoriesData.filter((repo) => {
-    const matchesSearch = repo.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      repo.description.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesLanguage = languageFilter === "all" || repo.language === languageFilter
-    const matchesVisibility = visibilityFilter === "all" || repo.visibility === visibilityFilter
-    return matchesSearch && matchesLanguage && matchesVisibility
-  })
+  // Import dialog state
+  const [importDialogOpen, setImportDialogOpen] = useState(false)
+  const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([])
+  const [isLoadingGithubRepos, setIsLoadingGithubRepos] = useState(false)
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [selectedRepo, setSelectedRepo] = useState<string>("")
+  const [manualRepoUrl, setManualRepoUrl] = useState("")
+  const [importMode, setImportMode] = useState<"github" | "manual">("github")
+  const [isImporting, setIsImporting] = useState(false)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importSuccess, setImportSuccess] = useState<string | null>(null)
+
+  const fetchRepositories = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+
+    try {
+      const params = new URLSearchParams({
+        page: page.toString(),
+        limit: "20",
+        ...(searchQuery && { search: searchQuery }),
+        ...(languageFilter !== "all" && { language: languageFilter }),
+        ...(visibilityFilter !== "all" && { visibility: visibilityFilter }),
+      })
+
+      const response = await fetch(`/api/dashboard/repositories?${params}`)
+      
+      if (!response.ok) {
+        throw new Error(`Failed to fetch repositories: ${response.statusText}`)
+      }
+
+      const data: RepositoryListResponse = await response.json()
+      setRepositories(data.items)
+      setTotalPages(data.pages)
+      setTotal(data.total)
+    } catch (err) {
+      console.error("Error fetching repositories:", err)
+      setError(err instanceof Error ? err.message : "Failed to load repositories")
+    } finally {
+      setLoading(false)
+    }
+  }, [page, searchQuery, languageFilter, visibilityFilter])
+
+  useEffect(() => {
+    fetchRepositories()
+  }, [fetchRepositories])
+
+  // Debounce search
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setPage(1)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchQuery])
+
+  // Load GitHub repos when dialog opens
+  useEffect(() => {
+    if (!importDialogOpen) return
+    loadGithubRepos()
+  }, [importDialogOpen])
+
+  const loadGithubRepos = async () => {
+    setIsLoadingGithubRepos(true)
+    try {
+      const response = await fetch("/api/dashboard/github/repos")
+      if (!response.ok) {
+        throw new Error("Failed to fetch GitHub repositories")
+      }
+      const data = await response.json()
+      setGithubConnected(data.connected ?? false)
+      setGithubRepos(data.items ?? [])
+    } catch (err) {
+      console.error("Error loading GitHub repos:", err)
+      setGithubConnected(false)
+    } finally {
+      setIsLoadingGithubRepos(false)
+    }
+  }
+
+  const handleImportRepository = async () => {
+    setImportError(null)
+    setImportSuccess(null)
+    
+    let repoFullName = ""
+    
+    if (importMode === "github") {
+      if (!selectedRepo) {
+        setImportError("Please select a repository from the list")
+        return
+      }
+      repoFullName = selectedRepo
+    } else {
+      if (!manualRepoUrl.trim()) {
+        setImportError("Please enter a repository URL or owner/repo format")
+        return
+      }
+      // Parse GitHub URL or owner/repo format
+      const urlMatch = manualRepoUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/|$)/)
+      if (urlMatch) {
+        repoFullName = urlMatch[1]
+      } else if (manualRepoUrl.match(/^[^/]+\/[^/]+$/)) {
+        repoFullName = manualRepoUrl.trim()
+      } else {
+        setImportError("Invalid format. Use 'owner/repo' or a GitHub URL")
+        return
+      }
+    }
+
+    setIsImporting(true)
+    try {
+      const response = await fetch("/api/dashboard/repositories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          full_name: repoFullName,
+          source: "github",
+        }),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || errorData.message || "Failed to import repository")
+      }
+
+      setImportSuccess(`Repository "${repoFullName}" imported successfully!`)
+      
+      // Refresh the list and close dialog after short delay
+      setTimeout(() => {
+        fetchRepositories()
+        setImportDialogOpen(false)
+        setSelectedRepo("")
+        setManualRepoUrl("")
+        setImportSuccess(null)
+      }, 1500)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to import repository")
+    } finally {
+      setIsImporting(false)
+    }
+  }
+
+  const openImportDialog = () => {
+    setImportError(null)
+    setImportSuccess(null)
+    setSelectedRepo("")
+    setManualRepoUrl("")
+    setImportDialogOpen(true)
+  }
+
+  const filteredRepos = repositories
 
   const stats = {
-    total: repositoriesData.length,
-    private: repositoriesData.filter((r) => r.visibility === "private").length,
-    public: repositoriesData.filter((r) => r.visibility === "public").length,
-    totalStars: repositoriesData.reduce((acc, r) => acc + r.stars, 0),
+    total: total,
+    private: repositories.filter((r) => r.visibility === "private").length,
+    public: repositories.filter((r) => r.visibility === "public").length,
+    totalFindings: repositories.reduce((acc, r) => acc + r.total_findings, 0),
   }
+
+  // Get unique languages from repositories
+  const languages = Array.from(new Set(repositories.map(r => r.language).filter(Boolean))) as string[]
 
   return (
     <div className="space-y-6">
@@ -332,16 +454,167 @@ export default function RepositoriesPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" className="gap-2">
-            <RefreshCw className="h-4 w-4" />
+          <Button 
+            variant="outline" 
+            className="gap-2"
+            onClick={() => fetchRepositories()}
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4" />
+            )}
             Sync
           </Button>
-          <Button className="gap-2">
+          <Button className="gap-2" onClick={openImportDialog}>
             <Plus className="h-4 w-4" />
             Import Repository
           </Button>
         </div>
       </div>
+
+      {/* Import Repository Dialog */}
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FolderGit2 className="h-5 w-5" />
+              Import Repository
+            </DialogTitle>
+            <DialogDescription>
+              Import a repository from GitHub to start analyzing your code.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            {/* Import Mode Tabs */}
+            <div className="flex gap-2">
+              <Button
+                variant={importMode === "github" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setImportMode("github")}
+                className="flex-1"
+              >
+                <Github className="h-4 w-4 mr-2" />
+                From GitHub
+              </Button>
+              <Button
+                variant={importMode === "manual" ? "default" : "outline"}
+                size="sm"
+                onClick={() => setImportMode("manual")}
+                className="flex-1"
+              >
+                <Code2 className="h-4 w-4 mr-2" />
+                Manual Entry
+              </Button>
+            </div>
+
+            {importMode === "github" ? (
+              <div className="space-y-3">
+                {isLoadingGithubRepos ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <span className="ml-2 text-muted-foreground">Loading repositories...</span>
+                  </div>
+                ) : !githubConnected ? (
+                  <div className="text-center py-6 space-y-3">
+                    <Github className="h-12 w-12 mx-auto text-muted-foreground" />
+                    <p className="text-muted-foreground">
+                      Connect your GitHub account to import repositories
+                    </p>
+                    <Button variant="outline" asChild>
+                      <a href="/api/auth/github">Connect GitHub</a>
+                    </Button>
+                  </div>
+                ) : githubRepos.length === 0 ? (
+                  <div className="text-center py-6">
+                    <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                    <p className="text-muted-foreground">No repositories found</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <Label>Select a repository</Label>
+                    <Select value={selectedRepo} onValueChange={setSelectedRepo}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Choose a repository..." />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[300px]">
+                        {githubRepos.map((repo) => (
+                          <SelectItem key={repo.id} value={repo.fullName}>
+                            <div className="flex items-center gap-2">
+                              {repo.private ? (
+                                <Lock className="h-3 w-3 text-muted-foreground" />
+                              ) : (
+                                <Unlock className="h-3 w-3 text-muted-foreground" />
+                              )}
+                              <span>{repo.fullName}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {selectedRepo && (
+                      <p className="text-xs text-muted-foreground">
+                        Selected: {selectedRepo}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <Label htmlFor="manual-repo">Repository URL or owner/repo</Label>
+                <Input
+                  id="manual-repo"
+                  placeholder="e.g., octocat/hello-world or https://github.com/octocat/hello-world"
+                  value={manualRepoUrl}
+                  onChange={(e) => setManualRepoUrl(e.target.value)}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter a GitHub repository in &quot;owner/repo&quot; format or paste a GitHub URL
+                </p>
+              </div>
+            )}
+
+            {/* Error/Success Messages */}
+            {importError && (
+              <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
+                <AlertCircle className="h-4 w-4" />
+                {importError}
+              </div>
+            )}
+            {importSuccess && (
+              <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm">
+                <CheckCircle2 className="h-4 w-4" />
+                {importSuccess}
+              </div>
+            )}
+          </div>
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleImportRepository} 
+              disabled={isImporting || (importMode === "github" && !selectedRepo) || (importMode === "manual" && !manualRepoUrl.trim())}
+            >
+              {isImporting ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Importing...
+                </>
+              ) : (
+                <>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Import
+                </>
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Stats */}
       <div className="grid gap-4 md:grid-cols-4">
@@ -352,7 +625,9 @@ export default function RepositoriesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
+            <div className="text-2xl font-bold">
+              {loading ? <Skeleton className="h-8 w-12" /> : stats.total}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -363,7 +638,9 @@ export default function RepositoriesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.private}</div>
+            <div className="text-2xl font-bold">
+              {loading ? <Skeleton className="h-8 w-12" /> : stats.private}
+            </div>
           </CardContent>
         </Card>
         <Card>
@@ -374,21 +651,44 @@ export default function RepositoriesPage() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.public}</div>
+            <div className="text-2xl font-bold">
+              {loading ? <Skeleton className="h-8 w-12" /> : stats.public}
+            </div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-              <Star className="h-3 w-3" />
-              Total Stars
+              <AlertCircle className="h-3 w-3" />
+              Total Findings
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{stats.totalStars}</div>
+            <div className="text-2xl font-bold">
+              {loading ? <Skeleton className="h-8 w-12" /> : stats.totalFindings}
+            </div>
           </CardContent>
         </Card>
       </div>
+
+      {/* Error state */}
+      {error && (
+        <Card className="border-destructive">
+          <CardContent className="pt-6">
+            <div className="flex items-center gap-2 text-destructive">
+              <AlertCircle className="h-5 w-5" />
+              <span>{error}</span>
+            </div>
+            <Button 
+              variant="outline" 
+              className="mt-4"
+              onClick={() => fetchRepositories()}
+            >
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -403,19 +703,18 @@ export default function RepositoriesPage() {
                 className="pl-10"
               />
             </div>
-            <Select value={languageFilter} onValueChange={setLanguageFilter}>
+            <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); setPage(1); }}>
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Language" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Languages</SelectItem>
-                <SelectItem value="TypeScript">TypeScript</SelectItem>
-                <SelectItem value="Go">Go</SelectItem>
-                <SelectItem value="Python">Python</SelectItem>
-                <SelectItem value="Dart">Dart</SelectItem>
+                {languages.map(lang => (
+                  <SelectItem key={lang} value={lang}>{lang}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            <Select value={visibilityFilter} onValueChange={setVisibilityFilter}>
+            <Select value={visibilityFilter} onValueChange={(v) => { setVisibilityFilter(v); setPage(1); }}>
               <SelectTrigger className="w-[150px]">
                 <SelectValue placeholder="Visibility" />
               </SelectTrigger>
@@ -439,26 +738,59 @@ export default function RepositoriesPage() {
                 <TableHead>Language</TableHead>
                 <TableHead>CI Status</TableHead>
                 <TableHead>Stats</TableHead>
-                <TableHead>Last Commit</TableHead>
+                <TableHead>Last Activity</TableHead>
                 <TableHead className="w-[100px]"></TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filteredRepos.map((repo) => (
-                <RepositoryRow key={repo.id} repo={repo} />
-              ))}
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <RepositoryRowSkeleton key={i} />
+                ))
+              ) : (
+                filteredRepos.map((repo) => (
+                  <RepositoryRow key={repo.id} repo={repo} />
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {filteredRepos.length === 0 && (
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1 || loading}
+          >
+            Previous
+          </Button>
+          <span className="text-sm text-muted-foreground">
+            Page {page} of {totalPages}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages || loading}
+          >
+            Next
+          </Button>
+        </div>
+      )}
+
+      {!loading && filteredRepos.length === 0 && !error && (
         <Card className="py-12">
           <CardContent className="text-center">
             <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium">No repositories found</h3>
             <p className="text-muted-foreground mt-1">
-              Try adjusting your filters or import a new repository
+              {searchQuery || languageFilter !== "all" || visibilityFilter !== "all"
+                ? "Try adjusting your filters"
+                : "Run an analysis to see repositories here"}
             </p>
           </CardContent>
         </Card>

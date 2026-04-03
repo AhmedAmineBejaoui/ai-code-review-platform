@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
 from app.services.notifications import NotificationService
 
-router = APIRouter(prefix="/v1/notifications", tags=["notifications"])
+router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
 
 
 class NotificationResponse(BaseModel):
@@ -141,3 +141,107 @@ async def mark_all_notifications_read(
         success=success,
         updated_count=-1,  # All notifications
     )
+
+
+@router.patch("/{notification_id}/read", response_model=MarkReadResponse)
+async def mark_notification_read(
+    notification_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> MarkReadResponse:
+    """
+    Mark a single notification as read.
+    """
+    service = NotificationService()
+    success = await service.mark_notifications_read(
+        user_id=principal.user_id,
+        notification_ids=[notification_id],
+    )
+
+    return MarkReadResponse(
+        success=success,
+        updated_count=1,
+    )
+
+
+@router.patch("/{notification_id}/archive")
+async def archive_notification(
+    notification_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Archive a notification (mark as read and hide from default view).
+    For now, we just mark it as read. Future enhancement: add archived status.
+    """
+    service = NotificationService()
+    success = await service.mark_notifications_read(
+        user_id=principal.user_id,
+        notification_ids=[notification_id],
+    )
+
+    return {"success": success, "message": "Notification archived"}
+
+
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Delete a specific notification.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Verify notification belongs to user before deleting
+        result = conn.execute(
+            text(
+                """
+                DELETE FROM notifications 
+                WHERE id = :notification_id AND user_id = :user_id
+                RETURNING id
+                """
+            ),
+            {"notification_id": notification_id, "user_id": principal.user_id},
+        )
+        deleted = result.fetchone()
+    
+    if not deleted:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Notification not found or does not belong to user",
+        )
+    
+    return {"success": True, "message": "Notification deleted"}
+
+
+@router.delete("")
+async def delete_all_notifications(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Delete all notifications for the current user.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    
+    engine = get_engine()
+    with engine.begin() as conn:
+        result = conn.execute(
+            text("DELETE FROM notifications WHERE user_id = :user_id"),
+            {"user_id": principal.user_id},
+        )
+        deleted_count = result.rowcount
+    
+    return {"success": True, "deleted_count": deleted_count, "message": "All notifications deleted"}
+
+
+@router.post("/read-all", response_model=MarkReadResponse)
+async def mark_all_read_alternative(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> MarkReadResponse:
+    """
+    Alternative endpoint for marking all as read (for frontend compatibility).
+    """
+    return await mark_all_notifications_read(principal)

@@ -50,35 +50,21 @@ class GroundedReviewService:
         diff_excerpt = diff_redacted[:7000]
         kb_excerpt = knowledge_base_context[:5500]
 
-        return f"""
-You are a senior code reviewer. Produce grounded review findings from the pull request diff.
+        return f"""[INST]
+You are a senior code reviewer analysing a pull request diff.
+Output ONLY a raw JSON object — no markdown, no code fences, no prose.
+
 Rules:
-- Use ONLY the provided diff and knowledge base context.
+- Use ONLY the diff and knowledge_base_context provided.
 - Return at most {max_findings} findings.
 - If nothing actionable is strongly supported, return {{"findings":[]}}.
-- Every finding must be tied to a changed file when possible.
-- Do NOT invent vulnerabilities, files, or line numbers.
-- Prefer findings that reference repository rules, architecture, guardrails, or policies from the knowledge base.
-- Output ONLY valid JSON, no markdown and no extra text.
+- Each finding must reference a file from changed_files when possible.
+- Do NOT invent file paths, line numbers, or vulnerabilities.
+- Prefer findings grounded in repository rules or patterns from knowledge_base_context.
 
-Schema:
-{{
-  "findings": [
-    {{
-      "file_path": "string|null",
-      "line_start": 1,
-      "line_end": 1,
-      "severity": "INFO|WARN|BLOCKER",
-      "category": "security|perf|quality|style|maintainability|other",
-      "message": "string",
-      "suggestion": "string|null",
-      "confidence": 0.0,
-      "kb_refs": ["string"]
-    }}
-  ]
-}}
+Required JSON structure:
+{{"findings":[{{"file_path":"string|null","line_start":1,"line_end":1,"severity":"INFO|WARN|BLOCKER","category":"security|perf|quality|style|maintainability|other","message":"string","suggestion":"string|null","confidence":0.75,"kb_refs":["string"]}}]}}
 
-Context:
 repo: {repo}
 pr_number: {pr_value}
 changed_files:
@@ -89,9 +75,7 @@ diff_excerpt:
 
 knowledge_base_context:
 {kb_excerpt}
-
-Return JSON now:
-""".strip()
+[/INST]""".strip()
 
     @staticmethod
     def _extract_json(text: str) -> str:

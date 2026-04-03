@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform -name package.json -o -name requirements.txt -o -name pyproject.toml -o -name docker-compose* -o -name Dockerfile)"
+    ]
+  }
+}

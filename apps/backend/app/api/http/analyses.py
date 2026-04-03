@@ -81,6 +81,19 @@ class FindingResponse(BaseModel):
     created_at: str
 
 
+class RagChunkReference(BaseModel):
+    """A single knowledge base chunk retrieved during the RAG phase."""
+
+    path: str | None = None
+    title: str | None = None
+    source: str | None = None
+    source_type: str | None = None
+    chunk_type: str | None = None
+    symbol_name: str | None = None
+    score: float | None = None
+    tags: list[str] = Field(default_factory=list)
+
+
 class AnalysisResponse(BaseModel):
     analysis_id: str
     status: str
@@ -119,6 +132,10 @@ class AnalysisResponse(BaseModel):
     tool_runs: list["ToolRunResponse"] = Field(default_factory=list)
     files_changed: list["AnalysisFileResponse"] = Field(default_factory=list)
     review_output: StructuredReviewOutput | None = None
+    # RAG context: chunks retrieved from the knowledge base during this analysis
+    rag_context: list[RagChunkReference] = Field(default_factory=list)
+    rag_context_chunks_count: int = 0
+    rag_retrieval_mode: str | None = None
 
 
 class AnalysisListResponse(BaseModel):
@@ -475,6 +492,34 @@ def _to_tool_run_response(model: ToolRun) -> ToolRunResponse:
     )
 
 
+def _extract_rag_context(metadata: dict[str, Any]) -> tuple[list[RagChunkReference], int, str | None]:
+    """Extract RAG chunk references from the pipeline metadata stored by the worker."""
+    kb_retrieval: dict[str, Any] = (metadata.get("pipeline") or {}).get("kb_retrieval") or {}
+    raw_refs: list[Any] = kb_retrieval.get("references") or []
+    chunks_count: int = int(kb_retrieval.get("context_chunks") or 0)
+    retrieval_mode: str | None = kb_retrieval.get("mode") or None
+    rag_chunks: list[RagChunkReference] = []
+    for ref in raw_refs:
+        if not isinstance(ref, dict):
+            continue
+        try:
+            rag_chunks.append(
+                RagChunkReference(
+                    path=ref.get("path"),
+                    title=ref.get("title"),
+                    source=ref.get("source"),
+                    source_type=ref.get("source_type"),
+                    chunk_type=ref.get("chunk_type"),
+                    symbol_name=ref.get("symbol_name"),
+                    score=ref.get("score"),
+                    tags=list(ref.get("tags") or []),
+                )
+            )
+        except Exception:
+            continue
+    return rag_chunks, chunks_count, retrieval_mode
+
+
 def _to_analysis_response(
     model: Analysis,
     findings: list[Finding] | None = None,
@@ -494,6 +539,7 @@ def _to_analysis_response(
         warn_count = sum(1 for item in findings_response if item.severity == "WARN")
         info_count = sum(1 for item in findings_response if item.severity == "INFO")
         findings_count = len(findings_response)
+    rag_chunks, rag_chunks_count, rag_mode = _extract_rag_context(model.metadata or {})
     return AnalysisResponse(
         analysis_id=model.id,
         status=model.status,
@@ -532,6 +578,9 @@ def _to_analysis_response(
         tool_runs=[] if tool_runs is None else [_to_tool_run_response(item) for item in tool_runs],
         files_changed=[] if files_changed is None else [_to_file_response(item) for item in files_changed],
         review_output=review_output,
+        rag_context=rag_chunks,
+        rag_context_chunks_count=rag_chunks_count,
+        rag_retrieval_mode=rag_mode,
     )
 
 

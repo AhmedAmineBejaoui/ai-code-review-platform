@@ -10,6 +10,7 @@ Ces tâches s'exécutent en arrière-plan pour :
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import date, datetime, timedelta
 from typing import Any
@@ -47,7 +48,7 @@ def calculate_daily_metrics_task(self, target_date: str | None = None) -> dict[s
         logger.info(f"Starting daily metrics calculation for {calc_date}")
 
         calculator = ReviewerMetricsCalculator()
-        processed_count = calculator.calculate_daily_metrics(calc_date)
+        processed_count = asyncio.run(calculator.calculate_daily_metrics(calc_date))
 
         result = {
             "task_id": self.request.id,
@@ -115,7 +116,7 @@ def calculate_weekly_metrics_task(self, week_start: str | None = None) -> dict[s
         processed_count = 0
         for reviewer_id in active_reviewers:
             try:
-                metrics = await calculator.calculate_weekly_metrics(reviewer_id, start_date)
+                metrics = asyncio.run(calculator.calculate_weekly_metrics(reviewer_id, start_date))
                 if metrics:
                     processed_count += 1
             except Exception as e:
@@ -375,9 +376,9 @@ def recalculate_reviewer_metrics_task(
 
         while current_date <= end:
             try:
-                metrics = await calculator.calculate_reviewer_metrics(
+                metrics = asyncio.run(calculator.calculate_reviewer_metrics(
                     reviewer_id, current_date, current_date
-                )
+                ))
                 if metrics:
                     days_processed += 1
                     logger.info(f"Recalculated metrics for {reviewer_id} on {current_date}")

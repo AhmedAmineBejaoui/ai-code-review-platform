@@ -25,7 +25,7 @@ from app.data.repos.change_requests_repo import (
     UpdateChangeRequestInput,
 )
 
-router = APIRouter(prefix="/v1/reviews", tags=["reviews"])
+router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
 
 
 # Review Assignment Models
@@ -493,3 +493,298 @@ async def update_change_request(
 
     updated_cr = repo.get_change_request_by_id(cr_id)
     return ChangeRequestResponse(**dict(updated_cr))
+
+
+# Dashboard Models
+class ReviewKPIs(BaseModel):
+    """KPI metrics for reviewer dashboard."""
+    pending_reviews: int = 0
+    in_progress_reviews: int = 0
+    completed_today: int = 0
+    completed_this_week: int = 0
+    avg_review_time_hours: float | None = None
+    overdue_reviews: int = 0
+
+
+class ActiveReview(BaseModel):
+    """Active review item for dashboard."""
+    id: str
+    analysis_id: str
+    repo: str
+    pr_number: int | None
+    priority: str
+    status: str
+    assigned_at: str
+    due_at: str | None
+    files_changed: int = 0
+    findings_count: int = 0
+
+
+class RecentActivity(BaseModel):
+    """Recent activity item."""
+    id: str
+    type: str  # 'comment', 'review_completed', 'change_request'
+    description: str
+    created_at: str
+    analysis_id: str | None = None
+    repo: str | None = None
+
+
+class ReviewerDashboardResponse(BaseModel):
+    """Reviewer dashboard response."""
+    kpis: ReviewKPIs
+    active_reviews: list[ActiveReview]
+    recent_activity: list[RecentActivity]
+    is_lead: bool = False
+
+
+@router.get("/dashboard", response_model=ReviewerDashboardResponse)
+async def get_reviewer_dashboard(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> ReviewerDashboardResponse:
+    """
+    Get reviewer dashboard data.
+    
+    Returns KPIs, active reviews, and recent activity for the current user.
+    """
+    await require_permission(principal, "assignments.view_own")
+    
+    engine = get_engine()
+    from sqlalchemy import text
+    
+    user_id = principal.user_id
+    
+    # Check if user is a lead/admin
+    is_lead = "admin" in principal.roles or "lead" in principal.roles or "reviewer" in principal.roles
+    
+    # Get KPIs
+    kpi_query = text("""
+        SELECT 
+            SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) as pending,
+            SUM(CASE WHEN status = 'in_progress' THEN 1 ELSE 0 END) as in_progress,
+            SUM(CASE WHEN status = 'completed' AND DATE(completed_at) = CURRENT_DATE THEN 1 ELSE 0 END) as completed_today,
+            SUM(CASE WHEN status = 'completed' AND completed_at > NOW() - INTERVAL '7 days' THEN 1 ELSE 0 END) as completed_week,
+            AVG(EXTRACT(EPOCH FROM (completed_at - assigned_at)) / 3600) FILTER (WHERE status = 'completed') as avg_time_hours,
+            SUM(CASE WHEN status IN ('pending', 'in_progress') AND due_at < NOW() THEN 1 ELSE 0 END) as overdue
+        FROM review_assignments
+        WHERE reviewer_id = :user_id
+    """)
+    
+    kpis = ReviewKPIs()
+    
+    with engine.connect() as conn:
+        try:
+            result = conn.execute(kpi_query, {"user_id": user_id})
+            row = result.mappings().first()
+            
+            if row:
+                kpis = ReviewKPIs(
+                    pending_reviews=row.get("pending") or 0,
+                    in_progress_reviews=row.get("in_progress") or 0,
+                    completed_today=row.get("completed_today") or 0,
+                    completed_this_week=row.get("completed_week") or 0,
+                    avg_review_time_hours=float(row["avg_time_hours"]) if row.get("avg_time_hours") else None,
+                    overdue_reviews=row.get("overdue") or 0,
+                )
+        except Exception:
+            # Table might not exist, return defaults
+            pass
+    
+    # Get active reviews
+    active_query = text("""
+        SELECT 
+            ra.id,
+            ra.analysis_id,
+            ra.priority,
+            ra.status,
+            ra.assigned_at,
+            ra.due_at,
+            a.repo,
+            a.pr_number,
+            a.nb_files_changed,
+            a.findings_count
+        FROM review_assignments ra
+        JOIN analyses a ON ra.analysis_id = a.id
+        WHERE ra.reviewer_id = :user_id
+        AND ra.status IN ('pending', 'in_progress')
+        ORDER BY 
+            CASE ra.priority 
+                WHEN 'critical' THEN 1 
+                WHEN 'high' THEN 2 
+                WHEN 'medium' THEN 3 
+                ELSE 4 
+            END,
+            ra.due_at NULLS LAST,
+            ra.assigned_at DESC
+        LIMIT 10
+    """)
+    
+    active_reviews: list[ActiveReview] = []
+    
+    with engine.connect() as conn:
+        try:
+            result = conn.execute(active_query, {"user_id": user_id})
+            for row in result.mappings():
+                active_reviews.append(ActiveReview(
+                    id=row["id"],
+                    analysis_id=row["analysis_id"],
+                    repo=row["repo"],
+                    pr_number=row.get("pr_number"),
+                    priority=row["priority"],
+                    status=row["status"],
+                    assigned_at=row["assigned_at"].isoformat() if isinstance(row.get("assigned_at"), datetime) else str(row.get("assigned_at", "")),
+                    due_at=row["due_at"].isoformat() if isinstance(row.get("due_at"), datetime) else None,
+                    files_changed=row.get("nb_files_changed") or 0,
+                    findings_count=row.get("findings_count") or 0,
+                ))
+        except Exception:
+            pass
+    
+    # Get recent activity
+    activity_query = text("""
+        (
+            SELECT 
+                rc.id,
+                'comment' as type,
+                CONCAT('Commented on ', a.repo) as description,
+                rc.created_at,
+                rc.analysis_id,
+                a.repo
+            FROM review_comments rc
+            JOIN analyses a ON rc.analysis_id = a.id
+            WHERE rc.author_id = :user_id
+            ORDER BY rc.created_at DESC
+            LIMIT 5
+        )
+        UNION ALL
+        (
+            SELECT 
+                ra.id,
+                'review_completed' as type,
+                CONCAT('Completed review for ', a.repo) as description,
+                ra.completed_at as created_at,
+                ra.analysis_id,
+                a.repo
+            FROM review_assignments ra
+            JOIN analyses a ON ra.analysis_id = a.id
+            WHERE ra.reviewer_id = :user_id AND ra.status = 'completed'
+            ORDER BY ra.completed_at DESC
+            LIMIT 5
+        )
+        ORDER BY created_at DESC
+        LIMIT 10
+    """)
+    
+    recent_activity: list[RecentActivity] = []
+    
+    with engine.connect() as conn:
+        try:
+            result = conn.execute(activity_query, {"user_id": user_id})
+            for row in result.mappings():
+                recent_activity.append(RecentActivity(
+                    id=row["id"],
+                    type=row["type"],
+                    description=row["description"],
+                    created_at=row["created_at"].isoformat() if isinstance(row.get("created_at"), datetime) else str(row.get("created_at", "")),
+                    analysis_id=row.get("analysis_id"),
+                    repo=row.get("repo"),
+                ))
+        except Exception:
+            pass
+    
+    return ReviewerDashboardResponse(
+        kpis=kpis,
+        active_reviews=active_reviews,
+        recent_activity=recent_activity,
+        is_lead=is_lead,
+    )
+
+
+# Submit Review Decision
+class SubmitReviewRequest(BaseModel):
+    """Request to submit a review decision."""
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_id: str = Field(min_length=1)
+    decision: Literal["approve", "request_changes", "comment"]
+    summary: str | None = Field(None, max_length=2000)
+    comments: list[dict[str, Any]] = Field(default_factory=list)
+
+
+class SubmitReviewResponse(BaseModel):
+    """Response after submitting a review."""
+    success: bool
+    assignment_id: str | None = None
+    comments_created: int = 0
+    decision: str
+
+
+@router.post("/submit", response_model=SubmitReviewResponse)
+async def submit_review(
+    request: SubmitReviewRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> SubmitReviewResponse:
+    """
+    Submit a review decision.
+    
+    Marks the assignment as completed and records the decision.
+    """
+    await require_permission(principal, "reviews.submit")
+    
+    assignments_repo = ReviewAssignmentsRepo()
+    comments_repo = ReviewCommentsRepo()
+    
+    # Find the user's assignment for this analysis
+    assignments = assignments_repo.get_assignments_by_reviewer(
+        principal.user_id, 
+        status_filter=None, 
+        limit=100, 
+        offset=0
+    )
+    
+    assignment = None
+    for a in assignments:
+        if a["analysis_id"] == request.analysis_id and a["status"] in ["pending", "in_progress"]:
+            assignment = a
+            break
+    
+    if not assignment:
+        raise HTTPException(status_code=404, detail="No active assignment found for this analysis")
+    
+    # Create comments if provided
+    comments_created = 0
+    for comment_data in request.comments:
+        try:
+            comment_input = CreateReviewCommentInput(
+                analysis_id=request.analysis_id,
+                author_id=principal.user_id,
+                file_path=comment_data.get("file_path", ""),
+                line_start=comment_data.get("line_start", 1),
+                content=comment_data.get("content", ""),
+                comment_type=comment_data.get("comment_type", "comment"),
+                parent_id=comment_data.get("parent_id"),
+                line_end=comment_data.get("line_end"),
+                code_snippet=comment_data.get("code_snippet"),
+                severity=comment_data.get("severity"),
+                is_blocking=comment_data.get("is_blocking", False),
+            )
+            comments_repo.create_comment(comment_input)
+            comments_created += 1
+        except Exception:
+            pass  # Skip invalid comments
+    
+    # Update assignment status
+    now = datetime.now(timezone.utc).isoformat()
+    update_data = UpdateReviewAssignmentInput(
+        status="completed",
+        completed_at=now,
+    )
+    
+    assignments_repo.update_assignment(assignment["id"], update_data)
+    
+    return SubmitReviewResponse(
+        success=True,
+        assignment_id=assignment["id"],
+        comments_created=comments_created,
+        decision=request.decision,
+    )

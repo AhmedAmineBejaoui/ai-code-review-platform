@@ -31,9 +31,7 @@ scans/
 .vscode/.history/
 .idea/
 
-# Claude worktrees (local artifacts)
-.claude/worktrees/
-
-# Qdrant storage (runtime-generated)
+# Qdrant local storage (embedded mode)
+qdrant_storage/
 apps/backend/qdrant_storage/
-apps/backend/test_qdrant/
+.claude/worktrees/silly-shockley

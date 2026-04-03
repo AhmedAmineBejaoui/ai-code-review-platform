@@ -199,8 +199,8 @@ export default function TeamAnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Team Analytics</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-3xl font-bold">Team Analytics</h1>
+          <p className="text-muted-foreground mt-1">
             Team performance overview for the last {teamMetrics.period.days} days
           </p>
         </div>
@@ -229,13 +229,13 @@ export default function TeamAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Team Members</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm font-medium text-muted-foreground">Team Members</p>
+                <p className="text-2xl font-bold mt-2">
                   {teamMetrics.team_overview.reviewer_count}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-blue-100 rounded-full flex items-center justify-center">
-                <Users className="h-6 w-6 text-blue-600" />
+              <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
+                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
             </div>
           </CardContent>
@@ -245,16 +245,16 @@ export default function TeamAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Total Reviews</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm font-medium text-muted-foreground">Total Reviews</p>
+                <p className="text-2xl font-bold mt-2">
                   {teamMetrics.team_overview.total_completed}
                 </p>
-                <p className="text-xs text-gray-500 mt-1">
+                <p className="text-xs text-muted-foreground mt-1">
                   +{teamMetrics.team_overview.total_assigned - teamMetrics.team_overview.total_completed} pending
                 </p>
               </div>
-              <div className="h-12 w-12 bg-green-100 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-green-600" />
+              <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
             </div>
           </CardContent>
@@ -264,13 +264,13 @@ export default function TeamAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Avg Review Time</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm font-medium text-muted-foreground">Avg Review Time</p>
+                <p className="text-2xl font-bold mt-2">
                   {formatMinutes(teamMetrics.team_overview.avg_team_review_time || 0)}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-purple-100 rounded-full flex items-center justify-center">
-                <Clock className="h-6 w-6 text-purple-600" />
+              <div className="h-12 w-12 bg-purple-100 dark:bg-purple-900/30 rounded-full flex items-center justify-center">
+                <Clock className="h-6 w-6 text-purple-600 dark:text-purple-400" />
               </div>
             </div>
           </CardContent>
@@ -280,13 +280,13 @@ export default function TeamAnalyticsPage() {
           <CardContent className="p-6">
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium text-gray-600">Team SLA</p>
-                <p className="text-2xl font-bold text-gray-900 mt-2">
+                <p className="text-sm font-medium text-muted-foreground">Team SLA</p>
+                <p className="text-2xl font-bold mt-2">
                   {Math.round((teamMetrics.team_overview.team_sla_rate || 0) * 100)}%
                 </p>
               </div>
-              <div className="h-12 w-12 bg-orange-100 rounded-full flex items-center justify-center">
-                <Target className="h-6 w-6 text-orange-600" />
+              <div className="h-12 w-12 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
+                <Target className="h-6 w-6 text-orange-600 dark:text-orange-400" />
               </div>
             </div>
           </CardContent>
@@ -385,7 +385,7 @@ export default function TeamAnalyticsPage() {
 
         <TabsContent value="leaderboard" className="space-y-6">
           <div className="flex items-center justify-between">
-            <h2 className="text-xl font-semibold text-gray-900">Team Leaderboard</h2>
+            <h2 className="text-xl font-semibold">Team Leaderboard</h2>
             <Select value={leaderboardMetric} onValueChange={setLeaderboardMetric}>
               <SelectTrigger className="w-48">
                 <SelectValue />
@@ -401,7 +401,7 @@ export default function TeamAnalyticsPage() {
 
           <Card>
             <CardContent className="p-0">
-              <div className="divide-y">
+              <div className="divide-y divide-border">
                 {leaderboard.map((reviewer, index) => {
                   const Icon = getMetricIcon(leaderboardMetric)
                   const metricValue = reviewer[leaderboardMetric as keyof LeaderboardEntry]
@@ -410,16 +410,16 @@ export default function TeamAnalyticsPage() {
                     : metricValue
 
                   return (
-                    <div key={reviewer.reviewer_id} className="flex items-center justify-between p-4 hover:bg-gray-50">
+                    <div key={reviewer.reviewer_id} className="flex items-center justify-between p-4 hover:bg-muted/50">
                       <div className="flex items-center space-x-4">
-                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-muted">
                           {index < 3 ? (
                             <Crown className={`h-4 w-4 ${
                               index === 0 ? "text-yellow-500" :
                               index === 1 ? "text-gray-400" : "text-orange-600"
                             }`} />
                           ) : (
-                            <span className="text-sm font-bold text-gray-600">#{index + 1}</span>
+                            <span className="text-sm font-bold text-muted-foreground">#{index + 1}</span>
                           )}
                         </div>
 
@@ -430,14 +430,14 @@ export default function TeamAnalyticsPage() {
                         </Avatar>
 
                         <div>
-                          <p className="font-medium text-gray-900">{reviewer.display_name}</p>
-                          <p className="text-sm text-gray-500">{reviewer.email}</p>
+                          <p className="font-medium">{reviewer.display_name}</p>
+                          <p className="text-sm text-muted-foreground">{reviewer.email}</p>
                         </div>
                       </div>
 
                       <div className="flex items-center space-x-4">
                         <div className="text-right">
-                          <div className="flex items-center text-sm text-gray-600">
+                          <div className="flex items-center text-sm text-muted-foreground">
                             <Icon className="h-4 w-4 mr-1" />
                             {leaderboardMetric.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}
                           </div>
@@ -446,7 +446,7 @@ export default function TeamAnalyticsPage() {
 
                         {index < 3 && (
                           <Badge variant={index === 0 ? "default" : "secondary"}>
-                            {index === 0 ? "🥇 1st" : index === 1 ? "🥈 2nd" : "🥉 3rd"}
+                            {index === 0 ? "1st" : index === 1 ? "2nd" : "3rd"}
                           </Badge>
                         )}
                       </div>
@@ -467,17 +467,17 @@ export default function TeamAnalyticsPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
-                    <div className="text-center p-4 bg-green-50 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600">
+                    <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
                         {Math.round((teamMetrics.team_overview.team_sla_rate || 0) * 100)}%
                       </div>
-                      <div className="text-sm text-gray-600">SLA Compliance</div>
+                      <div className="text-sm text-muted-foreground">SLA Compliance</div>
                     </div>
-                    <div className="text-center p-4 bg-blue-50 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600">
+                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
                         {formatMinutes(teamMetrics.team_overview.avg_team_response_time || 0)}
                       </div>
-                      <div className="text-sm text-gray-600">Avg Response Time</div>
+                      <div className="text-sm text-muted-foreground">Avg Response Time</div>
                     </div>
                   </div>
                 </div>
@@ -491,7 +491,7 @@ export default function TeamAnalyticsPage() {
               <CardContent>
                 <div className="space-y-4">
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Comments per Review</span>
+                    <span className="text-sm text-muted-foreground">Comments per Review</span>
                     <span className="font-bold">
                       {teamMetrics.team_overview.total_completed > 0
                         ? (teamMetrics.team_overview.total_comments / teamMetrics.team_overview.total_completed).toFixed(1)
@@ -499,7 +499,7 @@ export default function TeamAnalyticsPage() {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Change Requests per Review</span>
+                    <span className="text-sm text-muted-foreground">Change Requests per Review</span>
                     <span className="font-bold">
                       {teamMetrics.team_overview.total_completed > 0
                         ? (teamMetrics.team_overview.total_change_requests / teamMetrics.team_overview.total_completed).toFixed(1)
@@ -507,7 +507,7 @@ export default function TeamAnalyticsPage() {
                     </span>
                   </div>
                   <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Findings per Review</span>
+                    <span className="text-sm text-muted-foreground">Findings per Review</span>
                     <span className="font-bold">
                       {teamMetrics.team_overview.total_completed > 0
                         ? (teamMetrics.team_overview.total_findings / teamMetrics.team_overview.total_completed).toFixed(1)
@@ -524,13 +524,13 @@ export default function TeamAnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Zap className="h-5 w-5 mr-2 text-yellow-600" />
+                <Zap className="h-5 w-5 mr-2 text-yellow-600 dark:text-yellow-400" />
                 Workload Analysis
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-center text-gray-500 py-8">
-                <Activity className="h-12 w-12 mx-auto mb-4 text-gray-300" />
+              <div className="text-center text-muted-foreground py-8">
+                <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>Workload analysis coming soon...</p>
                 <p className="text-sm mt-2">
                   This will show capacity utilization, bottleneck detection, and workload distribution.
