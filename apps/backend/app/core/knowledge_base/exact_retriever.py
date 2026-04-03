@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+import logging
 import re
+from typing import Any
 
 from app.core.knowledge_base.retrieval_models import RetrievalCandidate, RetrievedContextChunk
 from app.data.repos.repo_context_chunks_repo import RepoContextChunkRow, RepoContextChunksRepo
+
+logger = logging.getLogger(__name__)
 
 _QUERY_PATH_PATTERN = re.compile(r"[\w./-]+\.(?:py|pyi|ts|tsx|js|jsx|go|java|kt|rs|rb|php|sql|md|mdx|ya?ml|json|toml)")
 _QUERY_SYMBOL_PATTERN = re.compile(r"`([A-Za-z_][A-Za-z0-9_]*)`|\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
@@ -53,6 +57,37 @@ class ExactRetriever:
         ]
         return candidates
 
+    def retrieve_connected_entities(
+        self,
+        *,
+        repo_id: str,
+        changed_files: list[str],
+        changed_symbols: set[str] | None = None,
+        max_hops: int = 1,
+        limit: int = 8,
+    ) -> list[RetrievalCandidate]:
+        """Retrieve chunks for files that import/call/inherit from changed files.
+
+        Uses the ``code_entity_edges`` table for a lightweight 1-hop graph
+        traversal — files that depend on the changed files are likely relevant
+        to the review.
+        """
+        connected_paths = _query_graph_edges(
+            repo_id=repo_id,
+            target_paths=changed_files,
+            target_symbols=changed_symbols or set(),
+            limit=limit * 2,
+        )
+        if not connected_paths:
+            return []
+
+        # Retrieve chunks for the connected files
+        candidates: list[RetrievalCandidate] = []
+        for path in connected_paths[:limit]:
+            for row in self._repo.list_by_path(repo_id=repo_id, path=path, limit=2):
+                candidates.append(_row_to_candidate(row, source="graph_connected", score=0.80))
+        return candidates[:limit]
+
 
 def _row_to_candidate(row: RepoContextChunkRow, *, source: str, score: float) -> RetrievalCandidate:
     metadata = dict(row.metadata or {})
@@ -80,3 +115,58 @@ def _row_to_candidate(row: RepoContextChunkRow, *, source: str, score: float) ->
         score_final=score,
     )
     return RetrievalCandidate(chunk=chunk, channel=source, raw_score=score, score=score)
+
+
+def _query_graph_edges(
+    *,
+    repo_id: str,
+    target_paths: list[str],
+    target_symbols: set[str],
+    limit: int = 16,
+) -> list[str]:
+    """Return source_paths of files that import/call/inherit from *target_paths* or *target_symbols*."""
+    if not target_paths and not target_symbols:
+        return []
+    try:
+        from app.data.database import get_engine
+        from sqlalchemy import text as sa_text
+
+        engine = get_engine()
+        if engine is None:
+            return []
+
+        results: set[str] = set()
+        with engine.connect() as conn:
+            # Files that import the changed files
+            if target_paths:
+                rows = conn.execute(
+                    sa_text(
+                        "SELECT DISTINCT source_path FROM code_entity_edges "
+                        "WHERE repo_id = :repo_id AND target_path = ANY(:paths) "
+                        "LIMIT :limit"
+                    ),
+                    {"repo_id": repo_id, "paths": target_paths, "limit": limit},
+                ).fetchall()
+                results.update(row[0] for row in rows)
+
+            # Files that inherit from changed symbols
+            if target_symbols and len(results) < limit:
+                remaining = limit - len(results)
+                rows = conn.execute(
+                    sa_text(
+                        "SELECT DISTINCT source_path FROM code_entity_edges "
+                        "WHERE repo_id = :repo_id AND target_symbol = ANY(:symbols) "
+                        "AND edge_type IN ('inherits', 'implements') "
+                        "LIMIT :limit"
+                    ),
+                    {"repo_id": repo_id, "symbols": sorted(target_symbols), "limit": remaining},
+                ).fetchall()
+                results.update(row[0] for row in rows)
+
+        # Exclude the changed files themselves
+        target_set = set(target_paths)
+        return sorted(results - target_set)[:limit]
+
+    except Exception:
+        logger.debug("Graph edge query failed", exc_info=True)
+        return []

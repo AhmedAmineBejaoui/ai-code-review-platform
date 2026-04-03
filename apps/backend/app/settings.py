@@ -204,6 +204,38 @@ class Settings(BaseSettings):
     PROJECT_COMPREHENSION_MAX_FILES: int = 10000
     PROJECT_COMPREHENSION_MAX_FILE_SIZE: int = 500_000  # 500KB
 
+    # ── HyDE (Hypothetical Document Embeddings) ─────────────────────────────
+    HYDE_ENABLED: bool = True
+    HYDE_ROUTES: str = "diff_review,code_query"  # comma-separated QueryRoute values
+
+    # ── Redis RAG Cache ───────────────────────────────────────────────────────
+    RAG_CACHE_ENABLED: bool = True
+    RAG_CACHE_EMBEDDING_TTL: int = 3600        # 1 hour
+    RAG_CACHE_RETRIEVAL_TTL: int = 900         # 15 minutes
+    RAG_CACHE_REVIEW_TTL: int = 1800           # 30 minutes
+
+    # ── Token Budget ──────────────────────────────────────────────────────────
+    RAG_TOKEN_BUDGET_TOTAL: int = 6000
+    RAG_TOKEN_BUDGET_CODE_RATIO: float = 0.5
+    RAG_TOKEN_BUDGET_KB_RATIO: float = 0.3
+    RAG_TOKEN_BUDGET_PROFILE_RATIO: float = 0.1
+
+    # ── LLM Re-ranking ────────────────────────────────────────────────────────
+    RAG_LLM_RERANK_ENABLED: bool = False
+    RAG_LLM_RERANK_TOP_N: int = 8
+
+    # ── Incremental Indexing ──────────────────────────────────────────────────
+    REPO_CONTEXT_INCREMENTAL: bool = True
+
+    # ── Feedback Loop ─────────────────────────────────────────────────────────
+    RAG_FEEDBACK_ENABLED: bool = True
+    RAG_FEEDBACK_PENALTY_THRESHOLD: int = 3
+    RAG_FEEDBACK_PENALTY_SCORE: float = 0.15
+
+    # ── Parent Document ───────────────────────────────────────────────────────
+    PARENT_DOCUMENT_ENABLED: bool = True
+    PARENT_DOCUMENT_MAX_TOKENS: int = 2000
+
     # ── Email Notifications ────────────────────────────────────────────────────
     EMAIL_ENABLED: bool = False
     EMAIL_PROVIDER: str = "sendgrid"  # "sendgrid" or "smtp"
@@ -316,6 +348,14 @@ class Settings(BaseSettings):
         model_name = self.LANGCHAIN_OLLAMA_EMBEDDINGS_MODEL.strip().lower() or "default"
         sanitized = "".join(char if char.isalnum() else "_" for char in model_name).strip("_") or "default"
         return f"repo_context_lc_v1_{sanitized}"
+
+    @property
+    def hyde_routes(self) -> list[str]:
+        """Routes where HyDE expansion is applied."""
+        raw = self.HYDE_ROUTES
+        if not raw or not raw.strip():
+            return ["diff_review", "code_query"]
+        return [route.strip().lower() for route in raw.split(",") if route.strip()]
 
     @property
     def chunk_code_ast_languages(self) -> list[str]:

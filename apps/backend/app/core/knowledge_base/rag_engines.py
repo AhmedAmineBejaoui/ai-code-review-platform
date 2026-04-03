@@ -668,11 +668,21 @@ def _rag_confidence_score(chunks: list[RetrievedContextChunk]) -> float:
 
 
 def build_rag_engines(*, vector_store: QdrantClient) -> tuple[RagEngine, RagEngine | None]:
+    """Build RAG engines.  Returns ``(primary, secondary | None)``.
+
+    When ``LANGCHAIN_PRIMARY_STACK=langchain`` the LangChain engine is returned
+    as primary and legacy becomes the optional fallback.
+    """
     legacy = LegacyRagEngine(vector_store=vector_store)
     if not settings.langchain_enabled:
         return legacy, None
     langchain = LangChainRagEngine(vector_store=vector_store)
-    return legacy, langchain if langchain.available else None
+    if not langchain.available:
+        return legacy, None
+    if settings.langchain_primary_stack == "langchain":
+        fallback = legacy if settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK else None
+        return langchain, fallback
+    return legacy, langchain
 
 
 def _document_source_type_for_route(route: QueryRoute) -> str | None:

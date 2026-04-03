@@ -19,6 +19,7 @@ from app.api.http import (
     project_comprehension,
     project_settings,
     project_roles,
+    rag_feedback,
     rag_query,
     repositories,
     reviewer_metrics,
@@ -127,6 +128,7 @@ app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
 app.include_router(project_comprehension.router)
 app.include_router(project_settings.router, prefix="/api/v1", tags=["project-settings"])
+app.include_router(rag_feedback.router)
 app.include_router(rag_query.router)
 app.include_router(repositories.router)
 app.include_router(statistics.router)

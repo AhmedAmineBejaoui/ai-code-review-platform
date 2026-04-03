@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from app.core.knowledge_base.embeddings import hash_embed_text
+from app.core.knowledge_base.embedding_provider import embed_text_for_ingestor
 from app.core.knowledge_base.guardrails import (
     iter_repo_files,
     normalize_repo_id,
@@ -227,6 +228,7 @@ class RepoContextIngestor:
 
         points: list[QdrantPoint] = []
         sql_rows: list[RepoContextChunkWrite] = []
+        graph_edges: list[dict[str, Any]] = []
         files_indexed = 0
         file_type_distribution: dict[str, int] = {}
         self._repo_context_chunks_repo.delete_repo(repo_key)
@@ -250,11 +252,23 @@ class RepoContextIngestor:
                 )
                 points.append(point)
                 sql_rows.append(self._build_sql_chunk_row(point))
+
+            # Extract graph edges (imports, inheritance) for code files
+            if language == "python" and chunking.file_type == "code":
+                graph_edges.extend(
+                    _extract_python_edges(file_path, relative_path, repo_key, indexed_commit)
+                )
+            elif language in {"javascript", "typescript"} and chunking.file_type == "code":
+                graph_edges.extend(
+                    _extract_js_ts_edges(file_path, relative_path, repo_key, indexed_commit)
+                )
+
             files_indexed += 1
 
         await self._upsert_in_batches(points)
         self._repo_context_chunks_repo.upsert_chunks(sql_rows)
         await self._upsert_langchain_shadow(repo_id=repo_key, rows=[_sql_write_to_row(row) for row in sql_rows])
+        _persist_graph_edges(repo_key, graph_edges)
 
         profile_payload = self._build_repo_profile_payload(
             repo_id=repo_key,
@@ -480,6 +494,24 @@ class RepoContextIngestor:
             if not content:
                 continue
             normalized.extend(self._fit_chunk_size(chunk))
+
+        # Parent-document: store the full file as an additional chunk so the
+        # LLM can pull broader context when a child chunk scores highly.
+        if settings.PARENT_DOCUMENT_ENABLED and len(normalized) > 1:
+            parent_max_chars = settings.PARENT_DOCUMENT_MAX_TOKENS * 4  # rough char estimate
+            parent_content = text[:parent_max_chars].strip()
+            if parent_content:
+                total_lines = text.count("\n") + 1
+                normalized.append(
+                    ChunkRecord(
+                        content=parent_content,
+                        chunk_type="parent_document",
+                        start_line=1,
+                        end_line=total_lines,
+                        symbol_name=None,
+                    )
+                )
+
         return ChunkingResult(file_type=file_type, chunks=normalized)
 
     def _fit_chunk_size(self, chunk: ChunkRecord) -> list[ChunkRecord]:
@@ -886,10 +918,8 @@ class RepoContextIngestor:
             "indexed_at": _utc_now(),
             "content": chunk.content,
         }
-        vector = hash_embed_text(
-            f"path:{relative_path}\nfile_type:{file_type}\nsymbol:{symbol_hint}\n{chunk.content}",
-            vector_size=self._vector_size,
-        )
+        embed_input = f"path:{relative_path}\nfile_type:{file_type}\nlanguage:{language}\nsymbol:{symbol_hint}\n{chunk.content}"
+        vector = embed_text_for_ingestor(embed_input, vector_size=self._vector_size)
         return QdrantPoint(id=point_id, vector=vector, payload=payload)
 
     def _build_sql_chunk_row(self, point: QdrantPoint) -> RepoContextChunkWrite:
@@ -915,7 +945,7 @@ class RepoContextIngestor:
 
     def _build_profile_point(self, *, repo_id: str, payload: dict[str, Any]) -> QdrantPoint:
         summary = payload.get("summary", "")
-        vector = hash_embed_text(f"{repo_id}\n{summary}", vector_size=self._vector_size)
+        vector = embed_text_for_ingestor(f"{repo_id}\n{summary}", vector_size=self._vector_size)
         return QdrantPoint(
             id=build_repo_profile_point_id(repo_id=repo_id),
             vector=vector,
@@ -1249,3 +1279,124 @@ def _as_optional_int(value: Any) -> int | None:
         except ValueError:
             return None
     return None
+
+
+# ── Graph edge extraction ────────────────────────────────────────────────────
+
+_PY_IMPORT_RE = re.compile(
+    r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE,
+)
+_PY_CLASS_BASES_RE = re.compile(
+    r"^\s*class\s+(\w+)\s*\(([^)]+)\)", re.MULTILINE,
+)
+_JS_IMPORT_RE = re.compile(
+    r"""(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))""",
+    re.MULTILINE,
+)
+
+
+def _extract_python_edges(
+    file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None,
+) -> list[dict[str, Any]]:
+    """Extract import and inheritance edges from a Python file."""
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+
+    edges: list[dict[str, Any]] = []
+
+    # Imports
+    for match in _PY_IMPORT_RE.finditer(text):
+        module = match.group(1) or match.group(2) or ""
+        if not module:
+            continue
+        target_path = module.replace(".", "/") + ".py"
+        edges.append({
+            "repo_id": repo_id,
+            "source_path": relative_path,
+            "source_symbol": None,
+            "target_path": target_path,
+            "target_symbol": None,
+            "edge_type": "imports",
+            "indexed_commit": indexed_commit,
+        })
+
+    # Class inheritance
+    for match in _PY_CLASS_BASES_RE.finditer(text):
+        class_name = match.group(1)
+        bases = [b.strip() for b in match.group(2).split(",")]
+        for base in bases:
+            base_name = base.split(".")[-1].strip()
+            if base_name and base_name not in {"object", "ABC", "Protocol", "BaseModel"}:
+                edges.append({
+                    "repo_id": repo_id,
+                    "source_path": relative_path,
+                    "source_symbol": class_name,
+                    "target_path": "",  # resolved by symbol search
+                    "target_symbol": base_name,
+                    "edge_type": "inherits",
+                    "indexed_commit": indexed_commit,
+                })
+
+    return edges
+
+
+def _extract_js_ts_edges(
+    file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None,
+) -> list[dict[str, Any]]:
+    """Extract import edges from JavaScript/TypeScript files."""
+    try:
+        text = file_path.read_text(encoding="utf-8", errors="ignore")
+    except OSError:
+        return []
+
+    edges: list[dict[str, Any]] = []
+    for match in _JS_IMPORT_RE.finditer(text):
+        module = match.group(1) or match.group(2) or ""
+        if not module or not module.startswith("."):
+            continue  # skip node_modules imports
+        edges.append({
+            "repo_id": repo_id,
+            "source_path": relative_path,
+            "source_symbol": None,
+            "target_path": module,
+            "target_symbol": None,
+            "edge_type": "imports",
+            "indexed_commit": indexed_commit,
+        })
+
+    return edges
+
+
+def _persist_graph_edges(repo_id: str, edges: list[dict[str, Any]]) -> None:
+    """Persist extracted graph edges to PostgreSQL."""
+    if not edges:
+        return
+    try:
+        from app.data.database import get_engine
+        from sqlalchemy import text as sa_text
+
+        engine = get_engine()
+        if engine is None:
+            return
+
+        with engine.begin() as conn:
+            # Clear old edges for this repo
+            conn.execute(
+                sa_text("DELETE FROM code_entity_edges WHERE repo_id = :repo_id"),
+                {"repo_id": repo_id},
+            )
+            # Batch insert new edges
+            for edge in edges:
+                conn.execute(
+                    sa_text(
+                        "INSERT INTO code_entity_edges "
+                        "(repo_id, source_path, source_symbol, target_path, target_symbol, edge_type, indexed_commit) "
+                        "VALUES (:repo_id, :source_path, :source_symbol, :target_path, :target_symbol, :edge_type, :indexed_commit)"
+                    ),
+                    edge,
+                )
+    except Exception:
+        # Graph edges are best-effort; never break repo indexing.
+        pass
