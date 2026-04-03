@@ -23,6 +23,7 @@ import {
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewer as isReviewerRole } from "@/lib/roles"
 import { fetchDashboardAnalysisDetails, type DashboardAnalysisDetails } from "@/lib/dashboard-analysis-details"
+import { RagContextPanel } from "@/components/dashboard/RagContextPanel"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -727,6 +728,12 @@ export function GlobalReport() {
           </CardContent>
         </Card>
       </motion.div>
+
+      <RagContextPanel
+        ragContext={analysis.ragContext ?? []}
+        ragContextChunksCount={analysis.ragContextChunksCount ?? 0}
+        ragRetrievalMode={analysis.ragRetrievalMode ?? null}
+      />
 
       {isReviewer && (
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.6 }}>

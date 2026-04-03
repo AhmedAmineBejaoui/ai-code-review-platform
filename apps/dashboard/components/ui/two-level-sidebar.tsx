@@ -394,6 +394,18 @@ function getSidebarContent(
               href: "/dashboard/repositories",
               isActive: pathname === "/dashboard/repositories",
             },
+            {
+              icon: <DataBase size={16} className="text-sidebar-foreground" />,
+              label: "Knowledge Base",
+              href: "/dashboard/knowledge-base",
+              isActive: pathname === "/dashboard/knowledge-base",
+            },
+            {
+              icon: <Analytics size={16} className="text-sidebar-foreground" />,
+              label: "RAG Evaluation",
+              href: "/dashboard/evaluation",
+              isActive: pathname === "/dashboard/evaluation",
+            },
           ],
         },
       ],
