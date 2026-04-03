@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation"
 
-import { DeveloperDashboard } from "@/components/dashboard/DeveloperDashboard"
+import { DashboardContent } from "@/components/dashboard/new-dashboard/DashboardContent"
 import { getAuthenticatedDashboardUser } from "@/lib/auth"
 import { getRoleHomePath } from "@/lib/roles"
 
@@ -14,5 +14,5 @@ export default async function DashboardPage() {
     redirect(getRoleHomePath(user.role))
   }
 
-  return <DeveloperDashboard />
+  return <DashboardContent />
 }

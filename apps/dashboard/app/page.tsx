@@ -30,7 +30,15 @@ import {
   GitBranch,
   MessageSquare,
   Award,
+  ShieldAlert,
+  Bug,
+  Gauge,
+  ChevronLeft,
+  ChevronRight,
+  GitPullRequest,
+  FolderGit2,
 } from "lucide-react";
+import Image from "next/image";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
@@ -846,6 +854,430 @@ function LogoMarquee() {
   );
 }
 
+function ProductShowcase() {
+  return (
+    <section className="relative py-32 px-4 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-black via-blue-950/10 to-black" />
+
+      <div className="relative max-w-7xl mx-auto">
+        {/* Section header */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <Badge className="mb-4 bg-green-500/10 text-green-400 border-green-500/20">
+            Dashboard Preview
+          </Badge>
+          <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            See every analysis, at a glance
+          </h2>
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+            From parsing to decision in seconds. Monitor your entire pipeline with pending and completed reviews.
+          </p>
+        </motion.div>
+
+        {/* Dashboard Screenshot */}
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8 }}
+          className="relative"
+        >
+          {/* Glow effect behind image */}
+          <div className="absolute inset-0 bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 blur-3xl" />
+          
+          {/* Image container with border */}
+          <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl overflow-hidden">
+            <div className="relative rounded-xl overflow-hidden">
+              <Image
+                src="/landing/dashboard-reviews.png"
+                alt="Dashboard showing pending and completed code reviews"
+                width={1200}
+                height={700}
+                className="w-full h-auto rounded-xl"
+                priority
+              />
+              {/* Overlay gradient at bottom */}
+              <div className="absolute bottom-0 left-0 right-0 h-32 bg-gradient-to-t from-black/80 to-transparent" />
+            </div>
+          </div>
+
+          {/* Floating feature badges */}
+          <motion.div
+            initial={{ x: -20, opacity: 0 }}
+            whileInView={{ x: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+            className="absolute -left-4 top-1/4 bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl hidden lg:block"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-green-500/10 flex items-center justify-center">
+                <CheckCircle2 className="h-5 w-5 text-green-400" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">Auto-Approved</div>
+                <div className="text-xs text-gray-400">12 reviews today</div>
+              </div>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ x: 20, opacity: 0 }}
+            whileInView={{ x: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.5 }}
+            className="absolute -right-4 top-1/3 bg-black/80 backdrop-blur-xl border border-white/10 rounded-xl p-4 shadow-xl hidden lg:block"
+          >
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                <Clock className="h-5 w-5 text-blue-400" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-white">Avg Review Time</div>
+                <div className="text-xs text-gray-400">Under 30 seconds</div>
+              </div>
+            </div>
+          </motion.div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
+function AIEraSection() {
+  const [activeSlide, setActiveSlide] = useState(0);
+
+  const slides = [
+    {
+      id: "security",
+      icon: ShieldAlert,
+      title: "Stop vulnerabilities early",
+      description: "Security checks from the first line of code to the final merge.",
+      image: "/landing/ai-era-security.png",
+      color: "red",
+    },
+    {
+      id: "bugs",
+      icon: Bug,
+      title: "Kill bugs fast",
+      description: "Logic errors and edge cases caught before they create rework.",
+      image: "/landing/ai-era-bugs.png",
+      color: "orange",
+    },
+    {
+      id: "velocity",
+      icon: Gauge,
+      title: "Keep velocity high",
+      description: "Shorter review cycles, fewer blockers, faster merges.",
+      image: "/landing/ai-era-velocity.png",
+      color: "green",
+    },
+  ];
+
+  const nextSlide = () => {
+    setActiveSlide((prev) => (prev + 1) % slides.length);
+  };
+
+  const prevSlide = () => {
+    setActiveSlide((prev) => (prev - 1 + slides.length) % slides.length);
+  };
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setActiveSlide((prev) => (prev + 1) % slides.length);
+    }, 5000);
+    return () => clearInterval(interval);
+  }, [slides.length]);
+
+  return (
+    <section className="relative py-32 px-4 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-black via-purple-950/10 to-black" />
+
+      <div className="relative max-w-7xl mx-auto">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-16 items-center">
+          {/* Left side - Image */}
+          <motion.div
+            initial={{ x: -40, opacity: 0 }}
+            whileInView={{ x: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="relative order-2 lg:order-1"
+          >
+            <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl overflow-hidden">
+              {slides.map((slide, idx) => (
+                <motion.div
+                  key={slide.id}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: activeSlide === idx ? 1 : 0 }}
+                  transition={{ duration: 0.5 }}
+                  className={`${activeSlide === idx ? "block" : "hidden"}`}
+                >
+                  <Image
+                    src={slide.image}
+                    alt={slide.title}
+                    width={600}
+                    height={400}
+                    className="w-full h-auto rounded-xl"
+                  />
+                </motion.div>
+              ))}
+            </div>
+
+            {/* Navigation arrows */}
+            <div className="absolute -bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-4">
+              <button
+                onClick={prevSlide}
+                className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              >
+                <ChevronLeft className="h-5 w-5 text-white" />
+              </button>
+              <div className="flex items-center gap-2">
+                {slides.map((_, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => setActiveSlide(idx)}
+                    className={`w-2 h-2 rounded-full transition-all ${
+                      activeSlide === idx
+                        ? "w-6 bg-white"
+                        : "bg-white/30 hover:bg-white/50"
+                    }`}
+                  />
+                ))}
+              </div>
+              <button
+                onClick={nextSlide}
+                className="p-2 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+              >
+                <ChevronRight className="h-5 w-5 text-white" />
+              </button>
+            </div>
+          </motion.div>
+
+          {/* Right side - Content */}
+          <motion.div
+            initial={{ x: 40, opacity: 0 }}
+            whileInView={{ x: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.8 }}
+            className="order-1 lg:order-2"
+          >
+            <Badge className="mb-4 bg-purple-500/10 text-purple-400 border-purple-500/20">
+              AI-Powered Reviews
+            </Badge>
+            <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+              Code Review for the AI Era
+            </h2>
+            <p className="text-xl text-gray-400 mb-8">
+              Traditional reviews weren&apos;t built for AI-scale code. Our platform is.
+            </p>
+
+            {/* Feature tabs */}
+            <div className="space-y-4">
+              {slides.map((slide, idx) => {
+                const Icon = slide.icon;
+                const isActive = activeSlide === idx;
+                return (
+                  <motion.button
+                    key={slide.id}
+                    onClick={() => setActiveSlide(idx)}
+                    className={`w-full text-left p-4 rounded-xl border transition-all ${
+                      isActive
+                        ? "bg-white/5 border-white/20"
+                        : "bg-transparent border-transparent hover:bg-white/[0.02]"
+                    }`}
+                    whileHover={{ x: 4 }}
+                  >
+                    <div className="flex items-start gap-4">
+                      <div
+                        className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          slide.color === "red"
+                            ? "bg-red-500/10"
+                            : slide.color === "orange"
+                              ? "bg-orange-500/10"
+                              : "bg-green-500/10"
+                        }`}
+                      >
+                        <Icon
+                          className={`h-5 w-5 ${
+                            slide.color === "red"
+                              ? "text-red-400"
+                              : slide.color === "orange"
+                                ? "text-orange-400"
+                                : "text-green-400"
+                          }`}
+                        />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-lg font-semibold text-white mb-1">
+                          {slide.title}
+                        </h3>
+                        <p className="text-sm text-gray-400">{slide.description}</p>
+                      </div>
+                    </div>
+                    {/* Progress bar for active slide */}
+                    {isActive && (
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: 5, ease: "linear" }}
+                        className="mt-3 h-0.5 bg-gradient-to-r from-blue-500 to-purple-500 origin-left"
+                      />
+                    )}
+                  </motion.button>
+                );
+              })}
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ReviewEverywhereSection() {
+  return (
+    <section className="relative py-32 px-4 overflow-hidden">
+      <div className="absolute inset-0 bg-gradient-to-b from-black via-orange-950/5 to-black" />
+
+      <div className="relative max-w-7xl mx-auto">
+        {/* Section header */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true }}
+          className="text-center mb-16"
+        >
+          <Badge className="mb-4 bg-orange-500/10 text-orange-400 border-orange-500/20">
+            Seamless Integration
+          </Badge>
+          <h2 className="text-4xl md:text-5xl font-bold text-white mb-4">
+            Review Everywhere You Work
+          </h2>
+          <p className="text-xl text-gray-400 max-w-2xl mx-auto">
+            Get intelligent code reviews on pull requests and continuous security scans across all your repositories.
+          </p>
+        </motion.div>
+
+        {/* Two-column cards */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          {/* On PRs Card */}
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            whileInView={{ y: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6 }}
+            className="relative bg-white/[0.02] border border-white/5 hover:border-white/10 rounded-2xl p-6 transition-all"
+          >
+            {/* Card header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-pink-500/10 flex items-center justify-center">
+                <GitPullRequest className="h-5 w-5 text-pink-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-white">On PRs</h3>
+                <p className="text-sm text-gray-400">
+                  Instant code reviews with clear summaries and fixes.
+                </p>
+              </div>
+            </div>
+
+            {/* Feature list */}
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center gap-2 text-sm text-gray-300">
+                <Check className="h-4 w-4 text-orange-400" />
+                Catch bugs and potential issues immediately
+              </li>
+              <li className="flex items-center gap-2 text-sm text-gray-300">
+                <Check className="h-4 w-4 text-orange-400" />
+                Enforce your code standards
+              </li>
+            </ul>
+
+            {/* Image */}
+            <div className="relative rounded-xl overflow-hidden border border-white/10">
+              <Image
+                src="/landing/ai-era-bugs.png"
+                alt="Code review on pull request showing bug suggestion"
+                width={600}
+                height={350}
+                className="w-full h-auto"
+              />
+            </div>
+          </motion.div>
+
+          {/* Across Repos Card */}
+          <motion.div
+            initial={{ y: 40, opacity: 0 }}
+            whileInView={{ y: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="relative bg-white/[0.02] border border-white/5 hover:border-white/10 rounded-2xl p-6 transition-all"
+          >
+            {/* Card header */}
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                <FolderGit2 className="h-5 w-5 text-orange-400" />
+              </div>
+              <div>
+                <h3 className="text-xl font-semibold text-white">Across Repos</h3>
+                <p className="text-sm text-gray-400">
+                  Continuous security scans with detailed explanations and fixes.
+                </p>
+              </div>
+            </div>
+
+            {/* Feature list */}
+            <ul className="space-y-2 mb-6">
+              <li className="flex items-center gap-2 text-sm text-gray-300">
+                <Check className="h-4 w-4 text-orange-400" />
+                High signal, low noise security scans
+              </li>
+              <li className="flex items-center gap-2 text-sm text-gray-300">
+                <Check className="h-4 w-4 text-orange-400" />
+                Find and fix issues across all your repos
+              </li>
+            </ul>
+
+            {/* Image */}
+            <div className="relative rounded-xl overflow-hidden border border-white/10">
+              <Image
+                src="/landing/ai-era-security.png"
+                alt="Security scan showing RCE vulnerability detection"
+                width={600}
+                height={350}
+                className="w-full h-auto"
+              />
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Full-width showcase image */}
+        <motion.div
+          initial={{ y: 40, opacity: 0 }}
+          whileInView={{ y: 0, opacity: 1 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, delay: 0.4 }}
+          className="mt-12 relative"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 via-pink-500/10 to-purple-500/10 blur-3xl" />
+          <div className="relative bg-black/40 backdrop-blur-xl border border-white/10 rounded-2xl p-2 shadow-2xl overflow-hidden">
+            <Image
+              src="/landing/review-everywhere-full.png"
+              alt="Complete view of review capabilities on PRs and across repositories"
+              width={1200}
+              height={600}
+              className="w-full h-auto rounded-xl"
+            />
+          </div>
+        </motion.div>
+      </div>
+    </section>
+  );
+}
+
 function Features() {
   const features = [
     {
@@ -1431,8 +1863,11 @@ export default function LandingPage() {
       <Navbar />
       <Hero />
       <LogoMarquee />
+      <ProductShowcase />
       <KanbanDashboard />
+      <AIEraSection />
       <Features />
+      <ReviewEverywhereSection />
       <Blog />
       <Testimonials />
       <Pricing />

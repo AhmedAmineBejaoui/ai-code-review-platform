@@ -244,7 +244,7 @@ function EmptyState({ tab }: { tab: string }) {
         {messages[tab as keyof typeof messages]}
       </p>
       <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
-        You're all caught up! Check back later for updates.
+        You&apos;re all caught up! Check back later for updates.
       </p>
     </div>
   )
