@@ -30,4 +30,10 @@ scans/
 # IDE
 .vscode/.history/
 .idea/
-.claude/worktrees/keen-goodall
+
+# Claude worktrees (local artifacts)
+.claude/worktrees/
+
+# Qdrant storage (runtime-generated)
+apps/backend/qdrant_storage/
+apps/backend/test_qdrant/
