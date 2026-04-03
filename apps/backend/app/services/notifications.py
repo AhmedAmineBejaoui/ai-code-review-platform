@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 from app.data.database import get_engine
 from app.services.email_service import EmailService
 from app.services.slack_service import SlackService
+from app.services.teams_service import TeamsService
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +34,7 @@ class NotificationChannel(Enum):
     PUSH = "push"
     IN_APP = "in_app"
     SLACK = "slack"
+    TEAMS = "teams"
 
 
 class NotificationService:
@@ -199,6 +201,8 @@ class NotificationService:
                     await self._send_push_notification(notification_data)
                 elif channel == NotificationChannel.SLACK:
                     await self._send_slack_notification(notification_data)
+                elif channel == NotificationChannel.TEAMS:
+                    await self._send_teams_notification(notification_data)
             except Exception as e:
                 print(f"Failed to send {channel.value} notification: {e}")
                 success = False
@@ -326,6 +330,29 @@ class NotificationService:
             logger.info("Slack notification sent")
         except Exception as e:
             logger.error(f"Failed to send Slack notification: {e}")
+
+    async def _send_teams_notification(self, notification_data: Dict[str, Any]):
+        """Send Microsoft Teams notification using TeamsService."""
+        teams_service = TeamsService()
+        notification_type = notification_data["type"]
+        data = notification_data.get("data", {})
+
+        try:
+            if notification_type == NotificationType.ASSIGNMENT_NEW.value:
+                await teams_service.notify_new_review(data)
+            elif notification_type == NotificationType.REVIEW_OVERDUE.value:
+                await teams_service.notify_attention_required(data)
+            elif notification_type == NotificationType.CHANGE_REQUEST_CREATED.value:
+                await teams_service.notify_changes_requested(data)
+            else:
+                # Generic Teams message for other notification types
+                await teams_service.send_message(
+                    title=notification_data['title'],
+                    text=notification_data['message'],
+                )
+            logger.info("Teams notification sent")
+        except Exception as e:
+            logger.error(f"Failed to send Teams notification: {e}")
 
     async def _get_user_notification_preferences(self, user_id: str) -> Dict[str, bool]:
         """Get user's notification preferences."""

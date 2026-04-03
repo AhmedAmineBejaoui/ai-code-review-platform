@@ -35,6 +35,13 @@ _ROLE_ALIASES: dict[str, str] = {
     "superadmin": "admin",
     "super-admin": "admin",
     "super_admin": "admin",
+    # Tech Lead role
+    "tech_lead": "tech_lead",
+    "tech-lead": "tech_lead",
+    "techlead": "tech_lead",
+    "lead": "tech_lead",
+    "team_lead": "tech_lead",
+    "team-lead": "tech_lead",
     # Reviewer levels
     "reviewer_lead": "reviewer_lead",
     "reviewer-lead": "reviewer_lead",
@@ -78,6 +85,27 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "metrics.read_self", "metrics.read_team", "metrics.read_all",
         # Template permissions
         "templates.create", "templates.use",
+        # Project settings permissions (Admin can read/write/audit)
+        "project_settings.read", "project_settings.write", "project_settings.audit",
+    },
+    "tech_lead": {
+        # Core permissions
+        "analyses.read", "analyses.create", "analyses.write",
+        # Advanced review permissions (same as reviewer_lead)
+        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
+        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
+        "reviews.request_changes", "reviews.escalate",
+        # Collaboration permissions
+        "comments.create", "comments.read", "comments.resolve", "comments.edit",
+        "threads.create", "threads.moderate",
+        # Assignment permissions
+        "assignments.view_all", "assignments.create", "assignments.modify",
+        # Metrics permissions
+        "metrics.read_self", "metrics.read_team",
+        # Template permissions
+        "templates.create", "templates.use",
+        # Project settings permissions (Tech Lead can read/write/audit)
+        "project_settings.read", "project_settings.write", "project_settings.audit",
     },
     "reviewer_lead": {
         # Core permissions
@@ -95,6 +123,8 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
         "metrics.read_self", "metrics.read_team",
         # Template permissions
         "templates.create", "templates.use",
+        # Project settings permissions (Reviewer Lead can read only)
+        "project_settings.read",
     },
     "reviewer_senior": {
         # Core permissions
@@ -130,6 +160,8 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
         # Basic collaboration
         "comments.read", "comments.reply",
         "threads.participate",
+        # Project settings permissions (Developer can read only)
+        "project_settings.read",
     },
 }
 

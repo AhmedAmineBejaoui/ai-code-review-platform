@@ -1,34 +1,25 @@
 "use client"
 
 import { useState } from "react"
+import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
 import {
   Folder,
-  FolderOpen,
   GitBranch,
   Star,
   StarOff,
   Clock,
-  Users,
-  Code2,
   MoreHorizontal,
   Search,
   Plus,
-  Filter,
   Grid3X3,
   List,
-  ChevronRight,
-  Calendar,
-  Activity,
   AlertTriangle,
-  CheckCircle2,
   Settings,
-  Trash2,
   Archive,
   Eye,
-  GitCommit,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
@@ -47,12 +38,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { cn } from "@/lib/utils"
 
 // Mock data for projects
 const projectsData = [
   {
-    id: 1,
+    id: "api-gateway",
     name: "API Gateway",
     description: "Main API gateway service for all microservices",
     language: "TypeScript",
@@ -68,7 +59,7 @@ const projectsData = [
     coverage: 87,
   },
   {
-    id: 2,
+    id: "authentication-service",
     name: "Authentication Service",
     description: "User authentication and authorization module",
     language: "Go",
@@ -84,7 +75,7 @@ const projectsData = [
     coverage: 92,
   },
   {
-    id: 3,
+    id: "dashboard-ui",
     name: "Dashboard UI",
     description: "Admin dashboard frontend application",
     language: "TypeScript",
@@ -100,7 +91,7 @@ const projectsData = [
     coverage: 71,
   },
   {
-    id: 4,
+    id: "data-pipeline",
     name: "Data Pipeline",
     description: "ETL and data processing service",
     language: "Python",
@@ -116,7 +107,7 @@ const projectsData = [
     coverage: 85,
   },
   {
-    id: 5,
+    id: "mobile-app",
     name: "Mobile App",
     description: "Cross-platform mobile application",
     language: "Dart",
@@ -132,7 +123,7 @@ const projectsData = [
     coverage: 62,
   },
   {
-    id: 6,
+    id: "notification-service",
     name: "Notification Service",
     description: "Push notification and email service",
     language: "Node.js",
@@ -163,9 +154,24 @@ const statusConfig = {
   archived: { label: "Archived", className: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400" },
 }
 
-function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; viewMode: "grid" | "list" }) {
+interface ProjectCardProps {
+  project: typeof projectsData[0]
+  viewMode: "grid" | "list"
+  onClick: () => void
+}
+
+function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
   const [isStarred, setIsStarred] = useState(project.starred)
   const status = statusConfig[project.status as keyof typeof statusConfig]
+
+  const handleStarClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+    setIsStarred(!isStarred)
+  }
+
+  const handleDropdownClick = (e: React.MouseEvent) => {
+    e.stopPropagation()
+  }
 
   if (viewMode === "list") {
     return (
@@ -174,7 +180,10 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
         animate={{ opacity: 1, y: 0 }}
         className="group"
       >
-        <Card className="hover:shadow-md transition-all">
+        <Card 
+          className="hover:shadow-md transition-all cursor-pointer hover:border-primary/50"
+          onClick={onClick}
+        >
           <CardContent className="p-4">
             <div className="flex items-center gap-4">
               <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
@@ -182,7 +191,7 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-medium">{project.name}</h3>
+                  <h3 className="font-medium hover:text-primary transition-colors">{project.name}</h3>
                   <div className={`h-2 w-2 rounded-full ${languageColors[project.language]}`} />
                   <span className="text-xs text-muted-foreground">{project.language}</span>
                 </div>
@@ -205,7 +214,7 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
                 <Button
                   variant="ghost"
                   size="icon"
-                  onClick={() => setIsStarred(!isStarred)}
+                  onClick={handleStarClick}
                 >
                   {isStarred ? (
                     <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
@@ -214,13 +223,13 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
                   )}
                 </Button>
                 <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
+                  <DropdownMenuTrigger asChild onClick={handleDropdownClick}>
                     <Button variant="ghost" size="icon">
                       <MoreHorizontal className="h-4 w-4" />
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={onClick}>
                       <Eye className="h-4 w-4 mr-2" />
                       View Project
                     </DropdownMenuItem>
@@ -249,15 +258,20 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
       animate={{ opacity: 1, y: 0 }}
       className="group"
     >
-      <Card className="hover:shadow-md transition-all h-full">
+      <Card 
+        className="hover:shadow-md transition-all h-full cursor-pointer hover:border-primary/50"
+        onClick={onClick}
+      >
         <CardHeader className="pb-3">
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
-                <Folder className="h-5 w-5 text-muted-foreground" />
+              <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center group-hover:bg-primary/10 transition-colors">
+                <Folder className="h-5 w-5 text-muted-foreground group-hover:text-primary transition-colors" />
               </div>
               <div>
-                <CardTitle className="text-base">{project.name}</CardTitle>
+                <CardTitle className="text-base group-hover:text-primary transition-colors">
+                  {project.name}
+                </CardTitle>
                 <div className="flex items-center gap-2 mt-1">
                   <div className={`h-2 w-2 rounded-full ${languageColors[project.language]}`} />
                   <span className="text-xs text-muted-foreground">{project.language}</span>
@@ -267,7 +281,7 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
             <Button
               variant="ghost"
               size="icon"
-              onClick={() => setIsStarred(!isStarred)}
+              onClick={handleStarClick}
             >
               {isStarred ? (
                 <Star className="h-4 w-4 text-yellow-500 fill-yellow-500" />
@@ -284,19 +298,21 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
 
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Health Score</span>
-            <span className={`font-medium ${
+            <span className={cn(
+              "font-medium",
               project.healthScore >= 90 ? "text-green-600" :
               project.healthScore >= 70 ? "text-yellow-600" : "text-red-600"
-            }`}>
+            )}>
               {project.healthScore}%
             </span>
           </div>
           <Progress
             value={project.healthScore}
-            className={`h-2 ${
+            className={cn(
+              "h-2",
               project.healthScore >= 90 ? "[&>div]:bg-green-500" :
               project.healthScore >= 70 ? "[&>div]:bg-yellow-500" : "[&>div]:bg-red-500"
-            }`}
+            )}
           />
 
           <div className="grid grid-cols-3 gap-2 pt-2 border-t">
@@ -330,6 +346,7 @@ function ProjectCard({ project, viewMode }: { project: typeof projectsData[0]; v
 }
 
 export default function ProjectsPage() {
+  const router = useRouter()
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [teamFilter, setTeamFilter] = useState("all")
@@ -346,6 +363,15 @@ export default function ProjectsPage() {
   const starredProjects = filteredProjects.filter((p) => p.starred)
   const otherProjects = filteredProjects.filter((p) => !p.starred)
 
+  const handleProjectClick = (projectId: string) => {
+    router.push(`/dashboard/projects/${projectId}`)
+  }
+
+  const handleNewProject = () => {
+    // TODO: Implement new project modal/page
+    router.push("/dashboard/projects/new")
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -355,7 +381,7 @@ export default function ProjectsPage() {
             Manage and monitor all your projects
           </p>
         </div>
-        <Button className="gap-2">
+        <Button className="gap-2" onClick={handleNewProject}>
           <Plus className="h-4 w-4" />
           New Project
         </Button>
@@ -424,8 +450,13 @@ export default function ProjectsPage() {
             Starred Projects
           </h2>
           <div className={viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
-            {starredProjects.map((project, index) => (
-              <ProjectCard key={project.id} project={project} viewMode={viewMode} />
+            {starredProjects.map((project) => (
+              <ProjectCard 
+                key={project.id} 
+                project={project} 
+                viewMode={viewMode}
+                onClick={() => handleProjectClick(project.id)}
+              />
             ))}
           </div>
         </div>
@@ -435,8 +466,13 @@ export default function ProjectsPage() {
       <div className="space-y-4">
         <h2 className="text-lg font-semibold">All Projects</h2>
         <div className={viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
-          {otherProjects.map((project, index) => (
-            <ProjectCard key={project.id} project={project} viewMode={viewMode} />
+          {otherProjects.map((project) => (
+            <ProjectCard 
+              key={project.id} 
+              project={project} 
+              viewMode={viewMode}
+              onClick={() => handleProjectClick(project.id)}
+            />
           ))}
         </div>
       </div>

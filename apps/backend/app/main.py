@@ -15,12 +15,21 @@ from app.api.http import (
     internal_analysis_engine,
     knowledge_base,
     notifications,
+    object_storage,
     project_comprehension,
+    project_settings,
+    project_roles,
     rag_query,
+    repositories,
+    reviewer_metrics,
     review_queue,
     reviews,
-    reviewer_metrics,
+    role_permissions,
+    security,
+    statistics,
+    teams,
     webhook_github,
+    integrations,
 )
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
@@ -57,6 +66,7 @@ app = FastAPI(
         {"name": "reviews", "description": "Review management, assignments, comments, and change requests APIs."},
         {"name": "knowledge-base", "description": "Repo context onboarding and retrieval APIs."},
         {"name": "projects", "description": "Project comprehension and context management APIs."},
+        {"name": "project-settings", "description": "Project settings including auto-analysis toggle management."},
         {"name": "rag", "description": "RAG query and intelligent code analysis APIs."},
     ],
 )
@@ -75,7 +85,32 @@ Instrumentator(
 
 @app.get("/healthz")
 async def health():
-    return {"status": "ok"}
+    """Health check endpoint with service status."""
+    from app.integrations.object_storage.s3_minio_client import get_minio_client
+    from app.settings import settings
+
+    services = {
+        "api": "ok",
+    }
+
+    # Check MinIO health if enabled
+    if settings.OBJECT_STORAGE_ENABLED:
+        try:
+            minio_health = get_minio_client().health_check()
+            services["minio"] = minio_health.get("status", "unknown")
+        except Exception:
+            services["minio"] = "error"
+
+    # Check Qdrant health if enabled
+    if settings.QDRANT_ENABLED:
+        services["qdrant"] = "configured"
+
+    overall_status = "ok" if all(
+        s in ("ok", "healthy", "configured", "disabled")
+        for s in services.values()
+    ) else "degraded"
+
+    return {"status": overall_status, "services": services}
 
 
 app.include_router(webhook_github.router)
@@ -91,7 +126,16 @@ app.include_router(knowledge_base.router)
 app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
 app.include_router(project_comprehension.router)
+app.include_router(project_settings.router, prefix="/api/v1", tags=["project-settings"])
 app.include_router(rag_query.router)
+app.include_router(repositories.router)
+app.include_router(statistics.router)
+app.include_router(security.router)
+app.include_router(teams.router)
+app.include_router(object_storage.router)
+app.include_router(integrations.router)
+app.include_router(project_roles.router)
+app.include_router(role_permissions.router)
 
 
 @app.get("/__routes")

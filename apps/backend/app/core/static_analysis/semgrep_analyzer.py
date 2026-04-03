@@ -7,6 +7,65 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 
 from app.core.static_analysis.base import StaticRawFinding, StaticToolResult
+from app.core.static_analysis.cli_utils import resolve_tool_command
+
+# Max include patterns before switching to scanning entire workspace
+_MAX_INCLUDE_PATTERNS = 50
+
+
+def _build_include_patterns(paths: list[str], workspace: str) -> list[str]:
+    """
+    Build --include patterns for semgrep from target file paths.
+    
+    Instead of passing all file paths directly (which hits Windows command line limits
+    and causes repeated rule downloads per batch), we derive include patterns that
+    semgrep can use to filter its workspace scan.
+    
+    Strategy:
+    - If few unique files, use exact relative paths as patterns
+    - If many files, use directory-based patterns or extension patterns
+    """
+    from pathlib import Path
+    
+    workspace_path = Path(workspace).resolve()
+    relative_paths: list[str] = []
+    
+    for p in paths:
+        try:
+            abs_path = Path(p).resolve()
+            rel = abs_path.relative_to(workspace_path)
+            # Use forward slashes for semgrep patterns
+            relative_paths.append(rel.as_posix())
+        except (ValueError, OSError):
+            # Path not relative to workspace, skip
+            continue
+    
+    if not relative_paths:
+        return []
+    
+    # If we have a manageable number of files, use them directly
+    if len(relative_paths) <= _MAX_INCLUDE_PATTERNS:
+        return relative_paths
+    
+    # Too many files - use directory patterns instead
+    # Group by parent directory and create patterns
+    dirs: set[str] = set()
+    for rel in relative_paths:
+        parts = rel.split("/")
+        if len(parts) > 1:
+            # Use top-level directory pattern
+            dirs.add(f"{parts[0]}/**")
+        else:
+            # Root-level file, include directly
+            dirs.add(rel)
+    
+    patterns = list(dirs)
+    
+    # If still too many patterns, just scan everything (no --include)
+    if len(patterns) > _MAX_INCLUDE_PATTERNS:
+        return []
+    
+    return patterns
 
 
 def _extract_json_payload(raw: str) -> str:
@@ -100,7 +159,24 @@ class SemgrepAnalyzer:
                 workspace_path=workspace,
             )
 
-        command = ["semgrep", "scan", "--config=auto", "--json", "--quiet", "--timeout", str(timeout_seconds), *paths]
+        resolved = resolve_tool_command("semgrep")
+        # Use workspace-based scan with --include patterns instead of listing all files.
+        # This avoids: (1) Windows command line length limits, (2) repeated rule downloads
+        # per batch when using --config=auto. Semgrep will scan workspace and filter.
+        include_patterns = _build_include_patterns(paths, workspace)
+        command = [
+            *resolved.command_prefix,
+            "scan",
+            "--config=auto",
+            "--json",
+            "--quiet",
+            "--timeout",
+            str(timeout_seconds),
+        ]
+        for pattern in include_patterns:
+            command.extend(["--include", pattern])
+        command.append(workspace)
+
         warning: str | None = None
         findings: list[StaticRawFinding] = []
         version: str | None = None
@@ -108,20 +184,23 @@ class SemgrepAnalyzer:
         stdout_snippet: str | None = None
         stderr_snippet: str | None = None
         status: Literal["SUCCESS", "FAILED", "SKIPPED"] = "SUCCESS"
+        warnings: list[str] = []
+        if resolved.warning:
+            warnings.append(resolved.warning)
 
         try:
             version_run = subprocess.run(
-                ["semgrep", "--version"],
+                [*resolved.command_prefix, "--version"],
                 cwd=workspace,
                 capture_output=True,
                 text=True,
-                timeout=max(5, timeout_seconds // 2),
+                timeout=15,
                 check=False,
             )
             if version_run.returncode == 0:
-                version = version_run.stdout.strip() or None
-            elif version_run.stderr.strip():
-                warning = "semgrep command failed"
+                version = version_run.stdout.strip().split("\n")[0] or None
+            elif version_run.stderr.strip() or version_run.stdout.strip():
+                warnings.append("semgrep version probe failed")
         except Exception:
             version = None
 
@@ -135,29 +214,51 @@ class SemgrepAnalyzer:
                 check=False,
             )
             exit_code = completed.returncode
-            stdout_snippet = completed.stdout[:1000] if completed.stdout else None
-            stderr_snippet = completed.stderr[:1000] if completed.stderr else None
+            stdout_snippet = completed.stdout[:2000] if completed.stdout else None
+            stderr_snippet = completed.stderr[:2000] if completed.stderr else None
+
             if completed.returncode not in (0, 1):
-                warning = "semgrep command failed"
+                # Exit code 2 often means "invalid scanning root" or config error
+                warnings.append(f"semgrep exited with code {completed.returncode}")
+                # Try to extract error message from JSON output
+                try:
+                    err_payload = json.loads(_extract_json_payload(completed.stdout or completed.stderr or ""))
+                    errors = err_payload.get("errors", [])
+                    if errors and isinstance(errors, list):
+                        err_msgs = [str(e.get("message", "")) for e in errors[:3] if isinstance(e, dict)]
+                        if err_msgs:
+                            warnings.append("; ".join(filter(None, err_msgs)))
+                except Exception:
+                    pass
                 status = "FAILED"
+
+            payload = completed.stdout or completed.stderr
             try:
-                findings = parse_semgrep_output(completed.stdout)
-                if completed.returncode == 1 and not findings and completed.stderr.strip():
-                    warning = "semgrep command failed"
-                    status = "FAILED"
+                findings = parse_semgrep_output(payload)
             except Exception:
-                warning = "semgrep output parsing failed"
+                warnings.append("semgrep output parsing failed")
                 findings = []
-                status = "FAILED"
+                if status != "FAILED":
+                    status = "FAILED"
+
         except FileNotFoundError:
-            warning = "semgrep is not installed"
+            warnings.append("semgrep is not installed or not in PATH")
             status = "FAILED"
         except subprocess.TimeoutExpired:
-            warning = "semgrep command timed out"
+            warnings.append(f"semgrep command timed out after {timeout_seconds}s")
             status = "FAILED"
-        except Exception:
-            warning = "semgrep execution failed"
+        except OSError as e:
+            # Catch Windows command line too long errors
+            warnings.append(f"semgrep execution failed: {e}")
             status = "FAILED"
+        except Exception as e:
+            warnings.append(f"semgrep execution failed: {type(e).__name__}")
+            status = "FAILED"
+
+        if not findings and status == "FAILED" and not warnings:
+            warnings.append("semgrep command failed")
+
+        warning = "; ".join(warnings) if warnings else None
 
         duration_ms = int((time.perf_counter() - started) * 1000)
         finished_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
@@ -176,4 +277,10 @@ class SemgrepAnalyzer:
             stdout_snippet=stdout_snippet,
             stderr_snippet=stderr_snippet,
             warning=warning,
+            stats={
+                "targets": len(paths),
+                "include_patterns": len(include_patterns),
+                "resolved_command": resolved.resolved_path,
+                "resolution_source": resolved.source,
+            },
         )

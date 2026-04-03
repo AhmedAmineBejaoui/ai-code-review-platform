@@ -9,6 +9,10 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
+# Ensure Python console scripts installed by Poetry are resolvable in worker/API
+# runtime shells (semgrep, ruff, etc.).
+ENV PATH="/usr/local/bin:${PATH}"
+
 COPY pyproject.toml /app/pyproject.toml
 RUN pip install --no-cache-dir poetry \
     && poetry config virtualenvs.create false \
