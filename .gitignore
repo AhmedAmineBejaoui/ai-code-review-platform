@@ -30,3 +30,4 @@ scans/
 # IDE
 .vscode/.history/
 .idea/
+.claude/worktrees/keen-goodall
