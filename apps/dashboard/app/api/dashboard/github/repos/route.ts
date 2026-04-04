@@ -186,11 +186,15 @@ async function fetchGithubRepos(
   return { items, error: null }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const { searchParams } = new URL(request.url)
+  const customAccount = searchParams.get("account")
+  const accountType = searchParams.get("type") as "user" | "org" | null
 
   const client = await clerkClient()
   const [user, oauthToken] = await Promise.all([
@@ -199,6 +203,47 @@ export async function GET() {
   ])
   const githubAccount = extractGithubExternalAccountInfo(user)
 
+  // If custom account is provided, try to fetch repos from that account
+  if (customAccount) {
+    let endpointBuilder: (page: number) => string
+    
+    if (accountType === "org") {
+      // For organizations, use org repos endpoint
+      endpointBuilder = (page) =>
+        `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+    } else {
+      // For users, use user repos endpoint
+      endpointBuilder = (page) =>
+        `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+    }
+
+    const reposResult = await fetchGithubRepos(oauthToken, endpointBuilder)
+    if (reposResult.error) {
+      return NextResponse.json(
+        {
+          connected: oauthToken ? true : githubAccount.connected,
+          items: [],
+          error: reposResult.error,
+          account: customAccount,
+          accountType: accountType,
+        },
+        { status: 200 },
+      )
+    }
+
+    return NextResponse.json(
+      {
+        connected: oauthToken ? true : githubAccount.connected,
+        items: reposResult.items,
+        error: null,
+        account: customAccount,
+        accountType: accountType,
+      },
+      { status: 200 },
+    )
+  }
+
+  // Default behavior - load user's repos
   if (oauthToken) {
     const reposResult = await fetchGithubRepos(
       oauthToken,

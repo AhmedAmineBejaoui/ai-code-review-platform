@@ -130,32 +130,18 @@ function DependencyRow({ dependency }: { dependency: DependencyInfo }) {
   )
 }
 
-// Mock dependencies for development
-const MOCK_DEPENDENCIES: DependencyInfo[] = [
-  { name: "react", version: "18.2.0", latestVersion: "18.2.0", type: "production", packageManager: "npm", hasVulnerability: false },
-  { name: "next", version: "14.0.0", latestVersion: "14.1.0", type: "production", packageManager: "npm", hasVulnerability: false },
-  { name: "typescript", version: "5.2.2", latestVersion: "5.3.3", type: "dev", packageManager: "npm", hasVulnerability: false },
-  { name: "lodash", version: "4.17.20", latestVersion: "4.17.21", type: "production", packageManager: "npm", hasVulnerability: true, vulnerabilitySeverity: "high" },
-  { name: "axios", version: "0.21.0", latestVersion: "1.6.2", type: "production", packageManager: "npm", hasVulnerability: true, vulnerabilitySeverity: "critical" },
-  { name: "eslint", version: "8.50.0", latestVersion: "8.56.0", type: "dev", packageManager: "npm", hasVulnerability: false },
-  { name: "tailwindcss", version: "3.3.3", latestVersion: "3.4.0", type: "dev", packageManager: "npm", hasVulnerability: false },
-  { name: "zod", version: "3.22.4", latestVersion: "3.22.4", type: "production", packageManager: "npm", hasVulnerability: false },
-  { name: "framer-motion", version: "10.16.0", latestVersion: "10.18.0", type: "production", packageManager: "npm", hasVulnerability: false },
-  { name: "express", version: "4.17.1", latestVersion: "4.18.2", type: "production", packageManager: "npm", hasVulnerability: true, vulnerabilitySeverity: "medium" },
-]
-
 export default function ProjectDependenciesPage() {
   const params = useParams()
   const projectId = params.projectId as string
 
-  const { dependencies: summary, loading, error, refresh } = useProjectDependencies(projectId)
+  const { dependencies: summary, dependenciesList, loading, error, refresh } = useProjectDependencies(projectId)
   const { profile } = useProjectDetail(projectId)
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [showVulnerable, setShowVulnerable] = useState(false)
 
-  // Use mock data for the detailed list
-  const dependencies = MOCK_DEPENDENCIES
+  // Use real dependencies list from API
+  const dependencies = dependenciesList || []
 
   // Filter dependencies
   const filteredDependencies = dependencies.filter((dep) => {
@@ -165,13 +151,13 @@ export default function ProjectDependenciesPage() {
     return matchesSearch && matchesType && matchesVulnerable
   })
 
-  // Calculate stats from mock data
+  // Calculate stats from real data
   const stats = {
-    total: dependencies.length,
-    production: dependencies.filter((d) => d.type === "production").length,
-    dev: dependencies.filter((d) => d.type === "dev").length,
-    outdated: dependencies.filter((d) => d.latestVersion && d.version !== d.latestVersion).length,
-    vulnerable: dependencies.filter((d) => d.hasVulnerability).length,
+    total: summary?.totalCount || dependencies.length,
+    production: summary?.productionCount || dependencies.filter((d) => d.type === "production").length,
+    dev: summary?.devCount || dependencies.filter((d) => d.type === "dev").length,
+    outdated: summary?.outdatedCount || dependencies.filter((d) => d.latestVersion && d.version !== d.latestVersion).length,
+    vulnerable: summary?.vulnerableCount || dependencies.filter((d) => d.hasVulnerability).length,
   }
 
   if (loading) {

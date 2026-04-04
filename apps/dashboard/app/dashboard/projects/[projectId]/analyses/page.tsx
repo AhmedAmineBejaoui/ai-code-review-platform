@@ -196,79 +196,14 @@ function AnalysisRow({ analysis }: { analysis: AnalysisSummary }) {
   )
 }
 
-// Mock data for development
-const MOCK_ANALYSES: AnalysisSummary[] = [
-  {
-    id: "1",
-    projectId: "1",
-    type: "pull_request",
-    referenceId: "142",
-    title: "feat: Add user authentication flow",
-    status: "completed",
-    filesChanged: 12,
-    linesAdded: 458,
-    linesRemoved: 23,
-    findings: { critical: 0, high: 1, medium: 3, low: 5, info: 2 },
-    author: { name: "John Doe" },
-    createdAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    completedAt: new Date(Date.now() - 1 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "2",
-    projectId: "1",
-    type: "pull_request",
-    referenceId: "141",
-    title: "fix: Resolve memory leak in data processing",
-    status: "in_progress",
-    filesChanged: 3,
-    linesAdded: 45,
-    linesRemoved: 12,
-    findings: { critical: 0, high: 0, medium: 0, low: 0, info: 0 },
-    author: { name: "Jane Smith" },
-    createdAt: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "3",
-    projectId: "1",
-    type: "commit",
-    referenceId: "a1b2c3d4e5f6",
-    title: "refactor: Optimize database queries",
-    status: "completed",
-    filesChanged: 8,
-    linesAdded: 156,
-    linesRemoved: 89,
-    findings: { critical: 0, high: 0, medium: 2, low: 1, info: 4 },
-    author: { name: "Bob Wilson" },
-    createdAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    completedAt: new Date(Date.now() - 23 * 60 * 60 * 1000).toISOString(),
-  },
-  {
-    id: "4",
-    projectId: "1",
-    type: "pull_request",
-    referenceId: "140",
-    title: "chore: Update dependencies",
-    status: "failed",
-    filesChanged: 2,
-    linesAdded: 234,
-    linesRemoved: 198,
-    findings: { critical: 2, high: 3, medium: 1, low: 0, info: 0 },
-    author: { name: "Alice Brown" },
-    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-  },
-]
-
 export default function ProjectAnalysesPage() {
   const params = useParams()
   const projectId = params.projectId as string
   
-  const { analyses: fetchedAnalyses, loading, error } = useProjectAnalyses(projectId)
+  const { analyses, loading, error } = useProjectAnalyses(projectId)
   const [searchQuery, setSearchQuery] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [typeFilter, setTypeFilter] = useState("all")
-
-  // Use mock data if no real data available
-  const analyses = fetchedAnalyses.length > 0 ? fetchedAnalyses : MOCK_ANALYSES
 
   // Filter analyses
   const filteredAnalyses = analyses.filter((analysis) => {

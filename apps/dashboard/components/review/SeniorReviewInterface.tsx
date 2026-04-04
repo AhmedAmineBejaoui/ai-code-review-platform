@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
 } from "@/components/ui/card"
@@ -12,7 +12,8 @@ import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   CheckCircle, AlertTriangle, Shield, MessageSquare, Code, FileText,
-  Clock, User, GitBranch, Info, XCircle, Send, Sparkles, Ban, AlertOctagon
+  Clock, User, GitBranch, Info, XCircle, Send, Sparkles, Ban, AlertOctagon,
+  Loader2, RefreshCw
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -27,12 +28,8 @@ import {
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
 import { Label } from "@/components/ui/label"
 
-interface SeniorReviewInterfaceProps {
-  analysisId: string
-  assignmentId?: string
-}
-
-interface AnalysisData {
+// Export types for parent components
+export interface AnalysisData {
   id: string
   repo: string
   branch: string
@@ -50,7 +47,7 @@ interface AnalysisData {
   files: FileChange[]
 }
 
-interface FileChange {
+export interface FileChange {
   path: string
   status: "added" | "modified" | "deleted"
   additions: number
@@ -59,16 +56,30 @@ interface FileChange {
   suggestions: Suggestion[]
 }
 
-interface Suggestion {
+export interface Suggestion {
   line: number
   severity: "info" | "warning" | "error" | "critical"
   message: string
   category: string
 }
 
-export function SeniorReviewInterface({ analysisId, assignmentId }: SeniorReviewInterfaceProps) {
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
-  const [loading, setLoading] = useState(true)
+interface SeniorReviewInterfaceProps {
+  analysisId: string
+  assignmentId?: string
+  analysis?: AnalysisData | null
+  loading?: boolean
+  error?: string | null
+  onRefresh?: () => void
+}
+
+export function SeniorReviewInterface({ 
+  analysisId, 
+  assignmentId,
+  analysis: propAnalysis,
+  loading: propLoading = false,
+  error: propError = null,
+  onRefresh
+}: SeniorReviewInterfaceProps) {
   const [selectedFile, setSelectedFile] = useState<FileChange | null>(null)
   const [comment, setComment] = useState("")
   const [reviewComments, setReviewComments] = useState<string[]>([])
@@ -77,139 +88,12 @@ export function SeniorReviewInterface({ analysisId, assignmentId }: SeniorReview
   const [blockReason, setBlockReason] = useState("")
   const [blockCategory, setBlockCategory] = useState<string>("security")
 
+  // Set selected file when analysis changes
   useEffect(() => {
-    // Mock data with critical issues
-    const mockAnalysis: AnalysisData = {
-      id: analysisId,
-      repo: "backend/api",
-      branch: "feature/authentication",
-      pr_label: "PR #789",
-      author: "bob@company.com",
-      created_at: "2026-03-30T09:15:00Z",
-      status: "pending_review",
-      summary: {
-        total_files: 7,
-        additions: 345,
-        deletions: 89,
-        issues_found: 12,
-        critical_issues: 2,
-      },
-      files: [
-        {
-          path: "src/auth/login.ts",
-          status: "modified",
-          additions: 123,
-          deletions: 34,
-          diff: `@@ -10,8 +10,15 @@
-export async function authenticateUser(username: string, password: string) {
--  const user = await db.users.findOne({ username, password })
--  if (user) {
--    return generateToken(user)
--  }
--  return null
-+  // Hash password before comparing
-+  const hashedPassword = await bcrypt.hash(password, 10)
-+  const user = await db.users.findOne({ 
-+    username,
-+    password: hashedPassword 
-+  })
-+  
-+  if (user) {
-+    const token = generateToken(user)
-+    return { token, user }
-+  }
-+  throw new Error('Invalid credentials')
-}`,
-          suggestions: [
-            {
-              line: 14,
-              severity: "critical",
-              message: "CRITICAL: Password should be hashed BEFORE storing, not during authentication. This creates a new hash each time and will never match stored hashes.",
-              category: "Security"
-            },
-            {
-              line: 15,
-              severity: "error",
-              message: "Passwords stored in plain text in database. This is a major security vulnerability.",
-              category: "Security"
-            },
-            {
-              line: 20,
-              severity: "warning",
-              message: "Consider implementing rate limiting to prevent brute force attacks",
-              category: "Security"
-            }
-          ]
-        },
-        {
-          path: "src/auth/token.ts",
-          status: "modified",
-          additions: 67,
-          deletions: 12,
-          diff: `@@ -5,10 +5,20 @@
-const SECRET_KEY = "my-secret-key-123"
-
-export function generateToken(user: User): string {
--  return jwt.sign({ id: user.id }, SECRET_KEY)
-+  return jwt.sign(
-+    { 
-+      id: user.id,
-+      email: user.email,
-+      role: user.role 
-+    }, 
-+    SECRET_KEY,
-+    { expiresIn: '24h' }
-+  )
-}`,
-          suggestions: [
-            {
-              line: 5,
-              severity: "critical",
-              message: "CRITICAL: Secret key is hardcoded. Must use environment variable and a strong, randomly generated secret.",
-              category: "Security"
-            },
-            {
-              line: 10,
-              severity: "info",
-              message: "Good: Added token expiration",
-              category: "Security"
-            }
-          ]
-        },
-        {
-          path: "src/utils/validation.ts",
-          status: "added",
-          additions: 45,
-          deletions: 0,
-          diff: `@@ -0,0 +1,45 @@
-+export function validateEmail(email: string): boolean {
-+  const regex = /^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/
-+  return regex.test(email)
-+}
-+
-+export function validatePassword(password: string): boolean {
-+  return password.length >= 8
-+}`,
-          suggestions: [
-            {
-              line: 7,
-              severity: "warning",
-              message: "Password validation is too weak. Consider requiring uppercase, lowercase, numbers, and special characters.",
-              category: "Security"
-            }
-          ]
-        }
-      ]
+    if (propAnalysis?.files && propAnalysis.files.length > 0 && !selectedFile) {
+      setSelectedFile(propAnalysis.files[0])
     }
-
-    setTimeout(() => {
-      setAnalysis(mockAnalysis)
-      if (mockAnalysis.files.length > 0) {
-        setSelectedFile(mockAnalysis.files[0])
-      }
-      setLoading(false)
-    }, 800)
-  }, [analysisId])
+  }, [propAnalysis, selectedFile])
 
   const handleAddComment = () => {
     if (comment.trim()) {
@@ -219,59 +103,101 @@ export function generateToken(user: User): string {
   }
 
   const handleApprove = async () => {
-    if (analysis && analysis.summary.critical_issues > 0) {
+    if (propAnalysis && propAnalysis.summary.critical_issues > 0) {
       const confirm = window.confirm(
-        `⚠️ This PR has ${analysis.summary.critical_issues} critical issue(s). Are you sure you want to approve?`
+        `Attention: Cette PR contient ${propAnalysis.summary.critical_issues} probleme(s) critique(s). Etes-vous sur de vouloir approuver ?`
       )
       if (!confirm) return
     }
 
     setSubmitting(true)
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert("✅ Review approved! The changes will be merged.")
+    alert("Review approuvee ! Les modifications seront fusionnees.")
     setSubmitting(false)
   }
 
   const handleRequestChanges = async () => {
     if (reviewComments.length === 0) {
-      alert("Please add comments explaining what changes are required")
+      alert("Veuillez ajouter des commentaires expliquant les modifications requises")
       return
     }
     setSubmitting(true)
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert("📝 Changes requested! The developer must address your comments before merging.")
+    alert("Modifications demandees ! Le developpeur doit repondre a vos commentaires avant la fusion.")
     setSubmitting(false)
   }
 
   const handleBlock = async () => {
     if (!blockReason.trim()) {
-      alert("Please provide a reason for blocking this PR")
+      alert("Veuillez fournir une raison pour bloquer cette PR")
       return
     }
     setSubmitting(true)
     await new Promise(resolve => setTimeout(resolve, 1000))
     setBlockDialogOpen(false)
-    alert(`🛑 PR BLOCKED!\n\nCategory: ${blockCategory}\nReason: ${blockReason}\n\nThe developer cannot merge until issues are resolved.`)
+    alert(`PR BLOQUEE !\n\nCategorie: ${blockCategory}\nRaison: ${blockReason}\n\nLe developpeur ne peut pas fusionner tant que les problemes ne sont pas resolus.`)
     setSubmitting(false)
   }
 
-  if (loading || !analysis) {
+  // Loading state
+  if (propLoading) {
     return (
-      <div className="container mx-auto py-6 space-y-6 animate-pulse">
-        <div className="h-8 w-64 bg-gray-200 rounded"></div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="h-96 bg-gray-200 rounded-lg"></div>
-          </div>
-          <div className="space-y-4">
-            <div className="h-48 bg-gray-200 rounded-lg"></div>
-          </div>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
+          <span className="ml-3 text-gray-600">Chargement de l'analyse...</span>
         </div>
       </div>
     )
   }
 
-  const hasCriticalIssues = analysis.summary.critical_issues > 0
+  // Error state
+  if (propError) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                Erreur de chargement
+              </h3>
+              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              {onRefresh && (
+                <Button onClick={onRefresh} variant="outline" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Reessayer
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Empty state
+  if (!propAnalysis) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <FileText className="h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Aucune analyse disponible
+              </h3>
+              <p className="text-gray-500">
+                L'analyse demandee n'a pas ete trouvee ou n'existe pas.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  const hasCriticalIssues = propAnalysis.summary.critical_issues > 0
 
   return (
     <div className="container mx-auto py-6 space-y-6">
@@ -283,14 +209,14 @@ export function generateToken(user: User): string {
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">Code Review</h1>
+            <h1 className="text-3xl font-bold">Revue de Code</h1>
             <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">
               <Shield className="h-3 w-3 mr-1" />
-              Senior Reviewer
+              Reviewer Senior
             </Badge>
           </div>
           <p className="text-gray-600">
-            {analysis.repo} • {analysis.pr_label} by {analysis.author}
+            {propAnalysis.repo} - {propAnalysis.pr_label} par {propAnalysis.author}
           </p>
         </div>
         {assignmentId && (
@@ -305,9 +231,9 @@ export function generateToken(user: User): string {
         <Alert className="bg-red-50 border-red-300 dark:bg-red-950/30 dark:border-red-800">
           <AlertOctagon className="h-5 w-5 text-red-600" />
           <AlertDescription className="text-red-900 dark:text-red-100">
-            <strong>⚠️ {analysis.summary.critical_issues} Critical Security Issue(s) Detected!</strong>
+            <strong>{propAnalysis.summary.critical_issues} Probleme(s) de Securite Critique(s) Detecte(s) !</strong>
             <br />
-            As a Senior Reviewer, you have the authority to block this PR. Review carefully before approving.
+            En tant que Reviewer Senior, vous avez l'autorite de bloquer cette PR. Examinez attentivement avant d'approuver.
           </AlertDescription>
         </Alert>
       )}
@@ -316,8 +242,8 @@ export function generateToken(user: User): string {
       <Alert className="bg-purple-50 border-purple-200 dark:bg-purple-950/20 dark:border-purple-800">
         <Shield className="h-4 w-4 text-purple-600" />
         <AlertDescription className="text-purple-900 dark:text-purple-100">
-          <strong>Senior Reviewer Mode:</strong> You can approve, block PRs, and request mandatory changes. 
-          Use blocking power responsibly for critical security or architectural issues.
+          <strong>Mode Reviewer Senior :</strong> Vous pouvez approuver, bloquer des PRs et demander des modifications obligatoires. 
+          Utilisez le pouvoir de blocage de maniere responsable pour les problemes critiques de securite ou d'architecture.
         </AlertDescription>
       </Alert>
 
@@ -329,10 +255,10 @@ export function generateToken(user: User): string {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Change Summary
+                Resume des Modifications
                 {hasCriticalIssues && (
                   <Badge variant="destructive" className="ml-2">
-                    {analysis.summary.critical_issues} Critical
+                    {propAnalysis.summary.critical_issues} Critique(s)
                   </Badge>
                 )}
               </CardTitle>
@@ -341,33 +267,33 @@ export function generateToken(user: User): string {
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {analysis.summary.total_files}
+                    {propAnalysis.summary.total_files}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Files</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Fichiers</div>
                 </div>
                 <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    +{analysis.summary.additions}
+                    +{propAnalysis.summary.additions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Added</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Ajouts</div>
                 </div>
                 <div className="text-center p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">
-                    -{analysis.summary.deletions}
+                    -{propAnalysis.summary.deletions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Deleted</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Suppressions</div>
                 </div>
                 <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-yellow-600">
-                    {analysis.summary.issues_found}
+                    {propAnalysis.summary.issues_found}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Issues</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Problemes</div>
                 </div>
                 <div className="text-center p-3 bg-red-100 dark:bg-red-950/40 rounded-lg border-2 border-red-300 dark:border-red-800">
                   <div className="text-2xl font-bold text-red-700 dark:text-red-400">
-                    {analysis.summary.critical_issues}
+                    {propAnalysis.summary.critical_issues}
                   </div>
-                  <div className="text-sm text-red-700 dark:text-red-400 font-semibold">Critical</div>
+                  <div className="text-sm text-red-700 dark:text-red-400 font-semibold">Critiques</div>
                 </div>
               </div>
             </CardContent>
@@ -378,16 +304,16 @@ export function generateToken(user: User): string {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Code className="h-5 w-5" />
-                Changed Files
+                Fichiers Modifies
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Tabs value={selectedFile?.path} onValueChange={(path) => {
-                const file = analysis.files.find(f => f.path === path)
+                const file = propAnalysis.files.find(f => f.path === path)
                 if (file) setSelectedFile(file)
               }}>
                 <TabsList className="w-full justify-start overflow-x-auto flex-wrap h-auto">
-                  {analysis.files.map((file) => {
+                  {propAnalysis.files.map((file) => {
                     const hasCritical = file.suggestions.some(s => s.severity === "critical")
                     return (
                       <TabsTrigger key={file.path} value={file.path} className="flex items-center gap-2">
@@ -407,7 +333,7 @@ export function generateToken(user: User): string {
                   })}
                 </TabsList>
 
-                {analysis.files.map((file) => (
+                {propAnalysis.files.map((file) => (
                   <TabsContent key={file.path} value={file.path} className="mt-4">
                     <div className="space-y-4">
                       {/* File Info */}
@@ -426,7 +352,7 @@ export function generateToken(user: User): string {
                         <div className="space-y-2">
                           <h4 className="font-semibold text-sm flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-purple-500" />
-                            Security & Quality Analysis
+                            Analyse Securite & Qualite
                           </h4>
                           {file.suggestions
                             .sort((a, b) => {
@@ -489,24 +415,24 @@ export function generateToken(user: User): string {
           {/* Review Metadata */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Review Details</CardTitle>
+              <CardTitle className="text-lg">Details de la Review</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm">
                 <GitBranch className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Branch:</span>
-                <span className="font-mono font-medium">{analysis.branch}</span>
+                <span className="text-gray-600 dark:text-gray-400">Branche :</span>
+                <span className="font-mono font-medium">{propAnalysis.branch}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Author:</span>
-                <span className="font-medium">{analysis.author}</span>
+                <span className="text-gray-600 dark:text-gray-400">Auteur :</span>
+                <span className="font-medium">{propAnalysis.author}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Created:</span>
+                <span className="text-gray-600 dark:text-gray-400">Cree le :</span>
                 <span className="font-medium">
-                  {new Date(analysis.created_at).toLocaleDateString("fr-FR")}
+                  {new Date(propAnalysis.created_at).toLocaleDateString("fr-FR")}
                 </span>
               </div>
             </CardContent>
@@ -517,12 +443,12 @@ export function generateToken(user: User): string {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
-                Add Comment
+                Ajouter un Commentaire
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Textarea
-                placeholder="Provide detailed feedback..."
+                placeholder="Fournissez un feedback detaille..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={4}
@@ -536,13 +462,13 @@ export function generateToken(user: User): string {
                 disabled={!comment.trim()}
               >
                 <Send className="h-4 w-4 mr-2" />
-                Add Comment
+                Ajouter le Commentaire
               </Button>
 
               {reviewComments.length > 0 && (
                 <div className="mt-4 space-y-2">
                   <Separator />
-                  <h4 className="text-sm font-semibold">Your Comments ({reviewComments.length})</h4>
+                  <h4 className="text-sm font-semibold">Vos Commentaires ({reviewComments.length})</h4>
                   <ScrollArea className="h-32 rounded-md border p-2">
                     {reviewComments.map((c, idx) => (
                       <div key={idx} className="mb-2 p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
@@ -560,10 +486,10 @@ export function generateToken(user: User): string {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <Shield className="h-4 w-4 text-purple-500" />
-                Senior Review Actions
+                Actions Reviewer Senior
               </CardTitle>
               <CardDescription>
-                You have full review authority
+                Vous avez l'autorite complete de review
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -573,7 +499,7 @@ export function generateToken(user: User): string {
                 disabled={submitting}
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Approve & Merge
+                Approuver & Fusionner
               </Button>
 
               <Button
@@ -583,7 +509,7 @@ export function generateToken(user: User): string {
                 disabled={submitting || reviewComments.length === 0}
               >
                 <MessageSquare className="h-4 w-4 mr-2" />
-                Request Changes
+                Demander des Modifications
               </Button>
 
               <Separator />
@@ -595,11 +521,11 @@ export function generateToken(user: User): string {
                 disabled={submitting}
               >
                 <Ban className="h-4 w-4 mr-2" />
-                Block This PR
+                Bloquer cette PR
               </Button>
 
               <p className="text-xs text-gray-500 text-center">
-                Use blocking for critical security, legal, or architectural issues
+                Utilisez le blocage pour les problemes critiques de securite, legaux ou architecturaux
               </p>
             </CardContent>
           </Card>
@@ -612,53 +538,53 @@ export function generateToken(user: User): string {
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 text-red-600">
               <Ban className="h-5 w-5" />
-              Block Pull Request
+              Bloquer la Pull Request
             </DialogTitle>
             <DialogDescription>
-              This will prevent the PR from being merged until issues are resolved. Provide a clear reason.
+              Cela empechera la fusion de la PR jusqu'a ce que les problemes soient resolus. Fournissez une raison claire.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-2">
-              <Label>Block Category</Label>
+              <Label>Categorie de Blocage</Label>
               <RadioGroup value={blockCategory} onValueChange={setBlockCategory}>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="security" id="security" />
                   <Label htmlFor="security" className="font-normal cursor-pointer">
-                    Security Vulnerability
+                    Vulnerabilite de Securite
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="architecture" id="architecture" />
                   <Label htmlFor="architecture" className="font-normal cursor-pointer">
-                    Architecture Violation
+                    Violation d'Architecture
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="performance" id="performance" />
                   <Label htmlFor="performance" className="font-normal cursor-pointer">
-                    Critical Performance Issue
+                    Probleme de Performance Critique
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="legal" id="legal" />
                   <Label htmlFor="legal" className="font-normal cursor-pointer">
-                    Legal/Compliance Issue
+                    Probleme Legal/Conformite
                   </Label>
                 </div>
                 <div className="flex items-center space-x-2">
                   <RadioGroupItem value="other" id="other" />
                   <Label htmlFor="other" className="font-normal cursor-pointer">
-                    Other Critical Issue
+                    Autre Probleme Critique
                   </Label>
                 </div>
               </RadioGroup>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="reason">Detailed Reason *</Label>
+              <Label htmlFor="reason">Raison Detaillee *</Label>
               <Textarea
                 id="reason"
-                placeholder="Explain why this PR must be blocked..."
+                placeholder="Expliquez pourquoi cette PR doit etre bloquee..."
                 value={blockReason}
                 onChange={(e) => setBlockReason(e.target.value)}
                 rows={5}
@@ -668,13 +594,13 @@ export function generateToken(user: User): string {
             <Alert className="bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800">
               <AlertOctagon className="h-4 w-4 text-red-600" />
               <AlertDescription className="text-sm text-red-900 dark:text-red-100">
-                The developer will be notified immediately and must resolve all issues before resubmitting.
+                Le developpeur sera notifie immediatement et devra resoudre tous les problemes avant de soumettre a nouveau.
               </AlertDescription>
             </Alert>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBlockDialogOpen(false)}>
-              Cancel
+              Annuler
             </Button>
             <Button 
               variant="destructive" 
@@ -682,7 +608,7 @@ export function generateToken(user: User): string {
               disabled={!blockReason.trim() || submitting}
             >
               <Ban className="h-4 w-4 mr-2" />
-              Block PR
+              Bloquer la PR
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -540,14 +539,13 @@ class ReviewerDashboardResponse(BaseModel):
 
 @router.get("/dashboard", response_model=ReviewerDashboardResponse)
 async def get_reviewer_dashboard(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal = Depends(require_permission("assignments.view_own")),
 ) -> ReviewerDashboardResponse:
     """
     Get reviewer dashboard data.
     
     Returns KPIs, active reviews, and recent activity for the current user.
     """
-    await require_permission(principal, "assignments.view_own")
     
     engine = get_engine()
     from sqlalchemy import text
@@ -700,7 +698,120 @@ async def get_reviewer_dashboard(
     )
 
 
-# Submit Review Decision
+# Personal Metrics Models
+class PersonalMetricsPeriod(BaseModel):
+    """Period information for metrics."""
+    start: str
+    end: str
+    days: int
+
+
+class PersonalMetricsCurrent(BaseModel):
+    """Current period metrics."""
+    reviews_completed: int = 0
+    avg_review_time_minutes: int = 0
+    avg_comments_per_review: float = 0.0
+    sla_compliance_rate: float = 0.0
+    approvals: int = 0
+    warnings: int = 0
+    blocks: int = 0
+    findings_identified: int = 0
+
+
+class PersonalMetricsTrends(BaseModel):
+    """Trends data for metrics."""
+    dates: list[str] = []
+    reviews_completed: list[int] = []
+    avg_review_time: list[int] = []
+    sla_compliance: list[float] = []
+    avg_comments: list[float] = []
+
+
+class PersonalMetricsRankings(BaseModel):
+    """Ranking information."""
+    reviews_count: int = 0
+    quality_score: int = 0
+    response_time: int = 0
+
+
+class PersonalMetricsResponse(BaseModel):
+    """Personal metrics response."""
+    reviewer_id: str
+    period: PersonalMetricsPeriod
+    current_period: PersonalMetricsCurrent
+    trends: PersonalMetricsTrends
+    rankings: PersonalMetricsRankings
+
+
+@router.get("/metrics/personal", response_model=PersonalMetricsResponse)
+async def get_personal_metrics(
+    period_days: int = Query(30, description="Period in days"),
+    principal: AuthenticatedPrincipal = Depends(require_permission("assignments.view_own")),
+) -> PersonalMetricsResponse:
+    """
+    Get personal metrics for the current reviewer.
+    
+    Returns aggregated metrics, trends, and rankings for the specified period.
+    """
+    from app.services.reviewer_metrics_calculator import ReviewerMetricsCalculator
+    
+    user_id = principal.user_id
+    calculator = ReviewerMetricsCalculator()
+    
+    # Calculate period
+    end_date = date.today()
+    start_date = end_date - timedelta(days=period_days)
+    
+    # Get current period metrics
+    try:
+        current_metrics = await calculator.calculate_reviewer_metrics(
+            reviewer_id=user_id,
+            period_start=start_date,
+            period_end=end_date
+        )
+    except Exception:
+        # Return default metrics if calculation fails
+        current_metrics = {
+            "reviews_completed": 0,
+            "avg_review_time_minutes": 0,
+            "avg_comments_per_review": 0.0,
+            "sla_compliance_rate": 0.0,
+            "approvals": 0,
+            "warnings": 0,
+            "blocks": 0,
+            "findings_identified": 0,
+        }
+    
+    # Get trends (last 30 days in 7-day chunks)
+    try:
+        trends_data = await calculator.get_reviewer_trends(user_id, periods=4)
+    except Exception:
+        trends_data = {
+            "dates": [],
+            "reviews_completed": [],
+            "avg_review_time": [],
+            "sla_compliance": [],
+            "avg_comments": [],
+        }
+    
+    # Calculate rankings (simplified - just return 0 for now)
+    rankings = {
+        "reviews_count": 0,
+        "quality_score": 0,
+        "response_time": 0,
+    }
+    
+    return PersonalMetricsResponse(
+        reviewer_id=user_id,
+        period=PersonalMetricsPeriod(
+            start=start_date.isoformat(),
+            end=end_date.isoformat(),
+            days=period_days
+        ),
+        current_period=PersonalMetricsCurrent(**current_metrics),
+        trends=PersonalMetricsTrends(**trends_data),
+        rankings=PersonalMetricsRankings(**rankings)
+    )
 class SubmitReviewRequest(BaseModel):
     """Request to submit a review decision."""
     model_config = ConfigDict(extra="forbid")
@@ -722,14 +833,13 @@ class SubmitReviewResponse(BaseModel):
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_review(
     request: SubmitReviewRequest,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal = Depends(require_permission("reviews.submit")),
 ) -> SubmitReviewResponse:
     """
     Submit a review decision.
     
     Marks the assignment as completed and records the decision.
     """
-    await require_permission(principal, "reviews.submit")
     
     assignments_repo = ReviewAssignmentsRepo()
     comments_repo = ReviewCommentsRepo()

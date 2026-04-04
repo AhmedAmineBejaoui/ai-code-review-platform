@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
 import {
   Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle
 } from "@/components/ui/card"
@@ -12,17 +12,13 @@ import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
   CheckCircle, AlertTriangle, Star, MessageSquare, Code, FileText,
-  Clock, User, GitBranch, Info, ArrowUp, Send, Sparkles
+  Clock, User, GitBranch, Info, ArrowUp, Send, Sparkles, Loader2, RefreshCw
 } from "lucide-react"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
-interface JuniorReviewInterfaceProps {
-  analysisId: string
-  assignmentId?: string
-}
-
-interface AnalysisData {
+// Export types for parent components
+export interface JuniorAnalysisData {
   id: string
   repo: string
   branch: string
@@ -36,123 +32,53 @@ interface AnalysisData {
     deletions: number
     issues_found: number
   }
-  files: FileChange[]
+  files: JuniorFileChange[]
 }
 
-interface FileChange {
+export interface JuniorFileChange {
   path: string
   status: "added" | "modified" | "deleted"
   additions: number
   deletions: number
   diff: string
-  suggestions: Suggestion[]
+  suggestions: JuniorSuggestion[]
 }
 
-interface Suggestion {
+export interface JuniorSuggestion {
   line: number
   severity: "info" | "warning" | "error"
   message: string
   category: string
 }
 
-export function JuniorReviewInterface({ analysisId, assignmentId }: JuniorReviewInterfaceProps) {
-  const [analysis, setAnalysis] = useState<AnalysisData | null>(null)
-  const [loading, setLoading] = useState(true)
-  const [selectedFile, setSelectedFile] = useState<FileChange | null>(null)
+interface JuniorReviewInterfaceProps {
+  analysisId: string
+  assignmentId?: string
+  analysis?: JuniorAnalysisData | null
+  loading?: boolean
+  error?: string | null
+  onRefresh?: () => void
+}
+
+export function JuniorReviewInterface({ 
+  analysisId, 
+  assignmentId,
+  analysis: propAnalysis,
+  loading: propLoading = false,
+  error: propError = null,
+  onRefresh
+}: JuniorReviewInterfaceProps) {
+  const [selectedFile, setSelectedFile] = useState<JuniorFileChange | null>(null)
   const [comment, setComment] = useState("")
   const [reviewComments, setReviewComments] = useState<string[]>([])
   const [submitting, setSubmitting] = useState(false)
 
+  // Set selected file when analysis changes
   useEffect(() => {
-    // Mock data - replace with actual API call
-    const mockAnalysis: AnalysisData = {
-      id: analysisId,
-      repo: "frontend/webapp",
-      branch: "feature/user-dashboard",
-      pr_label: "PR #456",
-      author: "alice@company.com",
-      created_at: "2026-03-30T10:30:00Z",
-      status: "pending_review",
-      summary: {
-        total_files: 5,
-        additions: 234,
-        deletions: 45,
-        issues_found: 8,
-      },
-      files: [
-        {
-          path: "src/components/Dashboard.tsx",
-          status: "modified",
-          additions: 89,
-          deletions: 12,
-          diff: `@@ -15,7 +15,12 @@
-export function Dashboard() {
--  const [data, setData] = useState([])
-+  const [data, setData] = useState<DashboardData[]>([])
-+  const [loading, setLoading] = useState(false)
-  
--  useEffect(() => {
--    fetchData()
--  }, [])
-+  useEffect(() => {
-+    setLoading(true)
-+    fetchData().finally(() => setLoading(false))
-+  }, [])`,
-          suggestions: [
-            {
-              line: 18,
-              severity: "info",
-              message: "Good: Added TypeScript types for better type safety",
-              category: "Best Practice"
-            },
-            {
-              line: 22,
-              severity: "info",
-              message: "Good: Added loading state management",
-              category: "UX"
-            }
-          ]
-        },
-        {
-          path: "src/utils/api.ts",
-          status: "modified",
-          additions: 45,
-          deletions: 8,
-          diff: `@@ -10,5 +10,15 @@
-export async function fetchData() {
--  const response = await fetch('/api/data')
--  return response.json()
-+  try {
-+    const response = await fetch('/api/data')
-+    if (!response.ok) {
-+      throw new Error('Failed to fetch data')
-+    }
-+    return response.json()
-+  } catch (error) {
-+    console.error('API Error:', error)
-+    throw error
-+  }
-}`,
-          suggestions: [
-            {
-              line: 15,
-              severity: "warning",
-              message: "Consider using a proper error handling service instead of console.error",
-              category: "Error Handling"
-            }
-          ]
-        }
-      ]
+    if (propAnalysis?.files && propAnalysis.files.length > 0 && !selectedFile) {
+      setSelectedFile(propAnalysis.files[0])
     }
-
-    setTimeout(() => {
-      setAnalysis(mockAnalysis)
-      if (mockAnalysis.files.length > 0) {
-        setSelectedFile(mockAnalysis.files[0])
-      }
-      setLoading(false)
-    }, 800)
-  }, [analysisId])
+  }, [propAnalysis, selectedFile])
 
   const handleAddComment = () => {
     if (comment.trim()) {
@@ -163,42 +89,83 @@ export async function fetchData() {
 
   const handleApprove = async () => {
     setSubmitting(true)
-    // Simulate API call
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert("✅ Review approved! The developer will be notified.")
+    alert("Review approuvee ! Le developpeur sera notifie.")
     setSubmitting(false)
   }
 
   const handleSuggestChanges = async () => {
     if (reviewComments.length === 0) {
-      alert("Please add at least one comment before suggesting changes")
+      alert("Veuillez ajouter au moins un commentaire avant de suggerer des modifications")
       return
     }
     setSubmitting(true)
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert("💡 Suggestions sent! The developer will review your comments.")
+    alert("Suggestions envoyees ! Le developpeur examinera vos commentaires.")
     setSubmitting(false)
   }
 
   const handleEscalate = async () => {
     setSubmitting(true)
     await new Promise(resolve => setTimeout(resolve, 1000))
-    alert("⬆️ Review escalated to senior reviewer!")
+    alert("Review escaladee vers un reviewer senior !")
     setSubmitting(false)
   }
 
-  if (loading || !analysis) {
+  // Loading state
+  if (propLoading) {
     return (
-      <div className="container mx-auto py-6 space-y-6 animate-pulse">
-        <div className="h-8 w-64 bg-gray-200 rounded"></div>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 space-y-4">
-            <div className="h-96 bg-gray-200 rounded-lg"></div>
-          </div>
-          <div className="space-y-4">
-            <div className="h-48 bg-gray-200 rounded-lg"></div>
-          </div>
+      <div className="container mx-auto py-6 space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-gray-600">Chargement de l'analyse...</span>
         </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (propError) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                Erreur de chargement
+              </h3>
+              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              {onRefresh && (
+                <Button onClick={onRefresh} variant="outline" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Reessayer
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
+  // Empty state
+  if (!propAnalysis) {
+    return (
+      <div className="container mx-auto py-6 space-y-6">
+        <Card>
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <FileText className="h-12 w-12 text-gray-400 mb-4" />
+              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Aucune analyse disponible
+              </h3>
+              <p className="text-gray-500">
+                L'analyse demandee n'a pas ete trouvee ou n'existe pas.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
     )
   }
@@ -213,19 +180,19 @@ export async function fetchData() {
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">Code Review</h1>
+            <h1 className="text-3xl font-bold">Revue de Code</h1>
             <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">
               <Star className="h-3 w-3 mr-1" />
-              Junior Reviewer
+              Reviewer Junior
             </Badge>
           </div>
           <p className="text-gray-600">
-            {analysis.repo} • {analysis.pr_label} by {analysis.author}
+            {propAnalysis.repo} - {propAnalysis.pr_label} par {propAnalysis.author}
           </p>
         </div>
         {assignmentId && (
           <Badge variant="outline" className="text-sm">
-            Assignment: {assignmentId}
+            Assignation: {assignmentId}
           </Badge>
         )}
       </motion.div>
@@ -234,8 +201,8 @@ export async function fetchData() {
       <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
         <Info className="h-4 w-4 text-blue-600" />
         <AlertDescription className="text-blue-900 dark:text-blue-100">
-          <strong>Junior Reviewer Mode:</strong> You can approve changes and suggest improvements. 
-          If you find critical issues, use the &quot;Escalate to Senior&quot; button.
+          <strong>Mode Reviewer Junior :</strong> Vous pouvez approuver les modifications et suggerer des ameliorations. 
+          Si vous trouvez des problemes critiques, utilisez le bouton &quot;Escalader vers Senior&quot;.
         </AlertDescription>
       </Alert>
 
@@ -247,34 +214,34 @@ export async function fetchData() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <FileText className="h-5 w-5" />
-                Change Summary
+                Resume des Modifications
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
                   <div className="text-2xl font-bold text-gray-900 dark:text-white">
-                    {analysis.summary.total_files}
+                    {propAnalysis.summary.total_files}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Files Changed</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Fichiers Modifies</div>
                 </div>
                 <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-green-600">
-                    +{analysis.summary.additions}
+                    +{propAnalysis.summary.additions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Additions</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Ajouts</div>
                 </div>
                 <div className="text-center p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-red-600">
-                    -{analysis.summary.deletions}
+                    -{propAnalysis.summary.deletions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Deletions</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Suppressions</div>
                 </div>
                 <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
                   <div className="text-2xl font-bold text-yellow-600">
-                    {analysis.summary.issues_found}
+                    {propAnalysis.summary.issues_found}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Issues Found</div>
+                  <div className="text-sm text-gray-600 dark:text-gray-400">Problemes Trouves</div>
                 </div>
               </div>
             </CardContent>
@@ -285,16 +252,16 @@ export async function fetchData() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Code className="h-5 w-5" />
-                Changed Files
+                Fichiers Modifies
               </CardTitle>
             </CardHeader>
             <CardContent>
               <Tabs value={selectedFile?.path} onValueChange={(path) => {
-                const file = analysis.files.find(f => f.path === path)
+                const file = propAnalysis.files.find(f => f.path === path)
                 if (file) setSelectedFile(file)
               }}>
                 <TabsList className="w-full justify-start overflow-x-auto">
-                  {analysis.files.map((file) => (
+                  {propAnalysis.files.map((file) => (
                     <TabsTrigger key={file.path} value={file.path} className="flex items-center gap-2">
                       <Badge variant={
                         file.status === "added" ? "default" : 
@@ -308,7 +275,7 @@ export async function fetchData() {
                   ))}
                 </TabsList>
 
-                {analysis.files.map((file) => (
+                {propAnalysis.files.map((file) => (
                   <TabsContent key={file.path} value={file.path} className="mt-4">
                     <div className="space-y-4">
                       {/* File Info */}
@@ -327,7 +294,7 @@ export async function fetchData() {
                         <div className="space-y-2">
                           <h4 className="font-semibold text-sm flex items-center gap-2">
                             <Sparkles className="h-4 w-4 text-purple-500" />
-                            AI Analysis
+                            Analyse IA
                           </h4>
                           {file.suggestions.map((suggestion, idx) => (
                             <Alert
@@ -368,24 +335,24 @@ export async function fetchData() {
           {/* Review Metadata */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Review Details</CardTitle>
+              <CardTitle className="text-lg">Details de la Review</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm">
                 <GitBranch className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Branch:</span>
-                <span className="font-mono font-medium">{analysis.branch}</span>
+                <span className="text-gray-600 dark:text-gray-400">Branche :</span>
+                <span className="font-mono font-medium">{propAnalysis.branch}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <User className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Author:</span>
-                <span className="font-medium">{analysis.author}</span>
+                <span className="text-gray-600 dark:text-gray-400">Auteur :</span>
+                <span className="font-medium">{propAnalysis.author}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
                 <Clock className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Created:</span>
+                <span className="text-gray-600 dark:text-gray-400">Cree le :</span>
                 <span className="font-medium">
-                  {new Date(analysis.created_at).toLocaleDateString("fr-FR")}
+                  {new Date(propAnalysis.created_at).toLocaleDateString("fr-FR")}
                 </span>
               </div>
             </CardContent>
@@ -396,12 +363,12 @@ export async function fetchData() {
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <MessageSquare className="h-4 w-4" />
-                Add Comment
+                Ajouter un Commentaire
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <Textarea
-                placeholder="Share your thoughts or suggestions..."
+                placeholder="Partagez vos reflexions ou suggestions..."
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 rows={4}
@@ -415,14 +382,14 @@ export async function fetchData() {
                 disabled={!comment.trim()}
               >
                 <Send className="h-4 w-4 mr-2" />
-                Add Comment
+                Ajouter le Commentaire
               </Button>
 
               {/* Review Comments List */}
               {reviewComments.length > 0 && (
                 <div className="mt-4 space-y-2">
                   <Separator />
-                  <h4 className="text-sm font-semibold">Your Comments ({reviewComments.length})</h4>
+                  <h4 className="text-sm font-semibold">Vos Commentaires ({reviewComments.length})</h4>
                   <ScrollArea className="h-32 rounded-md border p-2">
                     {reviewComments.map((c, idx) => (
                       <div key={idx} className="mb-2 p-2 bg-gray-50 dark:bg-gray-900 rounded text-sm">
@@ -438,9 +405,9 @@ export async function fetchData() {
           {/* Action Buttons */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Review Actions</CardTitle>
+              <CardTitle className="text-lg">Actions de Review</CardTitle>
               <CardDescription>
-                Choose an action for this review
+                Choisissez une action pour cette review
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -450,7 +417,7 @@ export async function fetchData() {
                 disabled={submitting}
               >
                 <CheckCircle className="h-4 w-4 mr-2" />
-                Approve Changes
+                Approuver les Modifications
               </Button>
 
               <Button
@@ -460,7 +427,7 @@ export async function fetchData() {
                 disabled={submitting || reviewComments.length === 0}
               >
                 <MessageSquare className="h-4 w-4 mr-2" />
-                Suggest Changes
+                Suggerer des Modifications
               </Button>
 
               <Separator />
@@ -472,11 +439,11 @@ export async function fetchData() {
                 disabled={submitting}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
-                Escalate to Senior
+                Escalader vers Senior
               </Button>
 
               <p className="text-xs text-gray-500 text-center">
-                Escalate if you find critical security or architectural issues
+                Escaladez si vous trouvez des problemes critiques de securite ou d'architecture
               </p>
             </CardContent>
           </Card>

@@ -149,40 +149,12 @@ function SecurityIssueCard({
   )
 }
 
-// Mock quality data for development
-const MOCK_QUALITY = {
-  overallScore: 78,
-  metrics: {
-    testCoverage: 72,
-    codeComplexity: 85,
-    maintainability: 80,
-    documentation: 65,
-    security: 90,
-  },
-  checklist: {
-    hasTests: true,
-    hasCICD: true,
-    hasDocumentation: false,
-    hasLinting: true,
-    hasSecurityScanning: true,
-  },
-  securityIssues: {
-    critical: 0,
-    high: 1,
-    medium: 3,
-    low: 8,
-  },
-}
-
 export default function ProjectQualityPage() {
   const params = useParams()
   const projectId = params.projectId as string
 
-  const { quality: fetchedQuality, loading, error, refresh } = useProjectQuality(projectId)
+  const { quality, loading, error, refresh } = useProjectQuality(projectId)
   const { profile } = useProjectDetail(projectId)
-
-  // Use mock data if no real data available
-  const quality = fetchedQuality || MOCK_QUALITY
 
   if (loading) {
     return <QualityPageSkeleton />

@@ -5,8 +5,8 @@ import { SeniorReviewInterface } from "./SeniorReviewInterface"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Crown, Users, UserPlus, ArrowRight } from "lucide-react"
-import { motion } from "framer-motion"
+import { Crown, Users, UserPlus, ArrowRight, Loader2, RefreshCw } from "lucide-react"
+import { motion } from "motion/react"
 import {
   Select,
   SelectContent,
@@ -15,21 +15,39 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
+// Types for team members
+interface TeamMember {
+  id: string
+  name: string
+  role: string
+  availability: string
+  current_reviews: number
+}
+
 interface LeadReviewInterfaceProps {
   analysisId: string
   assignmentId?: string
+  teamMembers?: TeamMember[]
+  loading?: boolean
+  error?: string | null
+  onRefresh?: () => void
 }
 
-export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInterfaceProps) {
+export function LeadReviewInterface({ 
+  analysisId, 
+  assignmentId,
+  teamMembers: propTeamMembers,
+  loading: propLoading = false,
+  error: propError = null,
+  onRefresh
+}: LeadReviewInterfaceProps) {
   const [showReassign, setShowReassign] = useState(false)
   const [selectedReviewer, setSelectedReviewer] = useState("")
 
-  // Mock team members
-  const teamMembers = [
-    { id: "rev_001", name: "Alice Chen", role: "Senior Reviewer", availability: "available", current_reviews: 2 },
-    { id: "rev_002", name: "Bob Smith", role: "Junior Reviewer", availability: "available", current_reviews: 1 },
-    { id: "rev_003", name: "Carol Davis", role: "Senior Reviewer", availability: "busy", current_reviews: 5 },
-    { id: "rev_004", name: "David Lee", role: "Junior Reviewer", availability: "available", current_reviews: 3 },
+  // Default team members if none provided
+  const teamMembers = propTeamMembers || [
+    { id: "rev_001", name: "Alice Chen", role: "Reviewer Senior", availability: "available", current_reviews: 2 },
+    { id: "rev_002", name: "Bob Smith", role: "Reviewer Junior", availability: "available", current_reviews: 1 },
   ]
 
   const handleReassign = async () => {
@@ -37,8 +55,45 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
     
     const reviewer = teamMembers.find(m => m.id === selectedReviewer)
     await new Promise(resolve => setTimeout(resolve, 500))
-    alert(`✅ Review reassigned to ${reviewer?.name}!\n\nThey will be notified immediately.`)
+    alert(`Review reassignee a ${reviewer?.name} !\n\nIl/Elle sera notifie immediatement.`)
     setShowReassign(false)
+  }
+
+  // Loading state
+  if (propLoading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-gray-600">Chargement de l'equipe...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (propError) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <div className="h-12 w-12 text-red-500 mb-4">⚠️</div>
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                Erreur de chargement
+              </h3>
+              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              {onRefresh && (
+                <Button onClick={onRefresh} variant="outline" className="gap-2">
+                  <RefreshCw className="h-4 w-4" />
+                  Reessayer
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   return (
@@ -55,13 +110,13 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
                 <Crown className="h-6 w-6 text-amber-600" />
                 <div>
                   <div className="flex items-center gap-2">
-                    <span>Lead Reviewer Tools</span>
+                    <span>Outils Reviewer Lead</span>
                     <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none">
-                      Full Access
+                      Acces Complet
                     </Badge>
                   </div>
                   <p className="text-sm font-normal text-gray-600 dark:text-gray-400 mt-1">
-                    Team management, reassignment, and override capabilities
+                    Gestion d'equipe, reassignment, et capacites de override
                   </p>
                 </div>
               </div>
@@ -72,7 +127,7 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
                 className="ml-4"
               >
                 <UserPlus className="h-4 w-4 mr-2" />
-                {showReassign ? "Hide" : "Reassign"}
+                {showReassign ? "Masquer" : "Reassigner"}
               </Button>
             </CardTitle>
           </CardHeader>
@@ -83,10 +138,10 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
                 <div>
                   <h4 className="font-medium mb-3 flex items-center gap-2">
                     <Users className="h-4 w-4" />
-                    Reassign This Review
+                    Reassigner cette Review
                   </h4>
                   <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-                    Transfer this review to another team member
+                    Transferer cette review a un autre membre de l'equipe
                   </p>
                 </div>
                 
@@ -110,11 +165,11 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
                           variant="outline" 
                           className={member.availability === "available" ? "text-green-600" : "text-yellow-600"}
                         >
-                          {member.availability}
+                          {member.availability === "available" ? "Disponible" : "Occupe"}
                         </Badge>
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        {member.role} • {member.current_reviews} active reviews
+                        {member.role} • {member.current_reviews} reviews actives
                       </div>
                     </div>
                   ))}
@@ -126,7 +181,7 @@ export function LeadReviewInterface({ analysisId, assignmentId }: LeadReviewInte
                   className="w-full bg-amber-600 hover:bg-amber-700"
                 >
                   <ArrowRight className="h-4 w-4 mr-2" />
-                  Reassign Review
+                  Reassigner la Review
                 </Button>
               </div>
             </CardContent>

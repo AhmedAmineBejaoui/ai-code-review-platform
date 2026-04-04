@@ -1,7 +1,7 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { motion } from "framer-motion"
+import { useEffect, useState, useRef, useCallback } from "react"
+import { motion } from "motion/react"
 import {
   Clock,
   AlertCircle,
@@ -19,6 +19,8 @@ import {
   Crown,
   Star,
   Zap,
+  Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,67 +30,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewerSeniorOrLead, isReviewerLead, type AppRole } from "@/lib/roles"
-
-// Static data for now - would be fetched from API
-const mockDashboardData = {
-  kpis: {
-    pending_reviews: 5,
-    in_progress_reviews: 2,
-    completed_this_week: 12,
-    overdue_reviews: 1,
-    avg_review_time_minutes: 42,
-    sla_compliance_rate: 0.96,
-  },
-  activeReviews: [
-    {
-      id: "rev_001",
-      analysis: {
-        id: "ana_123",
-        repo: "frontend/webapp",
-        pr_label: "PR #456",
-        author: "alice@company.com",
-      },
-      priority: "high",
-      started_at: "2026-03-24T14:30:00Z",
-      due_at: "2026-03-25T10:00:00Z",
-    },
-    {
-      id: "rev_002",
-      analysis: {
-        id: "ana_124",
-        repo: "backend/api",
-        pr_label: "PR #789",
-        author: "bob@company.com",
-      },
-      priority: "medium",
-      started_at: "2026-03-24T16:45:00Z",
-      due_at: "2026-03-25T12:00:00Z",
-    },
-  ],
-  recentActivity: [
-    { type: "completed", repo: "frontend/components", time: "2h ago" },
-    { type: "comment", repo: "backend/auth", time: "4h ago" },
-    { type: "assigned", repo: "mobile/ios", time: "6h ago" },
-  ],
-  // Team data for Lead/Senior reviewers
-  teamStats: {
-    totalReviewers: 8,
-    activeReviewers: 6,
-    pendingAssignments: 12,
-    avgTeamResponseTime: 35,
-    teamCompletionRate: 0.92,
-  },
-  teamMembers: [
-    { id: "1", name: "Alice Chen", role: "reviewer_senior", pendingReviews: 3, completedThisWeek: 8 },
-    { id: "2", name: "Bob Smith", role: "reviewer_junior", pendingReviews: 2, completedThisWeek: 5 },
-    { id: "3", name: "Carol Davis", role: "reviewer_senior", pendingReviews: 1, completedThisWeek: 10 },
-    { id: "4", name: "David Lee", role: "reviewer_junior", pendingReviews: 4, completedThisWeek: 4 },
-  ],
-  unassignedReviews: [
-    { id: "unrev_001", repo: "backend/api", pr_label: "PR #890", priority: "high", waiting_since: "2h" },
-    { id: "unrev_002", repo: "frontend/dashboard", pr_label: "PR #891", priority: "medium", waiting_since: "4h" },
-  ],
-}
+import {
+  fetchReviewerDashboardData,
+  createReviewerDashboardPoller,
+  defaultReviewerDashboardData,
+  type ReviewerDashboardData,
+} from "@/lib/reviewer-dashboard"
 
 // Role-specific capabilities
 const ROLE_CAPABILITIES = {
@@ -142,61 +89,129 @@ function getRoleCapabilities(role: AppRole) {
 
 export function ReviewerDashboard() {
   const currentUser = useDashboardUser()
-  const [dashboardData, setDashboardData] = useState(mockDashboardData)
-  const [loading, setLoading] = useState(false)
+  const [dashboardData, setDashboardData] = useState<ReviewerDashboardData>(defaultReviewerDashboardData)
+  const [loading, setLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
+  
+  const pollerRef = useRef<ReturnType<typeof createReviewerDashboardPoller> | null>(null)
 
   const capabilities = getRoleCapabilities(currentUser.role)
   const isSeniorOrLead = isReviewerSeniorOrLead(currentUser.role)
   const isLead = isReviewerLead(currentUser.role)
   const RoleIcon = capabilities.icon
 
-  // In real implementation, this would fetch from API
+  // Fetch data on mount and setup polling
   useEffect(() => {
-    const fetchData = async () => {
+    const loadData = async () => {
       setLoading(true)
-      // await fetch('/api/dashboard/reviewer')
-      // setDashboardData(response)
-      setLoading(false)
+      try {
+        const data = await fetchReviewerDashboardData({ force: true })
+        setDashboardData(data)
+      } catch (error) {
+        console.error("[ReviewerDashboard] Error loading data:", error)
+      } finally {
+        setLoading(false)
+      }
     }
-    fetchData()
+    
+    loadData()
+    
+    // Setup polling for real-time updates
+    pollerRef.current = createReviewerDashboardPoller((data) => {
+      setDashboardData(data)
+    }, { intervalMs: 20000 }) // Poll every 20 seconds
+    
+    pollerRef.current.start()
+    
+    return () => {
+      pollerRef.current?.stop()
+    }
+  }, [])
+
+  // Manual refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true)
+    try {
+      const data = await fetchReviewerDashboardData({ force: true })
+      setDashboardData(data)
+    } catch (error) {
+      console.error("[ReviewerDashboard] Error refreshing:", error)
+    } finally {
+      setIsRefreshing(false)
+    }
   }, [])
 
   const { kpis, activeReviews, recentActivity, teamStats, teamMembers, unassignedReviews } = dashboardData
 
   return (
     <div className="space-y-6">
-      {/* Role Banner */}
-      <motion.div
-        initial={{ opacity: 0, y: -20 }}
-        animate={{ opacity: 1, y: 0 }}
-        className={`relative overflow-hidden rounded-xl bg-gradient-to-r ${capabilities.color} p-6 text-white`}
-      >
-        <div className="absolute right-0 top-0 opacity-10">
-          <RoleIcon className="h-32 w-32 -mr-8 -mt-8" />
+      {/* Loading Overlay */}
+      {loading && (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="h-8 w-8 text-primary animate-spin" />
+          <span className="ml-3 text-muted-foreground">Chargement du tableau de bord...</span>
         </div>
-        <div className="relative z-10">
-          <div className="flex items-center gap-3 mb-2">
-            <RoleIcon className="h-6 w-6" />
-            <h2 className="text-xl font-bold">{capabilities.label}</h2>
-          </div>
-          <p className="text-white/80 text-sm max-w-xl">{capabilities.description}</p>
-          <div className="flex flex-wrap gap-2 mt-4">
-            {capabilities.canApprove && (
-              <Badge variant="secondary" className="bg-white/20 text-white border-none">
-                <CheckCircle className="h-3 w-3 mr-1" /> Approuver
-              </Badge>
-            )}
-            {capabilities.canBlock && (
-              <Badge variant="secondary" className="bg-white/20 text-white border-none">
-                <Shield className="h-3 w-3 mr-1" /> Bloquer
-              </Badge>
-            )}
-            {capabilities.canAssign && (
-              <Badge variant="secondary" className="bg-white/20 text-white border-none">
-                <UserPlus className="h-3 w-3 mr-1" /> Assigner
-              </Badge>
-            )}
-            {capabilities.canDelegate && (
+      )}
+      
+      {/* Error State */}
+      {!loading && dashboardData.error && (
+        <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30">
+          <CardContent className="p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <span className="text-red-700 dark:text-red-300">{dashboardData.error}</span>
+            </div>
+            <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
+              {isRefreshing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              <span className="ml-2">Réessayer</span>
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+      
+      {!loading && (
+        <>
+          {/* Role Banner */}
+          <motion.div
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            className={`relative overflow-hidden rounded-xl bg-gradient-to-r ${capabilities.color} p-6 text-white`}
+          >
+            <div className="absolute right-0 top-0 opacity-10">
+              <RoleIcon className="h-32 w-32 -mr-8 -mt-8" />
+            </div>
+            {/* Refresh Button */}
+            <button
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              className="absolute top-4 right-4 p-2 rounded-lg bg-white/20 hover:bg-white/30 transition-colors disabled:opacity-50"
+              title="Rafraîchir"
+            >
+              <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            </button>
+            <div className="relative z-10">
+              <div className="flex items-center gap-3 mb-2">
+                <RoleIcon className="h-6 w-6" />
+                <h2 className="text-xl font-bold">{capabilities.label}</h2>
+              </div>
+              <p className="text-white/80 text-sm max-w-xl">{capabilities.description}</p>
+              <div className="flex flex-wrap gap-2 mt-4">
+                {capabilities.canApprove && (
+                  <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                    <CheckCircle className="h-3 w-3 mr-1" /> Approuver
+                  </Badge>
+                )}
+                {capabilities.canBlock && (
+                  <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                    <Shield className="h-3 w-3 mr-1" /> Bloquer
+                  </Badge>
+                )}
+                {capabilities.canAssign && (
+                  <Badge variant="secondary" className="bg-white/20 text-white border-none">
+                    <UserPlus className="h-3 w-3 mr-1" /> Assigner
+                  </Badge>
+                )}
+                {capabilities.canDelegate && (
               <Badge variant="secondary" className="bg-white/20 text-white border-none">
                 <Users className="h-3 w-3 mr-1" /> Deleguer
               </Badge>
@@ -668,6 +683,8 @@ export function ReviewerDashboard() {
           </div>
         </motion.div>
       </div>
+        </>
+      )}
     </div>
   )
 }

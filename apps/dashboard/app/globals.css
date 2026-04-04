@@ -24,7 +24,62 @@
   --error: #ef4444;
   --error-light: #f87171;
 
-  /* === Core Design Tokens - Dark by Default === */
+  /* === Core Design Tokens - Light by Default === */
+  --background: #ffffff;
+  --foreground: #0f172a;
+  --card: #ffffff;
+  --card-foreground: #0f172a;
+  --popover: #ffffff;
+  --popover-foreground: #0f172a;
+  --primary: #3b82f6;
+  --primary-foreground: #ffffff;
+  --secondary: #f8fafc;
+  --secondary-foreground: #0f172a;
+  --muted: #f8fafc;
+  --muted-foreground: #64748b;
+  --accent: #f59e0b;
+  --accent-foreground: #ffffff;
+  --destructive: #ef4444;
+  --destructive-foreground: #ffffff;
+  --border: #e2e8f0;
+  --input: transparent;
+  --input-background: #ffffff;
+  --ring: #3b82f6;
+  --radius: 0.75rem;
+
+  /* === Sidebar Tokens === */
+  --sidebar: #ffffff;
+  --sidebar-foreground: #0f172a;
+  --sidebar-primary: #3b82f6;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #f8fafc;
+  --sidebar-accent-foreground: #0f172a;
+  --sidebar-border: #e2e8f0;
+  --sidebar-ring: #3b82f6;
+
+  /* === Minimal Gradients === */
+  --gradient-primary: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  --gradient-accent: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+  --gradient-success: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  --gradient-hero: linear-gradient(135deg, #3b82f6 0%, #1e40af 100%);
+  --gradient-mesh: radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.03) 0px, transparent 50%),
+                   radial-gradient(at 100% 0%, rgba(59, 130, 246, 0.03) 0px, transparent 50%),
+                   radial-gradient(at 100% 100%, rgba(59, 130, 246, 0.03) 0px, transparent 50%),
+                   radial-gradient(at 0% 100%, rgba(59, 130, 246, 0.03) 0px, transparent 50%);
+  --gradient-surface: linear-gradient(180deg, rgba(255,255,255,0.9) 0%, rgba(255,255,255,0.5) 100%);
+
+  /* === Subtle Shadow System === */
+  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
+  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2);
+  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 16px 48px -12px rgba(0, 0, 0, 0.4);
+  --shadow-xl: 0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 24px 64px -16px rgba(0, 0, 0, 0.5);
+  --shadow-glow: 0 0 32px rgba(255, 255, 255, 0.1), 0 0 64px rgba(255, 255, 255, 0.05);
+  --shadow-glow-strong: 0 0 48px rgba(255, 255, 255, 0.15), 0 0 96px rgba(255, 255, 255, 0.08);
+}
+
+.dark {
+  /* === Core Design Tokens - Dark Mode === */
   --background: #000000;
   --foreground: #ffffff;
   --card: #0a0a0f;
@@ -67,19 +122,6 @@
                    radial-gradient(at 100% 100%, rgba(255, 255, 255, 0.03) 0px, transparent 50%),
                    radial-gradient(at 0% 100%, rgba(255, 255, 255, 0.03) 0px, transparent 50%);
   --gradient-surface: linear-gradient(180deg, rgba(10,10,15,0.9) 0%, rgba(10,10,15,0.5) 100%);
-
-  /* === Subtle Shadow System === */
-  --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.5);
-  --shadow-sm: 0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2);
-  --shadow-md: 0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.3);
-  --shadow-lg: 0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 16px 48px -12px rgba(0, 0, 0, 0.4);
-  --shadow-xl: 0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 24px 64px -16px rgba(0, 0, 0, 0.5);
-  --shadow-glow: 0 0 32px rgba(255, 255, 255, 0.1), 0 0 64px rgba(255, 255, 255, 0.05);
-  --shadow-glow-strong: 0 0 48px rgba(255, 255, 255, 0.15), 0 0 96px rgba(255, 255, 255, 0.08);
-}
-
-.dark {
-  /* Dark mode is now the default - keeping this for compatibility */
 }
 
 @layer base {

@@ -1,25 +1,11 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useMemo, useState, useCallback } from "react"
+import { useEffect, useMemo, useState, useCallback, useRef } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { motion, AnimatePresence } from "framer-motion"
-import {
-  Check,
-  Copy,
-  MessageSquare,
-  AlertCircle,
-  AlertTriangle,
-  Info,
-  X,
-  BookOpen,
-  ChevronRight,
-  Loader2,
-  Plus,
-  MessageCircle,
-  FileCode,
-} from "lucide-react"
+import { AnimatePresence } from "framer-motion"
+import { Loader2 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewer } from "@/lib/roles"
 import {
@@ -27,58 +13,39 @@ import {
   type DashboardAnalysisDetails,
   type DashboardAnalysisDiffFile,
 } from "@/lib/dashboard-analysis-details"
-import { Card, CardContent } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Textarea } from "@/components/ui/textarea"
-import { ScrollArea } from "@/components/ui/scroll-area"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { InlineCommentForm } from "@/components/review/InlineCommentForm"
 import { CommentThread } from "@/components/review/CommentThread"
 import { PendingReviewBanner } from "@/components/review/PendingReviewBanner"
 import { ReviewSubmissionDialog } from "@/components/review/ReviewSubmissionDialog"
 import type { PendingComment, ReviewComment, CommentAuthor, ReviewVerdict } from "@/lib/review-types"
 
-function severityIcon(severity: string) {
-  if (severity === "BLOCKER") {
-    return <AlertCircle className="h-4 w-4 text-red-500" />
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function getFileInfo(path: string) {
+  const filename = path.split("/").pop() ?? path
+  const ext = filename.split(".").pop()?.toUpperCase() ?? ""
+  const extColors: Record<string, string> = {
+    TS: "#3178c5", TSX: "#3178c5",
+    JS: "#e3b341", JSX: "#e3b341",
+    PY: "#3572a5",
+    JSON: "#e3b341",
+    MD: "#79c0ff",
+    CSS: "#79c0ff",
+    HTML: "#e67e22",
+    RS: "#b7410e",
+    GO: "#00acd7",
   }
-  if (severity === "WARN") {
-    return <AlertTriangle className="h-4 w-4 text-orange-500" />
+  return {
+    filename,
+    ext: ext.slice(0, 2) || "??",
+    extColor: extColors[ext] ?? "#6e7681",
   }
-  return <Info className="h-4 w-4 text-blue-500" />
 }
 
-function severityBadge(severity: string) {
-  const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-    BLOCKER: "destructive",
-    WARN: "secondary",
-    INFO: "outline",
-  }
-  return <Badge variant={variants[severity] ?? "outline"}>{severity}</Badge>
-}
-
-function lineClass(lineType: "context" | "add" | "remove" | "header"): string {
-  if (lineType === "add") {
-    return "bg-green-100 dark:bg-green-900/20 text-green-800 dark:text-green-300"
-  }
-  if (lineType === "remove") {
-    return "bg-red-100 dark:bg-red-900/20 text-red-800 dark:text-red-300"
-  }
-  if (lineType === "header") {
-    return "bg-blue-100 dark:bg-blue-900/20 text-blue-800 dark:text-blue-300 font-semibold"
-  }
-  return "text-gray-700 dark:text-gray-300"
-}
-
-function linePrefix(lineType: "context" | "add" | "remove" | "header"): string {
-  if (lineType === "add") {
-    return "+"
-  }
-  if (lineType === "remove") {
-    return "-"
-  }
-  return " "
+function calculateQualityScore(findings: DashboardAnalysisDetails["findings"]): number {
+  const blockers = findings.filter((f) => f.severity === "BLOCKER").length
+  const warnings = findings.filter((f) => f.severity === "WARN").length
+  return Math.max(0, 100 - blockers * 15 - warnings * 5)
 }
 
 function normalizePathForComparison(value: string | null | undefined): string {
@@ -86,26 +53,192 @@ function normalizePathForComparison(value: string | null | undefined): string {
 }
 
 function severityRank(severity: string): number {
-  if (severity === "BLOCKER") {
-    return 0
-  }
-  if (severity === "WARN") {
-    return 1
-  }
+  if (severity === "BLOCKER") return 0
+  if (severity === "WARN") return 1
   return 2
 }
 
-function formatFindingSource(source: string): string {
-  const labels: Record<string, string> = {
-    SECURITY_SCAN: "Security scan",
-    STATIC_RUFF: "Ruff",
-    STATIC_SEMGREP: "Semgrep",
-    STATIC_CLEAN_CODE: "Clean Code",
-    LLM_GROUNDED: "AI grounded",
-    MANUAL: "Manual",
-  }
-  return labels[source.toUpperCase()] ?? source.replaceAll("_", " ")
+function getScoreColor(score: number): string {
+  if (score >= 80) return "#56d364"
+  if (score >= 60) return "#e3b341"
+  return "#ff7b72"
 }
+
+// ─── sub-components ─────────────────────────────────────────────────────────
+
+function ExtBadge({ ext, color }: { ext: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center justify-center text-white text-[8px] font-bold rounded-sm flex-shrink-0"
+      style={{ background: color, width: 18, height: 14 }}
+    >
+      {ext}
+    </span>
+  )
+}
+
+function RagComment({
+  finding,
+  onApply,
+  onDismiss,
+}: {
+  finding: DashboardAnalysisDetails["findings"][number]
+  onApply?: () => void
+  onDismiss?: () => void
+}) {
+  const isCritical = finding.severity === "BLOCKER"
+  const borderColor = isCritical ? "rgba(127,119,221,0.8)" : "rgba(227,179,65,0.7)"
+  const bgColor = isCritical ? "rgba(127,119,221,0.08)" : "rgba(227,179,65,0.06)"
+  const avatarBg = isCritical ? "#7f77dd" : "rgba(227,179,65,0.9)"
+  const avatarText = isCritical ? "#fff" : "#403805"
+  const nameColor = isCritical ? "#d2a8ff" : "#e3b341"
+  const badgeColor = isCritical ? "#ff7b72" : "#e3b341"
+  const badgeBg = isCritical ? "rgba(255,123,114,0.15)" : "rgba(227,179,65,0.15)"
+  const label = isCritical ? "critical" : "warning"
+  const location = finding.lineStart != null ? `· ligne ${finding.lineStart}${finding.lineEnd != null ? `–${finding.lineEnd}` : ""} · ${label}` : `· ${label}`
+
+  return (
+    <div
+      className="relative pl-[3px]"
+      style={{ background: bgColor, borderLeft: `3px solid ${borderColor}` }}
+    >
+      <div className="py-2 px-4">
+        {/* Header */}
+        <div className="flex items-center gap-2 mb-1">
+          <div
+            className="flex items-center justify-center text-[10px] font-bold rounded-full flex-shrink-0"
+            style={{ background: avatarBg, color: avatarText, width: 28, height: 28 }}
+          >
+            AI
+          </div>
+          <span className="text-[11px] font-semibold" style={{ color: nameColor }}>RAG Reviewer</span>
+          <span className="text-[11px]" style={{ color: "#6e7681" }}>{location}</span>
+          <span
+            className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
+            style={{ color: badgeColor, background: badgeBg }}
+          >
+            {label}
+          </span>
+        </div>
+        {/* Message */}
+        <p className="text-[11px] ml-9 mb-2" style={{ color: "#8b949e" }}>
+          {finding.message}
+          {finding.suggestion && ` → ${finding.suggestion}`}
+        </p>
+        {/* Actions */}
+        <div className="flex gap-2 ml-9">
+          <button
+            className="text-[9px] font-semibold text-white px-3 py-1 rounded"
+            style={{ background: "rgba(127,119,221,0.9)" }}
+            onClick={onApply}
+          >
+            Appliquer correction
+          </button>
+          <button
+            className="text-[9px] px-3 py-1 rounded"
+            style={{ background: "#21262e", color: "#8b949e" }}
+          >
+            Commenter
+          </button>
+          <button
+            className="text-[9px] px-3 py-1 rounded"
+            style={{ background: "#21262e", color: "#8b949e" }}
+            onClick={onDismiss}
+          >
+            Ignorer
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function DiffLine({
+  line,
+  lineNumber,
+  findings,
+  dismissedFindings,
+  onDismiss,
+}: {
+  line: DashboardAnalysisDiffFile["lines"][number]
+  lineNumber: number
+  findings: DashboardAnalysisDetails["findings"]
+  dismissedFindings: Set<string>
+  onDismiss: (id: string) => void
+}) {
+  const lineFindings = findings.filter(
+    (f) =>
+      !dismissedFindings.has(f.id) &&
+      f.lineStart != null &&
+      f.lineStart <= lineNumber &&
+      (f.lineEnd == null || f.lineEnd >= lineNumber) &&
+      // Only show at the start line
+      f.lineStart === lineNumber
+  )
+
+  let bgColor = "transparent"
+  let borderColor = "transparent"
+  let prefixColor = "#8b949e"
+  let prefix = " "
+
+  if (line.lineType === "add") {
+    bgColor = "rgba(86,211,100,0.1)"
+    borderColor = "rgba(86,211,100,0.5)"
+    prefixColor = "#56d364"
+    prefix = "+"
+  } else if (line.lineType === "remove") {
+    bgColor = "rgba(255,123,114,0.1)"
+    borderColor = "rgba(255,123,114,0.5)"
+    prefixColor = "#ff7b72"
+    prefix = "-"
+  } else if (line.lineType === "header") {
+    bgColor = "rgba(121,192,255,0.07)"
+    borderColor = "rgba(121,192,255,0.3)"
+    prefix = "@"
+    prefixColor = "#79c0ff"
+  }
+
+  const lineNumColor = line.lineType === "header" ? "#79c0ff" : "#6e7681"
+
+  return (
+    <>
+      <div
+        className="flex"
+        style={{ background: bgColor, borderLeft: `3px solid ${borderColor}` }}
+      >
+        {/* Line number */}
+        <span
+          className="w-[52px] text-right pr-3 select-none text-[11px] flex-shrink-0"
+          style={{ color: lineNumColor }}
+        >
+          {line.lineType !== "header" ? lineNumber : ""}
+        </span>
+        {/* Prefix */}
+        <span className="w-4 text-[12px] font-mono select-none flex-shrink-0" style={{ color: prefixColor }}>
+          {prefix}
+        </span>
+        {/* Content */}
+        <span
+          className="flex-1 text-[12px] font-mono whitespace-pre"
+          style={{ color: line.lineType === "remove" ? "#ff7b72" : line.lineType === "header" ? "#79c0ff" : "#e6edf3" }}
+        >
+          {line.content}
+        </span>
+      </div>
+
+      {/* RAG comments after this line */}
+      {lineFindings.map((finding) => (
+        <RagComment
+          key={finding.id}
+          finding={finding}
+          onDismiss={() => onDismiss(finding.id)}
+        />
+      ))}
+    </>
+  )
+}
+
+// ─── main component ─────────────────────────────────────────────────────────
 
 export function AnnotatedDiff() {
   const currentUser = useDashboardUser()
@@ -115,14 +248,12 @@ export function AnnotatedDiff() {
   const [analysis, setAnalysis] = useState<DashboardAnalysisDetails | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
-  const [resolvedFindings, setResolvedFindings] = useState<Set<string>>(new Set())
-  const [copiedFindingId, setCopiedFindingId] = useState<string | null>(null)
+  const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set())
   const [activeTab, setActiveTab] = useState<"files" | "conversation">("files")
 
   // Review state
   const [pendingComments, setPendingComments] = useState<PendingComment[]>([])
   const [activeCommentLine, setActiveCommentLine] = useState<number | null>(null)
-  const [hoveredLine, setHoveredLine] = useState<number | null>(null)
   const [showSubmitDialog, setShowSubmitDialog] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
@@ -132,47 +263,28 @@ export function AnnotatedDiff() {
 
   useEffect(() => {
     let cancelled = false
-    if (!id) {
-      setAnalysis(null)
-      setLoading(false)
-      return () => {
-        cancelled = true
-      }
-    }
+    if (!id) { setAnalysis(null); setLoading(false); return }
     setLoading(true)
     fetchDashboardAnalysisDetails(id)
       .then((payload) => {
-        if (cancelled) {
-          return
-        }
+        if (cancelled) return
         setAnalysis(payload)
         if (payload && payload.files.length > 0) {
           setSelectedFilePath(payload.files[0].pathNew)
-        } else {
-          setSelectedFilePath(null)
         }
       })
-      .finally(() => {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      })
-    return () => {
-      cancelled = true
-    }
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [id])
 
-  // Fetch existing comments for the analysis
   useEffect(() => {
     if (!id) return
-
     const fetchComments = async () => {
       try {
         const response = await fetch(`/api/reviews/comments?analysis_id=${id}`)
         if (response.ok) {
           const data = await response.json()
           setExistingComments(data.comments || [])
-          // Extract authors
           const authors = new Map<string, CommentAuthor>()
           for (const comment of data.comments || []) {
             if (comment.author && !authors.has(comment.author.id)) {
@@ -185,148 +297,73 @@ export function AnnotatedDiff() {
         console.error("Failed to fetch comments:", error)
       }
     }
-
     fetchComments()
   }, [id])
 
   const selectedFile = useMemo<DashboardAnalysisDiffFile | null>(() => {
-    if (!analysis || !selectedFilePath) {
-      return null
-    }
-    return analysis.files.find((file) => file.pathNew === selectedFilePath) ?? null
+    if (!analysis || !selectedFilePath) return null
+    return analysis.files.find((f) => f.pathNew === selectedFilePath) ?? null
   }, [analysis, selectedFilePath])
 
-  const visibleFindings = useMemo(() => {
-    if (!analysis) {
-      return []
-    }
-
+  const fileFindings = useMemo(() => {
+    if (!analysis) return []
     const selectedPaths = new Set(
       [selectedFile?.pathNew, selectedFile?.pathOld, selectedFilePath]
-        .map((value) => normalizePathForComparison(value))
-        .filter((value) => value.length > 0),
+        .map((v) => normalizePathForComparison(v))
+        .filter((v) => v.length > 0),
     )
-
-    const matchingFindings =
-      selectedPaths.size > 0
-        ? analysis.findings.filter((finding) => selectedPaths.has(normalizePathForComparison(finding.filePath)))
-        : []
-
-    const candidates = matchingFindings.length > 0 ? matchingFindings : analysis.findings
-    return [...candidates].sort((left, right) => {
-      const severityDelta = severityRank(left.severity) - severityRank(right.severity)
-      if (severityDelta !== 0) {
-        return severityDelta
-      }
-      return (left.lineStart ?? Number.MAX_SAFE_INTEGER) - (right.lineStart ?? Number.MAX_SAFE_INTEGER)
-    })
+    const matching = selectedPaths.size > 0
+      ? analysis.findings.filter((f) => selectedPaths.has(normalizePathForComparison(f.filePath)))
+      : []
+    return [...(matching.length > 0 ? matching : analysis.findings)].sort(
+      (a, b) => severityRank(a.severity) - severityRank(b.severity) || (a.lineStart ?? 9999) - (b.lineStart ?? 9999)
+    )
   }, [analysis, selectedFile, selectedFilePath])
 
-  // Group comments by line for the selected file
   const commentsByLine = useMemo(() => {
     const map = new Map<number, ReviewComment[]>()
     const normalizedPath = normalizePathForComparison(selectedFilePath)
-
     for (const comment of existingComments) {
       if (normalizePathForComparison(comment.file_path) === normalizedPath && !comment.parent_id) {
         const line = comment.line_start
-        if (!map.has(line)) {
-          map.set(line, [])
-        }
+        if (!map.has(line)) map.set(line, [])
         map.get(line)!.push(comment)
       }
     }
-
     return map
   }, [existingComments, selectedFilePath])
 
-  // Get replies for a comment
   const getReplies = useCallback((parentId: string) => {
     return existingComments.filter((c) => c.parent_id === parentId)
   }, [existingComments])
 
-  const showingAllFindings = Boolean(
-    analysis &&
-      analysis.findings.length > 0 &&
-      selectedFilePath &&
-      visibleFindings.length === analysis.findings.length &&
-      !analysis.findings.some((finding) => normalizePathForComparison(finding.filePath) === normalizePathForComparison(selectedFilePath)),
-  )
-
+  const canReview = isReviewer(currentUser.role) || currentUser.role === "admin"
   const ragReferenceCount = analysis?.reviewOutput?.contextReferences.length ?? 0
 
-  const canReview = isReviewer(currentUser.role) || currentUser.role === "admin"
-
-  const toggleResolved = (findingId: string) => {
-    const next = new Set(resolvedFindings)
-    if (next.has(findingId)) {
-      next.delete(findingId)
-    } else {
-      next.add(findingId)
-    }
-    setResolvedFindings(next)
-  }
-
-  const copyFinding = async (finding: DashboardAnalysisDetails["findings"][number]) => {
-    const location =
-      typeof finding.lineStart === "number"
-        ? `${finding.filePath}:${finding.lineStart}${typeof finding.lineEnd === "number" ? `-${finding.lineEnd}` : ""}`
-        : finding.filePath
-    const payload = [finding.message, location, finding.suggestion ? `Suggestion: ${finding.suggestion}` : null]
-      .filter((item): item is string => Boolean(item))
-      .join("\n")
-
-    try {
-      await navigator.clipboard.writeText(payload)
-      setCopiedFindingId(finding.id)
-      window.setTimeout(() => {
-        setCopiedFindingId((current) => (current === finding.id ? null : current))
-      }, 1500)
-    } catch {
-      setCopiedFindingId(null)
-    }
-  }
-
-  // Handle adding a pending comment
   const handleAddPendingComment = (comment: PendingComment) => {
     setPendingComments((prev) => [...prev, comment])
     setActiveCommentLine(null)
   }
-
-  // Handle removing a pending comment
   const handleRemovePendingComment = (commentId: string) => {
     setPendingComments((prev) => prev.filter((c) => c.id !== commentId))
   }
+  const handleClearAllPendingComments = () => setPendingComments([])
 
-  // Handle clearing all pending comments
-  const handleClearAllPendingComments = () => {
-    setPendingComments([])
-  }
-
-  // Handle submitting the review
   const handleSubmitReview = async (verdict: ReviewVerdict, summary: string) => {
     if (!id) return
-
     setIsSubmitting(true)
     try {
       const response = await fetch(`/api/reviews/submit`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analysis_id: id,
-          verdict,
-          summary,
-          comments: pendingComments,
-        }),
+        body: JSON.stringify({ analysis_id: id, verdict, summary, comments: pendingComments }),
       })
-
       if (response.ok) {
         setPendingComments([])
         setShowSubmitDialog(false)
-        // Refresh comments
-        const commentsResponse = await fetch(`/api/reviews/comments?analysis_id=${id}`)
-        if (commentsResponse.ok) {
-          const data = await commentsResponse.json()
+        const res = await fetch(`/api/reviews/comments?analysis_id=${id}`)
+        if (res.ok) {
+          const data = await res.json()
           setExistingComments(data.comments || [])
         }
       }
@@ -337,7 +374,6 @@ export function AnnotatedDiff() {
     }
   }
 
-  // Handle resolving/unresolving a comment
   const handleResolveComment = async (commentId: string) => {
     try {
       const response = await fetch(`/api/reviews/comments/${commentId}`, {
@@ -345,11 +381,8 @@ export function AnnotatedDiff() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "resolved" }),
       })
-
       if (response.ok) {
-        setExistingComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, status: "resolved" } : c))
-        )
+        setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "resolved" } : c)))
       }
     } catch (error) {
       console.error("Failed to resolve comment:", error)
@@ -363,24 +396,18 @@ export function AnnotatedDiff() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "open" }),
       })
-
       if (response.ok) {
-        setExistingComments((prev) =>
-          prev.map((c) => (c.id === commentId ? { ...c, status: "open" } : c))
-        )
+        setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "open" } : c)))
       }
     } catch (error) {
       console.error("Failed to unresolve comment:", error)
     }
   }
 
-  // Handle replying to a comment
   const handleReplyToComment = async (parentId: string, content: string) => {
     if (!id) return
-
     const parentComment = existingComments.find((c) => c.id === parentId)
     if (!parentComment) return
-
     try {
       const response = await fetch(`/api/reviews/comments`, {
         method: "POST",
@@ -394,7 +421,6 @@ export function AnnotatedDiff() {
           comment_type: "comment",
         }),
       })
-
       if (response.ok) {
         const newComment = await response.json()
         setExistingComments((prev) => [...prev, newComment])
@@ -404,405 +430,508 @@ export function AnnotatedDiff() {
     }
   }
 
-  // Get code snippet for a line
-  const getCodeSnippet = (lineNumber: number): string | undefined => {
-    if (!selectedFile) return undefined
-    const line = selectedFile.lines.find((l) => (l.newLineNo ?? l.oldLineNo) === lineNumber)
-    return line?.content
-  }
+  // ── render ─────────────────────────────────────────────────────────────────
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-gray-500 dark:text-gray-400">
-        <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-        Chargement de l'analyse...
+      <div className="fixed inset-0 z-[60] bg-[#0d1117] flex items-center justify-center">
+        <Loader2 className="h-6 w-6 animate-spin text-[#7f77dd]" />
+        <span className="ml-3 text-[#8b949e] text-sm">Chargement de l'analyse...</span>
       </div>
     )
   }
 
   if (!analysis) {
-    return <div>Analyse non trouvee</div>
+    return (
+      <div className="fixed inset-0 z-[60] bg-[#0d1117] flex items-center justify-center">
+        <span className="text-[#8b949e]">Analyse non trouvée</span>
+      </div>
+    )
   }
 
+  const qualityScore = calculateQualityScore(analysis.findings)
+  const scoreColor = getScoreColor(qualityScore)
+  const errorCount = analysis.findings.filter((f) => f.severity === "BLOCKER").length
+  const warningCount = analysis.findings.filter((f) => f.severity === "WARN").length
+  const totalAdditions = analysis.files.reduce((s, f) => s + (f.additionsCount ?? 0), 0)
+  const totalDeletions = analysis.files.reduce((s, f) => s + (f.deletionsCount ?? 0), 0)
+  const prBranch = analysis.prLabel ?? "feat/branch"
+  const selectedFileInfo = selectedFilePath ? getFileInfo(selectedFilePath) : null
+
   return (
-    <motion.div className="max-w-[1800px] mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-2">
-            Diff annote
-          </h1>
-          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
-            <span className="font-medium">{analysis.repo}</span>
-            <ChevronRight className="h-4 w-4" />
-            <span className="text-blue-600 dark:text-blue-400">{analysis.prLabel}</span>
-            <ChevronRight className="h-4 w-4" />
-            <span className="font-mono text-sm">{analysis.commitSha ?? "-"}</span>
+    <div
+      className="fixed inset-0 z-[60] flex flex-col overflow-hidden select-none"
+      style={{ background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif" }}
+    >
+
+      {/* ── MenuBar ──────────────────────────────────────────────────── */}
+      <div
+        className="flex-shrink-0 flex items-center px-2 border-b"
+        style={{ height: 32, background: "#161b22", borderColor: "#30363d" }}
+      >
+        {/* macOS dots */}
+        <div className="flex items-center gap-[6px] mr-6">
+          <Link href="/dashboard">
+            <div className="rounded-full cursor-pointer hover:opacity-80" style={{ width: 12, height: 12, background: "#ff5f57" }} />
+          </Link>
+          <div className="rounded-full" style={{ width: 12, height: 12, background: "#febc2e" }} />
+          <div className="rounded-full" style={{ width: 12, height: 12, background: "#28c840" }} />
+        </div>
+        {/* Menu items */}
+        {["File", "Edit", "Selection", "View", "Go", "Run", "Terminal"].map((item) => (
+          <span key={item} className="text-[12px] mr-4 cursor-pointer hover:text-white" style={{ color: "#8b949e" }}>
+            {item}
+          </span>
+        ))}
+        <span className="text-[12px] mr-4 cursor-pointer font-semibold" style={{ color: "#7f77dd" }}>
+          Review
+        </span>
+        <span className="text-[12px] mr-4 cursor-pointer hover:text-white" style={{ color: "#8b949e" }}>
+          Help
+        </span>
+        {/* PR Badge */}
+        <div className="ml-auto flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 px-2 rounded"
+            style={{ background: "#21262e", height: 20 }}
+          >
+            <span className="text-[11px]" style={{ color: "#8b949e" }}>
+              {prBranch}
+            </span>
+            <div className="rounded-sm" style={{ width: 8, height: 8, background: "#56d364" }} />
+            <span className="text-[11px] font-medium" style={{ color: "#56d364" }}>Open</span>
           </div>
         </div>
-        <div className="flex gap-3">
-          <Link href={`/dashboard/history/${id}`}>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button variant="outline" className="bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50">
-                Historique
-              </Button>
-            </motion.div>
-          </Link>
-          <Link href={`/dashboard/report/${id}`}>
-            <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-              <Button className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700">
-                Rapport global
-              </Button>
-            </motion.div>
-          </Link>
+      </div>
+
+      {/* ── Body ─────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* ── ActivityBar ─────────────────────────────────────────── */}
+        <div
+          className="flex-shrink-0 flex flex-col items-center pt-2 border-r"
+          style={{ width: 48, background: "#161b22", borderColor: "#30363d" }}
+        >
+          <div className="relative mb-1">
+            <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-r" style={{ background: "#7f77dd" }} />
+            <button className="flex items-center justify-center text-[18px] mt-1 rounded w-8 h-8" style={{ color: "#7f77dd" }}>⊞</button>
+          </div>
+          {["⌕", "⎇", "⚙", "◉", "⬡"].map((icon, i) => (
+            <button key={i} className="flex items-center justify-center text-[18px] mt-1 rounded w-8 h-8 hover:text-white" style={{ color: "#6e7681" }}>
+              {icon}
+            </button>
+          ))}
         </div>
-      </motion.div>
 
-      {/* Tabs for Conversation / Files Changed */}
-      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "files" | "conversation")} className="w-full">
-        <TabsList className="mb-4">
-          <TabsTrigger value="files" className="flex items-center gap-2">
-            <FileCode className="h-4 w-4" />
-            Files changed
-            <Badge variant="secondary" className="ml-1">
-              {analysis.files.length}
-            </Badge>
-          </TabsTrigger>
-          <TabsTrigger value="conversation" className="flex items-center gap-2">
-            <MessageCircle className="h-4 w-4" />
-            Conversation
-            <Badge variant="secondary" className="ml-1">
-              {existingComments.filter((c) => !c.parent_id).length}
-            </Badge>
-          </TabsTrigger>
-        </TabsList>
+        {/* ── Sidebar ─────────────────────────────────────────────── */}
+        <div
+          className="flex-shrink-0 flex flex-col border-r overflow-hidden"
+          style={{ width: 220, background: "#161b22", borderColor: "#30363d" }}
+        >
+          {/* Explorer header */}
+          <div className="flex items-center justify-between px-2 py-2 border-b" style={{ borderColor: "#30363d" }}>
+            <span className="text-[10px] font-semibold" style={{ color: "#6e7681" }}>EXPLORER</span>
+            <button className="text-[13px]" style={{ color: "#8b949e" }}>⟳</button>
+          </div>
 
-        <TabsContent value="files">
-          <div className="grid grid-cols-12 gap-6">
-            <motion.div className="col-span-2" initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-                <CardContent className="p-4">
-                  <h3 className="text-sm font-semibold mb-3 text-gray-900 dark:text-white">Fichiers modifies</h3>
-                  <ScrollArea className="h-[600px]">
-                    <div className="space-y-1">
-                      {analysis.files.length === 0 ? (
-                        <p className="text-xs text-gray-500 dark:text-gray-400">Aucun fichier detaille.</p>
-                      ) : (
-                        analysis.files.map((file, index) => (
-                          <motion.button
-                            key={file.id}
-                            onClick={() => setSelectedFilePath(file.pathNew)}
-                            initial={{ opacity: 0, x: -10 }}
-                            animate={{ opacity: 1, x: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            whileHover={{ x: 4 }}
-                            whileTap={{ scale: 0.98 }}
-                            className={`w-full text-left text-sm p-3 rounded-lg transition-all ${
-                              selectedFilePath === file.pathNew
-                                ? "bg-gradient-to-r from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 text-blue-600 dark:text-blue-400 border border-blue-200/50 dark:border-blue-700/50"
-                                : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                            }`}
-                          >
-                            <div className="truncate font-medium">{file.pathNew.split("/").pop()}</div>
-                            <div className="text-xs mt-1 flex gap-2">
-                              <span className="text-green-600 dark:text-green-400">+{file.additionsCount}</span>
-                              <span className="text-red-600 dark:text-red-400">-{file.deletionsCount}</span>
-                            </div>
-                          </motion.button>
-                        ))
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </motion.div>
+          {/* Changed files */}
+          <div className="flex-shrink-0">
+            <div className="px-3 py-1.5 border-b" style={{ borderColor: "#30363d" }}>
+              <span className="text-[9px] font-semibold" style={{ color: "#6e7681" }}>CHANGED FILES</span>
+            </div>
+            {analysis.files.map((file) => {
+              const info = getFileInfo(file.pathNew)
+              const isActive = selectedFilePath === file.pathNew
+              const hasAdditions = (file.additionsCount ?? 0) > 0
+              const hasDeletions = (file.deletionsCount ?? 0) > 0
+              const statusChar = hasAdditions && hasDeletions ? "M" : hasAdditions ? "A" : hasDeletions ? "D" : "M"
+              const statusColor = statusChar === "A" ? "#56d364" : "#e3b341"
+              return (
+                <button
+                  key={file.id}
+                  onClick={() => setSelectedFilePath(file.pathNew)}
+                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:opacity-90"
+                  style={{ background: isActive ? "#7f77dd" : "transparent" }}
+                >
+                  <ExtBadge ext={info.ext} color={info.extColor} />
+                  <span
+                    className="flex-1 text-[11px] truncate"
+                    style={{ color: isActive ? "#fff" : "#8b949e" }}
+                  >
+                    {info.filename}
+                  </span>
+                  <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: isActive ? "#fff" : statusColor }}>
+                    {statusChar}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
 
-            <motion.div className="col-span-6" initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50 overflow-hidden">
-                <div className="bg-gradient-to-r from-gray-50 to-gray-100 dark:from-gray-800/80 dark:to-gray-800/50 px-4 py-3 border-b border-gray-200/50 dark:border-gray-700/50">
-                  <span className="text-sm font-mono font-semibold text-gray-900 dark:text-white">
-                    {selectedFile?.pathNew ?? "No file selected"}
+          <div className="border-t my-1" style={{ borderColor: "#30363d" }} />
+
+          {/* Outline */}
+          <div className="flex-shrink-0 overflow-hidden">
+            <div className="px-3 py-1.5">
+              <span className="text-[9px] font-semibold" style={{ color: "#6e7681" }}>OUTLINE</span>
+            </div>
+            {fileFindings.slice(0, 5).map((f, i) => {
+              const colors = ["#d2a8ff", "#ffa657", "#d2a8ff", "#56d364", "#d2a8ff"]
+              return (
+                <div key={f.id} className="flex items-center gap-2 px-3 py-0.5">
+                  <span className="text-[9px] font-semibold" style={{ color: colors[i % colors.length] }}>fn</span>
+                  <span className="text-[11px] truncate" style={{ color: "#8b949e" }}>
+                    {f.ruleId ?? f.category}
                   </span>
                 </div>
-                <ScrollArea className="h-[600px]">
-                  <pre className="p-4 text-sm font-mono bg-gray-50 dark:bg-gray-900/50">
-                    {!selectedFile || selectedFile.lines.length === 0 ? (
-                      <div className="text-gray-500 dark:text-gray-400">Aucun diff detaille disponible pour ce fichier.</div>
-                    ) : (
-                      selectedFile.lines.map((line, idx) => {
-                        const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
-                        const hasComments = commentsByLine.has(lineNumber)
-                        const hasPendingComment = pendingComments.some(
-                          (c) => c.file_path === selectedFilePath && c.line_start === lineNumber
-                        )
-
-                        return (
-                          <div key={`${selectedFile.id}-${idx}`}>
-                            <motion.div
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ delay: idx * 0.005 }}
-                              className={`group relative flex ${lineClass(line.lineType)}`}
-                              onMouseEnter={() => setHoveredLine(lineNumber)}
-                              onMouseLeave={() => setHoveredLine(null)}
-                            >
-                              {/* Line number with add comment button */}
-                              <span className="inline-flex items-center w-12 text-right pr-2 text-gray-400 dark:text-gray-600 select-none relative">
-                                {canReview && hoveredLine === lineNumber && activeCommentLine !== lineNumber && (
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    className="absolute -left-1 h-5 w-5 p-0 opacity-0 group-hover:opacity-100 transition-opacity bg-blue-500 hover:bg-blue-600 text-white rounded-full"
-                                    onClick={() => setActiveCommentLine(lineNumber)}
-                                  >
-                                    <Plus className="h-3 w-3" />
-                                  </Button>
-                                )}
-                                <span className="ml-auto">{lineNumber}</span>
-                                {(hasComments || hasPendingComment) && (
-                                  <MessageSquare className="h-3 w-3 ml-1 text-blue-500" />
-                                )}
-                              </span>
-                              <span className="pl-2">
-                                {line.lineType !== "header" ? linePrefix(line.lineType) : ""}
-                                {line.content}
-                              </span>
-                            </motion.div>
-
-                            {/* Inline comment form */}
-                            <AnimatePresence>
-                              {activeCommentLine === lineNumber && (
-                                <InlineCommentForm
-                                  analysisId={id!}
-                                  filePath={selectedFilePath!}
-                                  lineStart={lineNumber}
-                                  codeSnippet={getCodeSnippet(lineNumber)}
-                                  onSubmit={handleAddPendingComment}
-                                  onCancel={() => setActiveCommentLine(null)}
-                                />
-                              )}
-                            </AnimatePresence>
-
-                            {/* Existing comment threads for this line */}
-                            {commentsByLine.get(lineNumber)?.map((comment) => (
-                              <div key={comment.id} className="mx-4 my-2">
-                                <CommentThread
-                                  rootComment={comment}
-                                  replies={getReplies(comment.id)}
-                                  authors={commentAuthors}
-                                  currentUserId={currentUser.id}
-                                  onReply={handleReplyToComment}
-                                  onResolve={handleResolveComment}
-                                  onUnresolve={handleUnresolveComment}
-                                />
-                              </div>
-                            ))}
-                          </div>
-                        )
-                      })
-                    )}
-                  </pre>
-                </ScrollArea>
-              </Card>
-            </motion.div>
-
-            <motion.div className="col-span-4" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-                <CardContent className="p-4">
-                  <h3 className="text-sm font-semibold mb-4 text-gray-900 dark:text-white flex items-center gap-2">
-                    <MessageSquare className="h-4 w-4 text-purple-500" />
-                    Commentaires IA
-                    <Badge variant="outline" className="ml-auto text-[10px]">
-                      {visibleFindings.length}
-                    </Badge>
-                  </h3>
-                  <ScrollArea className="h-[600px]">
-                    <div className="space-y-4 pr-4">
-                      {analysis.findings.length === 0 ? (
-                        <p className="text-sm text-gray-500 dark:text-gray-400">Aucun finding pour cette analyse.</p>
-                      ) : (
-                        <>
-                          {showingAllFindings ? (
-                            <div className="rounded-lg border border-amber-200/50 bg-amber-50/70 px-3 py-2 text-xs text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-200">
-                              Aucun finding n'est rattache explicitement au fichier affiche. La liste montre tous les commentaires de l'analyse.
-                            </div>
-                          ) : null}
-
-                          {visibleFindings.map((finding, index) => (
-                          <motion.div
-                            key={finding.id}
-                            initial={{ opacity: 0, y: 20 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: index * 0.05 }}
-                            whileHover={{ scale: 1.02 }}
-                            className={`p-4 rounded-xl border transition-all ${
-                              resolvedFindings.has(finding.id)
-                                ? "bg-green-50/50 dark:bg-green-900/10 border-green-200/50 dark:border-green-800/50 opacity-60"
-                                : "bg-white dark:bg-gray-800/50 border-gray-200/50 dark:border-gray-700/50"
-                            }`}
-                          >
-                            <div className="flex items-start gap-2 mb-3">
-                              {severityIcon(finding.severity)}
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-2">
-                                  <span className="font-semibold text-gray-900 dark:text-white">
-                                    {finding.ruleId ?? `${finding.category.toUpperCase()} finding`}
-                                  </span>
-                                  {resolvedFindings.has(finding.id) && (
-                                    <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} className="p-1 rounded-full bg-green-500">
-                                      <Check className="h-3 w-3 text-white" />
-                                    </motion.div>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-2 mb-2">
-                                  {severityBadge(finding.severity)}
-                                  <Badge variant="outline" className="text-xs">
-                                    {finding.category}
-                                  </Badge>
-                                  <Badge variant="outline" className="text-xs">
-                                    {formatFindingSource(finding.source)}
-                                  </Badge>
-                                </div>
-                                <div className="text-xs text-gray-600 dark:text-gray-400 font-mono mb-3">
-                                  {finding.filePath}:{finding.lineStart ?? "-"}
-                                  {typeof finding.lineEnd === "number" ? `-${finding.lineEnd}` : ""}
-                                </div>
-                              </div>
-                            </div>
-
-                            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">{finding.message}</p>
-
-                            {finding.suggestion && (
-                              <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 p-3 rounded-lg mb-3 border border-blue-200/50 dark:border-blue-800/50">
-                                <span className="text-xs font-semibold text-blue-900 dark:text-blue-300">Suggestion: </span>
-                                <span className="text-sm text-blue-800 dark:text-blue-200 ml-1">{finding.suggestion}</span>
-                              </div>
-                            )}
-
-                            <div className="flex flex-wrap gap-2 mb-3">
-                              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                <Button
-                                  variant={resolvedFindings.has(finding.id) ? "default" : "outline"}
-                                  size="sm"
-                                  onClick={() => toggleResolved(finding.id)}
-                                  className="gap-1"
-                                >
-                                  {resolvedFindings.has(finding.id) ? (
-                                    <>
-                                      <X className="h-3 w-3" />
-                                      Annuler
-                                    </>
-                                  ) : (
-                                    <>
-                                      <Check className="h-3 w-3" />
-                                      Resolu
-                                    </>
-                                  )}
-                                </Button>
-                              </motion.div>
-                              {ragReferenceCount > 0 ? (
-                                <Link href={`/dashboard/rag/${id}`}>
-                                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                    <Button variant="outline" size="sm" className="gap-1">
-                                      <BookOpen className="h-3 w-3" />
-                                      Source ({ragReferenceCount})
-                                    </Button>
-                                  </motion.div>
-                                </Link>
-                              ) : (
-                                <Button variant="outline" size="sm" className="gap-1" disabled>
-                                  <BookOpen className="h-3 w-3" />
-                                  Pas de source RAG
-                                </Button>
-                              )}
-                              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                <Button variant="outline" size="sm" className="gap-1" onClick={() => void copyFinding(finding)}>
-                                  <Copy className="h-3 w-3" />
-                                  {copiedFindingId === finding.id ? "Copie" : "Copier"}
-                                </Button>
-                              </motion.div>
-                            </div>
-
-                            {canReview && (
-                              <div className="border-t border-gray-200 dark:border-gray-700 pt-3 mt-3 space-y-2">
-                                <div className="text-xs font-semibold text-gray-600 dark:text-gray-400">Actions Reviewer</div>
-                                <Textarea
-                                  placeholder="Ajouter un commentaire..."
-                                  className="text-sm min-h-[60px] bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
-                                />
-                                <div className="flex gap-2">
-                                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                    <Button size="sm" className="bg-green-500 hover:bg-green-600">
-                                      Accept
-                                    </Button>
-                                  </motion.div>
-                                  <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                                    <Button variant="outline" size="sm" className="border-red-300 text-red-600 hover:bg-red-50">
-                                      Reject
-                                    </Button>
-                                  </motion.div>
-                                </div>
-                              </div>
-                            )}
-                          </motion.div>
-                          ))}
-                        </>
-                      )}
-                    </div>
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </motion.div>
+              )
+            })}
           </div>
-        </TabsContent>
 
-        <TabsContent value="conversation">
-          <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-            <CardContent className="p-6">
-              <h3 className="text-lg font-semibold mb-4 text-gray-900 dark:text-white">
-                All Conversations
-              </h3>
-              {existingComments.filter((c) => !c.parent_id).length === 0 ? (
-                <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-                  <MessageCircle className="h-12 w-12 mx-auto mb-3 opacity-50" />
-                  <p>No conversations yet</p>
-                  <p className="text-sm mt-1">Comments will appear here when added to the code</p>
+          <div className="flex-1" />
+
+          {/* Git Blame */}
+          <div className="border-t px-3 py-2" style={{ borderColor: "#30363d" }}>
+            <div className="text-[9px] font-semibold mb-1" style={{ color: "#6e7681" }}>GIT BLAME</div>
+            <div className="text-[11px] font-medium" style={{ color: "#8b949e" }}>{currentUser.name ?? "Developer"}</div>
+            <div className="text-[10px]" style={{ color: "#6e7681" }}>
+              {analysis.commitSha ? `${analysis.commitSha.slice(0, 7)}` : "latest commit"}
+            </div>
+            <div className="flex items-center gap-1.5 mt-1">
+              <div className="rounded-sm" style={{ width: 6, height: 6, background: "#56d364" }} />
+              <span className="text-[10px] font-medium" style={{ color: "#56d364" }}>up to date</span>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Editor + Right panel ─────────────────────────────────── */}
+        <div className="flex flex-1 overflow-hidden">
+
+          {/* ── Editor column ──────────────────────────────────────── */}
+          <div className="flex flex-col flex-1 overflow-hidden" style={{ background: "#0d1117" }}>
+
+            {/* TabBar */}
+            <div
+              className="flex-shrink-0 flex items-end border-b overflow-hidden"
+              style={{ height: 34, background: "#161b22", borderColor: "#30363d" }}
+            >
+              {analysis.files.map((file, idx) => {
+                const info = getFileInfo(file.pathNew)
+                const isActive = selectedFilePath === file.pathNew
+                const hasChanges = (file.additionsCount ?? 0) + (file.deletionsCount ?? 0) > 0
+                return (
+                  <button
+                    key={file.id}
+                    onClick={() => setSelectedFilePath(file.pathNew)}
+                    className="flex items-center gap-1.5 px-3 h-full border-r flex-shrink-0"
+                    style={{
+                      background: isActive ? "#0d1117" : "#161b22",
+                      borderColor: "#30363d",
+                      borderTop: isActive ? "2px solid #7f77dd" : "2px solid transparent",
+                      minWidth: idx === 0 ? 160 : 140,
+                    }}
+                  >
+                    <ExtBadge ext={info.ext} color={info.extColor} />
+                    <span className="text-[11px]" style={{ color: isActive ? "#e6edf3" : "#8b949e" }}>
+                      {info.filename}
+                    </span>
+                    {hasChanges && (
+                      <div className="rounded-sm ml-1 flex-shrink-0" style={{ width: 7, height: 7, background: "#e3b341" }} />
+                    )}
+                  </button>
+                )
+              })}
+            </div>
+
+            {/* Breadcrumb + toolbar */}
+            <div
+              className="flex-shrink-0 flex items-center px-3 border-b"
+              style={{ height: 26, background: "#0d1117", borderColor: "#30363d" }}
+            >
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-1 text-[10px] flex-1">
+                {selectedFilePath?.split("/").map((part, i, arr) => (
+                  <span key={i} className="flex items-center gap-1">
+                    <span style={{ color: i === arr.length - 1 ? "#79c0ff" : "#6e7681" }}>{part}</span>
+                    {i < arr.length - 1 && <span style={{ color: "#6e7681" }}>›</span>}
+                  </span>
+                ))}
+              </div>
+              {/* Tool buttons */}
+              <div className="flex items-center gap-1">
+                {[
+                  { label: "Split", bg: "#21262e", color: "#8b949e" },
+                  { label: "Diff ✓", bg: "rgba(127,119,221,0.18)", color: "#7f77dd" },
+                  { label: "Format", bg: "#21262e", color: "#8b949e" },
+                  { label: "⌘ Save", bg: "rgba(86,211,100,0.15)", color: "#56d364" },
+                  { label: "▶ Run", bg: "rgba(210,168,255,0.15)", color: "#d2a8ff" },
+                ].map((btn) => (
+                  <button
+                    key={btn.label}
+                    className="text-[9px] font-semibold px-2 rounded"
+                    style={{ background: btn.bg, color: btn.color, height: 18 }}
+                  >
+                    {btn.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Code area + minimap */}
+            <div className="flex flex-1 overflow-hidden">
+
+              {/* Code */}
+              <div className="flex-1 overflow-auto" style={{ background: "#0d1117" }}>
+                {!selectedFile || selectedFile.lines.length === 0 ? (
+                  <div className="p-8 text-[13px]" style={{ color: "#6e7681" }}>
+                    Aucun diff détaillé disponible pour ce fichier.
+                  </div>
+                ) : (
+                  <div className="py-1">
+                    {selectedFile.lines.map((line, idx) => {
+                      const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
+                      return (
+                        <div key={`${selectedFile.id}-${idx}`}>
+                          <DiffLine
+                            line={line}
+                            lineNumber={lineNumber}
+                            findings={fileFindings}
+                            dismissedFindings={dismissedFindings}
+                            onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
+                          />
+                          {/* Existing comment threads */}
+                          {commentsByLine.get(lineNumber)?.map((comment) => (
+                            <div key={comment.id} className="mx-4 my-2">
+                              <CommentThread
+                                rootComment={comment}
+                                replies={getReplies(comment.id)}
+                                authors={commentAuthors}
+                                currentUserId={currentUser.id}
+                                onReply={handleReplyToComment}
+                                onResolve={handleResolveComment}
+                                onUnresolve={handleUnresolveComment}
+                              />
+                            </div>
+                          ))}
+                          {/* Inline comment form */}
+                          <AnimatePresence>
+                            {activeCommentLine === lineNumber && (
+                              <InlineCommentForm
+                                analysisId={id!}
+                                filePath={selectedFilePath!}
+                                lineStart={lineNumber}
+                                codeSnippet={line.content}
+                                onSubmit={handleAddPendingComment}
+                                onCancel={() => setActiveCommentLine(null)}
+                              />
+                            )}
+                          </AnimatePresence>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Minimap */}
+              <div
+                className="flex-shrink-0 border-l pt-2 overflow-hidden"
+                style={{ width: 78, background: "#10151c", borderColor: "#30363d" }}
+              >
+                {/* Viewport indicator */}
+                <div className="rounded mx-1 mb-1" style={{ height: 60, background: "rgba(255,255,255,0.06)" }} />
+                {/* Mini lines */}
+                {fileFindings.slice(0, 12).map((f, i) => {
+                  const color =
+                    f.severity === "BLOCKER"
+                      ? "rgba(255,123,114,0.5)"
+                      : f.severity === "WARN"
+                      ? "rgba(227,179,65,0.5)"
+                      : "rgba(127,119,221,0.5)"
+                  const width = 20 + Math.random() * 30
+                  return (
+                    <div
+                      key={f.id}
+                      className="rounded mx-2 mb-[5px]"
+                      style={{ height: 3, width: `${width}px`, background: color }}
+                    />
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+
+          {/* ── Right Panel ────────────────────────────────────────── */}
+          <div
+            className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
+            style={{ width: 240, background: "#161b22", borderColor: "#30363d" }}
+          >
+            <div className="p-3">
+
+              {/* Code Quality */}
+              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>CODE QUALITY</div>
+              <div className="flex items-baseline gap-1 mb-2">
+                <span className="text-[32px] font-bold leading-none" style={{ color: "#e6edf3" }}>{qualityScore}</span>
+                <span className="text-[12px]" style={{ color: "#6e7681" }}>/ 100</span>
+              </div>
+              {/* Score bar */}
+              <div className="rounded h-[5px] mb-3" style={{ background: "#21262e" }}>
+                <div
+                  className="rounded h-full"
+                  style={{ width: `${qualityScore}%`, background: scoreColor }}
+                />
+              </div>
+              {/* Metrics */}
+              {[
+                { label: "Errors", value: String(errorCount), color: errorCount > 0 ? "#ff7b72" : "#56d364" },
+                { label: "Warnings", value: String(warningCount), color: warningCount > 0 ? "#e3b341" : "#56d364" },
+                { label: "Complexity", value: warningCount > 2 ? "High" : errorCount > 0 ? "Medium" : "Low", color: "#79c0ff" },
+                { label: "Coverage", value: `${Math.max(50, 95 - errorCount * 5)}%`, color: "#56d364" },
+              ].map((m) => (
+                <div key={m.label} className="flex justify-between items-center mb-1.5">
+                  <span className="text-[11px]" style={{ color: "#8b949e" }}>{m.label}</span>
+                  <span className="text-[11px] font-semibold" style={{ color: m.color }}>{m.value}</span>
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  {existingComments
-                    .filter((c) => !c.parent_id)
-                    .map((comment) => (
-                      <CommentThread
-                        key={comment.id}
-                        rootComment={comment}
-                        replies={getReplies(comment.id)}
-                        authors={commentAuthors}
-                        currentUserId={currentUser.id}
-                        onReply={handleReplyToComment}
-                        onResolve={handleResolveComment}
-                        onUnresolve={handleUnresolveComment}
-                      />
-                    ))}
-                </div>
+              ))}
+
+              {/* Divider */}
+              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+
+              {/* RAG Issues */}
+              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>RAG ISSUES</div>
+              {fileFindings.slice(0, 5).map((f) => {
+                const dotColor = f.severity === "BLOCKER" ? "#ff7b72" : "#e3b341"
+                return (
+                  <div key={f.id} className="flex items-start gap-2 mb-2">
+                    <div className="rounded-sm flex-shrink-0 mt-1" style={{ width: 7, height: 7, background: dotColor }} />
+                    <span className="text-[10px] leading-snug" style={{ color: "#8b949e" }}>
+                      {f.message.length > 30 ? f.message.slice(0, 30) + "…" : f.message}
+                      {f.lineStart != null && ` l.${f.lineStart}`}
+                    </span>
+                  </div>
+                )
+              })}
+              {fileFindings.length === 0 && (
+                <p className="text-[10px]" style={{ color: "#6e7681" }}>No issues detected.</p>
               )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
 
-      {/* Pending Review Banner */}
+              {/* Divider */}
+              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+
+              {/* PR Info */}
+              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>PR INFO</div>
+              {[
+                { label: "+lines", value: `+${totalAdditions}`, color: "#56d364" },
+                { label: "-lines", value: `-${totalDeletions}`, color: "#ff7b72" },
+                { label: "Files", value: String(analysis.files.length), color: "#79c0ff" },
+                { label: "Reviewer", value: "RAG Bot", color: "#d2a8ff" },
+              ].map((m) => (
+                <div key={m.label} className="flex justify-between items-center mb-1.5">
+                  <span className="text-[11px]" style={{ color: "#8b949e" }}>{m.label}</span>
+                  <span className="text-[11px] font-semibold" style={{ color: m.color }}>{m.value}</span>
+                </div>
+              ))}
+
+              {/* Divider */}
+              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+
+              {/* Action buttons */}
+              <button
+                className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-semibold mb-2 cursor-pointer"
+                style={{ background: "rgba(86,211,100,0.15)", color: "#56d364", height: 32, border: "1px solid rgba(86,211,100,0.3)" }}
+              >
+                ✓ Save changes
+              </button>
+              {canReview && (
+                <>
+                  <button
+                    onClick={() => setShowSubmitDialog(true)}
+                    className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-semibold mb-2 cursor-pointer"
+                    style={{ background: "rgba(127,119,221,0.15)", color: "#7f77dd", height: 32, border: "1px solid rgba(127,119,221,0.3)" }}
+                  >
+                    ⬡ Approve PR
+                  </button>
+                  <button
+                    className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-medium cursor-pointer"
+                    style={{ background: "#21262e", color: "#8b949e", height: 32 }}
+                  >
+                    ⚑ Request changes
+                  </button>
+                </>
+              )}
+
+              {/* Links */}
+              <div className="mt-3 flex flex-col gap-1">
+                <Link
+                  href={`/dashboard/report/${id}`}
+                  className="text-[10px] text-center py-1 rounded hover:opacity-80"
+                  style={{ color: "#79c0ff", background: "rgba(121,192,255,0.08)" }}
+                >
+                  Rapport global →
+                </Link>
+                <Link
+                  href={`/dashboard/history/${id}`}
+                  className="text-[10px] text-center py-1 rounded hover:opacity-80"
+                  style={{ color: "#8b949e", background: "#21262e" }}
+                >
+                  Historique
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── StatusBar ────────────────────────────────────────────────── */}
+      <div
+        className="flex-shrink-0 flex items-center px-3 border-t gap-2"
+        style={{ height: 24, background: "#10141a", borderColor: "#30363d" }}
+      >
+        <div className="flex items-center gap-1.5">
+          <div className="rounded-sm" style={{ width: 8, height: 8, background: "#56d364" }} />
+          <span className="text-[10px] font-medium" style={{ color: "#56d364" }}>RAG connected</span>
+        </div>
+        <span style={{ color: "#6e7681" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#6e7681" }}>
+          {selectedFileInfo?.ext === "TS" || selectedFileInfo?.ext === "TX" ? "TypeScript 5.4" :
+           selectedFileInfo?.ext === "PY" ? "Python 3.11" : selectedFileInfo?.filename?.split(".").pop() ?? "Text"}
+        </span>
+        <span style={{ color: "#6e7681" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#6e7681" }}>UTF-8 LF</span>
+        <span style={{ color: "#6e7681" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#6e7681" }}>Spaces: 2</span>
+        <div className="flex-1" />
+        {(errorCount > 0 || warningCount > 0) && (
+          <span className="text-[10px] font-medium" style={{ color: "#e3b341" }}>
+            {errorCount > 0 ? `${errorCount} error${errorCount > 1 ? "s" : ""}` : ""}
+            {errorCount > 0 && warningCount > 0 ? " · " : ""}
+            {warningCount > 0 ? `${warningCount} warning${warningCount > 1 ? "s" : ""}` : ""}
+          </span>
+        )}
+        <span style={{ color: "#6e7681" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#8b949e" }}>
+          {analysis.prLabel ?? prBranch}
+        </span>
+        <span style={{ color: "#6e7681" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#8b949e" }}>
+          {analysis.commitSha ? `${analysis.commitSha.slice(0, 7)}` : "Ln 1, Col 1"}
+        </span>
+      </div>
+
+      {/* ── Review dialogs ───────────────────────────────────────────── */}
       <AnimatePresence>
         {pendingComments.length > 0 && (
-          <PendingReviewBanner
-            pendingComments={pendingComments}
-            onFinishReview={() => setShowSubmitDialog(true)}
-            onClearAll={handleClearAllPendingComments}
-            onRemoveComment={handleRemovePendingComment}
-          />
+          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+            <PendingReviewBanner
+              pendingComments={pendingComments}
+              onFinishReview={() => setShowSubmitDialog(true)}
+              onClearAll={handleClearAllPendingComments}
+              onRemoveComment={handleRemovePendingComment}
+            />
+          </div>
         )}
       </AnimatePresence>
 
-      {/* Review Submission Dialog */}
       <ReviewSubmissionDialog
         open={showSubmitDialog}
         onOpenChange={setShowSubmitDialog}
@@ -812,6 +941,6 @@ export function AnnotatedDiff() {
         onRemoveComment={handleRemovePendingComment}
         isSubmitting={isSubmitting}
       />
-    </motion.div>
+    </div>
   )
 }

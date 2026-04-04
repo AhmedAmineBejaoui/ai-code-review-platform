@@ -1,8 +1,7 @@
-﻿"use client";
-/* eslint-disable react/no-unescaped-entities */
+"use client";
 
-
-import { motion } from "framer-motion";
+import { useParams } from "next/navigation";
+import { motion } from "motion/react";
 import { 
   TrendingDown, 
   TrendingUp, 
@@ -12,6 +11,9 @@ import {
   RotateCw,
   MessageSquare,
   GitCompare,
+  Loader2,
+  AlertTriangle,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -24,55 +26,12 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { useHistoryComparison } from "@/lib/history-comparison";
 
 export function HistoryComparison() {
-
-  const comparisonData = {
-    previousRun: {
-      id: 'run-123',
-      date: '2026-03-03T14:20:00',
-      blockers: 3,
-      warnings: 7,
-      info: 10,
-    },
-    currentRun: {
-      id: 'run-124',
-      date: '2026-03-04T10:30:00',
-      blockers: 2,
-      warnings: 5,
-      info: 8,
-    },
-  };
-
-  const resolvedIssues = [
-    {
-      id: '1',
-      title: 'Hardcoded credentials',
-      severity: 'BLOCKER',
-      category: 'security',
-      file: 'src/config/database.ts',
-    },
-  ];
-
-  const newIssues = [
-    {
-      id: '2',
-      title: 'XSS vulnerability',
-      severity: 'BLOCKER',
-      category: 'security',
-      file: 'src/components/UserProfile.tsx',
-    },
-  ];
-
-  const severityChanges = [
-    {
-      id: '3',
-      title: 'Missing input validation',
-      previousSeverity: 'INFO',
-      newSeverity: 'WARN',
-      file: 'src/api/users.ts',
-    },
-  ];
+  const params = useParams();
+  const id = params.id as string;
+  const { data, loading, error, refetch } = useHistoryComparison(id);
 
   const getTrendIcon = (prev: number, current: number) => {
     if (current < prev) return <TrendingDown className="h-5 w-5 text-green-500" />;
@@ -85,6 +44,53 @@ export function HistoryComparison() {
     if (current > prev) return 'text-red-600 dark:text-red-400';
     return 'text-gray-600 dark:text-gray-400';
   };
+
+  // Loading state
+  if (loading) {
+    return (
+      <motion.div 
+        className="max-w-6xl mx-auto space-y-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-gray-600 dark:text-gray-400">Chargement de la comparaison...</span>
+        </div>
+      </motion.div>
+    );
+  }
+
+  // Error state
+  if (error || !data) {
+    return (
+      <motion.div 
+        className="max-w-6xl mx-auto space-y-6"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+      >
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                Erreur de chargement
+              </h3>
+              <p className="text-red-600 dark:text-red-300 mb-4">
+                {error || "Impossible de charger les données de comparaison"}
+              </p>
+              <Button onClick={refetch} variant="outline" className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Réessayer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+    );
+  }
+
+  const { comparison, resolvedIssues, newIssues, severityChanges } = data;
 
   return (
     <motion.div 
@@ -103,12 +109,12 @@ export function HistoryComparison() {
             Historique & Comparaison
           </h1>
           <p className="text-gray-600 dark:text-gray-400">
-            Analyse de l'Ã©volution entre deux runs
+            Analyse de l&apos;évolution entre deux runs
           </p>
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl">
+            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={refetch}>
               <RotateCw className="h-4 w-4" />
               Re-run
             </Button>
@@ -131,17 +137,17 @@ export function HistoryComparison() {
         >
           <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
             <CardHeader>
-              <CardTitle className="text-base">Run prÃ©cÃ©dent</CardTitle>
+              <CardTitle className="text-base">Run précédent</CardTitle>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {new Date(comparisonData.previousRun.date).toLocaleString('fr-FR')}
+                {new Date(comparison.previousRun.date).toLocaleString('fr-FR')}
               </p>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {[
-                  { label: 'BLOCKER', value: comparisonData.previousRun.blockers, color: 'destructive' },
-                  { label: 'WARN', value: comparisonData.previousRun.warnings, color: 'secondary' },
-                  { label: 'INFO', value: comparisonData.previousRun.info, color: 'outline' },
+                  { label: 'BLOCKER', value: comparison.previousRun.blockers, color: 'destructive' },
+                  { label: 'WARN', value: comparison.previousRun.warnings, color: 'secondary' },
+                  { label: 'INFO', value: comparison.previousRun.info, color: 'outline' },
                 ].map((item, index) => (
                   <motion.div
                     key={item.label}
@@ -159,9 +165,9 @@ export function HistoryComparison() {
                 <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-gray-700 font-semibold">
                   <span className="text-sm text-gray-900 dark:text-white">Total</span>
                   <span className="text-gray-900 dark:text-white">
-                    {comparisonData.previousRun.blockers +
-                      comparisonData.previousRun.warnings +
-                      comparisonData.previousRun.info}
+                    {comparison.previousRun.blockers +
+                      comparison.previousRun.warnings +
+                      comparison.previousRun.info}
                   </span>
                 </div>
               </div>
@@ -178,15 +184,15 @@ export function HistoryComparison() {
             <CardHeader>
               <CardTitle className="text-base">Run actuel</CardTitle>
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                {new Date(comparisonData.currentRun.date).toLocaleString('fr-FR')}
+                {new Date(comparison.currentRun.date).toLocaleString('fr-FR')}
               </p>
             </CardHeader>
             <CardContent>
               <div className="space-y-3">
                 {[
-                  { label: 'BLOCKER', prev: comparisonData.previousRun.blockers, value: comparisonData.currentRun.blockers, color: 'destructive' },
-                  { label: 'WARN', prev: comparisonData.previousRun.warnings, value: comparisonData.currentRun.warnings, color: 'secondary' },
-                  { label: 'INFO', prev: comparisonData.previousRun.info, value: comparisonData.currentRun.info, color: 'outline' },
+                  { label: 'BLOCKER', prev: comparison.previousRun.blockers, value: comparison.currentRun.blockers, color: 'destructive' },
+                  { label: 'WARN', prev: comparison.previousRun.warnings, value: comparison.currentRun.warnings, color: 'secondary' },
+                  { label: 'INFO', prev: comparison.previousRun.info, value: comparison.currentRun.info, color: 'outline' },
                 ].map((item, index) => (
                   <motion.div
                     key={item.label}
@@ -216,9 +222,9 @@ export function HistoryComparison() {
                 <div className="flex justify-between items-center pt-3 border-t border-blue-200 dark:border-blue-800 font-semibold">
                   <span className="text-sm text-gray-900 dark:text-white">Total</span>
                   <span className="text-gray-900 dark:text-white">
-                    {comparisonData.currentRun.blockers +
-                      comparisonData.currentRun.warnings +
-                      comparisonData.currentRun.info}
+                    {comparison.currentRun.blockers +
+                      comparison.currentRun.warnings +
+                      comparison.currentRun.info}
                   </span>
                 </div>
               </div>
@@ -242,42 +248,48 @@ export function HistoryComparison() {
               >
                 <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
               </motion.div>
-              Findings rÃ©solus ({resolvedIssues.length})
+              Findings résolus ({resolvedIssues.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-green-100/50 dark:hover:bg-green-900/10">
-                  <TableHead>Titre</TableHead>
-                  <TableHead>SÃ©vÃ©ritÃ©</TableHead>
-                  <TableHead>CatÃ©gorie</TableHead>
-                  <TableHead>Fichier</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {resolvedIssues.map((issue, index) => (
-                  <motion.tr
-                    key={issue.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4 + index * 0.1 }}
-                    className="bg-green-100/50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30"
-                  >
-                    <TableCell className="font-medium">{issue.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{issue.severity}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{issue.category}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                      {issue.file}
-                    </TableCell>
-                  </motion.tr>
-                ))}
-              </TableBody>
-            </Table>
+            {resolvedIssues.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                Aucun problème résolu trouvé
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-green-100/50 dark:hover:bg-green-900/10">
+                    <TableHead>Titre</TableHead>
+                    <TableHead>Sévérité</TableHead>
+                    <TableHead>Catégorie</TableHead>
+                    <TableHead>Fichier</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {resolvedIssues.map((issue, index) => (
+                    <motion.tr
+                      key={issue.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.4 + index * 0.1 }}
+                      className="bg-green-100/50 dark:bg-green-900/20 hover:bg-green-100 dark:hover:bg-green-900/30"
+                    >
+                      <TableCell className="font-medium">{issue.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{issue.severity}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{issue.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                        {issue.file}
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -297,42 +309,48 @@ export function HistoryComparison() {
               >
                 <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
               </motion.div>
-              Nouveaux problÃ¨mes ({newIssues.length})
+              Nouveaux problèmes ({newIssues.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-red-100/50 dark:hover:bg-red-900/10">
-                  <TableHead>Titre</TableHead>
-                  <TableHead>SÃ©vÃ©ritÃ©</TableHead>
-                  <TableHead>CatÃ©gorie</TableHead>
-                  <TableHead>Fichier</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {newIssues.map((issue, index) => (
-                  <motion.tr
-                    key={issue.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.5 + index * 0.1 }}
-                    className="bg-red-100/50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30"
-                  >
-                    <TableCell className="font-medium">{issue.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="destructive">{issue.severity}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{issue.category}</Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                      {issue.file}
-                    </TableCell>
-                  </motion.tr>
-                ))}
-              </TableBody>
-            </Table>
+            {newIssues.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                Aucun nouveau problème trouvé
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-red-100/50 dark:hover:bg-red-900/10">
+                    <TableHead>Titre</TableHead>
+                    <TableHead>Sévérité</TableHead>
+                    <TableHead>Catégorie</TableHead>
+                    <TableHead>Fichier</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {newIssues.map((issue, index) => (
+                    <motion.tr
+                      key={issue.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.5 + index * 0.1 }}
+                      className="bg-red-100/50 dark:bg-red-900/20 hover:bg-red-100 dark:hover:bg-red-900/30"
+                    >
+                      <TableCell className="font-medium">{issue.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="destructive">{issue.severity}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{issue.category}</Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                        {issue.file}
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </motion.div>
@@ -352,44 +370,50 @@ export function HistoryComparison() {
               >
                 <TrendingUp className="h-5 w-5 text-orange-600 dark:text-orange-400" />
               </motion.div>
-              Changements de sÃ©vÃ©ritÃ© ({severityChanges.length})
+              Changements de sévérité ({severityChanges.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-orange-100/50 dark:hover:bg-orange-900/10">
-                  <TableHead>Titre</TableHead>
-                  <TableHead>PrÃ©cÃ©dent</TableHead>
-                  <TableHead>Nouveau</TableHead>
-                  <TableHead>Fichier</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {severityChanges.map((change, index) => (
-                  <motion.tr
-                    key={change.id}
-                    initial={{ opacity: 0, x: -20 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.6 + index * 0.1 }}
-                    className="bg-orange-100/50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30"
-                  >
-                    <TableCell className="font-medium">{change.title}</TableCell>
-                    <TableCell>
-                      <Badge variant="outline">{change.previousSeverity}</Badge>
-                    </TableCell>
-                    <TableCell>
-                      <Badge className="bg-orange-500 hover:bg-orange-600">
-                        {change.newSeverity}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
-                      {change.file}
-                    </TableCell>
-                  </motion.tr>
-                ))}
-              </TableBody>
-            </Table>
+            {severityChanges.length === 0 ? (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                Aucun changement de sévérité trouvé
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-orange-100/50 dark:hover:bg-orange-900/10">
+                    <TableHead>Titre</TableHead>
+                    <TableHead>Précédent</TableHead>
+                    <TableHead>Nouveau</TableHead>
+                    <TableHead>Fichier</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {severityChanges.map((change, index) => (
+                    <motion.tr
+                      key={change.id}
+                      initial={{ opacity: 0, x: -20 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: 0.6 + index * 0.1 }}
+                      className="bg-orange-100/50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30"
+                    >
+                      <TableCell className="font-medium">{change.title}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">{change.previousSeverity}</Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className="bg-orange-500 hover:bg-orange-600">
+                          {change.newSeverity}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                        {change.file}
+                      </TableCell>
+                    </motion.tr>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </motion.div>

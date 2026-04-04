@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
@@ -21,6 +21,8 @@ import {
   ExternalLink,
   RotateCcw,
   GitBranch,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import {
   AreaChart,
@@ -38,176 +40,14 @@ import {
 import { AnimatedCounter } from "./AnimatedCounter";
 import { LiveActivityFeed } from "./LiveActivityFeed";
 import { CommandPalette } from "./CommandPalette";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-interface PRData {
-  id: string;
-  repo: string;
-  branch: string;
-  commit: string;
-  status: "completed" | "failed" | "running";
-  score: number;
-  errors: number;
-  warnings: number;
-  files: number;
-  additions: number;
-  deletions: number;
-  author: string;
-  authorInitials: string;
-  prNumber: string;
-  duration: string;
-  tags: string[];
-  aiSummary: string;
-  aiInsights: string[];
-}
-
-// ============================================================================
-// Data
-// ============================================================================
-
-const areaChartData = [
-  { day: "Lun", issues: 12, resolved: 8 },
-  { day: "Mar", issues: 19, resolved: 14 },
-  { day: "Mer", issues: 15, resolved: 18 },
-  { day: "Jeu", issues: 22, resolved: 16 },
-  { day: "Ven", issues: 18, resolved: 21 },
-  { day: "Sam", issues: 8, resolved: 12 },
-  { day: "Dim", issues: 6, resolved: 9 },
-];
-
-const pieChartData = [
-  { name: "Critique", value: 2, color: "#ef4444" },
-  { name: "Élevé", value: 5, color: "#f97316" },
-  { name: "Moyen", value: 18, color: "#eab308" },
-  { name: "Faible", value: 42, color: "#22c55e" },
-];
-
-const prData: PRData[] = [
-  {
-    id: "1",
-    repo: "skillstream-github-stage",
-    branch: "feature/auth-module",
-    commit: "4263b5d9",
-    status: "completed",
-    score: 72,
-    errors: 2,
-    warnings: 100,
-    files: 134,
-    additions: 7243,
-    deletions: 0,
-    author: "Ahmed Ghribi",
-    authorInitials: "AG",
-    prNumber: "PR #12",
-    duration: "2m 34s",
-    tags: ["feature", "security"],
-    aiSummary:
-      "Module d'authentification complet avec JWT, middleware de validation, et intégration OAuth2.",
-    aiInsights: [
-      "⚠️ 2 vulnérabilités SQL injection dans les routes d'auth",
-      "⚠️ Tokens non invalidés après logout",
-      "✅ Architecture modulaire bien structurée",
-      "💡 Recommandation: implémenter rate limiting sur /api/auth/*",
-    ],
-  },
-  {
-    id: "2",
-    repo: "skillstream-github-stage",
-    branch: "fix/db-schema",
-    commit: "45f7bdc2",
-    status: "completed",
-    score: 85,
-    errors: 0,
-    warnings: 94,
-    files: 128,
-    additions: 6597,
-    deletions: 0,
-    author: "Ahmed Ghribi",
-    authorInitials: "AG",
-    prNumber: "PR #13",
-    duration: "1m 48s",
-    tags: ["fix", "database"],
-    aiSummary:
-      "Mise à jour schéma DB avec contraintes d'intégrité référentielle et migration automatisée.",
-    aiInsights: [
-      "✅ Contraintes d'intégrité correctement implémentées",
-      "💡 Ajouter index sur colonnes user_id et created_at",
-      "💡 Considérer partitionnement pour tables > 1M rows",
-    ],
-  },
-  {
-    id: "3",
-    repo: "owner/manual-test",
-    branch: "main",
-    commit: "abc12345",
-    status: "completed",
-    score: 96,
-    errors: 0,
-    warnings: 3,
-    files: 5,
-    additions: 120,
-    deletions: 30,
-    author: "Admin",
-    authorInitials: "AD",
-    prNumber: "PR #1",
-    duration: "0m 22s",
-    tags: ["refactor"],
-    aiSummary: "Refactoring mineur avec amélioration de la lisibilité du code.",
-    aiInsights: [
-      "✅ Code propre et bien documenté",
-      "✅ Tests unitaires présents",
-      "💡 Possibilité d'extraire quelques fonctions utilitaires",
-    ],
-  },
-  {
-    id: "4",
-    repo: "TransportManager",
-    branch: "feature/routing-engine",
-    commit: "2463b841",
-    status: "failed",
-    score: 34,
-    errors: 2,
-    warnings: 9,
-    files: 23,
-    additions: 890,
-    deletions: 45,
-    author: "Amine Bejaoui",
-    authorInitials: "AB",
-    prNumber: "PR #5",
-    duration: "3m 12s",
-    tags: ["feature", "performance"],
-    aiSummary:
-      "Nouveau moteur de routage avec optimisation des calculs de distance.",
-    aiInsights: [
-      "❌ Erreur critique: boucle infinie potentielle dans pathfinding",
-      "❌ Memory leak détecté dans le cache de routes",
-      "⚠️ Performance dégradée sur grands graphes",
-      "💡 Utiliser A* au lieu de Dijkstra pour ce cas d'usage",
-    ],
-  },
-  {
-    id: "5",
-    repo: "example/repo",
-    branch: "develop",
-    commit: "abcdef12",
-    status: "running",
-    score: 0,
-    errors: 0,
-    warnings: 0,
-    files: 12,
-    additions: 340,
-    deletions: 120,
-    author: "Dev Team",
-    authorInitials: "DT",
-    prNumber: "PR #1",
-    duration: "—",
-    tags: [],
-    aiSummary: "Analyse en cours...",
-    aiInsights: [],
-  },
-];
+import {
+  fetchDashboardStatistics,
+  createDashboardStatisticsPoller,
+  type PRData,
+  type WeeklyActivityData,
+  type SeverityDistribution,
+  type DashboardMetrics,
+} from "@/lib/dashboard-statistics";
 
 // ============================================================================
 // Sub-components
@@ -666,10 +506,114 @@ function CustomTooltip({ active, payload, label }: any) {
 // Main Component
 // ============================================================================
 
+// Default empty data for initial render
+const defaultWeeklyActivity: WeeklyActivityData[] = [
+  { day: "Lun", issues: 0, resolved: 0 },
+  { day: "Mar", issues: 0, resolved: 0 },
+  { day: "Mer", issues: 0, resolved: 0 },
+  { day: "Jeu", issues: 0, resolved: 0 },
+  { day: "Ven", issues: 0, resolved: 0 },
+  { day: "Sam", issues: 0, resolved: 0 },
+  { day: "Dim", issues: 0, resolved: 0 },
+];
+
+const defaultSeverityDistribution: SeverityDistribution[] = [
+  { name: "Critique", value: 0, color: "#ef4444" },
+  { name: "Élevé", value: 0, color: "#f97316" },
+  { name: "Moyen", value: 0, color: "#eab308" },
+  { name: "Faible", value: 0, color: "#22c55e" },
+];
+
+const defaultMetrics: DashboardMetrics = {
+  averageScore: 0,
+  criticalErrors: 0,
+  warnings: 0,
+  completedAnalyses: 0,
+  totalAnalyses: 0,
+  trends: {
+    scoreTrend: "—",
+    scoreTrendUp: true,
+    errorsTrend: "—",
+    errorsTrendUp: true,
+    warningsTrend: "—",
+    warningsTrendUp: true,
+    completionTrend: "—",
+    completionTrendUp: true,
+  },
+};
+
 export function DashboardContent() {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [expandedPrId, setExpandedPrId] = useState<string | null>(null);
   const [activeFilter, setActiveFilter] = useState("all");
+  
+  // Real data state
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [prData, setPrData] = useState<PRData[]>([]);
+  const [dashboardMetrics, setDashboardMetrics] = useState<DashboardMetrics>(defaultMetrics);
+  const [weeklyActivity, setWeeklyActivity] = useState<WeeklyActivityData[]>(defaultWeeklyActivity);
+  const [severityDistribution, setSeverityDistribution] = useState<SeverityDistribution[]>(defaultSeverityDistribution);
+  
+  const pollerRef = useRef<ReturnType<typeof createDashboardStatisticsPoller> | null>(null);
+
+  // Fetch initial data
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+        const stats = await fetchDashboardStatistics({ force: true, size: 40 });
+        
+        setPrData(stats.prData);
+        setDashboardMetrics(stats.metrics);
+        setWeeklyActivity(stats.weeklyActivity.length > 0 ? stats.weeklyActivity : defaultWeeklyActivity);
+        setSeverityDistribution(stats.severityDistribution.some(s => s.value > 0) ? stats.severityDistribution : defaultSeverityDistribution);
+        
+        if (stats.error) {
+          setError(stats.error);
+        }
+      } catch (err) {
+        console.error("[DashboardContent] Error loading data:", err);
+        setError("Erreur lors du chargement des données");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+    
+    loadData();
+    
+    // Setup polling for real-time updates
+    pollerRef.current = createDashboardStatisticsPoller((stats) => {
+      setPrData(stats.prData);
+      setDashboardMetrics(stats.metrics);
+      setWeeklyActivity(stats.weeklyActivity.length > 0 ? stats.weeklyActivity : defaultWeeklyActivity);
+      setSeverityDistribution(stats.severityDistribution.some(s => s.value > 0) ? stats.severityDistribution : defaultSeverityDistribution);
+    }, { intervalMs: 15000 }); // Poll every 15 seconds
+    
+    pollerRef.current.start();
+    
+    return () => {
+      pollerRef.current?.stop();
+    };
+  }, []);
+
+  // Manual refresh handler
+  const handleRefresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      const stats = await fetchDashboardStatistics({ force: true, size: 40 });
+      setPrData(stats.prData);
+      setDashboardMetrics(stats.metrics);
+      setWeeklyActivity(stats.weeklyActivity.length > 0 ? stats.weeklyActivity : defaultWeeklyActivity);
+      setSeverityDistribution(stats.severityDistribution.some(s => s.value > 0) ? stats.severityDistribution : defaultSeverityDistribution);
+    } catch (err) {
+      console.error("[DashboardContent] Error refreshing:", err);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   // ⌘K shortcut
   useEffect(() => {
@@ -701,10 +645,10 @@ export function DashboardContent() {
     {
       icon: TrendingUp,
       label: "Score moyen",
-      value: 71,
+      value: dashboardMetrics.averageScore,
       suffix: "/100",
-      trend: "+12%",
-      trendUp: true,
+      trend: dashboardMetrics.trends.scoreTrend,
+      trendUp: dashboardMetrics.trends.scoreTrendUp,
       gradient: "from-violet-500/10 to-violet-500/5",
       iconBg: "bg-violet-500/10",
       iconColor: "text-violet-400",
@@ -713,10 +657,10 @@ export function DashboardContent() {
     {
       icon: ShieldAlert,
       label: "Erreurs critiques",
-      value: 4,
+      value: dashboardMetrics.criticalErrors,
       suffix: "",
-      trend: "-1",
-      trendUp: true,
+      trend: dashboardMetrics.trends.errorsTrend,
+      trendUp: dashboardMetrics.trends.errorsTrendUp,
       gradient: "from-red-500/10 to-red-500/5",
       iconBg: "bg-red-500/10",
       iconColor: "text-red-400",
@@ -725,10 +669,10 @@ export function DashboardContent() {
     {
       icon: AlertTriangle,
       label: "Warnings",
-      value: 206,
+      value: dashboardMetrics.warnings,
       suffix: "",
-      trend: "+15",
-      trendUp: false,
+      trend: dashboardMetrics.trends.warningsTrend,
+      trendUp: dashboardMetrics.trends.warningsTrendUp,
       gradient: "from-amber-500/10 to-amber-500/5",
       iconBg: "bg-amber-500/10",
       iconColor: "text-amber-400",
@@ -737,10 +681,10 @@ export function DashboardContent() {
     {
       icon: CheckCircle2,
       label: "Analyses OK",
-      value: 3,
-      suffix: "/5",
-      trend: "80%",
-      trendUp: true,
+      value: dashboardMetrics.completedAnalyses,
+      suffix: `/${dashboardMetrics.totalAnalyses}`,
+      trend: dashboardMetrics.trends.completionTrend,
+      trendUp: dashboardMetrics.trends.completionTrendUp,
       gradient: "from-emerald-500/10 to-emerald-500/5",
       iconBg: "bg-emerald-500/10",
       iconColor: "text-emerald-400",
@@ -776,6 +720,18 @@ export function DashboardContent() {
 
             {/* Actions */}
             <div className="flex items-center gap-3">
+              {/* Refresh Button */}
+              <motion.button
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={handleRefresh}
+                disabled={isRefreshing}
+                className="flex items-center justify-center p-2 rounded-lg hover:bg-zinc-800/50 transition-colors disabled:opacity-50"
+                title="Rafraîchir les données"
+              >
+                <RefreshCw className={`h-4 w-4 text-zinc-400 ${isRefreshing ? "animate-spin" : ""}`} />
+              </motion.button>
+              
               <motion.button
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
@@ -874,7 +830,7 @@ export function DashboardContent() {
             </div>
 
             <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={areaChartData}>
+              <AreaChart data={weeklyActivity}>
                 <defs>
                   <linearGradient id="issuesGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
@@ -929,7 +885,7 @@ export function DashboardContent() {
               <ResponsiveContainer width="100%" height={140}>
                 <PieChart>
                   <Pie
-                    data={pieChartData}
+                    data={severityDistribution}
                     cx="50%"
                     cy="50%"
                     innerRadius={35}
@@ -938,7 +894,7 @@ export function DashboardContent() {
                     dataKey="value"
                     strokeWidth={0}
                   >
-                    {pieChartData.map((entry, index) => (
+                    {severityDistribution.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.color} />
                     ))}
                   </Pie>
@@ -947,7 +903,7 @@ export function DashboardContent() {
             </div>
 
             <div className="grid grid-cols-2 gap-2 mt-2">
-              {pieChartData.map((item) => (
+              {severityDistribution.map((item) => (
                 <div key={item.name} className="flex items-center gap-2">
                   <div
                     className="w-2 h-2 rounded-full"
@@ -981,8 +937,11 @@ export function DashboardContent() {
               </div>
               <h3 className="text-sm font-semibold text-white">Pull Requests</h3>
               <span className="px-2 py-0.5 text-[10px] font-medium bg-zinc-800 text-zinc-400 rounded-full">
-                {prData.length}
+                {filteredPRs.length}{activeFilter !== "all" ? `/${prData.length}` : ""}
               </span>
+              {isRefreshing && (
+                <Loader2 className="h-3 w-3 text-violet-400 animate-spin ml-1" />
+              )}
             </div>
 
             {/* Filter Tabs */}
@@ -1033,17 +992,48 @@ export function DashboardContent() {
 
           {/* PR Rows */}
           <div className="divide-y divide-zinc-800/40">
-            {filteredPRs.map((pr, index) => (
-              <PRRow
-                key={pr.id}
-                pr={pr}
-                index={index}
-                expandedId={expandedPrId}
-                onToggle={(id) =>
-                  setExpandedPrId((prev) => (prev === id ? null : id))
-                }
-              />
-            ))}
+            {isLoading ? (
+              <div className="flex items-center justify-center py-12">
+                <Loader2 className="h-6 w-6 text-violet-400 animate-spin" />
+                <span className="ml-3 text-sm text-zinc-400">Chargement des analyses...</span>
+              </div>
+            ) : error ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <ShieldAlert className="h-8 w-8 text-red-400 mb-2" />
+                <span className="text-sm text-zinc-400">{error}</span>
+                <button
+                  onClick={handleRefresh}
+                  className="mt-3 px-3 py-1.5 text-xs font-medium text-violet-400 bg-violet-500/10 rounded-lg hover:bg-violet-500/20 transition-colors"
+                >
+                  Réessayer
+                </button>
+              </div>
+            ) : filteredPRs.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12">
+                <GitPullRequest className="h-8 w-8 text-zinc-600 mb-2" />
+                <span className="text-sm text-zinc-400">
+                  {activeFilter === "all" 
+                    ? "Aucune analyse trouvée" 
+                    : `Aucune analyse ${activeFilter === "completed" ? "complétée" : activeFilter === "running" ? "en cours" : "échouée"}`
+                  }
+                </span>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Lancez une nouvelle analyse pour commencer
+                </p>
+              </div>
+            ) : (
+              filteredPRs.map((pr, index) => (
+                <PRRow
+                  key={pr.id}
+                  pr={pr}
+                  index={index}
+                  expandedId={expandedPrId}
+                  onToggle={(id) =>
+                    setExpandedPrId((prev) => (prev === id ? null : id))
+                  }
+                />
+              ))
+            )}
           </div>
         </div>
       </div>

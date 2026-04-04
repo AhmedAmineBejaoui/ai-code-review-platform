@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "framer-motion"
+import { useUser, useClerk } from "@clerk/nextjs"
 import {
   Plus,
   Filter,
@@ -17,6 +18,8 @@ import {
   Github,
   FileCode,
   Zap,
+  User,
+  Building,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -117,6 +120,9 @@ type GithubRepoOption = {
 
 export function AnalysesPageHeader({ filter, status, view, action, period }: AnalysesPageHeaderProps) {
   const router = useRouter()
+  const { user } = useUser()
+  const { openSignIn, openUserProfile } = useClerk()
+  
   const [isNewAnalysisOpen, setIsNewAnalysisOpen] = useState(action === "new")
   const [repoInput, setRepoInput] = useState("")
   const [prNumberInput, setPrNumberInput] = useState("")
@@ -132,6 +138,8 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
   const [selectedGithubRepo, setSelectedGithubRepo] = useState("")
   const [inputMode, setInputMode] = useState<"github" | "manual">("github")
+  const [customGithubAccount, setCustomGithubAccount] = useState("")
+  const [accountType, setAccountType] = useState<"user" | "org">("user")
 
   // Load GitHub repos when dialog opens
   useEffect(() => {
@@ -139,10 +147,14 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     loadGithubRepos()
   }, [isNewAnalysisOpen])
 
-  const loadGithubRepos = async () => {
+  const loadGithubRepos = async (account?: string) => {
     setIsLoadingRepos(true)
     try {
-      const response = await fetch("/api/dashboard/github/repos")
+      const url = account 
+        ? `/api/dashboard/github/repos?account=${encodeURIComponent(account)}&type=${accountType}`
+        : "/api/dashboard/github/repos"
+      
+      const response = await fetch(url)
       if (response.ok) {
         const data = await response.json()
         setGithubConnected(data.connected ?? false)
@@ -264,6 +276,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
           metadata: {
             triggered_from: "analyses_page",
             analysis_type: analysisType,
+            repo_selected_from_github: inputMode === "github",
           },
         }),
       })
@@ -291,10 +304,26 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     }
   }
 
+  const handleGithubConnect = () => {
+    // Ouvrir le profil utilisateur pour connecter GitHub
+    openUserProfile({ 
+      routing: "path",
+      path: "/user-profile" 
+    })
+  }
+
+  const handleLoadCustomAccount = () => {
+    if (customGithubAccount.trim()) {
+      loadGithubRepos(customGithubAccount.trim())
+    }
+  }
+
   const resetForm = () => {
     setRepoInput("")
     setPrNumberInput("")
     setSelectedGithubRepo("")
+    setCustomGithubAccount("")
+    setAccountType("user")
     setAnalysisType("full")
     setSubmitError(null)
     setSubmitSuccess(null)
@@ -382,12 +411,62 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                       <p className="text-muted-foreground">
                         Connect your GitHub account to select repositories
                       </p>
-                      <Button variant="outline" asChild>
-                        <a href="/api/auth/github">Connect GitHub</a>
+                      <Button variant="outline" onClick={handleGithubConnect}>
+                        Connect GitHub Account
                       </Button>
                     </div>
                   ) : (
                     <>
+                      {/* Custom Account Selector */}
+                      <div className="space-y-3 p-4 bg-muted/30 rounded-lg border">
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant={accountType === "user" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setAccountType("user")}
+                            className="flex-1"
+                          >
+                            <User className="h-4 w-4 mr-2" />
+                            User
+                          </Button>
+                          <Button
+                            type="button"
+                            variant={accountType === "org" ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setAccountType("org")}
+                            className="flex-1"
+                          >
+                            <Building className="h-4 w-4 mr-2" />
+                            Organization
+                          </Button>
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <Label htmlFor="custom-account">GitHub Account</Label>
+                          <div className="flex gap-2">
+                            <Input
+                              id="custom-account"
+                              placeholder={accountType === "user" ? "e.g., octocat" : "e.g., github"}
+                              value={customGithubAccount}
+                              onChange={(e) => setCustomGithubAccount(e.target.value)}
+                              onKeyDown={(e) => e.key === "Enter" && handleLoadCustomAccount()}
+                            />
+                            <Button 
+                              type="button" 
+                              variant="outline" 
+                              onClick={handleLoadCustomAccount}
+                              disabled={!customGithubAccount.trim() || isLoadingRepos}
+                            >
+                              Load
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Enter a GitHub {accountType === "user" ? "username" : "organization name"} to load their repositories
+                          </p>
+                        </div>
+                      </div>
+
                       <div className="space-y-2">
                         <Label>Select Repository</Label>
                         <Select value={selectedGithubRepo} onValueChange={setSelectedGithubRepo}>
@@ -402,6 +481,11 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                             ))}
                           </SelectContent>
                         </Select>
+                        {githubRepos.length === 0 && customGithubAccount && (
+                          <p className="text-xs text-muted-foreground">
+                            No repositories found for {customGithubAccount}
+                          </p>
+                        )}
                       </div>
                       <div className="space-y-2">
                         <Label htmlFor="pr-number">PR Number (Optional)</Label>

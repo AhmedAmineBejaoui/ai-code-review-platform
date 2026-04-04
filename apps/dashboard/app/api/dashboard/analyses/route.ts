@@ -1122,14 +1122,13 @@ export async function POST(request: NextRequest) {
   }
 
   if (!backendResponse.ok) {
-    return NextResponse.json(
-      {
-        error: "Failed to create analysis",
-        backend_status: backendResponse.status,
-        backend_response: parsedBackendBody,
-      },
-      { status: backendResponse.status },
-    )
+    // Return the backend error directly for more specific error messages
+    const backendError = parsedBackendBody as any
+    const errorMessage = typeof backendError?.detail === 'string' ? backendError.detail :
+                        typeof backendError?.error === 'string' ? backendError.error :
+                        typeof backendError?.message === 'string' ? backendError.message :
+                        `Backend error (${backendResponse.status})`
+    return NextResponse.json({ error: errorMessage }, { status: backendResponse.status })
   }
 
   return NextResponse.json(parsedBackendBody, { status: backendResponse.status })

@@ -169,118 +169,14 @@ function BranchCard({ branch }: { branch: BranchInfo }) {
   )
 }
 
-// Mock data for development
-const MOCK_BRANCHES: BranchInfo[] = [
-  {
-    name: "main",
-    type: "main",
-    isProtected: true,
-    isDefault: true,
-    lastCommit: {
-      sha: "a1b2c3d4e5f6g7h8",
-      message: "Merge pull request #142: Add authentication flow",
-      author: "John Doe",
-      date: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
-    },
-    status: "active",
-  },
-  {
-    name: "develop",
-    type: "main",
-    isProtected: true,
-    isDefault: false,
-    lastCommit: {
-      sha: "b2c3d4e5f6g7h8i9",
-      message: "feat: Add new dashboard widgets",
-      author: "Jane Smith",
-      date: new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 5, behind: 0 },
-    status: "active",
-  },
-  {
-    name: "feature/user-profile",
-    type: "feature",
-    isProtected: false,
-    isDefault: false,
-    lastCommit: {
-      sha: "c3d4e5f6g7h8i9j0",
-      message: "Add profile picture upload",
-      author: "Bob Wilson",
-      date: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 12, behind: 3 },
-    status: "active",
-  },
-  {
-    name: "feature/api-refactor",
-    type: "feature",
-    isProtected: false,
-    isDefault: false,
-    lastCommit: {
-      sha: "d4e5f6g7h8i9j0k1",
-      message: "Refactor API endpoints for v2",
-      author: "Alice Brown",
-      date: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 28, behind: 8 },
-    status: "active",
-  },
-  {
-    name: "release/v2.0.0",
-    type: "release",
-    isProtected: true,
-    isDefault: false,
-    lastCommit: {
-      sha: "e5f6g7h8i9j0k1l2",
-      message: "Bump version to 2.0.0",
-      author: "John Doe",
-      date: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 0, behind: 2 },
-    status: "active",
-  },
-  {
-    name: "hotfix/security-patch",
-    type: "hotfix",
-    isProtected: false,
-    isDefault: false,
-    lastCommit: {
-      sha: "f6g7h8i9j0k1l2m3",
-      message: "Fix XSS vulnerability in comments",
-      author: "Security Team",
-      date: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 2, behind: 0 },
-    status: "active",
-  },
-  {
-    name: "feature/old-feature",
-    type: "feature",
-    isProtected: false,
-    isDefault: false,
-    lastCommit: {
-      sha: "g7h8i9j0k1l2m3n4",
-      message: "WIP: Old feature implementation",
-      author: "Former Dev",
-      date: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString(),
-    },
-    aheadBehind: { ahead: 5, behind: 45 },
-    status: "stale",
-  },
-]
-
 export default function ProjectBranchesPage() {
   const params = useParams()
   const projectId = params.projectId as string
 
-  const { branches: fetchedBranches, loading, error } = useProjectBranches(projectId)
+  const { branches, loading, error } = useProjectBranches(projectId)
   const [searchQuery, setSearchQuery] = useState("")
   const [typeFilter, setTypeFilter] = useState("all")
   const [sortBy, setSortBy] = useState("recent")
-
-  // Use mock data if no real data available
-  const branches = fetchedBranches.length > 0 ? fetchedBranches : MOCK_BRANCHES
 
   // Filter and sort branches
   const filteredBranches = branches

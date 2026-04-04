@@ -1,8 +1,8 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { motion } from "framer-motion"
+import { motion } from "motion/react"
 import {
   Folder,
   GitBranch,
@@ -18,6 +18,8 @@ import {
   Settings,
   Archive,
   Eye,
+  Loader2,
+  RefreshCw,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -40,105 +42,23 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
-// Mock data for projects
-const projectsData = [
-  {
-    id: "api-gateway",
-    name: "API Gateway",
-    description: "Main API gateway service for all microservices",
-    language: "TypeScript",
-    team: "Development",
-    status: "active",
-    starred: true,
-    lastActivity: "2h ago",
-    branches: 12,
-    openIssues: 5,
-    healthScore: 92,
-    commits: 234,
-    contributors: 8,
-    coverage: 87,
-  },
-  {
-    id: "authentication-service",
-    name: "Authentication Service",
-    description: "User authentication and authorization module",
-    language: "Go",
-    team: "Development",
-    status: "active",
-    starred: true,
-    lastActivity: "4h ago",
-    branches: 8,
-    openIssues: 2,
-    healthScore: 95,
-    commits: 156,
-    contributors: 5,
-    coverage: 92,
-  },
-  {
-    id: "dashboard-ui",
-    name: "Dashboard UI",
-    description: "Admin dashboard frontend application",
-    language: "TypeScript",
-    team: "Development",
-    status: "active",
-    starred: false,
-    lastActivity: "1h ago",
-    branches: 15,
-    openIssues: 8,
-    healthScore: 78,
-    commits: 312,
-    contributors: 6,
-    coverage: 71,
-  },
-  {
-    id: "data-pipeline",
-    name: "Data Pipeline",
-    description: "ETL and data processing service",
-    language: "Python",
-    team: "DevOps",
-    status: "active",
-    starred: false,
-    lastActivity: "6h ago",
-    branches: 6,
-    openIssues: 3,
-    healthScore: 88,
-    commits: 98,
-    contributors: 4,
-    coverage: 85,
-  },
-  {
-    id: "mobile-app",
-    name: "Mobile App",
-    description: "Cross-platform mobile application",
-    language: "Dart",
-    team: "Development",
-    status: "maintenance",
-    starred: false,
-    lastActivity: "2d ago",
-    branches: 4,
-    openIssues: 12,
-    healthScore: 65,
-    commits: 445,
-    contributors: 7,
-    coverage: 62,
-  },
-  {
-    id: "notification-service",
-    name: "Notification Service",
-    description: "Push notification and email service",
-    language: "Node.js",
-    team: "Development",
-    status: "active",
-    starred: true,
-    lastActivity: "30m ago",
-    branches: 5,
-    openIssues: 1,
-    healthScore: 96,
-    commits: 87,
-    contributors: 3,
-    coverage: 94,
-  },
-]
+// Types for projects
+interface Project {
+  id: string
+  name: string
+  description: string
+  language: string
+  team: string
+  status: "active" | "maintenance" | "archived"
+  starred: boolean
+  lastActivity: string
+  branches: number
+  openIssues: number
+  healthScore: number
+  commits: number
+  contributors: number
+  coverage: number
+}
 
 const languageColors: Record<string, string> = {
   TypeScript: "bg-blue-500",
@@ -149,9 +69,9 @@ const languageColors: Record<string, string> = {
 }
 
 const statusConfig = {
-  active: { label: "Active", className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
+  active: { label: "Actif", className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
   maintenance: { label: "Maintenance", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" },
-  archived: { label: "Archived", className: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400" },
+  archived: { label: "Archive", className: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400" },
 }
 
 interface ProjectCardProps {
@@ -231,16 +151,16 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem onClick={onClick}>
                       <Eye className="h-4 w-4 mr-2" />
-                      View Project
+                      Voir le Projet
                     </DropdownMenuItem>
                     <DropdownMenuItem>
                       <Settings className="h-4 w-4 mr-2" />
-                      Settings
+                      Parametres
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
                     <DropdownMenuItem>
                       <Archive className="h-4 w-4 mr-2" />
-                      Archive
+                      Archiver
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
@@ -273,10 +193,22 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
                   {project.name}
                 </CardTitle>
                 <div className="flex items-center gap-2 mt-1">
-                  <div className={`h-2 w-2 rounded-full ${languageColors[project.language]}`} />
                   <span className="text-xs text-muted-foreground">{project.language}</span>
                 </div>
               </div>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <GitBranch className="h-4 w-4" />
+                {project.branches}
+              </span>
+              <span className="flex items-center gap-1">
+                <AlertTriangle className="h-4 w-4" />
+                {project.openIssues}
+              </span>
+              <Badge variant="secondary" className={status.className}>
+                {status.label}
+              </Badge>
             </div>
             <Button
               variant="ghost"
@@ -297,7 +229,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
           </p>
 
           <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Health Score</span>
+            <span className="text-muted-foreground">Score Sante</span>
             <span className={cn(
               "font-medium",
               project.healthScore >= 90 ? "text-green-600" :
@@ -326,7 +258,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
             </div>
             <div className="text-center">
               <div className="text-lg font-bold">{project.contributors}</div>
-              <div className="text-xs text-muted-foreground">People</div>
+              <div className="text-xs text-muted-foreground">Personnes</div>
             </div>
           </div>
 
@@ -351,8 +283,37 @@ export default function ProjectsPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [teamFilter, setTeamFilter] = useState("all")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-  const filteredProjects = projectsData.filter((project) => {
+  const fetchProjects = async () => {
+    try {
+      setLoading(true)
+      setError(null)
+      
+      // Try to fetch from API
+      const response = await fetch('/api/projects')
+      if (response.ok) {
+        const data = await response.json()
+        setProjects(data)
+      } else {
+        // Return empty array if API not available
+        setProjects([])
+      }
+    } catch (err) {
+      // Return empty array if API not available
+      setProjects([])
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchProjects()
+  }, [])
+
+  const filteredProjects = projects.filter((project) => {
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       project.description.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || project.status === statusFilter
@@ -372,18 +333,53 @@ export default function ProjectsPage() {
     router.push("/dashboard/projects/new")
   }
 
+  // Loading state
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+          <span className="ml-3 text-gray-600">Chargement des projets...</span>
+        </div>
+      </div>
+    )
+  }
+
+  // Error state
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
+          <CardContent className="p-6">
+            <div className="flex flex-col items-center text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                Erreur de chargement
+              </h3>
+              <p className="text-red-600 dark:text-red-300 mb-4">{error}</p>
+              <Button onClick={fetchProjects} variant="outline" className="gap-2">
+                <RefreshCw className="h-4 w-4" />
+                Reessayer
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    )
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Projects</h1>
+          <h1 className="text-3xl font-bold">Projets</h1>
           <p className="text-muted-foreground mt-1">
-            Manage and monitor all your projects
+            Gerer et surveiller tous vos projets
           </p>
         </div>
         <Button className="gap-2" onClick={handleNewProject}>
           <Plus className="h-4 w-4" />
-          New Project
+          Nouveau Projet
         </Button>
       </div>
 
@@ -394,7 +390,7 @@ export default function ProjectsPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search projects..."
+                placeholder="Rechercher des projets..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 className="pl-10"
@@ -402,22 +398,22 @@ export default function ProjectsPage() {
             </div>
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
+                <SelectValue placeholder="Statut" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="all">Tous les Statuts</SelectItem>
+                <SelectItem value="active">Actif</SelectItem>
                 <SelectItem value="maintenance">Maintenance</SelectItem>
-                <SelectItem value="archived">Archived</SelectItem>
+                <SelectItem value="archived">Archive</SelectItem>
               </SelectContent>
             </Select>
             <Select value={teamFilter} onValueChange={setTeamFilter}>
               <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Team" />
+                <SelectValue placeholder="Equipe" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Teams</SelectItem>
-                <SelectItem value="Development">Development</SelectItem>
+                <SelectItem value="all">Toutes les Equipes</SelectItem>
+                <SelectItem value="Development">Developpement</SelectItem>
                 <SelectItem value="DevOps">DevOps</SelectItem>
                 <SelectItem value="QA">QA</SelectItem>
               </SelectContent>
@@ -447,7 +443,7 @@ export default function ProjectsPage() {
         <div className="space-y-4">
           <h2 className="text-lg font-semibold flex items-center gap-2">
             <Star className="h-5 w-5 text-yellow-500" />
-            Starred Projects
+            Projets Favoris
           </h2>
           <div className={viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
             {starredProjects.map((project) => (
@@ -464,7 +460,7 @@ export default function ProjectsPage() {
 
       {/* All Projects */}
       <div className="space-y-4">
-        <h2 className="text-lg font-semibold">All Projects</h2>
+        <h2 className="text-lg font-semibold">Tous les Projets</h2>
         <div className={viewMode === "grid" ? "grid gap-4 md:grid-cols-2 lg:grid-cols-3" : "space-y-3"}>
           {otherProjects.map((project) => (
             <ProjectCard 
@@ -481,9 +477,9 @@ export default function ProjectsPage() {
         <Card className="py-12">
           <CardContent className="text-center">
             <Folder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No projects found</h3>
+            <h3 className="text-lg font-medium">Aucun projet trouve</h3>
             <p className="text-muted-foreground mt-1">
-              Try adjusting your filters or create a new project
+              Essayez d'ajuster vos filtres ou creez un nouveau projet
             </p>
           </CardContent>
         </Card>

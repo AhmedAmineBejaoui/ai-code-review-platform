@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useMemo } from "react"
-import { motion } from "framer-motion"
+import { useState, useEffect, useMemo, useCallback } from "react"
+import { motion } from "motion/react"
 import {
   Search,
   Filter,
@@ -16,6 +16,9 @@ import {
   Play,
   UserPlus,
   MoreVertical,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -44,73 +47,16 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
-
-// Mock data - would be fetched from API
-const mockQueueData = {
-  assigned: [
-    {
-      id: "asg_001",
-      analysis: {
-        id: "ana_123",
-        repo: "frontend/webapp",
-        pr_label: "PR #456",
-        author: "alice@company.com",
-        findings_summary: { blocker: 2, warn: 5, info: 10 },
-        complexity_score: 3.5,
-      },
-      priority: "high",
-      assignment_type: "auto",
-      assigned_at: "2026-03-24T08:30:00Z",
-      due_at: "2026-03-24T18:00:00Z",
-      status: "pending",
-      wait_time_hours: 8.5,
-      is_overdue: true,
-    },
-    {
-      id: "asg_002",
-      analysis: {
-        id: "ana_124",
-        repo: "backend/api",
-        pr_label: "PR #789",
-        author: "bob@company.com",
-        findings_summary: { blocker: 0, warn: 3, info: 8 },
-        complexity_score: 2.0,
-      },
-      priority: "medium",
-      assignment_type: "manual",
-      assigned_at: "2026-03-24T10:00:00Z",
-      due_at: "2026-03-25T10:00:00Z",
-      status: "pending",
-      wait_time_hours: 6,
-      is_overdue: false,
-    },
-  ],
-  available: [
-    {
-      id: "asg_003",
-      analysis: {
-        id: "ana_125",
-        repo: "mobile/ios",
-        pr_label: "PR #321",
-        author: "charlie@company.com",
-        findings_summary: { blocker: 1, warn: 2, info: 4 },
-        complexity_score: 1.5,
-      },
-      priority: "medium",
-      assignment_type: "auto",
-      assigned_at: "2026-03-24T14:00:00Z",
-      due_at: "2026-03-25T14:00:00Z",
-      status: "pending",
-      wait_time_hours: 2,
-      is_overdue: false,
-    },
-  ],
-  stats: {
-    pending_count: 5,
-    in_progress_count: 2,
-    overdue_count: 1,
-  },
-}
+import {
+  fetchReviewQueueData,
+  claimReviewAssignment,
+  startReview,
+  declineReviewAssignment,
+  createReviewQueuePoller,
+  defaultReviewQueueData,
+  type ReviewQueueData,
+  type QueueAssignment,
+} from "@/lib/review-queue"
 
 interface QueueFilters {
   status: string
@@ -121,8 +67,9 @@ interface QueueFilters {
 }
 
 export function ReviewQueue() {
-  const [queueData, setQueueData] = useState(mockQueueData)
-  const [loading, setLoading] = useState(false)
+  const [queueData, setQueueData] = useState<ReviewQueueData>(defaultReviewQueueData)
+  const [loading, setLoading] = useState(true)
+  const [actionLoading, setActionLoading] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("assigned")
   const [filters, setFilters] = useState<QueueFilters>({
     status: "all",
@@ -132,9 +79,40 @@ export function ReviewQueue() {
     sortOrder: "asc",
   })
 
+  // Load queue data on mount
+  const loadData = useCallback(async () => {
+    setLoading(true)
+    try {
+      const data = await fetchReviewQueueData({ force: true })
+      setQueueData(data)
+    } catch (error) {
+      console.error("Failed to load queue data:", error)
+      setQueueData({
+        ...defaultReviewQueueData,
+        error: "Erreur lors du chargement de la file d'attente",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
+
+  // Polling for real-time updates
+  useEffect(() => {
+    const poller = createReviewQueuePoller((data) => {
+      setQueueData(data)
+    }, { intervalMs: 20_000 })
+
+    poller.start()
+    return () => poller.stop()
+  }, [])
+
   // Filtered and sorted data
   const filteredAssigned = useMemo(() => {
-    let items = queueData.assigned
+    let items = [...queueData.assigned]
 
     // Apply search filter
     if (filters.search) {
@@ -159,14 +137,14 @@ export function ReviewQueue() {
 
     // Apply sorting
     items.sort((a, b) => {
-      let aValue: any
-      let bValue: any
+      let aValue: number
+      let bValue: number
 
       switch (filters.sortBy) {
         case "priority":
           const priorityOrder = { critical: 4, high: 3, medium: 2, low: 1 }
-          aValue = priorityOrder[a.priority as keyof typeof priorityOrder] || 0
-          bValue = priorityOrder[b.priority as keyof typeof priorityOrder] || 0
+          aValue = priorityOrder[a.priority] || 0
+          bValue = priorityOrder[b.priority] || 0
           break
         case "wait_time":
           aValue = a.wait_time_hours
@@ -190,21 +168,49 @@ export function ReviewQueue() {
   }, [queueData.assigned, filters])
 
   const handleClaimReview = async (assignmentId: string) => {
-    setLoading(true)
+    setActionLoading(assignmentId)
     try {
-      // await fetch(`/api/reviews/assignments/${assignmentId}/claim`, { method: 'POST' })
-      // Refresh data
-      console.log("Claiming assignment:", assignmentId)
+      const result = await claimReviewAssignment(assignmentId)
+      if (result.success) {
+        // Refresh data after claiming
+        await loadData()
+      } else {
+        console.error("Failed to claim review:", result.error)
+      }
     } catch (error) {
       console.error("Failed to claim review:", error)
     } finally {
-      setLoading(false)
+      setActionLoading(null)
     }
   }
 
   const handleStartReview = async (assignmentId: string, analysisId: string) => {
-    // Navigate to review page and mark as started
-    window.location.href = `/dashboard/review/${analysisId}?assignment=${assignmentId}`
+    setActionLoading(assignmentId)
+    try {
+      await startReview(assignmentId)
+      // Navigate to review page
+      window.location.href = `/dashboard/review/${analysisId}?assignment=${assignmentId}`
+    } catch (error) {
+      console.error("Failed to start review:", error)
+      // Still navigate even if API fails
+      window.location.href = `/dashboard/review/${analysisId}?assignment=${assignmentId}`
+    }
+  }
+
+  const handleDeclineReview = async (assignmentId: string) => {
+    setActionLoading(assignmentId)
+    try {
+      const result = await declineReviewAssignment(assignmentId)
+      if (result.success) {
+        await loadData()
+      } else {
+        console.error("Failed to decline review:", result.error)
+      }
+    } catch (error) {
+      console.error("Failed to decline review:", error)
+    } finally {
+      setActionLoading(null)
+    }
   }
 
   const getPriorityColor = (priority: string) => {
@@ -227,14 +233,32 @@ export function ReviewQueue() {
     const due = new Date(dueAt)
     const diffHours = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60))
 
-    if (diffHours < 0) return `${Math.abs(diffHours)}h overdue`
-    if (diffHours === 0) return "Due now"
-    if (diffHours < 24) return `${diffHours}h remaining`
-    return `${Math.ceil(diffHours / 24)}d remaining`
+    if (diffHours < 0) return `${Math.abs(diffHours)}h en retard`
+    if (diffHours === 0) return "Échéance maintenant"
+    if (diffHours < 24) return `${diffHours}h restantes`
+    return `${Math.ceil(diffHours / 24)}j restants`
   }
 
   return (
     <div className="space-y-6">
+      {/* Error State */}
+      {queueData.error && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-red-400" />
+            <span className="text-red-200">{queueData.error}</span>
+          </div>
+          <Button variant="outline" size="sm" onClick={loadData}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Réessayer
+          </Button>
+        </motion.div>
+      )}
+
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card>
@@ -242,8 +266,10 @@ export function ReviewQueue() {
             <div className="flex items-center space-x-2">
               <Clock className="h-4 w-4 text-blue-500" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold">{queueData.stats.pending_count}</p>
+                <p className="text-sm font-medium text-muted-foreground">En attente</p>
+                <p className="text-2xl font-bold">
+                  {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : queueData.stats.pending_count}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -254,8 +280,10 @@ export function ReviewQueue() {
             <div className="flex items-center space-x-2">
               <Play className="h-4 w-4 text-orange-500" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">In Progress</p>
-                <p className="text-2xl font-bold">{queueData.stats.in_progress_count}</p>
+                <p className="text-sm font-medium text-muted-foreground">En cours</p>
+                <p className="text-2xl font-bold">
+                  {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : queueData.stats.in_progress_count}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -266,8 +294,10 @@ export function ReviewQueue() {
             <div className="flex items-center space-x-2">
               <AlertTriangle className="h-4 w-4 text-red-500" />
               <div>
-                <p className="text-sm font-medium text-muted-foreground">Overdue</p>
-                <p className="text-2xl font-bold">{queueData.stats.overdue_count}</p>
+                <p className="text-sm font-medium text-muted-foreground">En retard</p>
+                <p className="text-2xl font-bold">
+                  {loading ? <Loader2 className="h-6 w-6 animate-spin" /> : queueData.stats.overdue_count}
+                </p>
               </div>
             </div>
           </CardContent>
@@ -276,9 +306,13 @@ export function ReviewQueue() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center justify-center">
-              <Button size="sm" onClick={() => window.location.reload()}>
-                <Clock className="h-4 w-4 mr-1" />
-                Refresh
+              <Button size="sm" onClick={loadData} disabled={loading}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Actualiser
               </Button>
             </div>
           </CardContent>
@@ -289,42 +323,42 @@ export function ReviewQueue() {
         <div className="flex items-center justify-between">
           <TabsList>
             <TabsTrigger value="assigned">
-              Assigned to Me ({queueData.assigned.length})
+              Assignées ({queueData.assigned.length})
             </TabsTrigger>
             <TabsTrigger value="available">
-              Available ({queueData.available.length})
+              Disponibles ({queueData.available.length})
             </TabsTrigger>
           </TabsList>
 
           {/* Filters */}
           <div className="flex items-center space-x-2">
             <Input
-              placeholder="Search reviews..."
+              placeholder="Rechercher..."
               value={filters.search}
               onChange={(e) => setFilters({ ...filters, search: e.target.value })}
               className="w-64"
             />
             <Select value={filters.priority} onValueChange={(value) => setFilters({ ...filters, priority: value })}>
               <SelectTrigger className="w-32">
-                <SelectValue placeholder="Priority" />
+                <SelectValue placeholder="Priorité" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">All Priority</SelectItem>
-                <SelectItem value="critical">Critical</SelectItem>
-                <SelectItem value="high">High</SelectItem>
-                <SelectItem value="medium">Medium</SelectItem>
-                <SelectItem value="low">Low</SelectItem>
+                <SelectItem value="all">Toutes</SelectItem>
+                <SelectItem value="critical">Critique</SelectItem>
+                <SelectItem value="high">Haute</SelectItem>
+                <SelectItem value="medium">Moyenne</SelectItem>
+                <SelectItem value="low">Basse</SelectItem>
               </SelectContent>
             </Select>
             <Select value={filters.sortBy} onValueChange={(value) => setFilters({ ...filters, sortBy: value })}>
               <SelectTrigger className="w-32">
-                <SelectValue placeholder="Sort by" />
+                <SelectValue placeholder="Trier par" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="due_at">Due Date</SelectItem>
-                <SelectItem value="priority">Priority</SelectItem>
-                <SelectItem value="wait_time">Wait Time</SelectItem>
-                <SelectItem value="complexity">Complexity</SelectItem>
+                <SelectItem value="due_at">Échéance</SelectItem>
+                <SelectItem value="priority">Priorité</SelectItem>
+                <SelectItem value="wait_time">Attente</SelectItem>
+                <SelectItem value="complexity">Complexité</SelectItem>
               </SelectContent>
             </Select>
             <Button
@@ -340,25 +374,31 @@ export function ReviewQueue() {
         <TabsContent value="assigned">
           <Card>
             <CardHeader>
-              <CardTitle>My Assigned Reviews</CardTitle>
+              <CardTitle>Mes Reviews Assignées</CardTitle>
             </CardHeader>
             <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <span className="ml-3 text-muted-foreground">Chargement...</span>
+                </div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Priority</TableHead>
+                    <TableHead>Priorité</TableHead>
                     <TableHead>Repository</TableHead>
-                    <TableHead>Author</TableHead>
-                    <TableHead>Findings</TableHead>
-                    <TableHead>Complexity</TableHead>
-                    <TableHead>Wait Time</TableHead>
-                    <TableHead>Due Date</TableHead>
+                    <TableHead>Auteur</TableHead>
+                    <TableHead>Problèmes</TableHead>
+                    <TableHead>Complexité</TableHead>
+                    <TableHead>Attente</TableHead>
+                    <TableHead>Échéance</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {filteredAssigned.map((item) => (
-                    <TableRow key={item.id} className={item.is_overdue ? "bg-red-50" : ""}>
+                    <TableRow key={item.id} className={item.is_overdue ? "bg-red-50 dark:bg-red-950/20" : ""}>
                       <TableCell>
                         <div className="flex items-center space-x-2">
                           <div className={`w-3 h-3 rounded-full ${getPriorityColor(item.priority)}`} />
@@ -411,7 +451,7 @@ export function ReviewQueue() {
                               className={`w-2 h-2 rounded-full ${
                                 i < Math.floor(item.analysis.complexity_score)
                                   ? "bg-orange-500"
-                                  : "bg-gray-200"
+                                  : "bg-gray-200 dark:bg-gray-700"
                               }`}
                             />
                           ))}
@@ -433,14 +473,19 @@ export function ReviewQueue() {
                           <Button
                             size="sm"
                             onClick={() => handleStartReview(item.id, item.analysis.id)}
+                            disabled={actionLoading === item.id}
                           >
-                            <Play className="h-3 w-3 mr-1" />
-                            Start
+                            {actionLoading === item.id ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <Play className="h-3 w-3 mr-1" />
+                            )}
+                            Démarrer
                           </Button>
                           <Link href={`/dashboard/review/${item.analysis.id}`}>
                             <Button size="sm" variant="outline">
                               <Eye className="h-3 w-3 mr-1" />
-                              View
+                              Voir
                             </Button>
                           </Link>
                           <DropdownMenu>
@@ -450,9 +495,14 @@ export function ReviewQueue() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                              <DropdownMenuItem>Reassign</DropdownMenuItem>
-                              <DropdownMenuItem>Change Priority</DropdownMenuItem>
-                              <DropdownMenuItem className="text-red-600">Decline</DropdownMenuItem>
+                              <DropdownMenuItem>Réassigner</DropdownMenuItem>
+                              <DropdownMenuItem>Changer la priorité</DropdownMenuItem>
+                              <DropdownMenuItem 
+                                className="text-red-600"
+                                onClick={() => handleDeclineReview(item.id)}
+                              >
+                                Refuser
+                              </DropdownMenuItem>
                             </DropdownMenuContent>
                           </DropdownMenu>
                         </div>
@@ -461,10 +511,11 @@ export function ReviewQueue() {
                   ))}
                 </TableBody>
               </Table>
-              {filteredAssigned.length === 0 && (
+              )}
+              {!loading && filteredAssigned.length === 0 && (
                 <div className="text-center py-8">
                   <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                  <p className="text-muted-foreground">No assigned reviews found</p>
+                  <p className="text-muted-foreground">Aucune review assignée</p>
                 </div>
               )}
             </CardContent>
@@ -474,18 +525,24 @@ export function ReviewQueue() {
         <TabsContent value="available">
           <Card>
             <CardHeader>
-              <CardTitle>Available for Self-Assignment</CardTitle>
+              <CardTitle>Disponibles pour auto-assignation</CardTitle>
             </CardHeader>
             <CardContent>
+              {loading ? (
+                <div className="flex items-center justify-center py-12">
+                  <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  <span className="ml-3 text-muted-foreground">Chargement...</span>
+                </div>
+              ) : (
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Priority</TableHead>
+                    <TableHead>Priorité</TableHead>
                     <TableHead>Repository</TableHead>
-                    <TableHead>Author</TableHead>
-                    <TableHead>Findings</TableHead>
-                    <TableHead>Complexity</TableHead>
-                    <TableHead>Estimated Time</TableHead>
+                    <TableHead>Auteur</TableHead>
+                    <TableHead>Problèmes</TableHead>
+                    <TableHead>Complexité</TableHead>
+                    <TableHead>Temps estimé</TableHead>
                     <TableHead>Actions</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -533,7 +590,7 @@ export function ReviewQueue() {
                               className={`w-2 h-2 rounded-full ${
                                 i < Math.floor(item.analysis.complexity_score)
                                   ? "bg-orange-500"
-                                  : "bg-gray-200"
+                                  : "bg-gray-200 dark:bg-gray-700"
                               }`}
                             />
                           ))}
@@ -548,25 +605,32 @@ export function ReviewQueue() {
                           <Button
                             size="sm"
                             onClick={() => handleClaimReview(item.id)}
-                            disabled={loading}
+                            disabled={actionLoading === item.id}
                           >
-                            <UserPlus className="h-3 w-3 mr-1" />
-                            Claim
+                            {actionLoading === item.id ? (
+                              <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                            ) : (
+                              <UserPlus className="h-3 w-3 mr-1" />
+                            )}
+                            Réclamer
                           </Button>
-                          <Button size="sm" variant="outline">
-                            <Eye className="h-3 w-3 mr-1" />
-                            Preview
-                          </Button>
+                          <Link href={`/dashboard/review/${item.analysis.id}`}>
+                            <Button size="sm" variant="outline">
+                              <Eye className="h-3 w-3 mr-1" />
+                              Aperçu
+                            </Button>
+                          </Link>
                         </div>
                       </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
               </Table>
-              {queueData.available.length === 0 && (
+              )}
+              {!loading && queueData.available.length === 0 && (
                 <div className="text-center py-8">
                   <CheckCircle className="h-12 w-12 mx-auto mb-4 text-green-500" />
-                  <p className="text-muted-foreground">No available reviews</p>
+                  <p className="text-muted-foreground">Aucune review disponible</p>
                 </div>
               )}
             </CardContent>

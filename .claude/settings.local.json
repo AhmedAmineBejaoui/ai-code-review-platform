@@ -1,7 +1,12 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform -name package.json -o -name requirements.txt -o -name pyproject.toml -o -name docker-compose* -o -name Dockerfile)"
+      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform -name package.json -o -name requirements.txt -o -name pyproject.toml -o -name docker-compose* -o -name Dockerfile)",
+      "mcp__claude_ai_Figma__get_design_context",
+      "mcp__claude_ai_Figma__get_metadata",
+      "mcp__claude_ai_Figma__get_screenshot",
+      "Bash(npx tsc:*)",
+      "Bash(node_modules/.bin/tsc --noEmit)"
     ]
   }
 }
