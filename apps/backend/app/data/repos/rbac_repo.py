@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from threading import Lock
-
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 from sqlalchemy.exc import IntegrityError
@@ -10,7 +8,6 @@ from app.data.database import get_engine
 from app.data.models.rbac import RBACOrganizationMembership, RBACUser
 
 
-_RBAC_LOCK = Lock()
 _CLERK_ROLE_TO_DB_ROLE: dict[str, str] = {
     "admin": "admin",
     "reviewer": "reviewer",
@@ -55,122 +52,121 @@ class RBACRepo:
     def upsert_clerk_user(self, user_id: str, email: str, display_name: str | None, clerk_role: str) -> None:
         normalized_email = self._normalize_email(user_id=user_id, email=email)
         normalized_role = self._role_for_db(clerk_role)
-        with _RBAC_LOCK:
-            with self._engine.begin() as conn:
-                # Use a nested transaction (SAVEPOINT) for the optimistic insert.
-                # A unique constraint violation on the first INSERT will abort the
-                # nested transaction only, allowing the outer transaction to continue
-                # and run the fallback INSERT without entering an aborted state.
+        with self._engine.begin() as conn:
+            # Use a nested transaction (SAVEPOINT) for the optimistic insert.
+            # A unique constraint violation on the first INSERT will abort the
+            # nested transaction only, allowing the outer transaction to continue
+            # and run the fallback INSERT without entering an aborted state.
+            try:
                 try:
-                    try:
-                        with conn.begin_nested():
-                            conn.execute(
-                                text(
-                                    """
-                                    INSERT INTO users (id, email, display_name, is_active)
-                                    VALUES (:user_id, :email, :display_name, TRUE)
-                                    ON CONFLICT (id) DO UPDATE
-                                    SET email = CASE
-                                            WHEN EXCLUDED.email LIKE '%@clerk.local'
-                                                 AND users.email IS NOT NULL
-                                                 AND users.email NOT LIKE '%@clerk.local'
-                                            THEN users.email
-                                            ELSE EXCLUDED.email
-                                        END,
-                                        display_name = COALESCE(EXCLUDED.display_name, users.display_name),
-                                        is_active = TRUE
-                                    """
-                                ),
-                                {"user_id": user_id, "email": normalized_email, "display_name": display_name},
-                            )
-                    except IntegrityError:
-                        # Nested transaction failed (likely email uniqueness). Rollback of the
-                        # nested savepoint leaves the outer transaction usable; perform fallback.
+                    with conn.begin_nested():
                         conn.execute(
                             text(
                                 """
                                 INSERT INTO users (id, email, display_name, is_active)
-                                VALUES (:user_id, :fallback_email, :display_name, TRUE)
+                                VALUES (:user_id, :email, :display_name, TRUE)
                                 ON CONFLICT (id) DO UPDATE
-                                SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                                SET email = CASE
+                                        WHEN EXCLUDED.email LIKE '%@clerk.local'
+                                             AND users.email IS NOT NULL
+                                             AND users.email NOT LIKE '%@clerk.local'
+                                        THEN users.email
+                                        ELSE EXCLUDED.email
+                                    END,
+                                    display_name = COALESCE(EXCLUDED.display_name, users.display_name),
                                     is_active = TRUE
                                 """
                             ),
-                            {
-                                "user_id": user_id,
-                                "fallback_email": f"{user_id}@clerk.local",
-                                "display_name": display_name,
-                            },
+                            {"user_id": user_id, "email": normalized_email, "display_name": display_name},
                         )
-                except Exception:
-                    # Let the outer transaction manager propagate unexpected errors.
-                    raise
+                except IntegrityError:
+                    # Nested transaction failed (likely email uniqueness). Rollback of the
+                    # nested savepoint leaves the outer transaction usable; perform fallback.
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO users (id, email, display_name, is_active)
+                            VALUES (:user_id, :fallback_email, :display_name, TRUE)
+                            ON CONFLICT (id) DO UPDATE
+                            SET display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                                is_active = TRUE
+                            """
+                        ),
+                        {
+                            "user_id": user_id,
+                            "fallback_email": f"{user_id}@clerk.local",
+                            "display_name": display_name,
+                        },
+                    )
+            except Exception:
+                # Let the outer transaction manager propagate unexpected errors.
+                raise
 
+            role_row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT id
+                        FROM roles
+                        WHERE code = :role_code
+                        LIMIT 1
+                        """
+                    ),
+                    {"role_code": normalized_role},
+                )
+                .mappings()
+                .first()
+            )
+            if role_row is None:
                 role_row = (
                     conn.execute(
                         text(
                             """
                             SELECT id
                             FROM roles
-                            WHERE code = :role_code
+                            WHERE code IN ('developer', 'viewer')
+                            ORDER BY CASE WHEN code = 'developer' THEN 0 ELSE 1 END
                             LIMIT 1
                             """
-                        ),
-                        {"role_code": normalized_role},
+                        )
                     )
                     .mappings()
                     .first()
                 )
-                if role_row is None:
-                    role_row = (
-                        conn.execute(
-                            text(
-                                """
-                                SELECT id
-                                FROM roles
-                                WHERE code IN ('developer', 'viewer')
-                                ORDER BY CASE WHEN code = 'developer' THEN 0 ELSE 1 END
-                                LIMIT 1
-                                """
-                            )
-                        )
-                        .mappings()
-                        .first()
-                    )
 
-                if role_row is None:
-                    return
+            if role_row is None:
+                return
 
-                role_id = str(role_row["id"])
-                # Clerk is the source of truth for system roles.
-                conn.execute(
-                    text(
-                        """
-                        DELETE FROM user_roles
-                        WHERE user_id = :user_id
-                          AND role_id IN (
-                            SELECT id
-                            FROM roles
-                            WHERE is_system = TRUE
-                          )
-                        """
-                    ),
-                    {"user_id": user_id},
-                )
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO user_roles (id, user_id, role_id)
-                        VALUES (:id, :user_id, :role_id)
-                        ON CONFLICT (user_id, role_id) DO NOTHING
-                        """
-                    ),
-                    {
-                        "id": f"ur_{user_id}_{role_id}",
-                        "user_id": user_id,
-                        "role_id": role_id,
-                    },
-                )
+            role_id = str(role_row["id"])
+            # Clerk is the source of truth for system roles.
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM user_roles
+                    WHERE user_id = :user_id
+                      AND role_id IN (
+                        SELECT id
+                        FROM roles
+                        WHERE is_system = TRUE
+                      )
+                    """
+                ),
+                {"user_id": user_id},
+            )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO user_roles (id, user_id, role_id)
+                    VALUES (:id, :user_id, :role_id)
+                    ON CONFLICT (user_id, role_id) DO NOTHING
+                    """
+                ),
+                {
+                    "id": f"ur_{user_id}_{role_id}",
+                    "user_id": user_id,
+                    "role_id": role_id,
+                },
+            )
 
     def upsert_organization_membership(
         self,
@@ -189,125 +185,123 @@ class RBACRepo:
         normalized_role = self._normalize_org_role(organization_role)
         membership_id = f"orgm_{normalized_org_id}_{user_id}"
 
-        with _RBAC_LOCK:
-            with self._engine.begin() as conn:
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO organizations (id, slug, name, is_active)
-                        VALUES (:org_id, :slug, :name, TRUE)
-                        ON CONFLICT (id) DO UPDATE
-                        SET slug = COALESCE(EXCLUDED.slug, organizations.slug),
-                            name = COALESCE(EXCLUDED.name, organizations.name),
-                            is_active = TRUE,
-                            updated_at = NOW()
-                        """
-                    ),
-                    {"org_id": normalized_org_id, "slug": normalized_slug, "name": normalized_name},
-                )
+        with self._engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO organizations (id, slug, name, is_active)
+                    VALUES (:org_id, :slug, :name, TRUE)
+                    ON CONFLICT (id) DO UPDATE
+                    SET slug = COALESCE(EXCLUDED.slug, organizations.slug),
+                        name = COALESCE(EXCLUDED.name, organizations.name),
+                        is_active = TRUE,
+                        updated_at = NOW()
+                    """
+                ),
+                {"org_id": normalized_org_id, "slug": normalized_slug, "name": normalized_name},
+            )
 
-                conn.execute(
-                    text(
-                        """
-                        INSERT INTO organization_memberships (
-                            id,
-                            organization_id,
-                            user_id,
-                            role,
-                            status
-                        )
-                        VALUES (:id, :organization_id, :user_id, :role, 'active')
-                        ON CONFLICT (organization_id, user_id) DO UPDATE
-                        SET role = EXCLUDED.role,
-                            status = 'active',
-                            updated_at = NOW()
-                        """
-                    ),
-                    {
-                        "id": membership_id,
-                        "organization_id": normalized_org_id,
-                        "user_id": user_id,
-                        "role": normalized_role,
-                    },
-                )
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO organization_memberships (
+                        id,
+                        organization_id,
+                        user_id,
+                        role,
+                        status
+                    )
+                    VALUES (:id, :organization_id, :user_id, :role, 'active')
+                    ON CONFLICT (organization_id, user_id) DO UPDATE
+                    SET role = EXCLUDED.role,
+                        status = 'active',
+                        updated_at = NOW()
+                    """
+                ),
+                {
+                    "id": membership_id,
+                    "organization_id": normalized_org_id,
+                    "user_id": user_id,
+                    "role": normalized_role,
+                },
+            )
 
     def get_user(self, user_id: str) -> RBACUser | None:
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                user_row = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT id, email, display_name, is_active
-                            FROM users
-                            WHERE id = :user_id
-                            LIMIT 1
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.connect() as conn:
+            user_row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT id, email, display_name, is_active
+                        FROM users
+                        WHERE id = :user_id
+                        LIMIT 1
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
-                if user_row is None:
-                    return None
+                .mappings()
+                .first()
+            )
+            if user_row is None:
+                return None
 
-                role_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT r.code
-                            FROM roles r
-                            JOIN user_roles ur ON ur.role_id = r.id
-                            WHERE ur.user_id = :user_id
-                            ORDER BY r.code ASC
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .all()
+            role_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT r.code
+                        FROM roles r
+                        JOIN user_roles ur ON ur.role_id = r.id
+                        WHERE ur.user_id = :user_id
+                        ORDER BY r.code ASC
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
-                permission_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT DISTINCT p.code
-                            FROM permissions p
-                            JOIN role_permissions rp ON rp.permission_id = p.id
-                            JOIN user_roles ur ON ur.role_id = rp.role_id
-                            WHERE ur.user_id = :user_id
-                              AND (rp.enabled IS NULL OR rp.enabled = TRUE)
-                            ORDER BY p.code ASC
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .all()
+                .mappings()
+                .all()
+            )
+            permission_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT DISTINCT p.code
+                        FROM permissions p
+                        JOIN role_permissions rp ON rp.permission_id = p.id
+                        JOIN user_roles ur ON ur.role_id = rp.role_id
+                        WHERE ur.user_id = :user_id
+                          AND (rp.enabled IS NULL OR rp.enabled = TRUE)
+                        ORDER BY p.code ASC
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
+                .mappings()
+                .all()
+            )
 
-                membership_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT
-                                om.organization_id,
-                                om.role,
-                                om.status,
-                                o.name AS organization_name,
-                                o.slug AS organization_slug
-                            FROM organization_memberships om
-                            JOIN organizations o ON o.id = om.organization_id
-                            WHERE om.user_id = :user_id
-                            ORDER BY o.created_at ASC
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .all()
+            membership_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT
+                            om.organization_id,
+                            om.role,
+                            om.status,
+                            o.name AS organization_name,
+                            o.slug AS organization_slug
+                        FROM organization_memberships om
+                        JOIN organizations o ON o.id = om.organization_id
+                        WHERE om.user_id = :user_id
+                        ORDER BY o.created_at ASC
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
+                .mappings()
+                .all()
+            )
 
         return RBACUser(
             id=str(user_row["id"]),
@@ -352,193 +346,188 @@ class RBACRepo:
         Returns:
             The created/updated assignment record, or None on failure
         """
-        with _RBAC_LOCK:
-            with self._engine.begin() as conn:
-                # Get role ID from code
-                role_row = (
-                    conn.execute(
-                        text("SELECT id FROM roles WHERE code = :role_code LIMIT 1"),
-                        {"role_code": role_code},
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            # Get role ID from code
+            role_row = (
+                conn.execute(
+                    text("SELECT id FROM roles WHERE code = :role_code LIMIT 1"),
+                    {"role_code": role_code},
                 )
-                if role_row is None:
-                    return None
-
-                role_id = str(role_row["id"])
-
-                # Upsert the assignment
-                result = conn.execute(
-                    text(
-                        """
-                        INSERT INTO user_project_roles (
-                            user_id, project_id, role_id, assigned_by, notes, expires_at, is_active
-                        )
-                        VALUES (:user_id, :project_id, :role_id, :assigned_by, :notes, :expires_at, TRUE)
-                        ON CONFLICT (user_id, project_id) DO UPDATE
-                        SET role_id = EXCLUDED.role_id,
-                            assigned_by = EXCLUDED.assigned_by,
-                            notes = COALESCE(EXCLUDED.notes, user_project_roles.notes),
-                            expires_at = EXCLUDED.expires_at,
-                            is_active = TRUE,
-                            updated_at = NOW()
-                        RETURNING id, user_id, project_id, role_id, assigned_by, notes, expires_at, is_active, created_at
-                        """
-                    ),
-                    {
-                        "user_id": user_id,
-                        "project_id": project_id,
-                        "role_id": role_id,
-                        "assigned_by": assigned_by,
-                        "notes": notes,
-                        "expires_at": expires_at,
-                    },
-                )
-                row = result.mappings().first()
-                if row:
-                    return {
-                        "id": str(row["id"]),
-                        "user_id": str(row["user_id"]),
-                        "project_id": str(row["project_id"]),
-                        "role_id": str(row["role_id"]),
-                        "role_code": role_code,
-                        "assigned_by": row["assigned_by"],
-                        "notes": row["notes"],
-                        "expires_at": str(row["expires_at"]) if row["expires_at"] else None,
-                        "is_active": bool(row["is_active"]),
-                        "created_at": str(row["created_at"]),
-                    }
+                .mappings()
+                .first()
+            )
+            if role_row is None:
                 return None
+
+            role_id = str(role_row["id"])
+
+            # Upsert the assignment
+            result = conn.execute(
+                text(
+                    """
+                    INSERT INTO user_project_roles (
+                        user_id, project_id, role_id, assigned_by, notes, expires_at, is_active
+                    )
+                    VALUES (:user_id, :project_id, :role_id, :assigned_by, :notes, :expires_at, TRUE)
+                    ON CONFLICT (user_id, project_id) DO UPDATE
+                    SET role_id = EXCLUDED.role_id,
+                        assigned_by = EXCLUDED.assigned_by,
+                        notes = COALESCE(EXCLUDED.notes, user_project_roles.notes),
+                        expires_at = EXCLUDED.expires_at,
+                        is_active = TRUE,
+                        updated_at = NOW()
+                    RETURNING id, user_id, project_id, role_id, assigned_by, notes, expires_at, is_active, created_at
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "project_id": project_id,
+                    "role_id": role_id,
+                    "assigned_by": assigned_by,
+                    "notes": notes,
+                    "expires_at": expires_at,
+                },
+            )
+            row = result.mappings().first()
+            if row:
+                return {
+                    "id": str(row["id"]),
+                    "user_id": str(row["user_id"]),
+                    "project_id": str(row["project_id"]),
+                    "role_id": str(row["role_id"]),
+                    "role_code": role_code,
+                    "assigned_by": row["assigned_by"],
+                    "notes": row["notes"],
+                    "expires_at": str(row["expires_at"]) if row["expires_at"] else None,
+                    "is_active": bool(row["is_active"]),
+                    "created_at": str(row["created_at"]),
+                }
+            return None
 
     def remove_project_role(self, user_id: str, project_id: str) -> bool:
         """Remove a user's role from a project (soft delete by setting is_active=FALSE)."""
-        with _RBAC_LOCK:
-            with self._engine.begin() as conn:
-                result = conn.execute(
+        with self._engine.begin() as conn:
+            result = conn.execute(
+                text(
+                    """
+                    UPDATE user_project_roles
+                    SET is_active = FALSE, updated_at = NOW()
+                    WHERE user_id = :user_id AND project_id = :project_id
+                    """
+                ),
+                {"user_id": user_id, "project_id": project_id},
+            )
+            return result.rowcount > 0
+
+    def get_user_project_role(self, user_id: str, project_id: str) -> dict | None:
+        """Get the user's role for a specific project."""
+        with self._engine.connect() as conn:
+            row = (
+                conn.execute(
                     text(
                         """
-                        UPDATE user_project_roles
-                        SET is_active = FALSE, updated_at = NOW()
-                        WHERE user_id = :user_id AND project_id = :project_id
+                        SELECT 
+                            upr.id,
+                            upr.user_id,
+                            upr.project_id,
+                            upr.role_id,
+                            r.code AS role_code,
+                            r.label AS role_label,
+                            upr.assigned_by,
+                            upr.notes,
+                            upr.expires_at,
+                            upr.is_active,
+                            upr.created_at,
+                            upr.updated_at
+                        FROM user_project_roles upr
+                        JOIN roles r ON r.id = upr.role_id
+                        WHERE upr.user_id = :user_id 
+                          AND upr.project_id = :project_id
+                          AND upr.is_active = TRUE
+                          AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
+                        LIMIT 1
                         """
                     ),
                     {"user_id": user_id, "project_id": project_id},
                 )
-                return result.rowcount > 0
-
-    def get_user_project_role(self, user_id: str, project_id: str) -> dict | None:
-        """Get the user's role for a specific project."""
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT 
-                                upr.id,
-                                upr.user_id,
-                                upr.project_id,
-                                upr.role_id,
-                                r.code AS role_code,
-                                r.label AS role_label,
-                                upr.assigned_by,
-                                upr.notes,
-                                upr.expires_at,
-                                upr.is_active,
-                                upr.created_at,
-                                upr.updated_at
-                            FROM user_project_roles upr
-                            JOIN roles r ON r.id = upr.role_id
-                            WHERE upr.user_id = :user_id 
-                              AND upr.project_id = :project_id
-                              AND upr.is_active = TRUE
-                              AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
-                            LIMIT 1
-                            """
-                        ),
-                        {"user_id": user_id, "project_id": project_id},
-                    )
-                    .mappings()
-                    .first()
-                )
-                if row:
-                    return dict(row)
-                return None
+                .mappings()
+                .first()
+            )
+            if row:
+                return dict(row)
+            return None
 
     def get_user_project_roles(self, user_id: str) -> list[dict]:
         """Get all project roles for a user."""
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT 
-                                upr.id,
-                                upr.user_id,
-                                upr.project_id,
-                                upr.role_id,
-                                r.code AS role_code,
-                                r.label AS role_label,
-                                upr.assigned_by,
-                                upr.notes,
-                                upr.expires_at,
-                                upr.is_active,
-                                upr.created_at,
-                                upr.updated_at
-                            FROM user_project_roles upr
-                            JOIN roles r ON r.id = upr.role_id
-                            WHERE upr.user_id = :user_id
-                              AND upr.is_active = TRUE
-                              AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
-                            ORDER BY upr.created_at DESC
-                            """
-                        ),
-                        {"user_id": user_id},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT 
+                            upr.id,
+                            upr.user_id,
+                            upr.project_id,
+                            upr.role_id,
+                            r.code AS role_code,
+                            r.label AS role_label,
+                            upr.assigned_by,
+                            upr.notes,
+                            upr.expires_at,
+                            upr.is_active,
+                            upr.created_at,
+                            upr.updated_at
+                        FROM user_project_roles upr
+                        JOIN roles r ON r.id = upr.role_id
+                        WHERE upr.user_id = :user_id
+                          AND upr.is_active = TRUE
+                          AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
+                        ORDER BY upr.created_at DESC
+                        """
+                    ),
+                    {"user_id": user_id},
                 )
-                return [dict(row) for row in rows]
+                .mappings()
+                .all()
+            )
+            return [dict(row) for row in rows]
 
     def get_project_members(self, project_id: str) -> list[dict]:
         """Get all users with roles in a specific project."""
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT 
-                                upr.id,
-                                upr.user_id,
-                                u.email AS user_email,
-                                u.display_name AS user_display_name,
-                                upr.project_id,
-                                upr.role_id,
-                                r.code AS role_code,
-                                r.label AS role_label,
-                                upr.assigned_by,
-                                upr.notes,
-                                upr.expires_at,
-                                upr.is_active,
-                                upr.created_at
-                            FROM user_project_roles upr
-                            JOIN roles r ON r.id = upr.role_id
-                            JOIN users u ON u.id = upr.user_id
-                            WHERE upr.project_id = :project_id
-                              AND upr.is_active = TRUE
-                              AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
-                            ORDER BY r.code, u.email
-                            """
-                        ),
-                        {"project_id": project_id},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT 
+                            upr.id,
+                            upr.user_id,
+                            u.email AS user_email,
+                            u.display_name AS user_display_name,
+                            upr.project_id,
+                            upr.role_id,
+                            r.code AS role_code,
+                            r.label AS role_label,
+                            upr.assigned_by,
+                            upr.notes,
+                            upr.expires_at,
+                            upr.is_active,
+                            upr.created_at
+                        FROM user_project_roles upr
+                        JOIN roles r ON r.id = upr.role_id
+                        JOIN users u ON u.id = upr.user_id
+                        WHERE upr.project_id = :project_id
+                          AND upr.is_active = TRUE
+                          AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
+                        ORDER BY r.code, u.email
+                        """
+                    ),
+                    {"project_id": project_id},
                 )
-                return [dict(row) for row in rows]
+                .mappings()
+                .all()
+            )
+            return [dict(row) for row in rows]
 
     def get_user_permissions_for_project(self, user_id: str, project_id: str) -> list[str]:
         """Get all permissions a user has for a specific project.
@@ -547,37 +536,36 @@ class RBACRepo:
         1. Global permissions from user_roles
         2. Project-specific permissions from user_project_roles
         """
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT DISTINCT p.code
-                            FROM permissions p
-                            JOIN role_permissions rp ON rp.permission_id = p.id
-                            WHERE rp.role_id IN (
-                                -- Global roles
-                                SELECT ur.role_id FROM user_roles ur WHERE ur.user_id = :user_id
-                                UNION
-                                -- Project-specific roles
-                                SELECT upr.role_id 
-                                FROM user_project_roles upr 
-                                WHERE upr.user_id = :user_id 
-                                  AND upr.project_id = :project_id
-                                  AND upr.is_active = TRUE
-                                  AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
-                            )
-                            AND (rp.enabled IS NULL OR rp.enabled = TRUE)
-                            ORDER BY p.code
-                            """
-                        ),
-                        {"user_id": user_id, "project_id": project_id},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT DISTINCT p.code
+                        FROM permissions p
+                        JOIN role_permissions rp ON rp.permission_id = p.id
+                        WHERE rp.role_id IN (
+                            -- Global roles
+                            SELECT ur.role_id FROM user_roles ur WHERE ur.user_id = :user_id
+                            UNION
+                            -- Project-specific roles
+                            SELECT upr.role_id 
+                            FROM user_project_roles upr 
+                            WHERE upr.user_id = :user_id 
+                              AND upr.project_id = :project_id
+                              AND upr.is_active = TRUE
+                              AND (upr.expires_at IS NULL OR upr.expires_at > NOW())
+                        )
+                        AND (rp.enabled IS NULL OR rp.enabled = TRUE)
+                        ORDER BY p.code
+                        """
+                    ),
+                    {"user_id": user_id, "project_id": project_id},
                 )
-                return [str(row["code"]) for row in rows]
+                .mappings()
+                .all()
+            )
+            return [str(row["code"]) for row in rows]
 
     def check_user_has_permission_for_project(
         self, user_id: str, project_id: str, permission_code: str
@@ -598,28 +586,27 @@ class RBACRepo:
         Returns:
             List of permission records with enabled status
         """
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                query = text(
-                    """
-                    SELECT 
-                        rp.id,
-                        rp.role_id,
-                        rp.permission_id,
-                        p.code AS permission_code,
-                        p.description AS permission_description,
-                        rp.enabled,
-                        rp.updated_at,
-                        rp.updated_by
-                    FROM role_permissions rp
-                    JOIN permissions p ON p.id = rp.permission_id
-                    WHERE rp.role_id = :role_id
-                    """ + ("" if include_disabled else " AND rp.enabled = TRUE") + """
-                    ORDER BY p.code
-                    """
-                )
-                rows = conn.execute(query, {"role_id": role_id}).mappings().all()
-                return [dict(row) for row in rows]
+        with self._engine.connect() as conn:
+            query = text(
+                """
+                SELECT 
+                    rp.id,
+                    rp.role_id,
+                    rp.permission_id,
+                    p.code AS permission_code,
+                    p.description AS permission_description,
+                    rp.enabled,
+                    rp.updated_at,
+                    rp.updated_by
+                FROM role_permissions rp
+                JOIN permissions p ON p.id = rp.permission_id
+                WHERE rp.role_id = :role_id
+                """ + ("" if include_disabled else " AND rp.enabled = TRUE") + """
+                ORDER BY p.code
+                """
+            )
+            rows = conn.execute(query, {"role_id": role_id}).mappings().all()
+            return [dict(row) for row in rows]
 
     def toggle_role_permission(
         self, role_id: str, permission_id: str, enabled: bool, updated_by: str, reason: str | None = None
@@ -636,98 +623,97 @@ class RBACRepo:
         Returns:
             The updated role_permission record, or None on failure
         """
-        with _RBAC_LOCK:
-            with self._engine.begin() as conn:
-                # Get current state for audit
-                current = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT id, enabled 
-                            FROM role_permissions 
-                            WHERE role_id = :role_id AND permission_id = :permission_id
-                            LIMIT 1
-                            """
-                        ),
-                        {"role_id": role_id, "permission_id": permission_id},
-                    )
-                    .mappings()
-                    .first()
-                )
-                
-                if current is None:
-                    return None
-                
-                previous_enabled = bool(current["enabled"])
-                rp_id = str(current["id"])
-                
-                # Update the permission
+        with self._engine.begin() as conn:
+            # Get current state for audit
+            current = (
                 conn.execute(
                     text(
                         """
-                        UPDATE role_permissions
-                        SET enabled = :enabled,
-                            updated_by = :updated_by,
-                            updated_at = NOW()
-                        WHERE id = :id
+                        SELECT id, enabled 
+                        FROM role_permissions 
+                        WHERE role_id = :role_id AND permission_id = :permission_id
+                        LIMIT 1
                         """
                     ),
-                    {"id": rp_id, "enabled": enabled, "updated_by": updated_by},
+                    {"role_id": role_id, "permission_id": permission_id},
                 )
-                
-                # Insert audit record if role_permission_audit table exists
-                try:
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO role_permission_audit (
-                                role_permission_id, role_id, permission_id,
-                                previous_enabled, new_enabled, changed_by, reason
-                            )
-                            VALUES (:rp_id, :role_id, :permission_id, :previous, :new, :changed_by, :reason)
-                            """
-                        ),
-                        {
-                            "rp_id": rp_id,
-                            "role_id": role_id,
-                            "permission_id": permission_id,
-                            "previous": previous_enabled,
-                            "new": enabled,
-                            "changed_by": updated_by,
-                            "reason": reason,
-                        },
-                    )
-                except Exception:
-                    # Audit table might not exist yet
-                    pass
-                
-                # Return updated record
-                updated = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT 
-                                rp.id,
-                                rp.role_id,
-                                rp.permission_id,
-                                p.code AS permission_code,
-                                p.description AS permission_description,
-                                rp.enabled,
-                                rp.updated_at,
-                                rp.updated_by
-                            FROM role_permissions rp
-                            JOIN permissions p ON p.id = rp.permission_id
-                            WHERE rp.id = :id
-                            LIMIT 1
-                            """
-                        ),
-                        {"id": rp_id},
-                    )
-                    .mappings()
-                    .first()
+                .mappings()
+                .first()
+            )
+            
+            if current is None:
+                return None
+            
+            previous_enabled = bool(current["enabled"])
+            rp_id = str(current["id"])
+            
+            # Update the permission
+            conn.execute(
+                text(
+                    """
+                    UPDATE role_permissions
+                    SET enabled = :enabled,
+                        updated_by = :updated_by,
+                        updated_at = NOW()
+                    WHERE id = :id
+                    """
+                ),
+                {"id": rp_id, "enabled": enabled, "updated_by": updated_by},
+            )
+            
+            # Insert audit record if role_permission_audit table exists
+            try:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO role_permission_audit (
+                            role_permission_id, role_id, permission_id,
+                            previous_enabled, new_enabled, changed_by, reason
+                        )
+                        VALUES (:rp_id, :role_id, :permission_id, :previous, :new, :changed_by, :reason)
+                        """
+                    ),
+                    {
+                        "rp_id": rp_id,
+                        "role_id": role_id,
+                        "permission_id": permission_id,
+                        "previous": previous_enabled,
+                        "new": enabled,
+                        "changed_by": updated_by,
+                        "reason": reason,
+                    },
                 )
-                
-                return dict(updated) if updated else None
+            except Exception:
+                # Audit table might not exist yet
+                pass
+            
+            # Return updated record
+            updated = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT 
+                            rp.id,
+                            rp.role_id,
+                            rp.permission_id,
+                            p.code AS permission_code,
+                            p.description AS permission_description,
+                            rp.enabled,
+                            rp.updated_at,
+                            rp.updated_by
+                        FROM role_permissions rp
+                        JOIN permissions p ON p.id = rp.permission_id
+                        WHERE rp.id = :id
+                        LIMIT 1
+                        """
+                    ),
+                    {"id": rp_id},
+                )
+                .mappings()
+                .first()
+            )
+            
+            return dict(updated) if updated else None
 
     def get_all_roles_with_permissions(self) -> list[dict]:
         """Get all roles with their permissions (including enabled status).
@@ -735,67 +721,66 @@ class RBACRepo:
         Returns:
             List of roles with nested permissions
         """
-        with _RBAC_LOCK:
-            with self._engine.connect() as conn:
-                # Get all roles
-                role_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT id, code, label, is_system
-                            FROM roles
-                            ORDER BY code
-                            """
-                        )
+        with self._engine.connect() as conn:
+            # Get all roles
+            role_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT id, code, label, is_system
+                        FROM roles
+                        ORDER BY code
+                        """
                     )
-                    .mappings()
-                    .all()
                 )
-                
-                # Get all role_permissions with permission details
-                perm_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT 
-                                rp.id,
-                                rp.role_id,
-                                rp.permission_id,
-                                p.code AS permission_code,
-                                p.description AS permission_description,
-                                rp.enabled,
-                                rp.updated_at,
-                                rp.updated_by
-                            FROM role_permissions rp
-                            JOIN permissions p ON p.id = rp.permission_id
-                            ORDER BY p.code
-                            """
-                        )
+                .mappings()
+                .all()
+            )
+            
+            # Get all role_permissions with permission details
+            perm_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT 
+                            rp.id,
+                            rp.role_id,
+                            rp.permission_id,
+                            p.code AS permission_code,
+                            p.description AS permission_description,
+                            rp.enabled,
+                            rp.updated_at,
+                            rp.updated_by
+                        FROM role_permissions rp
+                        JOIN permissions p ON p.id = rp.permission_id
+                        ORDER BY p.code
+                        """
                     )
-                    .mappings()
-                    .all()
                 )
-                
-                # Group permissions by role
-                perms_by_role: dict[str, list[dict]] = {}
-                for perm in perm_rows:
-                    role_id = str(perm["role_id"])
-                    if role_id not in perms_by_role:
-                        perms_by_role[role_id] = []
-                    perms_by_role[role_id].append(dict(perm))
-                
-                # Build result
-                result = []
-                for role in role_rows:
-                    role_id = str(role["id"])
-                    result.append(
-                        {
-                            "id": role_id,
-                            "code": str(role["code"]),
-                            "label": str(role["label"]),
-                            "is_system": bool(role["is_system"]),
-                            "permissions": perms_by_role.get(role_id, []),
-                        }
-                    )
-                
-                return result
+                .mappings()
+                .all()
+            )
+            
+            # Group permissions by role
+            perms_by_role: dict[str, list[dict]] = {}
+            for perm in perm_rows:
+                role_id = str(perm["role_id"])
+                if role_id not in perms_by_role:
+                    perms_by_role[role_id] = []
+                perms_by_role[role_id].append(dict(perm))
+            
+            # Build result
+            result = []
+            for role in role_rows:
+                role_id = str(role["id"])
+                result.append(
+                    {
+                        "id": role_id,
+                        "code": str(role["code"]),
+                        "label": str(role["label"]),
+                        "is_system": bool(role["is_system"]),
+                        "permissions": perms_by_role.get(role_id, []),
+                    }
+                )
+            
+            return result

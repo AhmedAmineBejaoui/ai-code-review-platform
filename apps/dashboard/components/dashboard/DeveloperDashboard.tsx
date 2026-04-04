@@ -1,7 +1,7 @@
 "use client";
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -545,37 +545,48 @@ export function DeveloperDashboard() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [isLoaded, setIsLoaded] = useState(false);
   const projectFolderInputRef = useRef<HTMLInputElement | null>(null);
+  
+  // Use ref to track analysisRows for polling interval without causing re-renders
+  const analysisRowsRef = useRef<DashboardAnalysisItem[]>(analysisRows);
+  analysisRowsRef.current = analysisRows;
 
-  // ── derived metrics ────────────────────────────────────────────────────────
-  const totalErrors = analysisRows.reduce((a, b) => a + b.blockerCount, 0);
-  const totalWarnings = analysisRows.reduce((a, b) => a + b.warnCount, 0);
-  const completedCount = analysisRows.filter((a) => normalizeStatus(a.status) === "COMPLETED").length;
-  const scores = analysisRows.filter((a) => computeScore(a) > 0).map((a) => computeScore(a));
-  const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+  // ── derived metrics (memoized) ─────────────────────────────────────────────
+  const { totalErrors, totalWarnings, completedCount, avgScore, totalInfo, okCount } = useMemo(() => {
+    const errors = analysisRows.reduce((a, b) => a + b.blockerCount, 0);
+    const warnings = analysisRows.reduce((a, b) => a + b.warnCount, 0);
+    const completed = analysisRows.filter((a) => normalizeStatus(a.status) === "COMPLETED").length;
+    const scores = analysisRows.filter((a) => computeScore(a) > 0).map((a) => computeScore(a));
+    const avg = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const info = analysisRows.reduce((a, b) => a + b.infoCount, 0);
+    const ok = analysisRows.filter((a) => normalizeStatus(a.status) === "COMPLETED" && a.blockerCount === 0 && a.warnCount === 0).length;
+    return { totalErrors: errors, totalWarnings: warnings, completedCount: completed, avgScore: avg, totalInfo: info, okCount: ok };
+  }, [analysisRows]);
 
-  const filteredRows =
+  const filteredRows = useMemo(() =>
     statusFilter === "all"
       ? analysisRows
-      : analysisRows.filter((a) => normalizeStatus(a.status) === statusFilter.toUpperCase());
-
-  // Build pie data from real analyses
-  const pieData = [
-    { name: "Bloquant", value: totalErrors, color: "#ef4444" },
-    { name: "Warning", value: totalWarnings, color: "#eab308" },
-    { name: "Info", value: analysisRows.reduce((a, b) => a + b.infoCount, 0), color: "#22c55e" },
-    { name: "OK", value: analysisRows.filter((a) => normalizeStatus(a.status) === "COMPLETED" && a.blockerCount === 0 && a.warnCount === 0).length, color: "#3b82f6" },
-  ].filter((d) => d.value > 0);
-
-  const summaryByAnalysisId = Object.fromEntries(
-    insights.prSummaries.map((s) => [s.analysisId, s.summary])
+      : analysisRows.filter((a) => normalizeStatus(a.status) === statusFilter.toUpperCase()),
+    [analysisRows, statusFilter]
   );
 
-  const metrics = [
+  // Build pie data from real analyses (memoized)
+  const pieData = useMemo(() => [
+    { name: "Bloquant", value: totalErrors, color: "#ef4444" },
+    { name: "Warning", value: totalWarnings, color: "#eab308" },
+    { name: "Info", value: totalInfo, color: "#22c55e" },
+    { name: "OK", value: okCount, color: "#3b82f6" },
+  ].filter((d) => d.value > 0), [totalErrors, totalWarnings, totalInfo, okCount]);
+
+  const summaryByAnalysisId = useMemo(() => Object.fromEntries(
+    insights.prSummaries.map((s) => [s.analysisId, s.summary])
+  ), [insights.prSummaries]);
+
+  const metrics = useMemo(() => [
     { label: "Score moyen", value: avgScore, suffix: "/100", icon: TrendingUp, color: "text-violet-400", bg: "from-violet-500/10 to-violet-500/5", glow: "shadow-violet-500/5", trend: "+12%", trendUp: true },
     { label: "Erreurs critiques", value: totalErrors, icon: ShieldAlert, color: "text-red-400", bg: "from-red-500/10 to-red-500/5", glow: "shadow-red-500/5", trend: `-${totalErrors > 0 ? 1 : 0}`, trendUp: true },
     { label: "Warnings", value: totalWarnings, icon: AlertTriangle, color: "text-amber-400", bg: "from-amber-500/10 to-amber-500/5", glow: "shadow-amber-500/5", trend: `+${totalWarnings}`, trendUp: false },
     { label: "Analyses OK", value: completedCount, suffix: `/${analysisRows.length}`, icon: CheckCircle2, color: "text-emerald-400", bg: "from-emerald-500/10 to-emerald-500/5", glow: "shadow-emerald-500/5", trend: `${analysisRows.length > 0 ? Math.round((completedCount / analysisRows.length) * 100) : 0}%`, trendUp: true },
-  ];
+  ], [avgScore, totalErrors, totalWarnings, completedCount, analysisRows.length]);
 
   // ── effects ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -598,7 +609,6 @@ export function DeveloperDashboard() {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;
     const refreshAnalyses = async () => {
       if (cancelled || isRefreshing) return;
-      let latestItems = analysisRows;
       if (typeof document !== "undefined" && document.visibilityState !== "visible") {
         timeoutId = setTimeout(() => { void refreshAnalyses(); }, 30_000);
         return;
@@ -606,22 +616,23 @@ export function DeveloperDashboard() {
       isRefreshing = true;
       try {
         const payload = await fetchDashboardAnalyses({ force: true, size: 40 });
-        latestItems = payload;
         if (!cancelled) setAnalysisRows(payload);
-      } finally {
-        isRefreshing = false;
+        // Use payload directly for delay calculation (latest fetched data)
+        const delay = hasActiveDashboardAnalysis(payload) ? 10_000 : 30_000;
         if (!cancelled) {
-          const delay = hasActiveDashboardAnalysis(latestItems) ? 10_000 : 30_000;
           timeoutId = setTimeout(() => { void refreshAnalyses(); }, delay);
         }
+      } finally {
+        isRefreshing = false;
       }
     };
-    timeoutId = setTimeout(() => { void refreshAnalyses(); }, hasActiveDashboardAnalysis(analysisRows) ? 10_000 : 30_000);
+    // Use ref to get current analysisRows without adding to dependencies
+    timeoutId = setTimeout(() => { void refreshAnalyses(); }, hasActiveDashboardAnalysis(analysisRowsRef.current) ? 10_000 : 30_000);
     return () => {
       cancelled = true;
       if (timeoutId) clearTimeout(timeoutId);
     };
-  }, [analysisRows]);
+  }, []); // Empty dependency array - polling starts once on mount
 
   useEffect(() => {
     const input = projectFolderInputRef.current;

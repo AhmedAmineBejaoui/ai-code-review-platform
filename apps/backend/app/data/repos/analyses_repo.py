@@ -4,7 +4,6 @@ import json
 import uuid
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from threading import Lock
 from typing import Any
 
 from sqlalchemy import text
@@ -57,9 +56,6 @@ class CreateAnalysisInput:
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
-_REPO_LOCK = Lock()
-
-
 @dataclass
 class CreateFindingInput:
     finding_id: str
@@ -104,82 +100,80 @@ class AnalysesRepo:
         self._engine: Engine = get_engine()
 
     def find_duplicate(self, repo: str, diff_hash: str) -> str | None:
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                row = (
-                    conn.execute(
-                        text("SELECT id FROM analyses WHERE repo = :repo AND diff_hash = :diff_hash LIMIT 1"),
-                        {"repo": repo, "diff_hash": diff_hash},
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.connect() as conn:
+            row = (
+                conn.execute(
+                    text("SELECT id FROM analyses WHERE repo = :repo AND diff_hash = :diff_hash LIMIT 1"),
+                    {"repo": repo, "diff_hash": diff_hash},
                 )
+                .mappings()
+                .first()
+            )
         return None if row is None else str(row["id"])
 
     def create(self, payload: CreateAnalysisInput) -> Analysis:
         try:
-            with _REPO_LOCK:
-                with self._engine.begin() as conn:
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO analyses (
-                                id, repo, provider, pr_number, commit_sha, source, status,
-                                stage, progress, nb_files_changed, additions_total, deletions_total,
-                                created_at, updated_at, diff_hash, diff_raw, summary, diff_text, diff_redacted,
-                                has_secrets, redaction_stats, static_stats, change_type, change_type_confidence,
-                                change_type_source, change_type_signals, error_code, error_message, metadata_json
-                            )
-                            VALUES (
-                                :id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
-                                :stage, :progress, :nb_files_changed, :additions_total, :deletions_total,
-                                :created_at, :updated_at, :diff_hash, :diff_raw, :summary, :diff_text, :diff_redacted,
-                                :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb),
-                                :change_type, :change_type_confidence, :change_type_source, CAST(:change_type_signals AS jsonb),
-                                :error_code, :error_message, CAST(:metadata_json AS jsonb)
-                            )
-                            """
-                        ),
-                        {
-                            "id": payload.analysis_id,
-                            "repo": payload.repo,
-                            "provider": payload.provider,
-                            "pr_number": payload.pr_number,
-                            "commit_sha": payload.commit_sha,
-                            "source": payload.source,
-                            "status": payload.status,
-                            "stage": payload.stage,
-                            "progress": payload.progress,
-                            "nb_files_changed": payload.nb_files_changed,
-                            "additions_total": payload.additions_total,
-                            "deletions_total": payload.deletions_total,
-                            "created_at": payload.created_at,
-                            "updated_at": payload.updated_at,
-                            "diff_hash": payload.diff_hash,
-                            "diff_raw": payload.diff_raw,
-                            "summary": payload.summary,
-                            "diff_text": payload.diff_raw,  # legacy compatibility column
-                            "diff_redacted": payload.diff_redacted,
-                            "has_secrets": payload.has_secrets,
-                            "redaction_stats": json.dumps(payload.redaction_stats),
-                            "static_stats": json.dumps(payload.static_stats),
-                            "change_type": payload.change_type,
-                            "change_type_confidence": payload.change_type_confidence,
-                            "change_type_source": payload.change_type_source,
-                            "change_type_signals": json.dumps(payload.change_type_signals),
-                            "error_code": payload.error_code,
-                            "error_message": payload.error_message,
-                            "metadata_json": json.dumps(payload.metadata),
-                        },
-                    )
-                    row = (
-                        conn.execute(
-                            text("SELECT * FROM analyses WHERE id = :id"),
-                            {"id": payload.analysis_id},
+            with self._engine.begin() as conn:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO analyses (
+                            id, repo, provider, pr_number, commit_sha, source, status,
+                            stage, progress, nb_files_changed, additions_total, deletions_total,
+                            created_at, updated_at, diff_hash, diff_raw, summary, diff_text, diff_redacted,
+                            has_secrets, redaction_stats, static_stats, change_type, change_type_confidence,
+                            change_type_source, change_type_signals, error_code, error_message, metadata_json
                         )
-                        .mappings()
-                        .first()
+                        VALUES (
+                            :id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
+                            :stage, :progress, :nb_files_changed, :additions_total, :deletions_total,
+                            :created_at, :updated_at, :diff_hash, :diff_raw, :summary, :diff_text, :diff_redacted,
+                            :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb),
+                            :change_type, :change_type_confidence, :change_type_source, CAST(:change_type_signals AS jsonb),
+                            :error_code, :error_message, CAST(:metadata_json AS jsonb)
+                        )
+                        """
+                    ),
+                    {
+                        "id": payload.analysis_id,
+                        "repo": payload.repo,
+                        "provider": payload.provider,
+                        "pr_number": payload.pr_number,
+                        "commit_sha": payload.commit_sha,
+                        "source": payload.source,
+                        "status": payload.status,
+                        "stage": payload.stage,
+                        "progress": payload.progress,
+                        "nb_files_changed": payload.nb_files_changed,
+                        "additions_total": payload.additions_total,
+                        "deletions_total": payload.deletions_total,
+                        "created_at": payload.created_at,
+                        "updated_at": payload.updated_at,
+                        "diff_hash": payload.diff_hash,
+                        "diff_raw": payload.diff_raw,
+                        "summary": payload.summary,
+                        "diff_text": payload.diff_raw,  # legacy compatibility column
+                        "diff_redacted": payload.diff_redacted,
+                        "has_secrets": payload.has_secrets,
+                        "redaction_stats": json.dumps(payload.redaction_stats),
+                        "static_stats": json.dumps(payload.static_stats),
+                        "change_type": payload.change_type,
+                        "change_type_confidence": payload.change_type_confidence,
+                        "change_type_source": payload.change_type_source,
+                        "change_type_signals": json.dumps(payload.change_type_signals),
+                        "error_code": payload.error_code,
+                        "error_message": payload.error_message,
+                        "metadata_json": json.dumps(payload.metadata),
+                    },
+                )
+                row = (
+                    conn.execute(
+                        text("SELECT * FROM analyses WHERE id = :id"),
+                        {"id": payload.analysis_id},
                     )
+                    .mappings()
+                    .first()
+                )
         except IntegrityError as exc:
             sqlstate = getattr(getattr(exc, "orig", None), "sqlstate", None)
             if sqlstate == "23505":
@@ -190,33 +184,31 @@ class AnalysesRepo:
         return self._row_to_model(row)
 
     def get_by_id(self, analysis_id: str) -> Analysis | None:
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                row = (
-                    conn.execute(
-                        text("SELECT * FROM analyses WHERE id = :analysis_id LIMIT 1"),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.connect() as conn:
+            row = (
+                conn.execute(
+                    text("SELECT * FROM analyses WHERE id = :analysis_id LIMIT 1"),
+                    {"analysis_id": analysis_id},
                 )
+                .mappings()
+                .first()
+            )
         if row is None:
             return None
         return self._row_to_model(row)
 
     def delete(self, analysis_id: str) -> bool:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                deleted_row = conn.execute(
-                    text(
-                        """
-                        DELETE FROM analyses
-                        WHERE id = :analysis_id
-                        RETURNING id
-                        """
-                    ),
-                    {"analysis_id": analysis_id},
-                ).mappings().first()
+        with self._engine.begin() as conn:
+            deleted_row = conn.execute(
+                text(
+                    """
+                    DELETE FROM analyses
+                    WHERE id = :analysis_id
+                    RETURNING id
+                    """
+                ),
+                {"analysis_id": analysis_id},
+            ).mappings().first()
         return deleted_row is not None
 
     def update_status(
@@ -235,47 +227,46 @@ class AnalysesRepo:
     ) -> Analysis | None:
         has_metadata = metadata_updates is not None
         metadata_json = json.dumps(metadata_updates) if metadata_updates is not None else "{}"
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE analyses
-                            SET status = :status,
-                                error_code = :error_code,
-                                error_message = :error_message,
-                                stage = COALESCE(:stage, stage),
-                                progress = COALESCE(:progress, progress),
-                                nb_files_changed = COALESCE(:nb_files_changed, nb_files_changed),
-                                additions_total = COALESCE(:additions_total, additions_total),
-                                deletions_total = COALESCE(:deletions_total, deletions_total),
-                                metadata_json = CASE
-                                    WHEN :has_metadata = FALSE THEN metadata_json
-                                    ELSE COALESCE(metadata_json, '{}'::jsonb) || CAST(:metadata_json AS jsonb)
-                                END,
-                                updated_at = NOW()
-                            WHERE id = :analysis_id
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "analysis_id": analysis_id,
-                            "status": status,
-                            "error_code": error_code,
-                            "error_message": error_message,
-                            "stage": stage,
-                            "progress": progress,
-                            "nb_files_changed": nb_files_changed,
-                            "additions_total": additions_total,
-                            "deletions_total": deletions_total,
-                            "has_metadata": has_metadata,
-                            "metadata_json": metadata_json,
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET status = :status,
+                            error_code = :error_code,
+                            error_message = :error_message,
+                            stage = COALESCE(:stage, stage),
+                            progress = COALESCE(:progress, progress),
+                            nb_files_changed = COALESCE(:nb_files_changed, nb_files_changed),
+                            additions_total = COALESCE(:additions_total, additions_total),
+                            deletions_total = COALESCE(:deletions_total, deletions_total),
+                            metadata_json = CASE
+                                WHEN :has_metadata = FALSE THEN metadata_json
+                                ELSE COALESCE(metadata_json, '{}'::jsonb) || CAST(:metadata_json AS jsonb)
+                            END,
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "status": status,
+                        "error_code": error_code,
+                        "error_message": error_message,
+                        "stage": stage,
+                        "progress": progress,
+                        "nb_files_changed": nb_files_changed,
+                        "additions_total": additions_total,
+                        "deletions_total": deletions_total,
+                        "has_metadata": has_metadata,
+                        "metadata_json": metadata_json,
+                    },
                 )
+                .mappings()
+                .first()
+            )
         if row is None:
             return None
         return self._row_to_model(row)
@@ -289,34 +280,33 @@ class AnalysesRepo:
         redaction_stats: dict[str, Any],
         purge_raw_diff: bool,
     ) -> Analysis | None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE analyses
-                            SET diff_redacted = :diff_redacted,
-                                has_secrets = :has_secrets,
-                                redaction_stats = CAST(:redaction_stats AS jsonb),
-                                diff_raw = CASE WHEN :purge_raw_diff = TRUE THEN :diff_redacted ELSE diff_raw END,
-                                diff_text = CASE WHEN :purge_raw_diff = TRUE THEN :diff_redacted ELSE diff_text END,
-                                updated_at = NOW()
-                            WHERE id = :analysis_id
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "analysis_id": analysis_id,
-                            "diff_redacted": diff_redacted,
-                            "has_secrets": has_secrets,
-                            "redaction_stats": json.dumps(redaction_stats),
-                            "purge_raw_diff": purge_raw_diff,
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET diff_redacted = :diff_redacted,
+                            has_secrets = :has_secrets,
+                            redaction_stats = CAST(:redaction_stats AS jsonb),
+                            diff_raw = CASE WHEN :purge_raw_diff = TRUE THEN :diff_redacted ELSE diff_raw END,
+                            diff_text = CASE WHEN :purge_raw_diff = TRUE THEN :diff_redacted ELSE diff_text END,
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "diff_redacted": diff_redacted,
+                        "has_secrets": has_secrets,
+                        "redaction_stats": json.dumps(redaction_stats),
+                        "purge_raw_diff": purge_raw_diff,
+                    },
                 )
+                .mappings()
+                .first()
+            )
 
         if row is None:
             return None
@@ -328,27 +318,26 @@ class AnalysesRepo:
         analysis_id: str,
         static_stats: dict[str, Any],
     ) -> Analysis | None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE analyses
-                            SET static_stats = CAST(:static_stats AS jsonb),
-                                updated_at = NOW()
-                            WHERE id = :analysis_id
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "analysis_id": analysis_id,
-                            "static_stats": json.dumps(static_stats),
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET static_stats = CAST(:static_stats AS jsonb),
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "static_stats": json.dumps(static_stats),
+                    },
                 )
+                .mappings()
+                .first()
+            )
 
         if row is None:
             return None
@@ -360,27 +349,26 @@ class AnalysesRepo:
         analysis_id: str,
         summary: str,
     ) -> Analysis | None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE analyses
-                            SET summary = :summary,
-                                updated_at = NOW()
-                            WHERE id = :analysis_id
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "analysis_id": analysis_id,
-                            "summary": summary,
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET summary = :summary,
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "summary": summary,
+                    },
                 )
+                .mappings()
+                .first()
+            )
 
         if row is None:
             return None
@@ -395,33 +383,32 @@ class AnalysesRepo:
         source: str,
         signals: dict[str, Any],
     ) -> Analysis | None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            UPDATE analyses
-                            SET change_type = :change_type,
-                                change_type_confidence = :change_type_confidence,
-                                change_type_source = :change_type_source,
-                                change_type_signals = CAST(:change_type_signals AS jsonb),
-                                updated_at = NOW()
-                            WHERE id = :analysis_id
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "analysis_id": analysis_id,
-                            "change_type": change_type,
-                            "change_type_confidence": confidence,
-                            "change_type_source": source,
-                            "change_type_signals": json.dumps(signals),
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET change_type = :change_type,
+                            change_type_confidence = :change_type_confidence,
+                            change_type_source = :change_type_source,
+                            change_type_signals = CAST(:change_type_signals AS jsonb),
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "change_type": change_type,
+                        "change_type_confidence": confidence,
+                        "change_type_source": source,
+                        "change_type_signals": json.dumps(signals),
+                    },
                 )
+                .mappings()
+                .first()
+            )
 
         if row is None:
             return None
@@ -430,33 +417,32 @@ class AnalysesRepo:
     def list_paginated(self, page: int, size: int) -> tuple[list[Analysis], int]:
         offset = (page - 1) * size
 
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                total_row = conn.execute(text("SELECT COUNT(*) AS total FROM analyses")).mappings().first()
-                total = int(total_row["total"] if total_row else 0)
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT
-                                a.*,
-                                COUNT(f.id)::int AS findings_count,
-                                COUNT(*) FILTER (WHERE f.severity = 'BLOCKER')::int AS blocker_count,
-                                COUNT(*) FILTER (WHERE f.severity = 'WARN')::int AS warn_count,
-                                COUNT(*) FILTER (WHERE f.severity = 'INFO')::int AS info_count
-                            FROM analyses AS a
-                            LEFT JOIN findings AS f
-                                ON f.analysis_id = a.id
-                            GROUP BY a.id
-                            ORDER BY a.created_at DESC, a.id DESC
-                            LIMIT :limit OFFSET :offset
-                            """
-                        ),
-                        {"limit": size, "offset": offset},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            total_row = conn.execute(text("SELECT COUNT(*) AS total FROM analyses")).mappings().first()
+            total = int(total_row["total"] if total_row else 0)
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT
+                            a.*,
+                            COUNT(f.id)::int AS findings_count,
+                            COUNT(*) FILTER (WHERE f.severity = 'BLOCKER')::int AS blocker_count,
+                            COUNT(*) FILTER (WHERE f.severity = 'WARN')::int AS warn_count,
+                            COUNT(*) FILTER (WHERE f.severity = 'INFO')::int AS info_count
+                        FROM analyses AS a
+                        LEFT JOIN findings AS f
+                            ON f.analysis_id = a.id
+                        GROUP BY a.id
+                        ORDER BY a.created_at DESC, a.id DESC
+                        LIMIT :limit OFFSET :offset
+                        """
+                    ),
+                    {"limit": size, "offset": offset},
                 )
+                .mappings()
+                .all()
+            )
 
         return [self._row_to_model(row) for row in rows], total
 
@@ -486,287 +472,281 @@ class AnalysesRepo:
             ORDER BY updated_at DESC, id DESC
             LIMIT :limit
         """
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                rows = conn.execute(text(query), params).mappings().all()
+        with self._engine.connect() as conn:
+            rows = conn.execute(text(query), params).mappings().all()
         return [self._row_to_model(row) for row in rows]
 
     def create_finding(self, payload: CreateFindingInput) -> Finding:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                row = (
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO findings (
-                                id, analysis_id, source, file_path, line_start, line_end, severity, category,
-                                message, suggestion, confidence, issue_type, rule_id, evidence_json, fingerprint
-                            )
-                            VALUES (
-                                :id, :analysis_id, :source, :file_path, :line_start, :line_end, :severity, :category,
-                                :message, :suggestion, :confidence, :issue_type, :rule_id, CAST(:evidence_json AS jsonb), :fingerprint
-                            )
-                            RETURNING *
-                            """
-                        ),
-                        {
-                            "id": payload.finding_id,
-                            "analysis_id": payload.analysis_id,
-                            "source": payload.source,
-                            "file_path": payload.file_path,
-                            "line_start": payload.line_start,
-                            "line_end": payload.line_end,
-                            "severity": payload.severity,
-                            "category": payload.category,
-                            "message": payload.message,
-                            "suggestion": payload.suggestion,
-                            "confidence": payload.confidence,
-                            "issue_type": payload.issue_type,
-                            "rule_id": payload.rule_id,
-                            "evidence_json": json.dumps(payload.evidence),
-                            "fingerprint": payload.fingerprint,
-                        },
-                    )
-                    .mappings()
-                    .first()
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO findings (
+                            id, analysis_id, source, file_path, line_start, line_end, severity, category,
+                            message, suggestion, confidence, issue_type, rule_id, evidence_json, fingerprint
+                        )
+                        VALUES (
+                            :id, :analysis_id, :source, :file_path, :line_start, :line_end, :severity, :category,
+                            :message, :suggestion, :confidence, :issue_type, :rule_id, CAST(:evidence_json AS jsonb), :fingerprint
+                        )
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "id": payload.finding_id,
+                        "analysis_id": payload.analysis_id,
+                        "source": payload.source,
+                        "file_path": payload.file_path,
+                        "line_start": payload.line_start,
+                        "line_end": payload.line_end,
+                        "severity": payload.severity,
+                        "category": payload.category,
+                        "message": payload.message,
+                        "suggestion": payload.suggestion,
+                        "confidence": payload.confidence,
+                        "issue_type": payload.issue_type,
+                        "rule_id": payload.rule_id,
+                        "evidence_json": json.dumps(payload.evidence),
+                        "fingerprint": payload.fingerprint,
+                    },
                 )
+                .mappings()
+                .first()
+            )
         return self._row_to_finding(row)
 
     def replace_tool_runs(self, analysis_id: str, tool_runs: list[CreateToolRunInput]) -> None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
-                conn.execute(text("DELETE FROM tool_runs WHERE analysis_id = :analysis_id"), {"analysis_id": analysis_id})
-                for item in tool_runs:
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO tool_runs (
-                                id, analysis_id, tool_name, status, started_at, finished_at,
-                                duration_ms, exit_code, findings_count, scanned_files, version,
-                                warning, command, workspace_path, stdout_snippet, stderr_snippet
-                            )
-                            VALUES (
-                                :id, :analysis_id, :tool_name, :status, :started_at, :finished_at,
-                                :duration_ms, :exit_code, :findings_count, :scanned_files, :version,
-                                :warning, :command, :workspace_path, :stdout_snippet, :stderr_snippet
-                            )
-                            """
-                        ),
-                        {
-                            "id": item.tool_run_id,
-                            "analysis_id": item.analysis_id,
-                            "tool_name": item.tool_name,
-                            "status": item.status,
-                            "started_at": item.started_at,
-                            "finished_at": item.finished_at,
-                            "duration_ms": item.duration_ms,
-                            "exit_code": item.exit_code,
-                            "findings_count": item.findings_count,
-                            "scanned_files": item.scanned_files,
-                            "version": item.version,
-                            "warning": item.warning,
-                            "command": item.command,
-                            "workspace_path": item.workspace_path,
-                            "stdout_snippet": item.stdout_snippet,
-                            "stderr_snippet": item.stderr_snippet,
-                        },
-                    )
-
-    def replace_files_changed(self, analysis_id: str, files: list[dict[str, str | None]]) -> None:
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
+        with self._engine.begin() as conn:
+            conn.execute(text("DELETE FROM tool_runs WHERE analysis_id = :analysis_id"), {"analysis_id": analysis_id})
+            for item in tool_runs:
                 conn.execute(
-                    text("DELETE FROM files_changed WHERE analysis_id = :analysis_id"),
-                    {"analysis_id": analysis_id},
+                    text(
+                        """
+                        INSERT INTO tool_runs (
+                            id, analysis_id, tool_name, status, started_at, finished_at,
+                            duration_ms, exit_code, findings_count, scanned_files, version,
+                            warning, command, workspace_path, stdout_snippet, stderr_snippet
+                        )
+                        VALUES (
+                            :id, :analysis_id, :tool_name, :status, :started_at, :finished_at,
+                            :duration_ms, :exit_code, :findings_count, :scanned_files, :version,
+                            :warning, :command, :workspace_path, :stdout_snippet, :stderr_snippet
+                        )
+                        """
+                    ),
+                    {
+                        "id": item.tool_run_id,
+                        "analysis_id": item.analysis_id,
+                        "tool_name": item.tool_name,
+                        "status": item.status,
+                        "started_at": item.started_at,
+                        "finished_at": item.finished_at,
+                        "duration_ms": item.duration_ms,
+                        "exit_code": item.exit_code,
+                        "findings_count": item.findings_count,
+                        "scanned_files": item.scanned_files,
+                        "version": item.version,
+                        "warning": item.warning,
+                        "command": item.command,
+                        "workspace_path": item.workspace_path,
+                        "stdout_snippet": item.stdout_snippet,
+                        "stderr_snippet": item.stderr_snippet,
+                    },
                 )
 
-                for file_item in files:
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO files_changed (id, analysis_id, file_path, change_type, old_path)
-                            VALUES (:id, :analysis_id, :file_path, :change_type, :old_path)
-                            """
-                        ),
-                        {
-                            "id": uuid.uuid4().hex,
-                            "analysis_id": analysis_id,
-                            "file_path": file_item["file_path"],
-                            "change_type": file_item["change_type"],
-                            "old_path": file_item.get("old_path"),
-                        },
-                    )
+    def replace_files_changed(self, analysis_id: str, files: list[dict[str, str | None]]) -> None:
+        with self._engine.begin() as conn:
+            conn.execute(
+                text("DELETE FROM files_changed WHERE analysis_id = :analysis_id"),
+                {"analysis_id": analysis_id},
+            )
+
+            for file_item in files:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO files_changed (id, analysis_id, file_path, change_type, old_path)
+                        VALUES (:id, :analysis_id, :file_path, :change_type, :old_path)
+                        """
+                    ),
+                    {
+                        "id": uuid.uuid4().hex,
+                        "analysis_id": analysis_id,
+                        "file_path": file_item["file_path"],
+                        "change_type": file_item["change_type"],
+                        "old_path": file_item.get("old_path"),
+                    },
+                )
 
     def replace_parsed_diff(self, analysis_id: str, parsed: ParsedDiff) -> tuple[int, int, int]:
         files_count = 0
         additions_total = 0
         deletions_total = 0
 
-        with _REPO_LOCK:
-            with self._engine.begin() as conn:
+        with self._engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM analysis_hunk_lines
+                    WHERE hunk_id IN (
+                        SELECT h.id
+                        FROM analysis_hunks h
+                        JOIN analysis_files f ON f.id = h.analysis_file_id
+                        WHERE f.analysis_id = :analysis_id
+                    )
+                    """
+                ),
+                {"analysis_id": analysis_id},
+            )
+            conn.execute(
+                text(
+                    """
+                    DELETE FROM analysis_hunks
+                    WHERE analysis_file_id IN (
+                        SELECT id
+                        FROM analysis_files
+                        WHERE analysis_id = :analysis_id
+                    )
+                    """
+                ),
+                {"analysis_id": analysis_id},
+            )
+            conn.execute(text("DELETE FROM analysis_files WHERE analysis_id = :analysis_id"), {"analysis_id": analysis_id})
+
+            for file_item in parsed.files:
+                analysis_file_id = uuid.uuid4().hex
                 conn.execute(
                     text(
                         """
-                        DELETE FROM analysis_hunk_lines
+                        INSERT INTO analysis_files (
+                            id, analysis_id, path_old, path_new, change_type, is_binary, additions_count, deletions_count
+                        )
+                        VALUES (
+                            :id, :analysis_id, :path_old, :path_new, :change_type, :is_binary, :additions_count, :deletions_count
+                        )
+                        """
+                    ),
+                    {
+                        "id": analysis_file_id,
+                        "analysis_id": analysis_id,
+                        "path_old": file_item.path_old,
+                        "path_new": file_item.path_new,
+                        "change_type": file_item.change_type,
+                        "is_binary": file_item.is_binary,
+                        "additions_count": file_item.additions_count,
+                        "deletions_count": file_item.deletions_count,
+                    },
+                )
+                files_count += 1
+                additions_total += file_item.additions_count
+                deletions_total += file_item.deletions_count
+
+                for hunk_item in file_item.hunks:
+                    hunk_id = uuid.uuid4().hex
+                    conn.execute(
+                        text(
+                            """
+                            INSERT INTO analysis_hunks (
+                                id, analysis_file_id, old_start, old_lines, new_start, new_lines, header, raw_text
+                            )
+                            VALUES (
+                                :id, :analysis_file_id, :old_start, :old_lines, :new_start, :new_lines, :header, :raw_text
+                            )
+                            """
+                        ),
+                        {
+                            "id": hunk_id,
+                            "analysis_file_id": analysis_file_id,
+                            "old_start": hunk_item.old_start,
+                            "old_lines": hunk_item.old_lines,
+                            "new_start": hunk_item.new_start,
+                            "new_lines": hunk_item.new_lines,
+                            "header": hunk_item.header,
+                            "raw_text": hunk_item.raw_text,
+                        },
+                    )
+
+                    for line_item in hunk_item.lines:
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO analysis_hunk_lines (
+                                    id, hunk_id, line_type, content, old_line_no, new_line_no
+                                )
+                                VALUES (
+                                    :id, :hunk_id, :line_type, :content, :old_line_no, :new_line_no
+                                )
+                                """
+                            ),
+                            {
+                                "id": uuid.uuid4().hex,
+                                "hunk_id": hunk_id,
+                                "line_type": line_item.line_type,
+                                "content": line_item.content,
+                                "old_line_no": line_item.old_line_no,
+                                "new_line_no": line_item.new_line_no,
+                            },
+                        )
+
+        return files_count, additions_total, deletions_total
+
+    def list_analysis_files_with_hunks(self, analysis_id: str) -> list[AnalysisFileData]:
+        with self._engine.connect() as conn:
+            files_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM analysis_files
+                        WHERE analysis_id = :analysis_id
+                        ORDER BY path_new ASC, id ASC
+                        """
+                    ),
+                    {"analysis_id": analysis_id},
+                )
+                .mappings()
+                .all()
+            )
+
+            hunks_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM analysis_hunks
+                        WHERE analysis_file_id IN (
+                            SELECT id FROM analysis_files WHERE analysis_id = :analysis_id
+                        )
+                        ORDER BY new_start ASC, id ASC
+                        """
+                    ),
+                    {"analysis_id": analysis_id},
+                )
+                .mappings()
+                .all()
+            )
+
+            lines_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM analysis_hunk_lines
                         WHERE hunk_id IN (
                             SELECT h.id
                             FROM analysis_hunks h
                             JOIN analysis_files f ON f.id = h.analysis_file_id
                             WHERE f.analysis_id = :analysis_id
                         )
+                        ORDER BY id ASC
                         """
                     ),
                     {"analysis_id": analysis_id},
                 )
-                conn.execute(
-                    text(
-                        """
-                        DELETE FROM analysis_hunks
-                        WHERE analysis_file_id IN (
-                            SELECT id
-                            FROM analysis_files
-                            WHERE analysis_id = :analysis_id
-                        )
-                        """
-                    ),
-                    {"analysis_id": analysis_id},
-                )
-                conn.execute(text("DELETE FROM analysis_files WHERE analysis_id = :analysis_id"), {"analysis_id": analysis_id})
-
-                for file_item in parsed.files:
-                    analysis_file_id = uuid.uuid4().hex
-                    conn.execute(
-                        text(
-                            """
-                            INSERT INTO analysis_files (
-                                id, analysis_id, path_old, path_new, change_type, is_binary, additions_count, deletions_count
-                            )
-                            VALUES (
-                                :id, :analysis_id, :path_old, :path_new, :change_type, :is_binary, :additions_count, :deletions_count
-                            )
-                            """
-                        ),
-                        {
-                            "id": analysis_file_id,
-                            "analysis_id": analysis_id,
-                            "path_old": file_item.path_old,
-                            "path_new": file_item.path_new,
-                            "change_type": file_item.change_type,
-                            "is_binary": file_item.is_binary,
-                            "additions_count": file_item.additions_count,
-                            "deletions_count": file_item.deletions_count,
-                        },
-                    )
-                    files_count += 1
-                    additions_total += file_item.additions_count
-                    deletions_total += file_item.deletions_count
-
-                    for hunk_item in file_item.hunks:
-                        hunk_id = uuid.uuid4().hex
-                        conn.execute(
-                            text(
-                                """
-                                INSERT INTO analysis_hunks (
-                                    id, analysis_file_id, old_start, old_lines, new_start, new_lines, header, raw_text
-                                )
-                                VALUES (
-                                    :id, :analysis_file_id, :old_start, :old_lines, :new_start, :new_lines, :header, :raw_text
-                                )
-                                """
-                            ),
-                            {
-                                "id": hunk_id,
-                                "analysis_file_id": analysis_file_id,
-                                "old_start": hunk_item.old_start,
-                                "old_lines": hunk_item.old_lines,
-                                "new_start": hunk_item.new_start,
-                                "new_lines": hunk_item.new_lines,
-                                "header": hunk_item.header,
-                                "raw_text": hunk_item.raw_text,
-                            },
-                        )
-
-                        for line_item in hunk_item.lines:
-                            conn.execute(
-                                text(
-                                    """
-                                    INSERT INTO analysis_hunk_lines (
-                                        id, hunk_id, line_type, content, old_line_no, new_line_no
-                                    )
-                                    VALUES (
-                                        :id, :hunk_id, :line_type, :content, :old_line_no, :new_line_no
-                                    )
-                                    """
-                                ),
-                                {
-                                    "id": uuid.uuid4().hex,
-                                    "hunk_id": hunk_id,
-                                    "line_type": line_item.line_type,
-                                    "content": line_item.content,
-                                    "old_line_no": line_item.old_line_no,
-                                    "new_line_no": line_item.new_line_no,
-                                },
-                            )
-
-        return files_count, additions_total, deletions_total
-
-    def list_analysis_files_with_hunks(self, analysis_id: str) -> list[AnalysisFileData]:
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                files_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT *
-                            FROM analysis_files
-                            WHERE analysis_id = :analysis_id
-                            ORDER BY path_new ASC, id ASC
-                            """
-                        ),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .all()
-                )
-
-                hunks_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT *
-                            FROM analysis_hunks
-                            WHERE analysis_file_id IN (
-                                SELECT id FROM analysis_files WHERE analysis_id = :analysis_id
-                            )
-                            ORDER BY new_start ASC, id ASC
-                            """
-                        ),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .all()
-                )
-
-                lines_rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT *
-                            FROM analysis_hunk_lines
-                            WHERE hunk_id IN (
-                                SELECT h.id
-                                FROM analysis_hunks h
-                                JOIN analysis_files f ON f.id = h.analysis_file_id
-                                WHERE f.analysis_id = :analysis_id
-                            )
-                            ORDER BY id ASC
-                            """
-                        ),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .all()
-                )
+                .mappings()
+                .all()
+            )
 
         lines_by_hunk: dict[str, list[AnalysisHunkLineData]] = {}
         for row in lines_rows:
@@ -820,44 +800,42 @@ class AnalysesRepo:
         return result
 
     def list_findings_by_analysis(self, analysis_id: str) -> list[Finding]:
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT *
-                            FROM findings
-                            WHERE analysis_id = :analysis_id
-                            ORDER BY created_at ASC, id ASC
-                            """
-                        ),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM findings
+                        WHERE analysis_id = :analysis_id
+                        ORDER BY created_at ASC, id ASC
+                        """
+                    ),
+                    {"analysis_id": analysis_id},
                 )
+                .mappings()
+                .all()
+            )
 
         return [self._row_to_finding(row) for row in rows]
 
     def list_tool_runs_by_analysis(self, analysis_id: str) -> list[ToolRun]:
-        with _REPO_LOCK:
-            with self._engine.connect() as conn:
-                rows = (
-                    conn.execute(
-                        text(
-                            """
-                            SELECT *
-                            FROM tool_runs
-                            WHERE analysis_id = :analysis_id
-                            ORDER BY created_at ASC, id ASC
-                            """
-                        ),
-                        {"analysis_id": analysis_id},
-                    )
-                    .mappings()
-                    .all()
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM tool_runs
+                        WHERE analysis_id = :analysis_id
+                        ORDER BY created_at ASC, id ASC
+                        """
+                    ),
+                    {"analysis_id": analysis_id},
                 )
+                .mappings()
+                .all()
+            )
         return [self._row_to_tool_run(row) for row in rows]
 
     @staticmethod

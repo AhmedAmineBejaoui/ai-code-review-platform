@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import time
 from functools import lru_cache
 from typing import Any
 
@@ -12,6 +13,36 @@ from pydantic import BaseModel, Field
 
 from app.data.repos.rbac_repo import RBACRepo
 from app.settings import settings
+
+
+# TTL cache for authenticated principals to avoid DB calls on every request
+# Key: (user_id, org_id), Value: (AuthenticatedPrincipal, timestamp)
+_principal_cache: dict[tuple[str, str | None], tuple["AuthenticatedPrincipal", float]] = {}
+_PRINCIPAL_CACHE_TTL_SECONDS = 60  # Cache principals for 60 seconds
+
+
+def _get_cached_principal(user_id: str, org_id: str | None) -> "AuthenticatedPrincipal | None":
+    """Get cached principal if still valid."""
+    key = (user_id, org_id)
+    if key in _principal_cache:
+        principal, cached_at = _principal_cache[key]
+        if time.time() - cached_at < _PRINCIPAL_CACHE_TTL_SECONDS:
+            return principal
+        # Expired, remove from cache
+        del _principal_cache[key]
+    return None
+
+
+def _cache_principal(user_id: str, org_id: str | None, principal: "AuthenticatedPrincipal") -> None:
+    """Cache principal with current timestamp."""
+    key = (user_id, org_id)
+    _principal_cache[key] = (principal, time.time())
+    # Simple cache size limit - clear oldest entries if too large
+    if len(_principal_cache) > 10000:
+        # Remove oldest 20% of entries
+        sorted_entries = sorted(_principal_cache.items(), key=lambda x: x[1][1])
+        for k, _ in sorted_entries[:2000]:
+            del _principal_cache[k]
 
 
 class AuthenticatedPrincipal(BaseModel):
@@ -373,6 +404,13 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clerk token missing subject")
 
+    org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
+    
+    # Check cache first to avoid DB calls on every request
+    cached_principal = _get_cached_principal(user_id, org_id)
+    if cached_principal is not None:
+        return cached_principal
+
     existing_user = await asyncio.to_thread(repo.get_user, user_id)
     email_from_claims = _extract_email_from_claims(claims)
     if _is_placeholder_email(email_from_claims):
@@ -386,7 +424,6 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
     roles = _extract_roles(claims)
     roles = _apply_admin_email_override(email, roles)
     primary_role = roles[0] if roles else "developer"
-    org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
 
     await asyncio.to_thread(repo.upsert_clerk_user, user_id, email, display_name, primary_role)
     if org_id:
@@ -413,7 +450,7 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             if membership is not None:
                 resolved_org_name = membership.organization_name
 
-        return AuthenticatedPrincipal(
+        principal = AuthenticatedPrincipal(
             user_id=user.id,
             email=user.email or email,
             display_name=user.display_name or display_name,
@@ -424,9 +461,11 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             org_name=resolved_org_name,
             org_role=org_role,
         )
+        _cache_principal(user_id, org_id, principal)
+        return principal
 
     permissions = _permissions_for_roles(roles)
-    return AuthenticatedPrincipal(
+    principal = AuthenticatedPrincipal(
         user_id=user_id,
         email=email,
         display_name=display_name,
@@ -437,6 +476,8 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         org_name=org_name,
         org_role=org_role,
     )
+    _cache_principal(user_id, org_id, principal)
+    return principal
 
 
 async def get_current_principal(

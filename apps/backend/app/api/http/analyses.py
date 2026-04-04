@@ -718,11 +718,14 @@ async def get_analysis(
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisResponse:
     try:
-        analysis = await service.get_analysis(analysis_id)
-        findings = await service.list_findings(analysis_id)
-        files_changed = await service.list_files_with_hunks(analysis_id)
-        tool_runs = await service.list_tool_runs(analysis_id)
-        review_output = await _load_structured_review_output(analysis_id)
+        # Run all queries in parallel for better performance
+        analysis, findings, files_changed, tool_runs, review_output = await asyncio.gather(
+            service.get_analysis(analysis_id),
+            service.list_findings(analysis_id),
+            service.list_files_with_hunks(analysis_id),
+            service.list_tool_runs(analysis_id),
+            _load_structured_review_output(analysis_id),
+        )
     except ServiceError as exc:
         _raise_api_error(exc)
 

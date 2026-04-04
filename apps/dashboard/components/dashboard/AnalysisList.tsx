@@ -1,7 +1,7 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useRef, useState } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
 import {
@@ -71,6 +71,10 @@ export function AnalysisList() {
   const [actionMessage, setActionMessage] = useState<string | null>(null)
   const [insights, setInsights] = useState(() => emptyDashboardInsights())
   const [analyses, setAnalyses] = useState<DashboardAnalysisItem[]>([])
+  
+  // Use ref to track analyses for polling interval without causing re-renders
+  const analysesRef = useRef<DashboardAnalysisItem[]>(analyses)
+  analysesRef.current = analyses
 
   const handleDeleteAnalysis = async (analysisId: string) => {
     const confirmed = window.confirm("Voulez-vous vraiment supprimer cette analyse ?")
@@ -172,9 +176,10 @@ export function AnalysisList() {
       }
     }
 
+    // Use ref to get current analyses without adding to dependencies
     timeoutId = setTimeout(() => {
       void refreshAnalyses()
-    }, hasActiveDashboardAnalysis(analyses) ? 8_000 : 30_000)
+    }, hasActiveDashboardAnalysis(analysesRef.current) ? 8_000 : 30_000)
 
     return () => {
       cancelled = true
@@ -182,7 +187,7 @@ export function AnalysisList() {
         clearTimeout(timeoutId)
       }
     }
-  }, [analyses])
+  }, []) // Empty dependency array - polling starts once on mount
 
   return (
     <motion.div className="max-w-7xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
