@@ -5,7 +5,10 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+import asyncio
+
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.data.database import get_engine
 from app.data.repos.reviewer_metrics_repo import ReviewerMetricsRepo
 from app.services.reviewer_metrics_calculator import ReviewerMetricsCalculator
 
@@ -341,4 +344,103 @@ async def get_reviewer_metrics(
         },
         "trends": trends,
         "detailed_metrics": [dict(m) for m in metrics],
+    }
+
+
+@router.get("/rag-impact", response_model=dict[str, Any])
+async def get_rag_impact_metrics(
+    limit: int = Query(default=200, ge=10, le=1000, description="Nombre max d'analyses à analyser"),
+    _principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+) -> dict[str, Any]:
+    """
+    Calcule l'impact du RAG sur la qualité des reviews d'IA.
+
+    Compare les analyses avec RAG (knowledge base context retrieved) vs
+    sans RAG pour mettre en évidence la valeur ajoutée du système RAG.
+    """
+    from sqlalchemy import text as sa_text
+
+    def _query_analyses() -> list[dict[str, Any]]:
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(
+                sa_text(
+                    """
+                    SELECT
+                        status,
+                        findings_count,
+                        blocker_count,
+                        warn_count,
+                        info_count,
+                        metadata
+                    FROM analyses
+                    WHERE status = 'COMPLETED'
+                    ORDER BY created_at DESC
+                    LIMIT :limit
+                    """
+                ),
+                {"limit": limit},
+            ).mappings().all()
+            return [dict(row) for row in rows]
+
+    rows = await asyncio.to_thread(_query_analyses)
+
+    with_rag: list[dict[str, Any]] = []
+    without_rag: list[dict[str, Any]] = []
+
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        if isinstance(metadata, str):
+            import json as _json
+            try:
+                metadata = _json.loads(metadata)
+            except Exception:
+                metadata = {}
+        kb = (metadata.get("pipeline") or {}).get("kb_retrieval") or {}
+        chunks_count = int(kb.get("context_chunks") or 0)
+        llm_review = (metadata.get("pipeline") or {}).get("llm_grounded_review") or {}
+        llm_findings = int(llm_review.get("findings_count") or 0)
+        entry = {
+            "findings_count": int(row.get("findings_count") or 0),
+            "blocker_count": int(row.get("blocker_count") or 0),
+            "warn_count": int(row.get("warn_count") or 0),
+            "info_count": int(row.get("info_count") or 0),
+            "llm_findings_count": llm_findings,
+            "kb_chunks": chunks_count,
+        }
+        if chunks_count > 0:
+            with_rag.append(entry)
+        else:
+            without_rag.append(entry)
+
+    def _avg(items: list[dict], key: str) -> float:
+        values = [item[key] for item in items if item[key] is not None]
+        return round(sum(values) / len(values), 2) if values else 0.0
+
+    return {
+        "total_analyses": len(rows),
+        "analyses_with_rag": len(with_rag),
+        "analyses_without_rag": len(without_rag),
+        "with_rag": {
+            "avg_findings": _avg(with_rag, "findings_count"),
+            "avg_blocker": _avg(with_rag, "blocker_count"),
+            "avg_warn": _avg(with_rag, "warn_count"),
+            "avg_llm_findings": _avg(with_rag, "llm_findings_count"),
+            "avg_kb_chunks": _avg(with_rag, "kb_chunks"),
+        },
+        "without_rag": {
+            "avg_findings": _avg(without_rag, "findings_count"),
+            "avg_blocker": _avg(without_rag, "blocker_count"),
+            "avg_warn": _avg(without_rag, "warn_count"),
+            "avg_llm_findings": _avg(without_rag, "llm_findings_count"),
+            "avg_kb_chunks": 0.0,
+        },
+        "impact": {
+            "findings_delta": round(
+                _avg(with_rag, "findings_count") - _avg(without_rag, "findings_count"), 2
+            ),
+            "llm_findings_delta": round(
+                _avg(with_rag, "llm_findings_count") - _avg(without_rag, "llm_findings_count"), 2
+            ),
+        },
     }

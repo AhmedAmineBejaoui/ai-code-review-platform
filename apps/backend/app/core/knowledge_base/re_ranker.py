@@ -1,20 +1,32 @@
 from __future__ import annotations
 
+import logging
 import re
 from threading import Lock
 
 from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievalCandidate
 from app.settings import settings
 
+logger = logging.getLogger(__name__)
+
 _MODEL_LOCK = Lock()
 
 
 class ReRanker:
+    """Multi-stage re-ranking pipeline.
+
+    Stage 1 — Heuristic scoring (cheap): prunes the bottom ~50% of candidates.
+    Stage 2 — Cross-encoder (medium): ``ms-marco-MiniLM-L-6-v2`` on top candidates.
+    Stage 3 — LLM judge (expensive, optional): deepseek-coder scores the top-N
+              for ``DIFF_REVIEW`` route only (enabled via ``RAG_LLM_RERANK_ENABLED``).
+    """
+
     def __init__(self) -> None:
         self._enabled = settings.KB_RERANK_ENABLED
         self._model_name = settings.KB_CROSS_ENCODER_MODEL
         self._model: object | None = None
         self._model_load_attempted = False
+        self._feedback_collector: object | None = None
 
     def rank(
         self,
@@ -29,20 +41,9 @@ class ReRanker:
 
         deduped = self._dedup_candidates(candidates)
         normalized_scores = self._normalize_scores(deduped)
-        model = self._get_model()
-        if model is not None:
-            try:
-                return self._rank_with_model(
-                    query=query,
-                    candidates=deduped,
-                    normalized_scores=normalized_scores,
-                    model=model,
-                    limit=limit,
-                )
-            except Exception:
-                pass
 
-        rescored = [
+        # ── Stage 1: Heuristic prune ─────────────────────────────────────
+        heuristic_scored = [
             candidate.with_score(
                 self._heuristic_score(
                     query=query,
@@ -53,8 +54,54 @@ class ReRanker:
             )
             for candidate in deduped
         ]
-        rescored.sort(key=lambda item: item.score, reverse=True)
-        return rescored[:limit]
+        heuristic_scored.sort(key=lambda item: item.score, reverse=True)
+        # Keep top ~3x of limit for Stage 2
+        stage1_limit = min(len(heuristic_scored), max(limit * 3, 24))
+        stage1_results = heuristic_scored[:stage1_limit]
+
+        # ── Stage 2: Cross-encoder ───────────────────────────────────────
+        model = self._get_model()
+        if model is not None:
+            try:
+                stage2_limit = min(len(stage1_results), max(limit * 2, 16))
+                stage2_results = self._rank_with_model(
+                    query=query,
+                    candidates=stage1_results,
+                    normalized_scores={id(c): c.score for c in stage1_results},
+                    model=model,
+                    limit=stage2_limit,
+                )
+            except Exception:
+                logger.debug("Cross-encoder re-ranking failed", exc_info=True)
+                stage2_results = stage1_results[:max(limit * 2, 16)]
+        else:
+            stage2_results = stage1_results[:max(limit * 2, 16)]
+
+        # ── Stage 3: LLM judge (optional) ────────────────────────────────
+        if (
+            settings.RAG_LLM_RERANK_ENABLED
+            and route == QueryRoute.DIFF_REVIEW
+            and len(stage2_results) > 0
+        ):
+            try:
+                stage3_top_n = min(len(stage2_results), settings.RAG_LLM_RERANK_TOP_N)
+                stage3_results = self._llm_rerank(
+                    query=query,
+                    candidates=stage2_results[:stage3_top_n],
+                    limit=limit,
+                )
+                # Merge LLM-ranked top with remaining stage2
+                remaining = [c for c in stage2_results[stage3_top_n:]]
+                return (stage3_results + remaining)[:limit]
+            except Exception:
+                logger.debug("LLM re-ranking failed", exc_info=True)
+
+        # Apply feedback penalties
+        if settings.RAG_FEEDBACK_ENABLED:
+            stage2_results = self._apply_feedback_penalties(stage2_results)
+            stage2_results.sort(key=lambda item: item.score, reverse=True)
+
+        return stage2_results[:limit]
 
     def _get_model(self) -> object | None:
         if not self._enabled:
@@ -88,6 +135,72 @@ class ReRanker:
         ]
         rescored.sort(key=lambda item: item.score, reverse=True)
         return rescored[:limit]
+
+    def _llm_rerank(
+        self,
+        *,
+        query: str,
+        candidates: list[RetrievalCandidate],
+        limit: int,
+    ) -> list[RetrievalCandidate]:
+        """Use the LLM to score relevance of top candidates."""
+        try:
+            from app.core.langchain_runtime.clients import LangChainOllamaClient
+
+            client = LangChainOllamaClient()
+            if not client.available:
+                return candidates[:limit]
+
+            scored: list[tuple[float, RetrievalCandidate]] = []
+            for candidate in candidates:
+                prompt = (
+                    f"Rate the relevance of this code snippet to the following query on a scale of 0-10.\n"
+                    f"Query: {query[:500]}\n"
+                    f"Snippet ({candidate.chunk.path}):\n"
+                    f"{candidate.chunk.content[:2000]}\n\n"
+                    f"Output ONLY a single number (0-10):"
+                )
+                response = client.generate(prompt)
+                try:
+                    score = float(response.text.strip().split()[0])
+                    score = max(0.0, min(10.0, score))
+                except (ValueError, IndexError):
+                    score = 5.0
+                scored.append((candidate.score + score * 0.1, candidate))
+
+            scored.sort(key=lambda item: item[0], reverse=True)
+            return [candidate.with_score(s) for s, candidate in scored[:limit]]
+
+        except Exception:
+            logger.debug("LLM rerank failed", exc_info=True)
+            return candidates[:limit]
+
+    def _apply_feedback_penalties(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
+        """Apply score penalties from accumulated negative user feedback."""
+        collector = self._get_feedback_collector()
+        if collector is None:
+            return candidates
+        result: list[RetrievalCandidate] = []
+        for candidate in candidates:
+            chunk_id = candidate.chunk.chunk_id
+            if chunk_id:
+                penalty = collector.compute_penalty(chunk_id)
+                if penalty > 0:
+                    result.append(candidate.with_score(candidate.score - penalty))
+                    continue
+            result.append(candidate)
+        return result
+
+    def _get_feedback_collector(self) -> object | None:
+        if self._feedback_collector is not None:
+            return self._feedback_collector
+        try:
+            from app.core.knowledge_base.feedback import FeedbackCollector
+
+            self._feedback_collector = FeedbackCollector()
+            return self._feedback_collector
+        except Exception:
+            return None
 
     def _dedup_candidates(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
         deduped: dict[tuple[str, ...], RetrievalCandidate] = {}
@@ -136,6 +249,7 @@ class ReRanker:
         channel_bonus = {
             "file_exact": 1.4,
             "symbol_exact": 1.2,
+            "graph_connected": 1.0,
             "test_related": 0.7,
             "lexical_code": 0.9,
             "lexical_document": 0.8,

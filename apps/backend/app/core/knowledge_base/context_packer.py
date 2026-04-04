@@ -4,6 +4,7 @@ import hashlib
 from dataclasses import replace
 
 from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievalCandidate, RetrievedContextChunk
+from app.settings import settings
 
 
 class ContextPacker:
@@ -28,18 +29,36 @@ class ContextPacker:
         deduped = self._dedup(candidates)
         deduped.sort(key=lambda item: item.score, reverse=True)
 
+        # Token-based budget allocation
+        budget = _TokenBudget.from_settings(route)
+
         selected: list[RetrievedContextChunk] = []
         bucket_counts = {key: 0 for key in quotas}
         path_counts: dict[str, int] = {}
         total_chars = 0
 
+        # Separate parent-document chunks — they will be considered for
+        # expansion only after child chunks are selected.
+        parent_chunks: dict[str, RetrievalCandidate] = {}
+        child_candidates: list[RetrievalCandidate] = []
         for candidate in deduped:
+            if candidate.chunk.chunk_type == "parent_document":
+                parent_chunks[candidate.chunk.path] = candidate
+            else:
+                child_candidates.append(candidate)
+
+        for candidate in child_candidates:
             chunk = candidate.chunk
             bucket = _bucket_for_candidate(candidate)
             if bucket_counts.get(bucket, 0) >= quotas.get(bucket, max_chunks):
                 continue
             if path_counts.get(chunk.path, 0) >= self._max_chunks_per_path:
                 continue
+
+            token_cost = chunk.token_count or max(1, len(chunk.content.split()))
+            if not budget.can_fit(bucket, token_cost) and selected:
+                continue
+
             projected_chars = total_chars + len(chunk.content)
             if projected_chars > self._max_chars and selected:
                 continue
@@ -57,10 +76,18 @@ class ContextPacker:
             bucket_counts[bucket] = bucket_counts.get(bucket, 0) + 1
             path_counts[chunk.path] = path_counts.get(chunk.path, 0) + 1
             total_chars = projected_chars
+            budget.consume(bucket, token_cost)
             if len(selected) >= max_chunks:
                 break
 
-        if not selected:
+        # Parent-document expansion: when a child scored high, check if
+        # replacing it with the parent gives richer context within budget.
+        if settings.PARENT_DOCUMENT_ENABLED and parent_chunks:
+            selected = self._expand_to_parents(
+                selected, parent_chunks, budget, total_chars,
+            )
+
+        if not selected and deduped:
             top_candidate = deduped[0]
             return [
                 replace(
@@ -73,6 +100,58 @@ class ContextPacker:
                 )
             ]
         return selected
+
+    def _expand_to_parents(
+        self,
+        selected: list[RetrievedContextChunk],
+        parent_chunks: dict[str, RetrievalCandidate],
+        budget: _TokenBudget,
+        total_chars: int,
+    ) -> list[RetrievedContextChunk]:
+        """Replace high-scoring child chunks with their parent document if budget allows."""
+        expanded_paths: set[str] = set()
+        result: list[RetrievedContextChunk] = []
+
+        for chunk in selected:
+            if chunk.path in expanded_paths:
+                # Already expanded this path — skip to avoid duplicates
+                result.append(chunk)
+                continue
+
+            parent = parent_chunks.get(chunk.path)
+            if parent is None:
+                result.append(chunk)
+                continue
+
+            parent_tokens = parent.chunk.token_count or max(1, len(parent.chunk.content.split()))
+            child_tokens = chunk.token_count or max(1, len(chunk.content.split()))
+            extra_tokens = parent_tokens - child_tokens
+
+            if extra_tokens <= 0 or not budget.can_fit("code", extra_tokens):
+                result.append(chunk)
+                continue
+
+            extra_chars = len(parent.chunk.content) - len(chunk.content)
+            if (total_chars + extra_chars) > self._max_chars:
+                result.append(chunk)
+                continue
+
+            # Replace child with parent
+            result.append(
+                replace(
+                    parent.chunk,
+                    score=chunk.score,
+                    retrieval_reason=f"parent_expanded:{chunk.retrieval_reason or ''}",
+                    retriever_channel=chunk.retriever_channel,
+                    score_raw=chunk.score_raw,
+                    score_final=chunk.score_final,
+                )
+            )
+            budget.consume("code", extra_tokens)
+            total_chars += extra_chars
+            expanded_paths.add(chunk.path)
+
+        return result
 
     def _dedup(self, candidates: list[RetrievalCandidate]) -> list[RetrievalCandidate]:
         deduped: dict[tuple[str, int, str], RetrievalCandidate] = {}
@@ -90,6 +169,49 @@ class ContextPacker:
             content_hashes.add(content_hash)
             results.append(candidate)
         return results
+
+
+class _TokenBudget:
+    """Manages token allocation per source bucket."""
+
+    def __init__(self, *, total: int, code_ratio: float, kb_ratio: float, profile_ratio: float) -> None:
+        self.total = total
+        self.buckets: dict[str, int] = {
+            "code": int(total * code_ratio),
+            "test": int(total * code_ratio * 0.3),
+            "policy": int(total * kb_ratio * 0.5),
+            "document": int(total * kb_ratio * 0.3),
+            "pdf": int(total * kb_ratio * 0.2),
+            "web": int(total * kb_ratio * 0.15),
+            "markdown": int(total * kb_ratio * 0.15),
+            "sql": int(total * kb_ratio * 0.1),
+            "profile": int(total * profile_ratio),
+        }
+        self.consumed: dict[str, int] = {key: 0 for key in self.buckets}
+
+    def can_fit(self, bucket: str, tokens: int) -> bool:
+        budget = self.buckets.get(bucket, self.total // 4)
+        used = self.consumed.get(bucket, 0)
+        return (used + tokens) <= budget
+
+    def consume(self, bucket: str, tokens: int) -> None:
+        self.consumed[bucket] = self.consumed.get(bucket, 0) + tokens
+
+    @classmethod
+    def from_settings(cls, route: QueryRoute) -> _TokenBudget:
+        total = settings.RAG_TOKEN_BUDGET_TOTAL
+        if route == QueryRoute.DIFF_REVIEW:
+            return cls(total=total, code_ratio=0.55, kb_ratio=0.30, profile_ratio=0.10)
+        if route == QueryRoute.POLICY_QUERY:
+            return cls(total=total, code_ratio=0.20, kb_ratio=0.65, profile_ratio=0.05)
+        if route in {QueryRoute.DOCUMENT_QUERY, QueryRoute.PDF_QUERY, QueryRoute.WEB_QUERY, QueryRoute.MARKDOWN_QUERY}:
+            return cls(total=total, code_ratio=0.15, kb_ratio=0.70, profile_ratio=0.05)
+        return cls(
+            total=total,
+            code_ratio=settings.RAG_TOKEN_BUDGET_CODE_RATIO,
+            kb_ratio=settings.RAG_TOKEN_BUDGET_KB_RATIO,
+            profile_ratio=settings.RAG_TOKEN_BUDGET_PROFILE_RATIO,
+        )
 
 
 def _bucket_for_candidate(candidate: RetrievalCandidate) -> str:

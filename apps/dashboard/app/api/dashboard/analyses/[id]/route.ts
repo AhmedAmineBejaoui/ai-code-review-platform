@@ -46,6 +46,17 @@ type BackendFile = {
   hunks?: BackendHunk[]
 }
 
+type BackendRagChunkReference = {
+  path?: string | null
+  title?: string | null
+  source?: string | null
+  source_type?: string | null
+  chunk_type?: string | null
+  symbol_name?: string | null
+  score?: number | null
+  tags?: string[]
+}
+
 type BackendAnalysisDetails = {
   analysis_id?: string
   repo?: string
@@ -61,6 +72,9 @@ type BackendAnalysisDetails = {
   findings?: BackendFinding[]
   files_changed?: BackendFile[]
   review_output?: BackendReviewOutput | null
+  rag_context?: BackendRagChunkReference[]
+  rag_context_chunks_count?: number
+  rag_retrieval_mode?: string | null
 }
 
 type BackendReviewContextReference = {
@@ -151,6 +165,17 @@ type DashboardAnalysisReviewOutput = {
   contextReferences: DashboardReviewContextReference[]
 }
 
+type DashboardRagChunkReference = {
+  path: string | null
+  title: string | null
+  source: string | null
+  sourceType: string | null
+  chunkType: string | null
+  symbolName: string | null
+  score: number | null
+  tags: string[]
+}
+
 type DashboardAnalysisDetails = {
   id: string
   repo: string
@@ -168,6 +193,9 @@ type DashboardAnalysisDetails = {
   reviewOutput: DashboardAnalysisReviewOutput | null
   findings: DashboardFinding[]
   files: DashboardDiffFile[]
+  ragContext: DashboardRagChunkReference[]
+  ragContextChunksCount: number
+  ragRetrievalMode: string | null
 }
 
 function normalizeOptionalObject(value: unknown): Record<string, unknown> {
@@ -397,6 +425,19 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
         }))
     : []
 
+  const ragContext: DashboardRagChunkReference[] = Array.isArray(payload.rag_context)
+    ? payload.rag_context.map((chunk) => ({
+        path: typeof chunk.path === "string" ? chunk.path : null,
+        title: typeof chunk.title === "string" ? chunk.title : null,
+        source: typeof chunk.source === "string" ? chunk.source : null,
+        sourceType: typeof chunk.source_type === "string" ? chunk.source_type : null,
+        chunkType: typeof chunk.chunk_type === "string" ? chunk.chunk_type : null,
+        symbolName: typeof chunk.symbol_name === "string" ? chunk.symbol_name : null,
+        score: typeof chunk.score === "number" ? chunk.score : null,
+        tags: Array.isArray(chunk.tags) ? chunk.tags.filter((t): t is string => typeof t === "string") : [],
+      }))
+    : []
+
   return {
     id: payload.analysis_id,
     repo: payload.repo,
@@ -417,6 +458,9 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
     reviewOutput: contextReferences.length > 0 ? { contextReferences } : null,
     findings,
     files,
+    ragContext,
+    ragContextChunksCount: typeof payload.rag_context_chunks_count === "number" ? payload.rag_context_chunks_count : ragContext.length,
+    ragRetrievalMode: typeof payload.rag_retrieval_mode === "string" ? payload.rag_retrieval_mode : null,
   }
 }
 
