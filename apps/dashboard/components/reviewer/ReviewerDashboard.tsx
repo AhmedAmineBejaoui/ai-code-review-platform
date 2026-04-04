@@ -29,7 +29,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
-import { isReviewerSeniorOrLead, isReviewerLead, type AppRole } from "@/lib/roles"
+import { isReviewerLead, type AppRole } from "@/lib/roles"
 import {
   fetchReviewerDashboardData,
   createReviewerDashboardPoller,
@@ -96,7 +96,6 @@ export function ReviewerDashboard() {
   const pollerRef = useRef<ReturnType<typeof createReviewerDashboardPoller> | null>(null)
 
   const capabilities = getRoleCapabilities(currentUser.role)
-  const isSeniorOrLead = isReviewerSeniorOrLead(currentUser.role)
   const isLead = isReviewerLead(currentUser.role)
   const RoleIcon = capabilities.icon
 
@@ -618,7 +617,7 @@ export function ReviewerDashboard() {
                     Mes analytics
                   </Button>
                 </Link>
-                {isSeniorOrLead && (
+                {isLead && (
                   <>
                     <Link href="/dashboard/reviewer/team-analytics">
                       <Button variant="outline" size="sm" className="w-full justify-start">

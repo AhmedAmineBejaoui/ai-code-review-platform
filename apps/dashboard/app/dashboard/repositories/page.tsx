@@ -365,13 +365,20 @@ export default function RepositoriesPage() {
     setImportSuccess(null)
     
     let repoFullName = ""
-    
+    let repoName = ""
+    let repoVisibility: "public" | "private" = "private"
+    let repoDefaultBranch = "main"
+
     if (importMode === "github") {
       if (!selectedRepo) {
         setImportError("Please select a repository from the list")
         return
       }
       repoFullName = selectedRepo
+      const ghRepo = githubRepos.find((r) => r.fullName === selectedRepo)
+      repoName = ghRepo?.name ?? selectedRepo.split("/").pop() ?? selectedRepo
+      repoVisibility = ghRepo?.private ? "private" : "public"
+      repoDefaultBranch = ghRepo?.defaultBranch ?? "main"
     } else {
       if (!manualRepoUrl.trim()) {
         setImportError("Please enter a repository URL or owner/repo format")
@@ -387,6 +394,7 @@ export default function RepositoriesPage() {
         setImportError("Invalid format. Use 'owner/repo' or a GitHub URL")
         return
       }
+      repoName = repoFullName.split("/").pop() ?? repoFullName
     }
 
     setIsImporting(true)
@@ -397,14 +405,18 @@ export default function RepositoriesPage() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
+          name: repoName,
           full_name: repoFullName,
-          source: "github",
+          visibility: repoVisibility,
+          default_branch: repoDefaultBranch,
         }),
       })
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || errorData.message || "Failed to import repository")
+        const detail = errorData.detail
+        const msg = typeof detail === "string" ? detail : (errorData.error || errorData.message || "Failed to import repository")
+        throw new Error(msg)
       }
 
       setImportSuccess(`Repository "${repoFullName}" imported successfully!`)

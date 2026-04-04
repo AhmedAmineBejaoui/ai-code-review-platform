@@ -12,7 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, enforce_permission
 from app.data.database import get_engine
 
 router = APIRouter(prefix="/api/v1/security", tags=["security"])
@@ -133,11 +133,11 @@ async def list_security_issues(
     
     Retrieves findings with category='security' and provides filtering options.
     """
-    await require_permission(principal, "analyses.read")
-    
+    enforce_permission(principal, "analyses.read")
+
     engine = get_engine()
     from sqlalchemy import text
-    
+
     # Build conditions
     conditions = ["f.category = 'security'"]
     params: dict[str, Any] = {
@@ -262,11 +262,11 @@ async def get_security_dashboard(
     
     Provides overview statistics for the security dashboard.
     """
-    await require_permission(principal, "analyses.read")
-    
+    enforce_permission(principal, "analyses.read")
+
     engine = get_engine()
     from sqlalchemy import text
-    
+
     # Get overall stats
     stats_query = text("""
         SELECT 
@@ -375,11 +375,11 @@ async def update_issue_status(
     Note: Currently findings don't have status tracking, this is a placeholder
     for future enhancement.
     """
-    await require_permission(principal, "analyses.write")
-    
+    enforce_permission(principal, "analyses.write")
+
     engine = get_engine()
     from sqlalchemy import text
-    
+
     # Get the finding
     query = text("""
         SELECT 

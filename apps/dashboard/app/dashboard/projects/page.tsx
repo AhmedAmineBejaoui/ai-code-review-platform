@@ -41,6 +41,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { CreateProjectDialog } from "@/components/dashboard/CreateProjectDialog"
 
 // Types for projects
 interface Project {
@@ -286,6 +287,7 @@ export default function ProjectsPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   const fetchProjects = async () => {
     try {
@@ -293,16 +295,18 @@ export default function ProjectsPage() {
       setError(null)
       
       // Try to fetch from API
-      const response = await fetch('/api/projects')
+      const response = await fetch('/api/v1/projects')
       if (response.ok) {
         const data = await response.json()
-        setProjects(data)
+        setProjects(data.items || []) // API returns {items: [...], total: ...}
       } else {
         // Return empty array if API not available
+        console.warn("Projects API not available:", response.status, response.statusText)
         setProjects([])
       }
     } catch (err) {
       // Return empty array if API not available
+      console.warn("Failed to fetch projects:", err)
       setProjects([])
     } finally {
       setLoading(false)
@@ -329,8 +333,12 @@ export default function ProjectsPage() {
   }
 
   const handleNewProject = () => {
-    // TODO: Implement new project modal/page
-    router.push("/dashboard/projects/new")
+    setCreateDialogOpen(true)
+  }
+
+  const handleProjectCreated = (projectId: string) => {
+    fetchProjects() // Refresh list
+    router.push(`/dashboard/projects/${encodeURIComponent(projectId)}`)
   }
 
   // Loading state
@@ -484,6 +492,13 @@ export default function ProjectsPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* Create Project Dialog */}
+      <CreateProjectDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSuccess={handleProjectCreated}
+      />
     </div>
   )
 }

@@ -11,7 +11,6 @@ import {
   GitBranch,
   ChevronRight,
   Star,
-  StarFilled,
   Loader2,
   RefreshCw,
 } from "lucide-react"
@@ -340,11 +339,11 @@ export default function MyReviewsPage() {
                           }}
                           className="text-muted-foreground hover:text-yellow-500 transition-colors"
                         >
-                          {review.starred ? (
-                            <StarFilled className="h-4 w-4 text-yellow-500" />
-                          ) : (
-                            <Star className="h-4 w-4" />
-                          )}
+{review.starred ? (
+                             <Star className="h-4 w-4 text-yellow-500" />
+                           ) : (
+                             <Star className="h-4 w-4" />
+                           )}
                         </button>
                       </TableCell>
                       <TableCell>

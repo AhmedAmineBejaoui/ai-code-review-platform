@@ -50,17 +50,32 @@ function normalizeRepo(item: GithubRepoApiItem): GithubRepoOption | null {
   }
 }
 
-function normalizeGithubError(raw: unknown): string {
+function normalizeGithubError(raw: unknown, statusCode?: number, hasToken?: boolean): string {
+  let baseMessage = "GitHub request failed"
+  
   if (typeof raw === "string" && raw.trim().length > 0) {
-    return raw.trim()
-  }
-  if (typeof raw === "object" && raw !== null) {
+    baseMessage = raw.trim()
+  } else if (typeof raw === "object" && raw !== null) {
     const message = (raw as { message?: unknown }).message
     if (typeof message === "string" && message.trim().length > 0) {
-      return message.trim()
+      baseMessage = message.trim()
     }
   }
-  return "GitHub request failed"
+  
+  // Add helpful context for rate limit errors
+  if (statusCode === 403 && baseMessage.toLowerCase().includes("rate limit")) {
+    const tokenHint = hasToken 
+      ? "" 
+      : " Aucun token OAuth GitHub detecte: pour les repos prives, reconnectez GitHub dans Clerk."
+    return `${baseMessage}${tokenHint}`
+  }
+  
+  // Add context for 404 errors (user/org not found or no access)
+  if (statusCode === 404) {
+    return `${baseMessage}. The user/organization may not exist or you don't have access to their repositories.`
+  }
+  
+  return baseMessage
 }
 
 function buildGithubHeaders(token: string | null): Record<string, string> {
@@ -152,7 +167,7 @@ async function fetchGithubRepos(
           parsedBody = rawBody
         }
       }
-      return { items: [], error: normalizeGithubError(parsedBody) }
+      return { items: [], error: normalizeGithubError(parsedBody, response.status, !!token) }
     }
 
     const payload = (await response.json().catch(() => [])) as unknown

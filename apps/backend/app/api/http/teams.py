@@ -13,7 +13,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
 from app.data.database import get_engine
 
 router = APIRouter(prefix="/api/v1/teams", tags=["teams"])
@@ -219,7 +219,7 @@ async def list_teams(
     
     Returns teams with member counts and basic metrics.
     """
-    await require_permission(principal, "analyses.read")
+    enforce_permission(principal, "analyses.read")
     
     engine = get_engine()
     
@@ -259,7 +259,7 @@ async def get_team(
     """
     Get a specific team by ID.
     """
-    await require_permission(principal, "analyses.read")
+    enforce_permission(principal, "analyses.read")
     
     engine = get_engine()
     
@@ -295,7 +295,7 @@ async def create_team(
     """
     Create a new team (organization).
     """
-    await require_permission(principal, "admin.write")
+    enforce_permission(principal, "admin.write")
     
     engine = get_engine()
     from sqlalchemy import text
@@ -363,7 +363,7 @@ async def update_team(
     """
     Update a team.
     """
-    await require_permission(principal, "admin.write")
+    enforce_permission(principal, "admin.write")
     
     engine = get_engine()
     from sqlalchemy import text
@@ -413,7 +413,7 @@ async def add_team_member(
     """
     Add a member to a team.
     """
-    await require_permission(principal, "admin.write")
+    enforce_permission(principal, "admin.write")
     
     engine = get_engine()
     from sqlalchemy import text
@@ -478,7 +478,7 @@ async def remove_team_member(
     """
     Remove a member from a team.
     """
-    await require_permission(principal, "admin.write")
+    enforce_permission(principal, "admin.write")
     
     engine = get_engine()
     from sqlalchemy import text

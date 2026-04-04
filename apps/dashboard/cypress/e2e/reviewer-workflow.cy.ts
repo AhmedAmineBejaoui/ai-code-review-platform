@@ -79,7 +79,7 @@ describe('Reviewer Workflow', () => {
 
       cy.get('[data-testid="access-restricted"]').should('be.visible')
       cy.contains('Access Restricted').should('be.visible')
-      cy.contains('Team analytics are only available to Senior and Lead Reviewers').should('be.visible')
+      cy.contains('Team analytics are only available to Lead Reviewers').should('be.visible')
     })
   })
 

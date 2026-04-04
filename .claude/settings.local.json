@@ -6,7 +6,12 @@
       "mcp__claude_ai_Figma__get_metadata",
       "mcp__claude_ai_Figma__get_screenshot",
       "Bash(npx tsc:*)",
-      "Bash(node_modules/.bin/tsc --noEmit)"
+      "Bash(node_modules/.bin/tsc --noEmit)",
+      "Bash(curl -s -X GET http://localhost:8000/api/v1/projects)",
+      "Bash(curl -s http://localhost:8000/api/v1/projects/test/settings/auto-analysis)",
+      "Bash(curl -s http://localhost:8000/__routes)",
+      "Bash(python -c \"import sys,json; routes=[r for r in json.load\\(sys.stdin\\) if 'repositor' in str\\(r.get\\('path',''\\)\\).lower\\(\\)]; print\\(json.dumps\\(routes, indent=2\\)\\)\")",
+      "Bash(curl -s -X POST http://localhost:8000/api/v1/repositories -H \"Content-Type: application/json\" -d '{\"full_name\": \"AhmedAmineBejaoui/TransportManager\", \"source\": \"github\"}')"
     ]
   }
 }

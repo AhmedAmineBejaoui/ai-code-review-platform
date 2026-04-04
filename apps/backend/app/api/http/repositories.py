@@ -12,7 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, enforce_permission
 from app.data.database import get_engine
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 
@@ -59,15 +59,16 @@ class RepositoryListResponse(BaseModel):
 
 class CreateRepositoryRequest(BaseModel):
     """Request model for creating a repository."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = ConfigDict(extra="ignore")
 
-    name: str = Field(min_length=1, max_length=255)
+    name: str | None = Field(None, max_length=255)
     full_name: str = Field(min_length=1, max_length=255)
     description: str | None = None
     language: str | None = None
     visibility: Literal["public", "private", "internal"] = "private"
     default_branch: str = "main"
     github_id: str | None = None
+    source: str | None = None
 
 
 class UpdateRepositoryRequest(BaseModel):
@@ -158,11 +159,11 @@ async def list_repositories(
     Supports filtering by language, visibility, and search term.
     Returns paginated results with analysis statistics.
     """
-    await require_permission(principal, "analyses.read")
-    
+    enforce_permission(principal, "analyses.read")
+
     engine = get_engine()
     repo_profiles = RepoProfilesRepo()
-    
+
     # Get distinct repositories from analyses
     from sqlalchemy import text
     
@@ -278,11 +279,11 @@ async def get_repository(
     """
     Get a specific repository by ID (full name like owner/repo).
     """
-    await require_permission(principal, "analyses.read")
-    
+    enforce_permission(principal, "analyses.read")
+
     engine = get_engine()
     repo_profiles = RepoProfilesRepo()
-    
+
     # Get stats
     stats = _get_repository_stats(engine, repo_id)
     
@@ -328,10 +329,14 @@ async def create_repository(
     """
     Register a new repository for analysis tracking.
     """
-    await require_permission(principal, "analyses.create")
-    
+    enforce_permission(principal, "analyses.create")
+
     repo_profiles = RepoProfilesRepo()
-    
+
+    # Derive name from full_name if not provided
+    parts = request.full_name.split("/")
+    name = request.name or (parts[-1] if parts else request.full_name)
+
     # Create repo profile
     profile = repo_profiles.upsert_profile(
         repo_id=request.full_name,
@@ -344,10 +349,6 @@ async def create_repository(
             "github_id": request.github_id,
         },
     )
-    
-    # Parse repo name
-    parts = request.full_name.split("/")
-    name = parts[-1] if parts else request.full_name
     
     now = datetime.now(timezone.utc).isoformat()
     

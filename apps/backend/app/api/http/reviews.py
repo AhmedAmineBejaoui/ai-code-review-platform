@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal, require_permission
 from app.data.database import get_engine
 from app.data.repos.review_assignments_repo import (
     CreateReviewAssignmentInput,
@@ -155,7 +155,7 @@ async def create_assignment(
 ) -> AssignmentResponse:
     """Create a new review assignment"""
     # Check permissions
-    await require_permission(principal, "reviews.assign")
+    enforce_permission(principal, "reviews.assign")
 
     repo = ReviewAssignmentsRepo()
     input_data = CreateReviewAssignmentInput(
@@ -187,9 +187,9 @@ async def list_assignments(
     """List review assignments"""
     # Check permissions - users can view their own assignments, leads can view all
     if reviewer_id and reviewer_id != principal.user_id:
-        await require_permission(principal, "assignments.view_all")
+        enforce_permission(principal, "assignments.view_all")
     else:
-        await require_permission(principal, "assignments.view_own")
+        enforce_permission(principal, "assignments.view_own")
 
     repo = ReviewAssignmentsRepo()
 
@@ -216,9 +216,9 @@ async def get_assignment(
 
     # Check permissions - can view own assignments or all if has permission
     if assignment["reviewer_id"] != principal.user_id:
-        await require_permission(principal, "assignments.view_all")
+        enforce_permission(principal, "assignments.view_all")
     else:
-        await require_permission(principal, "assignments.view_own")
+        enforce_permission(principal, "assignments.view_own")
 
     return AssignmentResponse(**dict(assignment))
 
@@ -238,9 +238,9 @@ async def update_assignment(
 
     # Check permissions - can modify own assignments or all if has permission
     if assignment["reviewer_id"] != principal.user_id:
-        await require_permission(principal, "assignments.modify")
+        enforce_permission(principal, "assignments.modify")
     else:
-        await require_permission(principal, "assignments.view_own")
+        enforce_permission(principal, "assignments.view_own")
 
     update_data = UpdateReviewAssignmentInput(
         status=request.status,
@@ -263,7 +263,7 @@ async def claim_assignment(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AssignmentResponse:
     """Self-assign (claim) a review"""
-    await require_permission(principal, "reviews.claim")
+    enforce_permission(principal, "reviews.claim")
 
     repo = ReviewAssignmentsRepo()
     assignment = repo.get_assignment_by_id(assignment_id)
@@ -298,7 +298,7 @@ async def create_comment(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> CommentResponse:
     """Create a review comment"""
-    await require_permission(principal, "comments.create")
+    enforce_permission(principal, "comments.create")
 
     repo = ReviewCommentsRepo()
     input_data = CreateReviewCommentInput(
@@ -335,7 +335,7 @@ async def list_comments(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> list[CommentResponse]:
     """List review comments"""
-    await require_permission(principal, "comments.read")
+    enforce_permission(principal, "comments.read")
 
     repo = ReviewCommentsRepo()
 
@@ -355,7 +355,7 @@ async def get_comment_thread(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> list[CommentResponse]:
     """Get comment thread (replies)"""
-    await require_permission(principal, "comments.read")
+    enforce_permission(principal, "comments.read")
 
     repo = ReviewCommentsRepo()
     thread_comments = repo.get_comment_thread(comment_id)
@@ -378,11 +378,11 @@ async def update_comment(
 
     # Check permissions - can edit own comments or resolve if has permission
     if request.status and request.status == "resolved":
-        await require_permission(principal, "comments.resolve")
+        enforce_permission(principal, "comments.resolve")
     elif comment["author_id"] == principal.user_id:
-        await require_permission(principal, "comments.create")  # Can edit own
+        enforce_permission(principal, "comments.create")  # Can edit own
     else:
-        await require_permission(principal, "comments.edit")  # Can edit others
+        enforce_permission(principal, "comments.edit")  # Can edit others
 
     update_data = UpdateReviewCommentInput(
         content=request.content,
@@ -406,7 +406,7 @@ async def create_change_request(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> ChangeRequestResponse:
     """Create a change request"""
-    await require_permission(principal, "reviews.request_changes")
+    enforce_permission(principal, "reviews.request_changes")
 
     repo = ChangeRequestsRepo()
     input_data = CreateChangeRequestInput(
@@ -437,7 +437,7 @@ async def list_change_requests(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> list[ChangeRequestResponse]:
     """List change requests"""
-    await require_permission(principal, "comments.read")  # Basic read permission
+    enforce_permission(principal, "comments.read")  # Basic read permission
 
     repo = ChangeRequestsRepo()
 
@@ -467,11 +467,11 @@ async def update_change_request(
     # Check permissions
     if change_request["reviewer_id"] == principal.user_id:
         # Reviewer can update their own CRs
-        await require_permission(principal, "reviews.request_changes")
+        enforce_permission(principal, "reviews.request_changes")
     else:
         # Developer can resolve CRs (mark as resolved)
         if request.status in ["resolved", "declined"]:
-            await require_permission(principal, "comments.reply")  # Basic permission
+            enforce_permission(principal, "comments.reply")  # Basic permission
         else:
             raise HTTPException(status_code=403, detail="Cannot modify others' change requests")
 
