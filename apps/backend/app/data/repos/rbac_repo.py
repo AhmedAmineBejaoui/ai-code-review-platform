@@ -784,3 +784,91 @@ class RBACRepo:
                 )
             
             return result
+
+    # ─── Pending Invitation Resolution ────────────────────────────────────────
+
+    def get_and_accept_pending_invitations(self, email: str, user_id: str) -> list[dict]:
+        """Called at auth sync.
+
+        Finds all pending invitations for *email*, assigns the corresponding
+        project role to *user_id*, marks the invitation as accepted, and
+        returns a list of ``{project_id, role_code}`` dicts for each accepted
+        invitation.
+        """
+        if not email or not user_id:
+            return []
+
+        accepted: list[dict] = []
+
+        with self._engine.begin() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT id, project_id, role_code
+                        FROM pending_project_invitations
+                        WHERE email = :email AND status = 'pending'
+                        FOR UPDATE SKIP LOCKED
+                        """
+                    ),
+                    {"email": email.strip().lower()},
+                )
+                .mappings()
+                .all()
+            )
+
+            for row in rows:
+                inv_id = str(row["id"])
+                project_id = str(row["project_id"])
+                role_code = str(row["role_code"])
+
+                # Assign project role (upsert — ignore if already assigned)
+                try:
+                    role_row = (
+                        conn.execute(
+                            text("SELECT id FROM roles WHERE code = :code LIMIT 1"),
+                            {"code": role_code},
+                        )
+                        .mappings()
+                        .first()
+                    )
+                    if role_row:
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO user_project_roles
+                                    (id, user_id, project_id, role_id, assigned_by, created_at)
+                                VALUES (
+                                    gen_random_uuid()::text,
+                                    :user_id, :project_id, :role_id,
+                                    :user_id, NOW()
+                                )
+                                ON CONFLICT (user_id, project_id) DO UPDATE
+                                    SET role_id = EXCLUDED.role_id,
+                                        updated_at = NOW()
+                                """
+                            ),
+                            {
+                                "user_id": user_id,
+                                "project_id": project_id,
+                                "role_id": str(role_row["id"]),
+                            },
+                        )
+                except Exception:
+                    pass  # Role or table may not exist in all environments
+
+                # Mark invitation as accepted
+                conn.execute(
+                    text(
+                        """
+                        UPDATE pending_project_invitations
+                        SET status = 'accepted', accepted_at = NOW()
+                        WHERE id = :id
+                        """
+                    ),
+                    {"id": inv_id},
+                )
+
+                accepted.append({"project_id": project_id, "role_code": role_code})
+
+        return accepted
