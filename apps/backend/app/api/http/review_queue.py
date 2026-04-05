@@ -6,7 +6,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
 from app.data.repos.review_assignments_repo import ReviewAssignmentsRepo
 
 router = APIRouter(prefix="/v1/reviews", tags=["reviews"])
@@ -53,9 +53,9 @@ async def get_reviewer_queue(
 
     # Check permissions
     if target_reviewer_id != principal.user_id:
-        await require_permission(principal, "assignments.view_all")
+        enforce_permission(principal, "assignments.view_all")
     else:
-        await require_permission(principal, "assignments.view_own")
+        enforce_permission(principal, "assignments.view_own")
 
     repo = ReviewAssignmentsRepo()
     assignments = repo.get_assignments_by_reviewer(target_reviewer_id, status_filter, limit, offset)
@@ -103,7 +103,7 @@ async def get_available_reviews(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> list[dict[str, Any]]:
     """Get available reviews for self-assignment"""
-    await require_permission(principal, "reviews.claim")
+    enforce_permission(principal, "reviews.claim")
 
     repo = ReviewAssignmentsRepo()
     pending_assignments = repo.get_pending_assignments(priority, limit, offset)
@@ -138,9 +138,9 @@ async def get_queue_stats(
 
     # Check permissions
     if target_reviewer_id != principal.user_id:
-        await require_permission(principal, "assignments.view_all")
+        enforce_permission(principal, "assignments.view_all")
     else:
-        await require_permission(principal, "assignments.view_own")
+        enforce_permission(principal, "assignments.view_own")
 
     repo = ReviewAssignmentsRepo()
     stats = repo.get_assignment_stats(target_reviewer_id)
@@ -159,7 +159,7 @@ async def get_team_queue_stats(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> AssignmentStatsResponse:
     """Get team-wide queue statistics (Lead only)"""
-    await require_permission(principal, "assignments.view_all")
+    enforce_permission(principal, "assignments.view_all")
 
     repo = ReviewAssignmentsRepo()
 
@@ -221,11 +221,11 @@ async def set_review_decision(
     """Set review decision for an analysis"""
     # Check permissions based on decision type
     if request.decision == "approve":
-        await require_permission(principal, "reviews.approve")
+        enforce_permission(principal, "reviews.approve")
     elif request.decision == "warn":
-        await require_permission(principal, "reviews.warn")
+        enforce_permission(principal, "reviews.warn")
     elif request.decision == "block":
-        await require_permission(principal, "reviews.block")
+        enforce_permission(principal, "reviews.block")
 
     # TODO: Update the analysis with the review decision
     # This would need to be implemented in the analyses service/repo
@@ -256,7 +256,7 @@ async def trigger_auto_assignment(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> dict[str, Any]:
     """Trigger auto-assignment for analyses"""
-    await require_permission(principal, "reviews.assign")
+    enforce_permission(principal, "reviews.assign")
 
     # TODO: Implement auto-assignment logic
     # This would involve:
@@ -286,7 +286,7 @@ async def bulk_assign_reviews(
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> dict[str, Any]:
     """Bulk assign multiple analyses to a reviewer"""
-    await require_permission(principal, "reviews.bulk_action")
+    enforce_permission(principal, "reviews.bulk_action")
 
     # TODO: Implement bulk assignment
     # This would create multiple assignment records

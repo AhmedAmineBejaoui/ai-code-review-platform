@@ -80,6 +80,97 @@ class GithubClient:
         payload["auth"] = "ok"
         return payload
 
+    # ── Import helpers ────────────────────────────────────────────────────────
+
+    async def fetch_repo_info(self, repo: str) -> dict[str, Any]:
+        """GET /repos/{repo} — basic repo metadata."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return {}
+        try:
+            return await asyncio.to_thread(
+                self._request_json, method="GET", path=f"/repos/{repo}", auth_token=auth_token, body=None,
+            )
+        except Exception as exc:
+            LOGGER.warning("fetch_repo_info failed repo=%s: %s", repo, exc)
+            return {}
+
+    async def fetch_branches(self, repo: str) -> list[dict[str, Any]]:
+        """GET /repos/{repo}/branches — all branches (paginated)."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return []
+        try:
+            return await asyncio.to_thread(
+                self._request_list, path=f"/repos/{repo}/branches", auth_token=auth_token, params={"per_page": "100"},
+            )
+        except Exception as exc:
+            LOGGER.warning("fetch_branches failed repo=%s: %s", repo, exc)
+            return []
+
+    async def fetch_commits(self, repo: str, branch: str) -> list[dict[str, Any]]:
+        """GET /repos/{repo}/commits?sha={branch} — full history (all pages)."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return []
+        try:
+            return await asyncio.to_thread(
+                self._request_list,
+                path=f"/repos/{repo}/commits",
+                auth_token=auth_token,
+                params={"sha": branch, "per_page": "100"},
+            )
+        except Exception as exc:
+            LOGGER.warning("fetch_commits failed repo=%s branch=%s: %s", repo, branch, exc)
+            return []
+
+    async def fetch_collaborators(self, repo: str) -> list[dict[str, Any]]:
+        """GET /repos/{repo}/collaborators — all collaborators with affiliation=all."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return []
+        try:
+            return await asyncio.to_thread(
+                self._request_list,
+                path=f"/repos/{repo}/collaborators",
+                auth_token=auth_token,
+                params={"affiliation": "all", "per_page": "100"},
+            )
+        except Exception as exc:
+            LOGGER.warning("fetch_collaborators failed repo=%s: %s", repo, exc)
+            return []
+
+    async def fetch_org_members(self, org: str) -> list[dict[str, Any]]:
+        """GET /orgs/{org}/members — all org members."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return []
+        try:
+            return await asyncio.to_thread(
+                self._request_list,
+                path=f"/orgs/{org}/members",
+                auth_token=auth_token,
+                params={"per_page": "100"},
+            )
+        except Exception as exc:
+            LOGGER.warning("fetch_org_members failed org=%s: %s", org, exc)
+            return []
+
+    async def fetch_user_email(self, github_login: str) -> str | None:
+        """GET /users/{login} — try to get public email."""
+        auth_token = await self._resolve_auth_token()
+        if auth_token is None:
+            return None
+        try:
+            data = await asyncio.to_thread(
+                self._request_json, method="GET", path=f"/users/{github_login}", auth_token=auth_token, body=None,
+            )
+            return data.get("email") or None
+        except Exception:
+            return None
+
+    # ── Internal HTTP helpers ─────────────────────────────────────────────────
+
     async def create_comment(self, repo: str, pr: int, body: str) -> None:
         auth_token = await self._resolve_auth_token()
         if auth_token is None:
@@ -167,6 +258,54 @@ class GithubClient:
         if not token or expires_at is None:
             raise RuntimeError("GitHub installation token response is missing token or expires_at")
         return token, expires_at
+
+    def _request_list(
+        self,
+        *,
+        path: str,
+        auth_token: str,
+        params: dict[str, str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Fetch all pages of a GitHub list endpoint using Link header pagination."""
+        base = settings.GITHUB_API_BASE_URL.rstrip("/")
+        query = ""
+        if params:
+            from urllib.parse import urlencode
+            query = "?" + urlencode(params)
+        url: str | None = f"{base}{path}{query}"
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": _GITHUB_API_VERSION,
+            "User-Agent": _USER_AGENT,
+            "Authorization": f"Bearer {auth_token}",
+        }
+        results: list[dict[str, Any]] = []
+        while url:
+            req = Request(url=url, method="GET", headers=headers)
+            try:
+                with urlopen(req, timeout=30) as response:
+                    raw = response.read().decode("utf-8")
+                    link_header = response.getheader("Link") or ""
+            except HTTPError as exc:
+                detail = exc.read().decode("utf-8", errors="ignore")
+                raise RuntimeError(f"GitHub API error {exc.code}: {detail}") from exc
+            except URLError as exc:
+                raise RuntimeError(f"GitHub API network error: {exc.reason}") from exc
+
+            if raw:
+                parsed = json.loads(raw)
+                if isinstance(parsed, list):
+                    results.extend(parsed)
+
+            # Parse next page URL from Link header
+            url = None
+            for part in link_header.split(","):
+                part = part.strip()
+                if 'rel="next"' in part:
+                    url = part.split(";")[0].strip().strip("<>")
+                    break
+
+        return results
 
     def _request_json(
         self,

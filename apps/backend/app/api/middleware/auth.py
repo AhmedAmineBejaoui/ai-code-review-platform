@@ -538,3 +538,16 @@ def require_permission(permission_code: str):
         return principal
 
     return dependency
+
+
+def enforce_permission(principal: AuthenticatedPrincipal | None, permission_code: str) -> None:
+    """Inline permission check — use when you already have the principal instance."""
+    if not _is_auth_enforced():
+        return
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if permission_code not in (principal.permissions or []):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Missing required permission: {permission_code}",
+        )

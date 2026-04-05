@@ -12,7 +12,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
 from app.data.database import get_engine
 
 router = APIRouter(prefix="/api/v1/statistics", tags=["statistics"])
@@ -385,7 +385,7 @@ async def get_statistics(
     Returns quality, velocity, and team metrics for the specified time range.
     Use category parameter to fetch specific metrics only.
     """
-    await require_permission(principal, "analyses.read")
+    enforce_permission(principal, "analyses.read")
     
     engine = get_engine()
     start, end = _parse_time_range(time_range)

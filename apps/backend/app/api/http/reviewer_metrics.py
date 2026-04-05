@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 
 import asyncio
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
 from app.data.database import get_engine
 from app.data.repos.reviewer_metrics_repo import ReviewerMetricsRepo
 from app.services.reviewer_metrics_calculator import ReviewerMetricsCalculator
@@ -23,7 +23,7 @@ async def get_personal_metrics(
     """
     Récupère les métriques personnelles du reviewer connecté.
     """
-    await require_permission(principal, "metrics.read_self")
+    enforce_permission(principal, "metrics.read_self")
 
     end_date = date.today()
     start_date = end_date - timedelta(days=period_days)
@@ -113,7 +113,7 @@ async def get_team_metrics(
     """
     Récupère les métriques d'équipe (Lead/Admin seulement).
     """
-    await require_permission(principal, "metrics.read_team")
+    enforce_permission(principal, "metrics.read_team")
 
     end_date = date.today()
     start_date = end_date - timedelta(days=period_days)
@@ -205,7 +205,7 @@ async def get_leaderboard(
     """
     Récupère le leaderboard des reviewers pour une métrique donnée.
     """
-    await require_permission(principal, "metrics.read_team")
+    enforce_permission(principal, "metrics.read_team")
 
     end_date = date.today()
     start_date = end_date - timedelta(days=period_days)
@@ -232,9 +232,9 @@ async def get_metrics_trends(
 
     # Vérifier permissions
     if target_reviewer_id != principal.user_id:
-        await require_permission(principal, "metrics.read_team")
+        enforce_permission(principal, "metrics.read_team")
     else:
-        await require_permission(principal, "metrics.read_self")
+        enforce_permission(principal, "metrics.read_self")
 
     calculator = ReviewerMetricsCalculator()
     trends = await calculator.get_reviewer_trends(target_reviewer_id, periods)
@@ -255,7 +255,7 @@ async def refresh_metrics(
     """
     Déclenche un recalcul des métriques (Admin seulement).
     """
-    await require_permission(principal, "metrics.refresh")
+    enforce_permission(principal, "metrics.refresh")
 
     calculator = ReviewerMetricsCalculator()
 
@@ -292,7 +292,7 @@ async def get_metrics_summary(
     """
     Récupère un résumé global des métriques (Admin/Lead seulement).
     """
-    await require_permission(principal, "metrics.read_all")
+    enforce_permission(principal, "metrics.read_all")
 
     repo = ReviewerMetricsRepo()
     summary = repo.get_metrics_summary()
@@ -309,7 +309,7 @@ async def get_reviewer_metrics(
     """
     Récupère les métriques d'un reviewer spécifique (Lead/Admin seulement).
     """
-    await require_permission(principal, "metrics.read_all")
+    enforce_permission(principal, "metrics.read_all")
 
     end_date = date.today()
     start_date = end_date - timedelta(days=period_days)
@@ -358,24 +358,36 @@ async def get_rag_impact_metrics(
     Compare les analyses avec RAG (knowledge base context retrieved) vs
     sans RAG pour mettre en évidence la valeur ajoutée du système RAG.
     """
+    import json as _json
     from sqlalchemy import text as sa_text
 
     def _query_analyses() -> list[dict[str, Any]]:
         engine = get_engine()
         with engine.connect() as conn:
+            # Récupérer les analyses avec leurs compteurs de findings calculés via sous-requête
             rows = conn.execute(
                 sa_text(
                     """
                     SELECT
-                        status,
-                        findings_count,
-                        blocker_count,
-                        warn_count,
-                        info_count,
-                        metadata
-                    FROM analyses
-                    WHERE status = 'COMPLETED'
-                    ORDER BY created_at DESC
+                        a.id,
+                        a.status,
+                        a.metadata_json,
+                        COALESCE(f.findings_count, 0) AS findings_count,
+                        COALESCE(f.blocker_count, 0) AS blocker_count,
+                        COALESCE(f.warn_count, 0) AS warn_count,
+                        COALESCE(f.info_count, 0) AS info_count
+                    FROM analyses a
+                    LEFT JOIN LATERAL (
+                        SELECT
+                            COUNT(*) AS findings_count,
+                            COUNT(*) FILTER (WHERE severity = 'BLOCKER') AS blocker_count,
+                            COUNT(*) FILTER (WHERE severity = 'WARN') AS warn_count,
+                            COUNT(*) FILTER (WHERE severity = 'INFO') AS info_count
+                        FROM findings
+                        WHERE findings.analysis_id = a.id
+                    ) f ON TRUE
+                    WHERE a.status = 'COMPLETED'
+                    ORDER BY a.created_at DESC
                     LIMIT :limit
                     """
                 ),
@@ -389,9 +401,8 @@ async def get_rag_impact_metrics(
     without_rag: list[dict[str, Any]] = []
 
     for row in rows:
-        metadata = row.get("metadata") or {}
+        metadata = row.get("metadata_json") or {}
         if isinstance(metadata, str):
-            import json as _json
             try:
                 metadata = _json.loads(metadata)
             except Exception:
