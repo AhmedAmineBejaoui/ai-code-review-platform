@@ -14,7 +14,7 @@ import {
 } from "lucide-react"
 import { MetricsChart, TrendChart, DonutChart, ProgressRing } from "@/components/reviewer/MetricsCharts"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
-import { isReviewerSeniorOrLead } from "@/lib/roles"
+import { isReviewerLead } from "@/lib/roles"
 
 interface TeamMetrics {
   period: {
@@ -73,7 +73,7 @@ export default function TeamAnalyticsPage() {
   const [leaderboardMetric, setLeaderboardMetric] = useState("reviews_completed")
   const [error, setError] = useState<string | null>(null)
 
-  const hasPermission = isReviewerSeniorOrLead(currentUser.role)
+  const hasPermission = isReviewerLead(currentUser.role)
 
   const fetchTeamMetrics = async () => {
     if (!hasPermission) return
@@ -120,7 +120,7 @@ export default function TeamAnalyticsPage() {
               <div>
                 <h3 className="font-semibold text-lg">Access Restricted</h3>
                 <p className="text-sm text-gray-600 mt-2">
-                  Team analytics are only available to Senior and Lead Reviewers.
+                  Team analytics are only available to Lead Reviewers.
                 </p>
               </div>
             </div>

@@ -17,7 +17,7 @@ import {
   AlertTriangle, Clock, Target, Users
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
-import { isReviewerSeniorOrLead } from "@/lib/roles"
+import { isReviewerLead } from "@/lib/roles"
 
 interface ReviewTemplate {
   id: string
@@ -111,7 +111,7 @@ export default function TemplatesPage() {
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingTemplate, setEditingTemplate] = useState<ReviewTemplate | null>(null)
 
-  const hasPermission = isReviewerSeniorOrLead(currentUser.role)
+  const hasPermission = isReviewerLead(currentUser.role)
 
   useEffect(() => {
     if (!hasPermission) return
@@ -160,7 +160,7 @@ export default function TemplatesPage() {
               <div>
                 <h3 className="font-semibold text-lg">Access Restricted</h3>
                 <p className="text-sm text-gray-600 mt-2">
-                  Template management is only available to Senior and Lead Reviewers.
+                  Template management is only available to Lead Reviewers.
                 </p>
               </div>
             </div>

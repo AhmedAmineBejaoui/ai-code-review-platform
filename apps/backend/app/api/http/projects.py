@@ -132,16 +132,14 @@ def _get_project_stats(engine, project_id: str) -> dict[str, Any]:
     from sqlalchemy import text
     
     query = text("""
-        SELECT
+        SELECT 
             COUNT(*) as analysis_count,
-            MAX(a.created_at) as last_analysis_at,
-            COALESCE(SUM(fc.cnt), 0) as total_findings,
-            SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
-            SUM(CASE WHEN a.status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
-        FROM analyses a
-        LEFT JOIN (SELECT analysis_id, COUNT(*) as cnt FROM findings GROUP BY analysis_id) fc
-            ON fc.analysis_id = a.id
-        WHERE a.repo = :project_id
+            MAX(created_at) as last_analysis_at,
+            SUM(findings_count) as total_findings,
+            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+            SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
+        FROM analyses
+        WHERE repo = :project_id
     """)
     
     with engine.connect() as conn:

@@ -136,6 +136,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([])
   const [isLoadingRepos, setIsLoadingRepos] = useState(false)
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [githubError, setGithubError] = useState<string | null>(null)
   const [selectedGithubRepo, setSelectedGithubRepo] = useState("")
   const [inputMode, setInputMode] = useState<"github" | "manual">("github")
   const [customGithubAccount, setCustomGithubAccount] = useState("")
@@ -149,6 +150,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
 
   const loadGithubRepos = async (account?: string) => {
     setIsLoadingRepos(true)
+    setGithubError(null)
     try {
       const url = account 
         ? `/api/dashboard/github/repos?account=${encodeURIComponent(account)}&type=${accountType}`
@@ -159,11 +161,17 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
         const data = await response.json()
         setGithubConnected(data.connected ?? false)
         setGithubRepos(data.items ?? [])
+        // Store error from API response (e.g., rate limit warnings)
+        if (data.error) {
+          setGithubError(data.error)
+        }
       } else {
         setGithubConnected(false)
+        setGithubError("Failed to fetch repositories")
       }
     } catch {
       setGithubConnected(false)
+      setGithubError("Network error while fetching repositories")
     } finally {
       setIsLoadingRepos(false)
     }
@@ -329,6 +337,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     setSubmitSuccess(null)
     setStartedAnalysisId(null)
     setInputMode("github")
+    setGithubError(null)
   }
 
   return (
@@ -481,12 +490,33 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                             ))}
                           </SelectContent>
                         </Select>
-                        {githubRepos.length === 0 && customGithubAccount && (
+                        {githubRepos.length === 0 && customGithubAccount && !githubError && (
                           <p className="text-xs text-muted-foreground">
                             No repositories found for {customGithubAccount}
                           </p>
                         )}
                       </div>
+                      
+                      {/* GitHub API Error Display */}
+                      {githubError && (
+                        <div className="flex items-start gap-2 p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md text-sm border border-amber-500/20">
+                          <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <div className="space-y-1">
+                            <p>{githubError}</p>
+                            {githubError.toLowerCase().includes("rate limit") && (
+                              <Button 
+                                variant="link" 
+                                size="sm" 
+                                className="h-auto p-0 text-amber-700 dark:text-amber-400 underline"
+                                onClick={handleGithubConnect}
+                              >
+                                Connect GitHub to increase rate limit
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      
                       <div className="space-y-2">
                         <Label htmlFor="pr-number">PR Number (Optional)</Label>
                         <Input

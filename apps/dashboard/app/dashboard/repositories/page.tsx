@@ -441,26 +441,57 @@ export default function RepositoriesPage() {
       return
     }
     let repoFullName = ""
-    const urlMatch = manualRepoUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/|$)/)
-    if (urlMatch) {
-      repoFullName = urlMatch[1]
-    } else if (manualRepoUrl.match(/^[^/]+\/[^/]+$/)) {
-      repoFullName = manualRepoUrl.trim()
+    let repoName = ""
+    let repoVisibility: "public" | "private" = "private"
+    let repoDefaultBranch = "main"
+
+    if (importMode === "github") {
+      if (!selectedRepo) {
+        setImportError("Please select a repository from the list")
+        return
+      }
+      repoFullName = selectedRepo
+      const ghRepo = githubRepos.find((r) => r.fullName === selectedRepo)
+      repoName = ghRepo?.name ?? selectedRepo.split("/").pop() ?? selectedRepo
+      repoVisibility = ghRepo?.private ? "private" : "public"
+      repoDefaultBranch = ghRepo?.defaultBranch ?? "main"
     } else {
-      setImportError("Invalid format. Use 'owner/repo' or a GitHub URL")
-      return
+      if (!manualRepoUrl.trim()) {
+        setImportError("Please enter a repository URL or owner/repo format")
+        return
+      }
+      // Parse GitHub URL or owner/repo format
+      const urlMatch = manualRepoUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/|$)/)
+      if (urlMatch) {
+        repoFullName = urlMatch[1]
+      } else if (manualRepoUrl.match(/^[^/]+\/[^/]+$/)) {
+        repoFullName = manualRepoUrl.trim()
+      } else {
+        setImportError("Invalid format. Use 'owner/repo' or a GitHub URL")
+        return
+      }
+      repoName = repoFullName.split("/").pop() ?? repoFullName
     }
 
     setIsImporting(true)
     try {
       const response = await fetch("/api/dashboard/repositories", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ full_name: repoFullName }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: repoName,
+          full_name: repoFullName,
+          visibility: repoVisibility,
+          default_branch: repoDefaultBranch,
+        }),
       })
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error ?? errorData.detail ?? "Failed to import repository")
+        const detail = errorData.detail
+        const msg = typeof detail === "string" ? detail : (errorData.error || errorData.message || "Failed to import repository")
+        throw new Error(msg)
       }
       setImportSuccess(`Repository "${repoFullName}" imported successfully!`)
       setTimeout(() => {

@@ -55,7 +55,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { formatRoleLabel, getRoleHomePath, isReviewer, isReviewerSeniorOrLead, type AppRole } from "@/lib/roles";
+import { formatRoleLabel, getRoleHomePath, isReviewer, isReviewerLead, type AppRole } from "@/lib/roles";
 import { cn } from "@/lib/utils";
 import { Theme } from "@/components/ui/theme";
 
@@ -247,7 +247,7 @@ function getSidebarContent(
   pathname: string,
   isAdmin: boolean,
   isReviewerRole: boolean,
-  isReviewerSeniorOrLeadRole: boolean,
+  isReviewerLeadRole: boolean,
   pendingReviewsCount: number,
   overdueCount: number
 ): SidebarContent {
@@ -450,7 +450,7 @@ function getSidebarContent(
               href: "/dashboard/reviewer/analytics",
               isActive: pathname === "/dashboard/reviewer/analytics",
             },
-            ...(isReviewerSeniorOrLeadRole
+            ...(isReviewerLeadRole
               ? [
                   {
                     icon: <Activity size={16} className="text-sidebar-foreground" />,
@@ -462,7 +462,7 @@ function getSidebarContent(
               : []),
           ],
         },
-        ...(isReviewerSeniorOrLeadRole
+        ...(isReviewerLeadRole
           ? [
               {
                 title: "Management",
@@ -554,9 +554,24 @@ function getSidebarContent(
         {
           title: "Account",
           items: [
-            { icon: <UserIcon size={16} className="text-sidebar-foreground" />, label: "Profile" },
-            { icon: <Security size={16} className="text-sidebar-foreground" />, label: "Security" },
-            { icon: <Notification size={16} className="text-sidebar-foreground" />, label: "Notifications" },
+            { 
+              icon: <UserIcon size={16} className="text-sidebar-foreground" />, 
+              label: "Profile",
+              href: "/dashboard/settings/profile",
+              isActive: pathname === "/dashboard/settings/profile",
+            },
+            { 
+              icon: <Security size={16} className="text-sidebar-foreground" />, 
+              label: "Security",
+              href: "/dashboard/settings/security",
+              isActive: pathname === "/dashboard/settings/security",
+            },
+            { 
+              icon: <Notification size={16} className="text-sidebar-foreground" />, 
+              label: "Notifications",
+              href: "/dashboard/settings/notifications",
+              isActive: pathname === "/dashboard/settings/notifications",
+            },
           ],
         },
         {
@@ -565,11 +580,13 @@ function getSidebarContent(
             {
               icon: <SettingsIcon size={16} className="text-sidebar-foreground" />,
               label: "General",
+              href: "/dashboard/settings/general",
+              isActive: pathname === "/dashboard/settings/general" || pathname?.startsWith("/dashboard/settings/general/"),
               hasDropdown: true,
               children: [
-                { label: "Theme settings" },
-                { label: "Language" },
-                { label: "Time zone" },
+                { label: "Theme settings", href: "/dashboard/settings/general#theme" },
+                { label: "Language", href: "/dashboard/settings/general#language" },
+                { label: "Time zone", href: "/dashboard/settings/general#timezone" },
               ],
             },
           ],
@@ -741,7 +758,7 @@ function DetailSidebar({
   activeSection,
   isAdmin,
   isReviewerRole,
-  isReviewerSeniorOrLeadRole,
+  isReviewerLeadRole,
   pendingReviewsCount,
   overdueCount,
   currentUser,
@@ -749,7 +766,7 @@ function DetailSidebar({
   activeSection: string;
   isAdmin: boolean;
   isReviewerRole: boolean;
-  isReviewerSeniorOrLeadRole: boolean;
+  isReviewerLeadRole: boolean;
   pendingReviewsCount: number;
   overdueCount: number;
   currentUser: {
@@ -769,7 +786,7 @@ function DetailSidebar({
     pathname,
     isAdmin,
     isReviewerRole,
-    isReviewerSeniorOrLeadRole,
+    isReviewerLeadRole,
     pendingReviewsCount,
     overdueCount
   );
@@ -1064,7 +1081,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
 
   const isAdmin = currentUser.role === "admin";
   const isReviewerRole = isReviewer(currentUser.role);
-  const isReviewerSeniorOrLeadRole = isReviewerSeniorOrLead(currentUser.role);
+  const isReviewerLeadRole = isReviewerLead(currentUser.role);
 
   // Mock data for badges
   const pendingReviewsCount = 5;
@@ -1084,7 +1101,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
           activeSection={activeSection}
           isAdmin={isAdmin}
           isReviewerRole={isReviewerRole}
-          isReviewerSeniorOrLeadRole={isReviewerSeniorOrLeadRole}
+          isReviewerLeadRole={isReviewerLeadRole}
           pendingReviewsCount={pendingReviewsCount}
           overdueCount={overdueCount}
           currentUser={currentUser}
