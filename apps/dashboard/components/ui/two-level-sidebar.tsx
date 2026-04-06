@@ -572,6 +572,12 @@ function getSidebarContent(
               href: "/dashboard/settings/notifications",
               isActive: pathname === "/dashboard/settings/notifications",
             },
+            { 
+              icon: <SettingsIcon size={16} className="text-sidebar-foreground" />, 
+              label: "Integrations",
+              href: "/dashboard/settings/integrations",
+              isActive: pathname === "/dashboard/settings/integrations",
+            },
           ],
         },
         {

@@ -1,0 +1,27 @@
+{
+  "ios": {
+    "icon": {
+      "sources": ["resources/icon.png"],
+      "sizes": [20, 29, 40, 58, 60, 76, 80, 87, 120, 152, 167, 180, 1024]
+    },
+    "splash": {
+      "sources": ["resources/splash.png"],
+      "dark": {
+        "sources": ["resources/splash-dark.png"]
+      }
+    }
+  },
+  "android": {
+    "icon": {
+      "sources": ["resources/icon.png"],
+      "foreground": "resources/icon-foreground.png",
+      "background": "#0a0a0a"
+    },
+    "splash": {
+      "sources": ["resources/splash.png"],
+      "dark": {
+        "sources": ["resources/splash-dark.png"]
+      }
+    }
+  }
+}

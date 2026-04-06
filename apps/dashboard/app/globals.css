@@ -985,3 +985,212 @@ a,
     @apply glass-pro text-white px-6 py-3 rounded-xl font-medium hover:bg-white/10 border border-white/20 hover:border-white/40 transition-all duration-300;
   }
 }
+
+/* ============================================
+   MOBILE / CAPACITOR STYLES
+   ============================================ */
+
+/* Safe area insets for iOS notch and home indicator */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+}
+
+/* Apply safe areas to body */
+html {
+  /* Ensure proper viewport on mobile */
+  -webkit-text-size-adjust: 100%;
+  -ms-text-size-adjust: 100%;
+}
+
+body {
+  /* Safe area padding for fixed elements */
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+  
+  /* Prevent pull-to-refresh on mobile */
+  overscroll-behavior-y: none;
+  
+  /* Disable text selection on mobile for native feel */
+  -webkit-touch-callout: none;
+}
+
+/* Allow text selection in specific elements */
+input, textarea, [contenteditable="true"], .selectable {
+  -webkit-touch-callout: default;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Safe area utility classes */
+.safe-top {
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+.safe-bottom {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-left {
+  padding-left: env(safe-area-inset-left, 0px);
+}
+
+.safe-right {
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-x {
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+.safe-y {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+.safe-all {
+  padding-top: env(safe-area-inset-top, 0px);
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  padding-left: env(safe-area-inset-left, 0px);
+  padding-right: env(safe-area-inset-right, 0px);
+}
+
+/* Fixed position with safe area */
+.fixed-safe-top {
+  position: fixed;
+  top: env(safe-area-inset-top, 0px);
+}
+
+.fixed-safe-bottom {
+  position: fixed;
+  bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* Keyboard visibility adjustments */
+body.keyboard-visible {
+  /* Adjust layout when keyboard is visible */
+}
+
+body.keyboard-visible .hide-on-keyboard {
+  display: none !important;
+}
+
+body.keyboard-visible .fixed-safe-bottom {
+  bottom: 0;
+}
+
+/* Touch feedback for buttons */
+@media (hover: none) and (pointer: coarse) {
+  button, 
+  [role="button"],
+  .touchable {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+  
+  button:active,
+  [role="button"]:active,
+  .touchable:active {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
+}
+
+/* Momentum scrolling for iOS */
+.scroll-touch {
+  -webkit-overflow-scrolling: touch;
+  overflow-y: auto;
+}
+
+/* Native-like transitions */
+.native-transition {
+  transition: transform 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94),
+              opacity 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* Mobile-specific font adjustments */
+@media screen and (max-width: 640px) {
+  html {
+    font-size: 14px;
+  }
+}
+
+/* Prevent zoom on input focus (iOS) */
+@media screen and (max-width: 768px) {
+  input[type="text"],
+  input[type="email"],
+  input[type="password"],
+  input[type="number"],
+  input[type="tel"],
+  input[type="url"],
+  input[type="search"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+}
+
+/* Bottom navigation safe area */
+.bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  background: var(--background);
+  border-top: 1px solid var(--border);
+}
+
+/* Mobile header with safe area */
+.mobile-header {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  padding-top: env(safe-area-inset-top, 0px);
+  background: var(--background);
+  border-bottom: 1px solid var(--border);
+  z-index: 50;
+}
+
+/* Content area that accounts for fixed header/footer */
+.mobile-content {
+  padding-top: calc(env(safe-area-inset-top, 0px) + 56px); /* 56px = header height */
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 64px); /* 64px = bottom nav height */
+  min-height: 100vh;
+}
+
+/* Pull to refresh indicator area */
+.pull-to-refresh-area {
+  margin-top: calc(-1 * env(safe-area-inset-top, 0px));
+  padding-top: env(safe-area-inset-top, 0px);
+}
+
+/* Native app styling - remove web-like elements */
+.native-app {
+  /* Hide scrollbars for native feel */
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.native-app::-webkit-scrollbar {
+  display: none;
+}
+
+/* Capacitor-specific overrides */
+html.plt-capacitor {
+  /* Capacitor platform-specific styles */
+}
+
+html.plt-capacitor.plt-ios {
+  /* iOS-specific styles */
+}
+
+html.plt-capacitor.plt-android {
+  /* Android-specific styles */
+}

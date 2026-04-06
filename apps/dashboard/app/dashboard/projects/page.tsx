@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { motion } from "motion/react"
+import { clearProjectCaches } from "@/hooks/use-project"
 import {
   Folder,
   GitBranch,
@@ -294,8 +295,11 @@ export default function ProjectsPage() {
       setLoading(true)
       setError(null)
       
-      // Try to fetch from API
-      const response = await fetch('/api/v1/projects')
+      // Try to fetch from API with cache-busting timestamp
+      const timestamp = Date.now()
+      const response = await fetch(`/api/v1/projects?_t=${timestamp}`, {
+        cache: 'no-store' // Disable browser caching
+      })
       if (response.ok) {
         const data = await response.json()
         setProjects(data.items || []) // API returns {items: [...], total: ...}
@@ -329,7 +333,7 @@ export default function ProjectsPage() {
   const otherProjects = filteredProjects.filter((p) => !p.starred)
 
   const handleProjectClick = (projectId: string) => {
-    router.push(`/dashboard/projects/${projectId}`)
+    router.push(`/dashboard/projects/${encodeURIComponent(projectId)}`)
   }
 
   const handleNewProject = () => {
@@ -337,7 +341,16 @@ export default function ProjectsPage() {
   }
 
   const handleProjectCreated = (projectId: string) => {
-    fetchProjects() // Refresh list
+    // Clear any project-related caches
+    if (typeof clearProjectCaches === 'function') {
+      clearProjectCaches()
+    }
+    
+    // Force refresh the projects list with cache-busting
+    setTimeout(() => {
+      fetchProjects() // Refresh list
+    }, 100) // Small delay to ensure backend has processed the creation
+    
     router.push(`/dashboard/projects/${encodeURIComponent(projectId)}`)
   }
 
