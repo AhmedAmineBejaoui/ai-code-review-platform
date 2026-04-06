@@ -17,15 +17,17 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 const APP_DIR = path.join(__dirname, '..');
+// Move backups OUTSIDE the app directory so Next.js won't scan them
+const BACKUP_ROOT = path.join(APP_DIR, '..', '..', '.mobile-build-backup');
 const API_DIR = path.join(APP_DIR, 'app', 'api');
-const API_BACKUP_DIR = path.join(APP_DIR, '.api-backup');
-const DYNAMIC_BACKUP_DIR = path.join(APP_DIR, '.dynamic-backup');
+const API_BACKUP_DIR = path.join(BACKUP_ROOT, 'api');
+const DYNAMIC_BACKUP_DIR = path.join(BACKUP_ROOT, 'dynamic');
 const CONFIG_FILE = path.join(APP_DIR, 'next.config.js');
-const CONFIG_BACKUP = path.join(APP_DIR, 'next.config.backup.js');
+const CONFIG_BACKUP = path.join(BACKUP_ROOT, 'next.config.js');
 const MOBILE_CONFIG = path.join(APP_DIR, 'next.config.mobile.js');
 const OUT_DIR = path.join(APP_DIR, 'out');
 const MIDDLEWARE_FILE = path.join(APP_DIR, 'middleware.ts');
-const MIDDLEWARE_BACKUP = path.join(APP_DIR, 'middleware.backup.ts');
+const MIDDLEWARE_BACKUP = path.join(BACKUP_ROOT, 'middleware.ts');
 
 // Dynamic route patterns to exclude from build
 // These will be handled by the SPA fallback (not-found.tsx -> 404.html)
@@ -37,18 +39,26 @@ const DYNAMIC_ROUTES_TO_BACKUP = [
   'app/dashboard/report/[id]',
   'app/dashboard/review/[id]',
   'app/dashboard/admin/projects/[projectId]',
+  'app/dashboard/organization/[[...rest]]',
+  'app/dashboard/admin/organization/[[...rest]]',
   // Marketing pages use server-side auth that's incompatible with static export
   'app/(marketing)',
   // Sign-in/sign-up with Clerk - will be handled differently in mobile
   'app/sign-in',
   'app/sign-up',
-  // Keep organization routes as they use optional catch-all with static export support
-  // 'app/dashboard/organization/[[...rest]]',
-  // 'app/dashboard/admin/organization/[[...rest]]',
+  // Slug pages
+  'app/[slug]',
+  // Pages that can't be statically exported
+  'app/accept-invitation',
+  'app/dashboard/branches',
 ];
 
 // Files that need to be replaced with mobile-compatible versions
 const FILES_TO_REPLACE = [
+  {
+    original: 'app/layout.tsx',
+    mobile: 'scripts/mobile-overrides/root-layout.tsx',
+  },
   {
     original: 'app/dashboard/layout.tsx',
     mobile: 'scripts/mobile-overrides/dashboard-layout.tsx',
@@ -77,6 +87,10 @@ const FILES_TO_REPLACE = [
     original: 'lib/github.ts',
     mobile: 'scripts/mobile-overrides/github.ts',
   },
+  {
+    original: 'lib/clerk-runtime.ts',
+    mobile: 'scripts/mobile-overrides/clerk-runtime.ts',
+  },
 ];
 
 function log(message) {
@@ -86,11 +100,20 @@ function log(message) {
 function backupApiRoutes() {
   log('Backing up API routes...');
   if (fs.existsSync(API_DIR)) {
+    // Ensure backup root exists
+    fs.mkdirSync(BACKUP_ROOT, { recursive: true });
+    
     if (fs.existsSync(API_BACKUP_DIR)) {
       fs.rmSync(API_BACKUP_DIR, { recursive: true });
     }
-    fs.renameSync(API_DIR, API_BACKUP_DIR);
-    log('API routes backed up to .api-backup');
+    
+    // Copy to backup location outside app directory
+    copyDirRecursive(API_DIR, API_BACKUP_DIR);
+    
+    // Remove original
+    fs.rmSync(API_DIR, { recursive: true });
+    
+    log('API routes backed up outside app directory');
   }
 }
 
@@ -100,7 +123,10 @@ function restoreApiRoutes() {
     if (fs.existsSync(API_DIR)) {
       fs.rmSync(API_DIR, { recursive: true });
     }
-    fs.renameSync(API_BACKUP_DIR, API_DIR);
+    
+    // Copy back from backup
+    copyDirRecursive(API_BACKUP_DIR, API_DIR);
+    
     log('API routes restored');
   }
 }
@@ -111,9 +137,12 @@ function restoreApiRoutes() {
 function backupMiddleware() {
   log('Backing up middleware...');
   if (fs.existsSync(MIDDLEWARE_FILE)) {
+    // Ensure backup root exists
+    fs.mkdirSync(BACKUP_ROOT, { recursive: true });
+    
     fs.copyFileSync(MIDDLEWARE_FILE, MIDDLEWARE_BACKUP);
     fs.unlinkSync(MIDDLEWARE_FILE);
-    log('Middleware backed up');
+    log('Middleware backed up outside app directory');
   }
 }
 
@@ -131,6 +160,72 @@ function restoreMiddleware() {
 
 // Track file replacements for restoration
 const fileReplacements = new Map();
+
+/**
+ * Recursively find all TypeScript files in a directory
+ */
+function findTsFiles(dir, fileList = []) {
+  const files = fs.readdirSync(dir);
+  
+  for (const file of files) {
+    const filePath = path.join(dir, file);
+    const stat = fs.statSync(filePath);
+    
+    if (stat.isDirectory()) {
+      if (file !== 'node_modules' && file !== '.next' && file !== 'out') {
+        findTsFiles(filePath, fileList);
+      }
+    } else if (file.endsWith('.ts') || file.endsWith('.tsx')) {
+      fileList.push(filePath);
+    }
+  }
+  
+  return fileList;
+}
+
+/**
+ * Replace all @clerk/nextjs imports with @clerk/clerk-react
+ * This is necessary because @clerk/nextjs has server-side dependencies
+ * that are incompatible with static export
+ */
+function replaceClerkImports() {
+  log('Replacing @clerk/nextjs imports with @clerk/clerk-react...');
+  
+  const dirsToSearch = [
+    path.join(APP_DIR, 'app'),
+    path.join(APP_DIR, 'components'),
+    path.join(APP_DIR, 'lib'),
+  ];
+  
+  let replaced = 0;
+  
+  for (const dir of dirsToSearch) {
+    if (!fs.existsSync(dir)) continue;
+    
+    const files = findTsFiles(dir);
+    
+    for (const file of files) {
+      const content = fs.readFileSync(file, 'utf-8');
+      const newContent = content.replace(
+        /@clerk\/nextjs/g,
+        '@clerk/clerk-react'
+      );
+      
+      if (content !== newContent) {
+        // Store original for restoration
+        if (!fileReplacements.has(file)) {
+          fileReplacements.set(file, content);
+        }
+        
+        fs.writeFileSync(file, newContent);
+        replaced++;
+        log(`  Replaced Clerk imports in: ${path.relative(APP_DIR, file)}`);
+      }
+    }
+  }
+  
+  log(`Replaced Clerk imports in ${replaced} files`);
+}
 
 /**
  * Replace files with mobile-compatible versions
@@ -188,6 +283,9 @@ function restoreReplacedFiles() {
 function backupDynamicRoutes() {
   log('Backing up dynamic route pages...');
   
+  // Ensure backup root exists
+  fs.mkdirSync(BACKUP_ROOT, { recursive: true });
+  
   if (fs.existsSync(DYNAMIC_BACKUP_DIR)) {
     fs.rmSync(DYNAMIC_BACKUP_DIR, { recursive: true });
   }
@@ -214,7 +312,7 @@ function backupDynamicRoutes() {
     }
   }
   
-  log(`Backed up ${backedUp} dynamic route directories`);
+  log(`Backed up ${backedUp} dynamic route directories outside app directory`);
 }
 
 /**
@@ -273,6 +371,9 @@ function copyDirRecursive(src, dest) {
 function backupConfig() {
   log('Backing up Next.js config...');
   if (fs.existsSync(CONFIG_FILE)) {
+    // Ensure backup root exists
+    fs.mkdirSync(BACKUP_ROOT, { recursive: true });
+    
     fs.copyFileSync(CONFIG_FILE, CONFIG_BACKUP);
   }
 }
@@ -288,7 +389,7 @@ function restoreConfig() {
   log('Restoring Next.js config...');
   if (fs.existsSync(CONFIG_BACKUP)) {
     fs.copyFileSync(CONFIG_BACKUP, CONFIG_FILE);
-    fs.unlinkSync(CONFIG_BACKUP);
+    // Don't delete the backup here - clean up at the end
   }
 }
 
@@ -307,10 +408,16 @@ function cleanBuildDirs() {
 function runBuild() {
   log('Running Next.js build...');
   try {
-    execSync('npx next build', {
+    execSync('npx next build --debug', {
       cwd: APP_DIR,
       stdio: 'inherit',
-      env: { ...process.env, MOBILE_BUILD: 'true' }
+      env: { 
+        ...process.env, 
+        MOBILE_BUILD: 'true',
+        // Try to disable server actions check
+        __NEXT_EXPERIMENTAL_FORCE_EXPORT: 'true',
+        DEBUG: '*',
+      }
     });
     return true;
   } catch (error) {
@@ -399,6 +506,17 @@ function syncCapacitor() {
   }
 }
 
+/**
+ * Clean up backup directory
+ */
+function cleanupBackups() {
+  log('Cleaning up backup directory...');
+  if (fs.existsSync(BACKUP_ROOT)) {
+    fs.rmSync(BACKUP_ROOT, { recursive: true });
+    log('Backup directory cleaned up');
+  }
+}
+
 async function main() {
   log('Starting mobile build process...');
   log('');
@@ -410,6 +528,7 @@ async function main() {
     backupApiRoutes();
     backupMiddleware();
     backupDynamicRoutes();
+    replaceClerkImports(); // Replace Clerk imports globally
     replaceWithMobileVersions();
     backupConfig();
     useMobileConfig();
@@ -437,6 +556,9 @@ async function main() {
     restoreMiddleware();
     restoreApiRoutes();
     restoreDynamicRoutes();
+    
+    // Clean up backup directory
+    cleanupBackups();
   }
   
   log('');

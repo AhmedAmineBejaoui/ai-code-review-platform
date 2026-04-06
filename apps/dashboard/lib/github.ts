@@ -1,21 +1,28 @@
-/**
- * Mobile-compatible GitHub utilities
- * 
- * This is a stub version for mobile builds.
- * Server-side GitHub token fetching is not available in static export.
- * GitHub operations should be done through the backend API.
- */
+import { clerkClient } from "@clerk/clerk-react/server"
 
 /**
- * This function is not available in mobile builds.
- * GitHub tokens should be handled by the backend API.
+ * Get GitHub access token for a user
  */
 export async function getGitHubToken(userId: string): Promise<string | null> {
-  console.warn(
-    "[Mobile Build] getGitHubToken() called - this is a mobile build stub. " +
-    "GitHub operations should be done through the backend API."
-  )
-  return null
+  try {
+    // First try oauth_github, then github as fallback
+    let tokens = await clerkClient.users.getUserOauthAccessToken(userId, 'oauth_github' as any)
+    
+    if (!tokens || tokens.data.length === 0) {
+      // Try the alternative provider format
+      tokens = await clerkClient.users.getUserOauthAccessToken(userId, 'github' as any)
+    }
+    
+    if (!tokens || tokens.data.length === 0) {
+      console.warn(`No GitHub token found for user ${userId}`)
+      return null
+    }
+
+    return tokens.data[0].token
+  } catch (error) {
+    console.error("Error getting GitHub token:", error)
+    return null
+  }
 }
 
 /**

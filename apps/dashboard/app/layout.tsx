@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next"
-import { ClerkProvider } from "@clerk/nextjs"
+import { ClerkProvider } from "@clerk/clerk-react"
 import { Inter } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"

@@ -9,7 +9,7 @@
 
 import { useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
-import { useAuth } from "@clerk/nextjs"
+import { useAuth } from "@clerk/clerk-react"
 
 import { DashboardLayout } from "@/components/dashboard/DashboardLayout"
 import { DashboardUserProvider } from "@/components/dashboard/dashboard-user-provider"
