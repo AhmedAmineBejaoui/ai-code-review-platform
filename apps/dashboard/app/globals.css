@@ -257,31 +257,61 @@
   text-shadow: 0 0 20px rgba(255, 255, 255, 0.5), 0 0 40px rgba(255, 255, 255, 0.3);
 }
 
-/* Hero title typography */
+/* Hero title typography - Enhanced mobile breakpoints */
 .hero-title {
-  font-size: 52px;
+  font-size: 32px;
   font-weight: 800;
   letter-spacing: -0.035em;
   line-height: 1.08;
 }
 
-@media (max-width: 768px) {
+@media (min-width: 375px) {
   .hero-title {
     font-size: 36px;
   }
 }
 
-/* Section title */
+@media (min-width: 640px) {
+  .hero-title {
+    font-size: 42px;
+  }
+}
+
+@media (min-width: 768px) {
+  .hero-title {
+    font-size: 52px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .hero-title {
+    font-size: 56px;
+  }
+}
+
+/* Section title - Enhanced mobile breakpoints */
 .section-title {
-  font-size: 40px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: -0.025em;
   line-height: 1.12;
 }
 
-@media (max-width: 768px) {
+@media (min-width: 640px) {
   .section-title {
     font-size: 28px;
+  }
+}
+
+@media (min-width: 768px) {
+  .section-title {
+    font-size: 32px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .section-title {
+    font-size: 40px;
   }
 }
 
@@ -380,6 +410,16 @@
 
 .animate-pulse-orange {
   animation: pulseGlowOrange 2s ease-in-out infinite;
+}
+
+/* Scrollbar utilities */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
 }
 
 /* Grid pattern overlay */
@@ -488,8 +528,8 @@
 }
 
 /* ============================================
-   MOBILE / CAPACITOR STYLES
-   ============================================ */
+    MOBILE / CAPACITOR STYLES - Enhanced
+    ============================================ */
 
 :root {
   --sat: env(safe-area-inset-top, 0px);
@@ -512,21 +552,25 @@ body {
   -webkit-touch-callout: none;
 }
 
+/* Enhanced mobile input handling */
 input, textarea, [contenteditable="true"], .selectable {
   -webkit-touch-callout: default;
   -webkit-user-select: text;
   user-select: text;
 }
 
+/* Mobile safe area utilities */
 .safe-top { padding-top: env(safe-area-inset-top, 0px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 .pt-safe { padding-top: env(safe-area-inset-top, 0px); }
 .pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
+/* Touch interaction improvements */
 @media (hover: none) and (pointer: coarse) {
   button, [role="button"], .touchable {
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    min-height: 44px; /* iOS minimum touch target */
   }
   
   button:active, [role="button"]:active, .touchable:active {
@@ -535,19 +579,21 @@ input, textarea, [contenteditable="true"], .selectable {
   }
 }
 
+/* Mobile scrolling */
 .scroll-touch {
   -webkit-overflow-scrolling: touch;
   overflow-y: auto;
 }
 
+/* Font size adjustments for mobile */
 @media screen and (max-width: 640px) {
   html { font-size: 14px; }
-}
-
-@media screen and (max-width: 768px) {
+  
+  /* Ensure inputs are readable on mobile */
   input[type="text"], input[type="email"], input[type="password"],
   input[type="number"], input[type="tel"], input[type="url"],
   input[type="search"], textarea, select {
-    font-size: 16px !important;
+    font-size: 16px !important; /* Prevents zoom on iOS */
+    border-radius: 8px; /* Slightly more rounded for touch */
   }
 }

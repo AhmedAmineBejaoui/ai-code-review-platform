@@ -768,6 +768,8 @@ function DetailSidebar({
   pendingReviewsCount,
   overdueCount,
   currentUser,
+  isMobile = false,
+  onBack,
 }: {
   activeSection: string;
   isAdmin: boolean;
@@ -781,6 +783,8 @@ function DetailSidebar({
     avatar: string;
     role: AppRole;
   };
+  isMobile?: boolean;
+  onBack?: () => void;
 }) {
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -834,6 +838,22 @@ function DetailSidebar({
       )}
       style={{ transitionTimingFunction: softSpringEasing }}
     >
+      {/* Mobile Back Button */}
+      {isMobile && (
+        <div className="flex items-center gap-2 w-full pb-2 border-b border-sidebar-border md:hidden">
+          <button
+            onClick={onBack}
+            className="flex items-center justify-center w-8 h-8 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground"
+            aria-label="Back to menu"
+          >
+            <ChevronDownIcon size={16} className="rotate-90" />
+          </button>
+          <div className="text-sm font-medium text-sidebar-foreground">
+            Back to Menu
+          </div>
+        </div>
+      )}
+
       {!isCollapsed && <BrandBadge />}
 
       <SectionTitle title={rawContent.title} onToggleCollapse={toggleCollapse} isCollapsed={isCollapsed} />
@@ -1085,6 +1105,9 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
     return "dashboard";
   });
 
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isMobileDetailOpen, setIsMobileDetailOpen] = useState(false);
+
   const isAdmin = currentUser.role === "admin";
   const isReviewerRole = isReviewer(currentUser.role);
   const isReviewerLeadRole = isReviewerLead(currentUser.role);
@@ -1093,16 +1116,66 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
   const pendingReviewsCount = 5;
   const overdueCount = 1;
 
+  // Close mobile menus on route change
+  React.useEffect(() => {
+    setIsMobileMenuOpen(false);
+    setIsMobileDetailOpen(false);
+  }, [pathname]);
+
+  // Prevent body scroll when mobile menus are open
+  React.useEffect(() => {
+    if (isMobileMenuOpen || isMobileDetailOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [isMobileMenuOpen, isMobileDetailOpen]);
+
+  const handleSectionChange = (section: string) => {
+    setActiveSection(section);
+    // On mobile, close icon nav and open detail sidebar
+    setIsMobileMenuOpen(false);
+    setIsMobileDetailOpen(true);
+  };
+
+  const handleBackToIconNav = () => {
+    setIsMobileDetailOpen(false);
+  };
+
   return (
-    <div className="min-h-screen bg-background text-foreground flex">
-      {/* Two-level Sidebar */}
-      <div className="fixed left-0 top-0 z-50 flex h-screen">
+    <div className="min-h-screen bg-background text-foreground">
+      {/* Mobile Menu Overlay */}
+      {(isMobileMenuOpen || isMobileDetailOpen) && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm md:hidden"
+          onClick={() => {
+            setIsMobileMenuOpen(false);
+            setIsMobileDetailOpen(false);
+          }}
+        />
+      )}
+
+      {/* Mobile Icon Navigation - Fixed overlay */}
+      <div className={cn(
+        "fixed left-0 top-0 z-50 h-screen w-16 bg-sidebar border-r border-sidebar-border md:relative md:z-auto transition-transform duration-300 md:translate-x-0",
+        isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
+      )}>
         <IconNavigation
           activeSection={activeSection}
-          onSectionChange={setActiveSection}
+          onSectionChange={handleSectionChange}
           isAdmin={isAdmin}
           isReviewerRole={isReviewerRole}
         />
+      </div>
+
+      {/* Mobile Detail Sidebar - Slide in overlay */}
+      <div className={cn(
+        "fixed left-16 top-0 z-50 h-screen w-64 bg-sidebar border-r border-sidebar-border md:relative md:left-16 md:z-auto transition-transform duration-300 md:translate-x-0",
+        isMobileDetailOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
+      )}>
         <DetailSidebar
           activeSection={activeSection}
           isAdmin={isAdmin}
@@ -1111,13 +1184,35 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
           pendingReviewsCount={pendingReviewsCount}
           overdueCount={overdueCount}
           currentUser={currentUser}
+          isMobile={true}
+          onBack={handleBackToIconNav}
         />
       </div>
 
       {/* Main Content */}
-      <div className="flex-1 ml-[320px] min-h-screen transition-all duration-500" style={{ transitionTimingFunction: softSpringEasing }}>
-        {/* Header */}
-        <header className="sticky top-0 z-40 flex h-[72px] items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-8 shadow-pro-sm">
+      <div className="md:ml-80 transition-all duration-300">
+        {/* Mobile Header */}
+        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-4 shadow-pro-sm md:hidden">
+          <button
+            onClick={() => setIsMobileMenuOpen(true)}
+            className="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground"
+            aria-label="Open menu"
+          >
+            <div className="w-5 h-5 flex flex-col justify-center">
+              <span className="block h-0.5 w-full bg-current mb-1" />
+              <span className="block h-0.5 w-full bg-current mb-1" />
+              <span className="block h-0.5 w-full bg-current" />
+            </div>
+          </button>
+
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <Theme variant="button" size="sm" />
+          </div>
+        </header>
+
+        {/* Desktop Header */}
+        <header className="hidden md:flex sticky top-0 z-40 h-[72px] items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-8 shadow-pro-sm">
           <div className="w-full max-w-md">
             {/* Additional search or breadcrumbs can go here */}
           </div>
@@ -1129,7 +1224,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main content */}
-        <main className="mx-auto w-full max-w-[1200px] p-8">
+        <main className="mx-auto w-full max-w-[1200px] p-4 md:p-8 min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-4.5rem)]">
           <div className="animate-fade-in-up">{children}</div>
         </main>
       </div>

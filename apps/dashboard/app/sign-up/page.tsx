@@ -148,7 +148,7 @@ export default function SignUpPage() {
   // Show verification pending state
   if (pendingVerification) {
     return (
-      <div className="min-h-screen bg-[#0C0C0D] flex items-center justify-center px-4">
+      <div className="min-h-screen bg-[#0C0C0D] flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-md">
           <div className="relative">
             <span className="absolute -top-3 -left-3 text-[#4A4A54] text-lg font-light">+</span>
@@ -156,15 +156,15 @@ export default function SignUpPage() {
             <span className="absolute -bottom-3 -left-3 text-[#4A4A54] text-lg font-light">+</span>
             <span className="absolute -bottom-3 -right-3 text-[#4A4A54] text-lg font-light">+</span>
             
-            <div className="border border-dashed border-[#2A2A2E] rounded-lg p-8 text-center">
+            <div className="border border-dashed border-[#2A2A2E] rounded-lg p-6 sm:p-8 text-center">
               <div className="w-16 h-16 bg-[#E8713A]/10 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg className="w-8 h-8 text-[#E8713A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
                 </svg>
               </div>
-              <h2 className="text-xl font-semibold text-[#F5F5F5] mb-2">Check your email</h2>
-              <p className="text-[#A0A0A8] text-sm mb-6">
-                We sent a verification link to <span className="text-[#F5F5F5]">{email}</span>
+              <h2 className="text-lg sm:text-xl font-semibold text-[#F5F5F5] mb-2">Check your email</h2>
+              <p className="text-[#A0A0A8] text-sm mb-6 leading-relaxed">
+                We sent a verification link to <span className="text-[#F5F5F5] font-medium">{email}</span>
               </p>
               <button
                 onClick={() => setPendingVerification(false)}
@@ -182,7 +182,7 @@ export default function SignUpPage() {
   return (
     <div className="min-h-screen bg-[#0C0C0D] flex flex-col">
       {/* Main content */}
-      <main className="flex-1 flex items-center justify-center px-4 py-12">
+      <main className="flex-1 flex items-center justify-center px-4 py-8 sm:py-12">
         <div className="w-full max-w-md">
           {/* Card with corner decorators */}
           <div className="relative">
@@ -193,15 +193,15 @@ export default function SignUpPage() {
             <span className="absolute -bottom-3 -right-3 text-[#4A4A54] text-lg font-light">+</span>
             
             {/* Dashed border box */}
-            <div className="border border-dashed border-[#2A2A2E] rounded-lg p-8">
+            <div className="border border-dashed border-[#2A2A2E] rounded-lg p-6 sm:p-8">
               {/* Logo and brand */}
-              <div className="flex items-center justify-center gap-3 mb-8">
+              <div className="flex items-center justify-center gap-3 mb-6 sm:mb-8">
                 <HexagonLogo size={28} className="text-[#A0A0A8]" />
-                <span className="text-xl font-semibold text-[#F5F5F5]">AI Code Review</span>
+                <span className="text-lg sm:text-xl font-semibold text-[#F5F5F5]">AI Code Review</span>
               </div>
 
               {/* Welcome text */}
-              <h1 className="text-xl font-medium text-[#F5F5F5] text-center mb-8">
+              <h1 className="text-lg sm:text-xl font-medium text-[#F5F5F5] text-center mb-6 sm:mb-8">
                 Welcome to AI Code Review
               </h1>
 
@@ -219,7 +219,7 @@ export default function SignUpPage() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="Enter your work email"
-                  className="w-full px-4 py-3 bg-[#141416] border border-[#2A2A2E] text-[#F5F5F5] rounded-md placeholder:text-[#4A4A54] focus:border-[#E8713A] focus:ring-1 focus:ring-[#E8713A] outline-none transition-colors"
+                  className="w-full px-4 py-3 sm:py-4 bg-[#141416] border border-[#2A2A2E] text-[#F5F5F5] rounded-md placeholder:text-[#4A4A54] focus:border-[#E8713A] focus:ring-1 focus:ring-[#E8713A] outline-none transition-colors text-base"
                   disabled={isLoading}
                 />
               </form>
@@ -230,7 +230,7 @@ export default function SignUpPage() {
                 <button
                   onClick={handleGitHubSignUp}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#222226] hover:bg-[#2A2A2E] text-[#F5F5F5] border border-[#2A2A2E] rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 sm:py-4 bg-[#222226] hover:bg-[#2A2A2E] text-[#F5F5F5] border border-[#2A2A2E] rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                 >
                   <GitHubIcon className="w-5 h-5" />
                   {isLoading ? "Loading..." : "Sign up with GitHub"}
@@ -240,7 +240,7 @@ export default function SignUpPage() {
                 <button
                   onClick={handleGoogleSignUp}
                   disabled={isLoading}
-                  className="w-full flex items-center justify-center gap-3 px-4 py-3 bg-[#222226] hover:bg-[#2A2A2E] text-[#F5F5F5] border border-[#2A2A2E] rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="w-full flex items-center justify-center gap-3 px-4 py-3 sm:py-4 bg-[#222226] hover:bg-[#2A2A2E] text-[#F5F5F5] border border-[#2A2A2E] rounded-md font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed min-h-[48px]"
                 >
                   <svg className="w-5 h-5" viewBox="0 0 24 24">
                     <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
@@ -263,7 +263,7 @@ export default function SignUpPage() {
           </div>
 
           {/* Trust logos section */}
-          <div className="mt-12">
+          <div className="mt-8 sm:mt-12">
             <div className="relative">
               {/* Corner decorators */}
               <span className="absolute -top-3 -left-3 text-[#4A4A54] text-lg font-light">+</span>
@@ -271,10 +271,10 @@ export default function SignUpPage() {
               <span className="absolute -bottom-3 -left-3 text-[#4A4A54] text-lg font-light">+</span>
               <span className="absolute -bottom-3 -right-3 text-[#4A4A54] text-lg font-light">+</span>
               
-              <div className="border border-dashed border-[#2A2A2E] rounded-lg p-6">
+              <div className="border border-dashed border-[#2A2A2E] rounded-lg p-4 sm:p-6">
                 <p className="text-center text-[#6B6B75] text-sm mb-4">Trusted by</p>
                 
-                <div className="grid grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                   {trustLogos.map((logo) => (
                     <div 
                       key={logo.name}
@@ -283,7 +283,7 @@ export default function SignUpPage() {
                       <img 
                         src={logo.logo} 
                         alt={logo.name} 
-                        className="h-5 w-auto opacity-50 hover:opacity-80 transition-opacity"
+                        className="h-4 sm:h-5 w-auto opacity-50 hover:opacity-80 transition-opacity"
                         style={{ filter: "invert(0.6)" }}
                       />
                     </div>
@@ -297,7 +297,7 @@ export default function SignUpPage() {
 
       {/* Footer */}
       <footer className="py-6 px-4 text-center">
-        <p className="text-[#6B6B75] text-sm">
+        <p className="text-[#6B6B75] text-xs sm:text-sm leading-relaxed">
           By signing up you acknowledge that you read and agree to our{" "}
           <Link href="/terms" className="text-[#A0A0A8] hover:text-[#F5F5F5] underline transition-colors">
             Terms of Service
