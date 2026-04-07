@@ -29,10 +29,7 @@ const nextConfig = {
 
   // Experimental features
   experimental: {
-    // Disable server actions - they're not supported with static export
-    serverActions: {
-      allowedOrigins: [],
-    },
+    // Server actions disabled for static export compatibility
   },
   
   // Webpack configuration to handle mobile build specifics

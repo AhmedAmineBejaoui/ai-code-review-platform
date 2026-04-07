@@ -38,4 +38,4 @@ scans/
 qdrant_storage/
 apps/backend/qdrant_storage/
 .claude/worktrees/silly-shockley
-.claude/worktrees/naughty-ritchie
+.claude/worktrees/naughty-ritchie.claude/
