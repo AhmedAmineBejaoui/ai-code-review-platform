@@ -135,7 +135,13 @@ def _get_project_stats(engine, project_id: str) -> dict[str, Any]:
         SELECT 
             COUNT(*) as analysis_count,
             MAX(created_at) as last_analysis_at,
-            SUM(findings_count) as total_findings,
+            COALESCE((
+                SELECT COUNT(*) 
+                FROM findings f 
+                WHERE f.analysis_id IN (
+                    SELECT id FROM analyses a2 WHERE a2.repo = :project_id
+                )
+            ), 0) as total_findings,
             SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
             SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
         FROM analyses

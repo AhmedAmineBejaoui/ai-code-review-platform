@@ -245,3 +245,196 @@ async def mark_all_read_alternative(
     Alternative endpoint for marking all as read (for frontend compatibility).
     """
     return await mark_all_notifications_read(principal)
+
+
+# ─── Notification Preferences ─────────────────────────────────────────────────
+
+
+class NotificationPreferencesRequest(BaseModel):
+    """Request model for updating notification preferences."""
+    model_config = ConfigDict(extra="forbid")
+
+    email: dict | None = Field(None, description="Email notification settings")
+    push: dict | None = Field(None, description="Push notification settings")
+    inApp: dict | None = Field(None, description="In-app notification settings")
+    schedule: dict | None = Field(None, description="Notification schedule settings")
+    slack: dict | None = Field(None, description="Slack integration settings")
+    teams: dict | None = Field(None, description="Teams integration settings")
+
+
+class NotificationPreferencesResponse(BaseModel):
+    """Response model for notification preferences."""
+    email: dict
+    push: dict
+    inApp: dict
+    schedule: dict
+    slack: dict | None = None
+    teams: dict | None = None
+
+
+DEFAULT_NOTIFICATION_PREFERENCES = {
+    "email": {
+        "enabled": True,
+        "new_review_assigned": True,
+        "review_completed": True,
+        "comment_replies": True,
+        "mention": True,
+        "weekly_digest": False,
+        "daily_summary": True,
+        "security_alerts": True,
+    },
+    "push": {
+        "enabled": True,
+        "new_review_assigned": True,
+        "review_completed": False,
+        "comment_replies": True,
+        "mention": True,
+        "realtime_updates": True,
+    },
+    "inApp": {
+        "enabled": True,
+        "sound": False,
+        "desktop": True,
+        "show_preview": True,
+    },
+    "schedule": {
+        "quiet_hours_enabled": False,
+        "quiet_hours_start": "22:00",
+        "quiet_hours_end": "08:00",
+        "weekend_notifications": False,
+    },
+    "slack": None,
+    "teams": None,
+}
+
+
+@router.get("/preferences", response_model=NotificationPreferencesResponse)
+async def get_notification_preferences(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> NotificationPreferencesResponse:
+    """
+    Get notification preferences for the current user.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    import json
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        result = conn.execute(
+            text("SELECT notification_preferences FROM users WHERE id = :user_id"),
+            {"user_id": principal.user_id},
+        )
+        row = result.mappings().first()
+
+    if row and row.get("notification_preferences"):
+        prefs = row["notification_preferences"]
+        # Handle if stored as string
+        if isinstance(prefs, str):
+            prefs = json.loads(prefs)
+        # Merge with defaults to ensure all fields exist
+        merged = {**DEFAULT_NOTIFICATION_PREFERENCES}
+        for key in ["email", "push", "inApp", "schedule", "slack", "teams"]:
+            if key in prefs and prefs[key] is not None:
+                if isinstance(merged.get(key), dict) and isinstance(prefs[key], dict):
+                    merged[key] = {**merged.get(key, {}), **prefs[key]}
+                else:
+                    merged[key] = prefs[key]
+        return NotificationPreferencesResponse(**merged)
+
+    return NotificationPreferencesResponse(**DEFAULT_NOTIFICATION_PREFERENCES)
+
+
+@router.put("/preferences")
+async def update_notification_preferences(
+    request: NotificationPreferencesRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Update notification preferences for the current user.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    import json
+
+    # Build preferences dict from request
+    prefs = {}
+    if request.email is not None:
+        prefs["email"] = request.email
+    if request.push is not None:
+        prefs["push"] = request.push
+    if request.inApp is not None:
+        prefs["inApp"] = request.inApp
+    if request.schedule is not None:
+        prefs["schedule"] = request.schedule
+    if request.slack is not None:
+        prefs["slack"] = request.slack
+    if request.teams is not None:
+        prefs["teams"] = request.teams
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Get current preferences first
+        result = conn.execute(
+            text("SELECT notification_preferences FROM users WHERE id = :user_id"),
+            {"user_id": principal.user_id},
+        )
+        row = result.mappings().first()
+
+        current_prefs = DEFAULT_NOTIFICATION_PREFERENCES.copy()
+        if row and row.get("notification_preferences"):
+            stored = row["notification_preferences"]
+            if isinstance(stored, str):
+                stored = json.loads(stored)
+            current_prefs = {**current_prefs, **stored}
+
+        # Merge with new preferences
+        for key, value in prefs.items():
+            if isinstance(current_prefs.get(key), dict) and isinstance(value, dict):
+                current_prefs[key] = {**current_prefs.get(key, {}), **value}
+            else:
+                current_prefs[key] = value
+
+        # Update in database
+        conn.execute(
+            text(
+                """
+                UPDATE users 
+                SET notification_preferences = CAST(:prefs AS jsonb)
+                WHERE id = :user_id
+                """
+            ),
+            {"user_id": principal.user_id, "prefs": json.dumps(current_prefs)},
+        )
+
+    return {"success": True, "preferences": current_prefs}
+
+
+@router.post("/preferences/reset")
+async def reset_notification_preferences(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Reset notification preferences to defaults for the current user.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    import json
+
+    engine = get_engine()
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE users 
+                SET notification_preferences = CAST(:prefs AS jsonb)
+                WHERE id = :user_id
+                """
+            ),
+            {
+                "user_id": principal.user_id,
+                "prefs": json.dumps(DEFAULT_NOTIFICATION_PREFERENCES),
+            },
+        )
+
+    return {"success": True, "preferences": DEFAULT_NOTIFICATION_PREFERENCES}

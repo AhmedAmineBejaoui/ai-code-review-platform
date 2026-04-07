@@ -301,9 +301,54 @@ class ReviewAutoAssignmentService:
 
     async def _notify_assignment(self, reviewer_id: str, analysis_id: str, assignment_id: str):
         """Send notification to reviewer about new assignment"""
-        # TODO: Implement notification service
-        # This would send email, push notification, or in-app notification
-        print(f"[NOTIFICATION] Assigned review {analysis_id} to {reviewer_id} (assignment: {assignment_id})")
+        from app.services.notifications import NotificationService, NotificationChannel
+        from sqlalchemy import text
+        
+        try:
+            # Get analysis details for notification
+            query = text("""
+                SELECT repo, branch, commit_sha, title
+                FROM analyses
+                WHERE id = :analysis_id
+            """)
+            with self._engine.connect() as conn:
+                result = conn.execute(query, {"analysis_id": analysis_id})
+                analysis = result.mappings().first()
+            
+            if not analysis:
+                print(f"[NOTIFICATION] Analysis {analysis_id} not found, skipping notification")
+                return
+            
+            # Prepare assignment data for notification
+            assignment_data = {
+                "id": assignment_id,
+                "analysis_id": analysis_id,
+                "reviewer_id": reviewer_id,
+                "analysis": {
+                    "repo": analysis.get("repo", "Unknown"),
+                    "branch": analysis.get("branch", "main"),
+                    "commit_sha": analysis.get("commit_sha", ""),
+                    "title": analysis.get("title", "Code Review"),
+                },
+                "priority": "medium",
+                "due_at": None,
+            }
+            
+            # Send notification
+            notification_service = NotificationService()
+            await notification_service.send_assignment_notification(
+                assignment_data=assignment_data,
+                channels=[
+                    NotificationChannel.IN_APP,
+                    NotificationChannel.EMAIL,
+                    NotificationChannel.SLACK,
+                ],
+            )
+            print(f"[NOTIFICATION] Sent assignment notification for review {analysis_id} to {reviewer_id}")
+            
+        except Exception as e:
+            # Don't fail the assignment if notification fails
+            print(f"[NOTIFICATION ERROR] Failed to notify {reviewer_id} about assignment: {e}")
 
     async def bulk_auto_assign(self, analysis_ids: list[str]) -> dict[str, Any]:
         """Auto-assign multiple analyses in batch"""

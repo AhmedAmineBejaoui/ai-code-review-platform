@@ -60,6 +60,10 @@ const FILES_TO_REPLACE = [
     mobile: 'scripts/mobile-overrides/root-layout.tsx',
   },
   {
+    original: 'app/page.tsx',
+    mobile: 'scripts/mobile-overrides/home-page.tsx',
+  },
+  {
     original: 'app/dashboard/layout.tsx',
     mobile: 'scripts/mobile-overrides/dashboard-layout.tsx',
   },
@@ -408,15 +412,14 @@ function cleanBuildDirs() {
 function runBuild() {
   log('Running Next.js build...');
   try {
-    execSync('npx next build --debug', {
+    execSync('npx next build', {
       cwd: APP_DIR,
       stdio: 'inherit',
       env: { 
         ...process.env, 
         MOBILE_BUILD: 'true',
-        // Try to disable server actions check
-        __NEXT_EXPERIMENTAL_FORCE_EXPORT: 'true',
-        DEBUG: '*',
+        // Increase Node.js memory limit to prevent crashes
+        NODE_OPTIONS: '--max-old-space-size=4096',
       }
     });
     return true;

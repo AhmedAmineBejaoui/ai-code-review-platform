@@ -6,6 +6,7 @@ Provides CRUD operations for repositories and their metadata.
 
 from __future__ import annotations
 
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
@@ -14,6 +15,9 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, enforce_permission
 from app.data.database import get_engine
+from app.data.repos.branch_repo import BranchRepo, CreateBranchInput, UpdateBranchInput
+from app.data.repos.project_settings_repo import ProjectSettingsRepo
+from app.data.repos.rbac_repo import RBACRepo
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 
 router = APIRouter(prefix="/api/v1/repositories", tags=["repositories"])
@@ -85,14 +89,16 @@ def _get_repository_stats(engine, repo_id: str) -> dict[str, Any]:
     from sqlalchemy import text
     
     query = text("""
-        SELECT 
+        SELECT
             COUNT(*) as analysis_count,
-            MAX(created_at) as last_analysis_at,
-            SUM(findings_count) as total_findings,
-            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
-            SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
-        FROM analyses
-        WHERE repo = :repo_id
+            MAX(a.created_at) as last_analysis_at,
+            COALESCE(SUM(fc.cnt), 0) as total_findings,
+            SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+            SUM(CASE WHEN a.status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
+        FROM analyses a
+        LEFT JOIN (SELECT analysis_id, COUNT(*) as cnt FROM findings GROUP BY analysis_id) fc
+            ON fc.analysis_id = a.id
+        WHERE a.repo = :repo_id
     """)
     
     with engine.connect() as conn:
@@ -171,25 +177,27 @@ async def list_repositories(
     params: dict[str, Any] = {"limit": limit, "offset": (page - 1) * limit}
     
     if search:
-        conditions.append("repo ILIKE :search")
+        conditions.append("a.repo ILIKE :search")
         params["search"] = f"%{search}%"
-    
+
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
     
     # Get repositories from analyses table
     query = text(f"""
         WITH repo_stats AS (
-            SELECT 
-                repo,
+            SELECT
+                a.repo,
                 COUNT(*) as analysis_count,
-                MAX(created_at) as last_analysis_at,
-                SUM(findings_count) as total_findings,
-                SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
-                SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count,
-                MIN(created_at) as first_seen
-            FROM analyses
+                MAX(a.created_at) as last_analysis_at,
+                COALESCE(SUM(fc.cnt), 0) as total_findings,
+                SUM(CASE WHEN a.status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN a.status = 'FAILED' THEN 1 ELSE 0 END) as failed_count,
+                MIN(a.created_at) as first_seen
+            FROM analyses a
+            LEFT JOIN (SELECT analysis_id, COUNT(*) as cnt FROM findings GROUP BY analysis_id) fc
+                ON fc.analysis_id = a.id
             {where_clause}
-            GROUP BY repo
+            GROUP BY a.repo
         )
         SELECT * FROM repo_stats
         ORDER BY last_analysis_at DESC NULLS LAST
@@ -197,8 +205,8 @@ async def list_repositories(
     """)
     
     count_query = text(f"""
-        SELECT COUNT(DISTINCT repo) as total
-        FROM analyses
+        SELECT COUNT(DISTINCT a.repo) as total
+        FROM analyses a
         {where_clause}
     """)
     
@@ -371,3 +379,306 @@ async def create_repository(
         created_at=now,
         updated_at=now,
     )
+
+
+# ── Full GitHub Import ──────────────────────────────────────────────────────
+
+
+class GitHubImportMember(BaseModel):
+    """A GitHub collaborator/org member to import."""
+    model_config = ConfigDict(extra="ignore")
+    github_login: str
+    email: str | None = None
+    display_name: str | None = None
+    role: str = "developer"
+
+
+class GitHubImportBranch(BaseModel):
+    """A branch to import from GitHub."""
+    model_config = ConfigDict(extra="ignore")
+    name: str
+    is_default: bool = False
+    last_commit_sha: str | None = None
+    last_commit_message: str | None = None
+    last_commit_author: str | None = None
+    last_commit_at: str | None = None
+
+
+class GitHubImportCommit(BaseModel):
+    """A commit to import from GitHub."""
+    model_config = ConfigDict(extra="ignore")
+    sha: str
+    branch_name: str
+    message: str | None = None
+    author_name: str | None = None
+    author_email: str | None = None
+    authored_at: str | None = None
+    committer_name: str | None = None
+    committer_email: str | None = None
+    committed_at: str | None = None
+    parent_shas: list[str] = []
+
+
+class GitHubImportRequest(BaseModel):
+    """Full import payload sent by the BFF."""
+    model_config = ConfigDict(extra="ignore")
+    full_name: str
+    project_name: str | None = None
+    description: str | None = None
+    visibility: Literal["public", "private", "internal"] = "private"
+    default_branch: str = "main"
+    github_id: str | None = None
+    language: str | None = None
+    org_github_login: str | None = None
+    org_name: str | None = None
+    branches: list[GitHubImportBranch] = []
+    commits: list[GitHubImportCommit] = []
+    members: list[GitHubImportMember] = []
+
+
+class MemberToInvite(BaseModel):
+    email: str
+    github_login: str | None = None
+    role: str
+    project_id: str
+
+
+class GitHubImportResponse(BaseModel):
+    repository: RepositoryResponse
+    branches_imported: int
+    commits_imported: int
+    members_to_invite: list[MemberToInvite]
+    project_id: str
+
+
+@router.post("/import-full", response_model=GitHubImportResponse, status_code=status.HTTP_201_CREATED)
+async def import_repository_full(
+    request: GitHubImportRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> GitHubImportResponse:
+    """
+    Full GitHub repository import in one step.
+
+    Stores branches, commits, creates repo profile and project settings,
+    assigns the caller as admin, and records pending invitations for members
+    who don't yet have a platform account.
+    """
+    enforce_permission(principal, "analyses.create")
+
+    engine = get_engine()
+    repo_profiles = RepoProfilesRepo()
+    branch_repo = BranchRepo()
+    settings_repo = ProjectSettingsRepo()
+    rbac_repo = RBACRepo()
+
+    project_id = request.full_name.strip().lower()
+    now = datetime.now(timezone.utc)
+    now_iso = now.isoformat()
+
+    # Derive display name
+    parts = project_id.split("/")
+    repo_name = parts[-1] if parts else project_id
+    project_name = request.project_name or repo_name
+
+    # 1. Upsert repo profile
+    repo_profiles.upsert_profile(
+        repo_id=project_id,
+        repo_path=None,
+        indexed_commit=None,
+        default_branch=request.default_branch,
+        profile={
+            "name": project_name,
+            "description": request.description,
+            "primary_language": request.language,
+            "github_id": request.github_id,
+            "visibility": request.visibility,
+            "org_github_login": request.org_github_login,
+            "org_name": request.org_name,
+        },
+    )
+
+    # 2. Upsert organization if applicable
+    org_id: str | None = None
+    if request.org_github_login:
+        org_id = request.org_github_login
+        try:
+            from sqlalchemy import text as _text
+            with engine.begin() as conn:
+                conn.execute(
+                    _text("""
+                        INSERT INTO organizations (id, slug, name, is_active)
+                        VALUES (:id, :slug, :name, TRUE)
+                        ON CONFLICT (id) DO UPDATE SET
+                            name = COALESCE(EXCLUDED.name, organizations.name),
+                            is_active = TRUE
+                    """),
+                    {"id": org_id, "slug": request.org_github_login, "name": request.org_name or request.org_github_login},
+                )
+        except Exception:
+            pass  # Table might differ in schema
+
+    # 3. Store branches
+    branches_imported = 0
+    branch_id_map: dict[str, str] = {}  # branch_name → branch_id
+    for b in request.branches:
+        bid = f"br_{uuid.uuid4().hex[:16]}"
+        branch_type = "main" if b.is_default else "custom"
+        try:
+            branch_repo.create(CreateBranchInput(
+                branch_id=bid,
+                repo_id=project_id,
+                org_id=org_id,
+                branch_name=b.name,
+                branch_type=branch_type,
+                is_default=b.is_default,
+                is_protected=b.is_default,
+                is_active=True,
+                metadata_json={},
+            ))
+            # Update last commit info if available
+            if b.last_commit_sha:
+                branch_repo.update(UpdateBranchInput(
+                    branch_id=bid,
+                    last_commit_sha=b.last_commit_sha,
+                    last_commit_author=b.last_commit_author,
+                    last_commit_message=b.last_commit_message,
+                    last_commit_at=_parse_dt(b.last_commit_at),
+                ))
+            branch_id_map[b.name] = bid
+            branches_imported += 1
+        except Exception:
+            pass  # Conflict (already exists) or schema issue
+
+    # 4. Bulk insert commits
+    commits_imported = 0
+    if request.commits:
+        from sqlalchemy import text as _text
+        commit_rows = []
+        seen_shas: set[str] = set()
+        for c in request.commits:
+            if c.sha in seen_shas:
+                continue
+            seen_shas.add(c.sha)
+            import json as _json
+            commit_rows.append({
+                "id": f"cm_{uuid.uuid4().hex[:20]}",
+                "repo_id": project_id,
+                "branch_id": branch_id_map.get(c.branch_name),
+                "branch_name": c.branch_name,
+                "sha": c.sha,
+                "message": c.message,
+                "author_name": c.author_name,
+                "author_email": c.author_email,
+                "authored_at": _parse_dt(c.authored_at),
+                "committer_name": c.committer_name,
+                "committer_email": c.committer_email,
+                "committed_at": _parse_dt(c.committed_at),
+                "parent_shas": _json.dumps(c.parent_shas),
+            })
+        if commit_rows:
+            with engine.begin() as conn:
+                conn.execute(
+                    _text("""
+                        INSERT INTO repo_commits (
+                            id, repo_id, branch_id, branch_name, sha, message,
+                            author_name, author_email, authored_at,
+                            committer_name, committer_email, committed_at, parent_shas
+                        ) VALUES (
+                            :id, :repo_id, :branch_id, :branch_name, :sha, :message,
+                            :author_name, :author_email, :authored_at,
+                            :committer_name, :committer_email, :committed_at,
+                            CAST(:parent_shas AS jsonb)
+                        )
+                        ON CONFLICT DO NOTHING
+                    """),
+                    commit_rows,
+                )
+                commits_imported = len(commit_rows)
+
+    # 5. Create project settings
+    settings_repo.get_or_create_settings(project_id=project_id, organization_id=org_id)
+
+    # 6. Assign creator as admin
+    if principal:
+        try:
+            rbac_repo.assign_project_role(
+                user_id=principal.user_id,
+                project_id=project_id,
+                role_code="admin",
+                assigned_by=principal.user_id,
+                notes="Project creator via GitHub import",
+            )
+        except Exception:
+            pass
+
+    # 7. Create pending invitations for members
+    members_to_invite: list[MemberToInvite] = []
+    if request.members:
+        from sqlalchemy import text as _text
+        for member in request.members:
+            if not member.email:
+                continue
+            # Skip creator
+            if principal and member.email.lower() == (principal.email or "").lower():
+                continue
+            try:
+                with engine.begin() as conn:
+                    conn.execute(
+                        _text("""
+                            INSERT INTO pending_project_invitations
+                                (id, project_id, email, github_login, role_code, invited_by, status)
+                            VALUES (:id, :project_id, :email, :github_login, :role_code, :invited_by, 'pending')
+                            ON CONFLICT DO NOTHING
+                        """),
+                        {
+                            "id": f"inv_{uuid.uuid4().hex[:20]}",
+                            "project_id": project_id,
+                            "email": member.email.lower().strip(),
+                            "github_login": member.github_login,
+                            "role_code": member.role,
+                            "invited_by": principal.user_id if principal else None,
+                        },
+                    )
+                members_to_invite.append(MemberToInvite(
+                    email=member.email.lower().strip(),
+                    github_login=member.github_login,
+                    role=member.role,
+                    project_id=project_id,
+                ))
+            except Exception:
+                pass
+
+    return GitHubImportResponse(
+        repository=RepositoryResponse(
+            id=project_id,
+            name=repo_name,
+            full_name=project_id,
+            description=request.description,
+            language=request.language,
+            visibility=request.visibility,
+            default_branch=request.default_branch,
+            indexed_commit=None,
+            ci_status="unknown",
+            last_analysis_at=None,
+            analysis_count=0,
+            quality_score=None,
+            security_score=None,
+            total_findings=0,
+            open_issues=0,
+            created_at=now_iso,
+            updated_at=now_iso,
+        ),
+        project_id=project_id,
+        branches_imported=branches_imported,
+        commits_imported=commits_imported,
+        members_to_invite=members_to_invite,
+    )
+
+
+def _parse_dt(raw: str | None) -> datetime | None:
+    if not raw:
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except Exception:
+        return None

@@ -324,6 +324,16 @@ async def sync_authenticated_user(
             org_role,
         )
 
+    # Resolve any pending project invitations sent during GitHub import
+    try:
+        await asyncio.to_thread(
+            repo.get_and_accept_pending_invitations,
+            email,
+            principal.user_id,
+        )
+    except Exception:
+        pass  # Non-critical: don't break login if invitation resolution fails
+
     synced_user = await asyncio.to_thread(repo.get_user, principal.user_id)
     if synced_user is not None:
         return AuthSyncResponse(
