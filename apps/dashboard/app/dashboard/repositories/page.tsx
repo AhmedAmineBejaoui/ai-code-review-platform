@@ -310,6 +310,8 @@ export default function RepositoriesPage() {
   const [isLoadingGithubRepos, setIsLoadingGithubRepos] = useState(false)
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
   const [selectedRepo, setSelectedRepo] = useState<string>("")
+  const [manualRepoUrl, setManualRepoUrl] = useState("")
+  const [importMode, setImportMode] = useState<"github" | "manual">("github")
 
   // Step 2 (GitHub only)
   const [projectName, setProjectName] = useState("")
@@ -416,6 +418,11 @@ export default function RepositoriesPage() {
 
   const handleStep1Next = async () => {
     setImportError(null)
+    if (importMode === "manual") {
+      // Manual mode: import directly (no step 2)
+      await handleManualImport()
+      return
+    }
     if (!selectedRepo) {
       setImportError("Please select a repository")
       return
@@ -426,6 +433,76 @@ export default function RepositoriesPage() {
     // Load members in background (don't block step transition)
     loadRepoMembers(selectedRepo)
     setWizardStep(2)
+  }
+
+  const handleManualImport = async () => {
+    if (!manualRepoUrl.trim()) {
+      setImportError("Please enter a repository URL or owner/repo format")
+      return
+    }
+    let repoFullName = ""
+    let repoName = ""
+    let repoVisibility: "public" | "private" = "private"
+    let repoDefaultBranch = "main"
+
+    if (importMode === "github") {
+      if (!selectedRepo) {
+        setImportError("Please select a repository from the list")
+        return
+      }
+      repoFullName = selectedRepo
+      const ghRepo = githubRepos.find((r) => r.fullName === selectedRepo)
+      repoName = ghRepo?.name ?? selectedRepo.split("/").pop() ?? selectedRepo
+      repoVisibility = ghRepo?.private ? "private" : "public"
+      repoDefaultBranch = ghRepo?.defaultBranch ?? "main"
+    } else {
+      if (!manualRepoUrl.trim()) {
+        setImportError("Please enter a repository URL or owner/repo format")
+        return
+      }
+      // Parse GitHub URL or owner/repo format
+      const urlMatch = manualRepoUrl.match(/github\.com\/([^/]+\/[^/]+?)(?:\.git)?(?:\/|$)/)
+      if (urlMatch) {
+        repoFullName = urlMatch[1]
+      } else if (manualRepoUrl.match(/^[^/]+\/[^/]+$/)) {
+        repoFullName = manualRepoUrl.trim()
+      } else {
+        setImportError("Invalid format. Use 'owner/repo' or a GitHub URL")
+        return
+      }
+      repoName = repoFullName.split("/").pop() ?? repoFullName
+    }
+
+    setIsImporting(true)
+    try {
+      const response = await fetch("/api/dashboard/repositories", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          name: repoName,
+          full_name: repoFullName,
+          visibility: repoVisibility,
+          default_branch: repoDefaultBranch,
+        }),
+      })
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        const detail = errorData.detail
+        const msg = typeof detail === "string" ? detail : (errorData.error || errorData.message || "Failed to import repository")
+        throw new Error(msg)
+      }
+      setImportSuccess(`Repository "${repoFullName}" imported successfully!`)
+      setTimeout(() => {
+        fetchRepositories()
+        closeAndReset()
+      }, 1500)
+    } catch (err) {
+      setImportError(err instanceof Error ? err.message : "Failed to import repository")
+    } finally {
+      setIsImporting(false)
+    }
   }
 
   const handleGithubImport = async () => {
@@ -471,6 +548,7 @@ export default function RepositoriesPage() {
     setImportDialogOpen(false)
     setWizardStep(1)
     setSelectedRepo("")
+    setManualRepoUrl("")
     setProjectName("")
     setDetectedMembers([])
     setImportError(null)
@@ -540,7 +618,7 @@ export default function RepositoriesPage() {
             </DialogTitle>
             <DialogDescription>
               {wizardStep === 1
-                ? "Select a repository from your GitHub account."
+                ? "Select a repository from GitHub or enter manually."
                 : `Set up the project for ${selectedRepo}`}
             </DialogDescription>
           </DialogHeader>
@@ -548,47 +626,84 @@ export default function RepositoriesPage() {
           {/* ── Step 1: Select repo ── */}
           {wizardStep === 1 && (
             <div className="space-y-4 py-4">
-              <div className="space-y-3">
-                {isLoadingGithubRepos ? (
-                  <div className="flex items-center justify-center py-8">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    <span className="ml-2 text-muted-foreground">Loading repositories…</span>
-                  </div>
-                ) : !githubConnected ? (
-                  <div className="text-center py-6 space-y-3">
-                    <Github className="h-12 w-12 mx-auto text-muted-foreground" />
-                    <p className="text-muted-foreground">Connect your GitHub account to import repositories</p>
-                  </div>
-                ) : githubRepos.length === 0 ? (
-                  <div className="text-center py-6">
-                    <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
-                    <p className="text-muted-foreground">No repositories found</p>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label>Select a repository</Label>
-                    <Select value={selectedRepo} onValueChange={setSelectedRepo}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Choose a repository…" />
-                      </SelectTrigger>
-                      <SelectContent className="max-h-[300px]">
-                        {githubRepos.map((repo) => (
-                          <SelectItem key={repo.id} value={repo.fullName}>
-                            <div className="flex items-center gap-2">
-                              {repo.private ? (
-                                <Lock className="h-3 w-3 text-muted-foreground" />
-                              ) : (
-                                <Unlock className="h-3 w-3 text-muted-foreground" />
-                              )}
-                              <span>{repo.fullName}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
+              {/* Mode toggle */}
+              <div className="flex gap-2">
+                <Button
+                  variant={importMode === "github" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => { setImportMode("github"); setImportError(null) }}
+                  className="flex-1"
+                >
+                  <Github className="h-4 w-4 mr-2" />
+                  From GitHub
+                </Button>
+                <Button
+                  variant={importMode === "manual" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => { setImportMode("manual"); setImportError(null) }}
+                  className="flex-1"
+                >
+                  <Code2 className="h-4 w-4 mr-2" />
+                  Manual Entry
+                </Button>
               </div>
+
+              {importMode === "github" ? (
+                <div className="space-y-3">
+                  {isLoadingGithubRepos ? (
+                    <div className="flex items-center justify-center py-8">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                      <span className="ml-2 text-muted-foreground">Loading repositories…</span>
+                    </div>
+                  ) : !githubConnected ? (
+                    <div className="text-center py-6 space-y-3">
+                      <Github className="h-12 w-12 mx-auto text-muted-foreground" />
+                      <p className="text-muted-foreground">Connect your GitHub account to import repositories</p>
+                    </div>
+                  ) : githubRepos.length === 0 ? (
+                    <div className="text-center py-6">
+                      <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-2" />
+                      <p className="text-muted-foreground">No repositories found</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <Label>Select a repository</Label>
+                      <Select value={selectedRepo} onValueChange={setSelectedRepo}>
+                        <SelectTrigger>
+                          <SelectValue placeholder="Choose a repository…" />
+                        </SelectTrigger>
+                        <SelectContent className="max-h-[300px]">
+                          {githubRepos.map((repo) => (
+                            <SelectItem key={repo.id} value={repo.fullName}>
+                              <div className="flex items-center gap-2">
+                                {repo.private ? (
+                                  <Lock className="h-3 w-3 text-muted-foreground" />
+                                ) : (
+                                  <Unlock className="h-3 w-3 text-muted-foreground" />
+                                )}
+                                <span>{repo.fullName}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <Label htmlFor="manual-repo">Repository URL or owner/repo</Label>
+                  <Input
+                    id="manual-repo"
+                    placeholder="octocat/hello-world or https://github.com/…"
+                    value={manualRepoUrl}
+                    onChange={(e) => setManualRepoUrl(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Enter a GitHub repository in &quot;owner/repo&quot; format or paste a URL
+                  </p>
+                </div>
+              )}
 
               {importError && (
                 <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
@@ -704,12 +819,18 @@ export default function RepositoriesPage() {
             {wizardStep === 1 ? (
               <Button
                 onClick={handleStep1Next}
-                disabled={isImporting || !selectedRepo}
+                disabled={
+                  isImporting ||
+                  (importMode === "github" && !selectedRepo) ||
+                  (importMode === "manual" && !manualRepoUrl.trim())
+                }
               >
                 {isImporting ? (
-                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Loading…</>
-                ) : (
+                  <><Loader2 className="h-4 w-4 mr-2 animate-spin" />Importing…</>
+                ) : importMode === "github" ? (
                   "Next"
+                ) : (
+                  <><Plus className="h-4 w-4 mr-2" />Import</>
                 )}
               </Button>
             ) : (
