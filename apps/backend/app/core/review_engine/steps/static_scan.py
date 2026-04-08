@@ -1,20 +1,15 @@
 from __future__ import annotations
 
 from app.core.review_engine.diff_engine import ParsedDiff
-from app.core.static_analysis import CleanCodeAnalyzer, RuffAnalyzer, SemgrepAnalyzer, StaticAnalysisService
+from app.core.static_analysis import StaticAnalysisService
 from app.core.static_analysis.base import StaticAnalysisResult
+from app.core.static_analysis.registry import AnalyzerRegistry
 from app.settings import settings
 
 
 def _build_default_service() -> StaticAnalysisService:
-    analyzers = []
-    if settings.STATIC_ANALYSIS_RUFF_ENABLED:
-        analyzers.append(RuffAnalyzer())
-    if settings.STATIC_ANALYSIS_SEMGREP_ENABLED:
-        analyzers.append(SemgrepAnalyzer())
-    if settings.CLEAN_CODE_RULE_ENGINE_ENABLED:
-        analyzers.append(CleanCodeAnalyzer())
-    return StaticAnalysisService(analyzers=analyzers)
+    registry = AnalyzerRegistry.build_default(settings)
+    return StaticAnalysisService(analyzers=registry.get_all_analyzers())
 
 
 _DEFAULT_SERVICE: StaticAnalysisService | None = None
@@ -38,8 +33,9 @@ def run_static_scan(
     filter_changed_lines: bool = True,
 ) -> StaticAnalysisResult:
     """
-    Pipeline step: runs static analysis tools (Ruff, Semgrep, CleanCode)
-    on the files present in the parsed diff.
+    Pipeline step: runs all enabled static analysis tools on the files
+    present in the parsed diff (Ruff, Semgrep, CleanCode, ESLint, Stylelint,
+    RuboCop, Staticcheck, SQLFluff — gated by feature flags in settings).
     """
     service = _get_service()
     return service.run(

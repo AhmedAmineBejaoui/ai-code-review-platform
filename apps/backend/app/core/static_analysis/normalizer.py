@@ -1,40 +1,79 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from app.core.static_analysis.base import StaticCategory, StaticFinding, StaticRawFinding, StaticSeverity
 
 
-def _normalize_clean_code_severity(value: str) -> StaticSeverity:
-    normalized = value.strip().upper()
-    if normalized == "INFO":
+# ---------------------------------------------------------------------------
+# Severity normalizers
+# ---------------------------------------------------------------------------
+
+def _normalize_clean_code_severity(raw: StaticRawFinding) -> StaticSeverity:
+    value = raw.severity.strip().upper()
+    if value == "INFO":
         return "INFO"
-    if normalized == "BLOCKER":
+    if value == "BLOCKER":
         return "BLOCKER"
     return "WARN"
 
+
+def _normalize_semgrep_severity(raw: StaticRawFinding) -> StaticSeverity:
+    value = raw.severity.strip().upper()
+    if value == "ERROR":
+        return "BLOCKER"
+    if value == "INFO":
+        return "INFO"
+    return "WARN"
+
+
+def _normalize_ruff_severity(raw: StaticRawFinding) -> StaticSeverity:
+    code = raw.rule_id.strip().upper()
+    if code.startswith("S"):
+        return "BLOCKER"
+    if code.startswith("I"):
+        return "INFO"
+    return "WARN"
+
+
+def _normalize_eslint_severity(raw: StaticRawFinding) -> StaticSeverity:
+    # ESLint stores the numeric severity in evidence; fallback to raw.severity string
+    raw_sev = raw.evidence.get("raw_severity")
+    if isinstance(raw_sev, int) and raw_sev >= 2:
+        return "BLOCKER"
+    if raw.severity == "BLOCKER":
+        return "BLOCKER"
+    return "WARN"
+
+
+def _normalize_rubocop_severity(raw: StaticRawFinding) -> StaticSeverity:
+    # RuboCop severity strings are already mapped to INFO/WARN/BLOCKER in the parser
+    value = raw.severity.strip().upper()
+    if value == "INFO":
+        return "INFO"
+    if value == "BLOCKER":
+        return "BLOCKER"
+    return "WARN"
+
+
+def _normalize_default_severity(raw: StaticRawFinding) -> StaticSeverity:
+    value = raw.severity.strip().upper()
+    if value in {"INFO"}:
+        return "INFO"
+    if value in {"BLOCKER", "ERROR"}:
+        return "BLOCKER"
+    return "WARN"
+
+
+# ---------------------------------------------------------------------------
+# Category normalizers
+# ---------------------------------------------------------------------------
 
 def _normalize_clean_code_category(raw: StaticRawFinding) -> StaticCategory:
     category = str(raw.evidence.get("category") or "quality").strip().lower()
     if category in {"style", "quality", "maintainability", "other"}:
         return category  # type: ignore[return-value]
     return "quality"
-
-
-def _normalize_semgrep_severity(value: str) -> StaticSeverity:
-    normalized = value.strip().upper()
-    if normalized == "ERROR":
-        return "BLOCKER"
-    if normalized == "INFO":
-        return "INFO"
-    return "WARN"
-
-
-def _normalize_ruff_severity(rule_id: str) -> StaticSeverity:
-    code = rule_id.strip().upper()
-    if code.startswith("S"):
-        return "BLOCKER"
-    if code.startswith("I"):
-        return "INFO"
-    return "WARN"
 
 
 def _normalize_semgrep_category(raw: StaticRawFinding) -> StaticCategory:
@@ -48,8 +87,8 @@ def _normalize_semgrep_category(raw: StaticRawFinding) -> StaticCategory:
     return "quality"
 
 
-def _normalize_ruff_category(rule_id: str) -> StaticCategory:
-    code = rule_id.strip().upper()
+def _normalize_ruff_category(raw: StaticRawFinding) -> StaticCategory:
+    code = raw.rule_id.strip().upper()
     if code.startswith("S"):
         return "security"
     if code.startswith("PERF"):
@@ -61,19 +100,81 @@ def _normalize_ruff_category(rule_id: str) -> StaticCategory:
     return "quality"
 
 
+def _normalize_eslint_category(raw: StaticRawFinding) -> StaticCategory:
+    rule = raw.rule_id.lower()
+    if rule.startswith("security/") or "no-eval" in rule or "no-implied-eval" in rule:
+        return "security"
+    if "import/" in rule or "node/" in rule:
+        return "quality"
+    if "prettier" in rule or "style" in rule:
+        return "style"
+    return "quality"
+
+
+def _normalize_rubocop_category(raw: StaticRawFinding) -> StaticCategory:
+    cop = raw.rule_id.lower()
+    if cop.startswith("security/"):
+        return "security"
+    if cop.startswith("performance/"):
+        return "perf"
+    if cop.startswith("style/") or cop.startswith("layout/"):
+        return "style"
+    if cop.startswith("metrics/"):
+        return "maintainability"
+    return "quality"
+
+
+def _normalize_default_category(_raw: StaticRawFinding) -> StaticCategory:
+    return "quality"
+
+
+# ---------------------------------------------------------------------------
+# Dispatch tables
+# ---------------------------------------------------------------------------
+
+_SEVERITY_NORMALIZERS: dict[str, Callable[[StaticRawFinding], StaticSeverity]] = {
+    "ruff": _normalize_ruff_severity,
+    "semgrep": _normalize_semgrep_severity,
+    "clean_code": _normalize_clean_code_severity,
+    "eslint": _normalize_eslint_severity,
+    "rubocop": _normalize_rubocop_severity,
+    "stylelint": _normalize_default_severity,
+    "staticcheck": _normalize_default_severity,
+    "sqlfluff": _normalize_default_severity,
+}
+
+_CATEGORY_NORMALIZERS: dict[str, Callable[[StaticRawFinding], StaticCategory]] = {
+    "ruff": _normalize_ruff_category,
+    "semgrep": _normalize_semgrep_category,
+    "clean_code": _normalize_clean_code_category,
+    "eslint": _normalize_eslint_category,
+    "rubocop": _normalize_rubocop_category,
+    "stylelint": _normalize_default_category,
+    "staticcheck": _normalize_default_category,
+    "sqlfluff": _normalize_default_category,
+}
+
+_SOURCE_NAMES: dict[str, str] = {
+    "ruff": "STATIC_RUFF",
+    "semgrep": "STATIC_SEMGREP",
+    "clean_code": "STATIC_CLEAN_CODE",
+    "eslint": "STATIC_ESLINT",
+    "stylelint": "STATIC_STYLELINT",
+    "rubocop": "STATIC_RUBOCOP",
+    "staticcheck": "STATIC_STATICCHECK",
+    "sqlfluff": "STATIC_SQLFLUFF",
+}
+
+
+# ---------------------------------------------------------------------------
+# Public entry point
+# ---------------------------------------------------------------------------
+
 def normalize_raw_finding(raw: StaticRawFinding) -> StaticFinding:
-    if raw.tool == "semgrep":
-        source = "STATIC_SEMGREP"
-        severity = _normalize_semgrep_severity(raw.severity)
-        category = _normalize_semgrep_category(raw)
-    elif raw.tool == "ruff":
-        source = "STATIC_RUFF"
-        severity = _normalize_ruff_severity(raw.rule_id)
-        category = _normalize_ruff_category(raw.rule_id)
-    else:
-        source = "STATIC_CLEAN_CODE"
-        severity = _normalize_clean_code_severity(raw.severity)
-        category = _normalize_clean_code_category(raw)
+    tool = raw.tool
+    source = _SOURCE_NAMES.get(tool, f"STATIC_{tool.upper()}")
+    severity = _SEVERITY_NORMALIZERS.get(tool, _normalize_default_severity)(raw)
+    category = _CATEGORY_NORMALIZERS.get(tool, _normalize_default_category)(raw)
 
     return StaticFinding(
         source=source,

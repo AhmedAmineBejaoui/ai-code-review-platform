@@ -58,6 +58,22 @@ function severityRank(severity: string): number {
   return 2
 }
 
+const SOURCE_LABEL: Record<string, string> = {
+  STATIC_RUFF: "Ruff",
+  STATIC_SEMGREP: "Semgrep",
+  STATIC_CLEAN_CODE: "CleanCode",
+  STATIC_ESLINT: "ESLint",
+  STATIC_STYLELINT: "Stylelint",
+  STATIC_RUBOCOP: "RuboCop",
+  STATIC_STATICCHECK: "Staticcheck",
+  STATIC_SQLFLUFF: "SQLFluff",
+  RAG: "AI Review",
+}
+
+function toolLabel(source: string): string {
+  return SOURCE_LABEL[source] ?? source.replace("STATIC_", "").toLowerCase()
+}
+
 function getScoreColor(score: number): string {
   if (score >= 80) return "#56d364"
   if (score >= 60) return "#e3b341"
@@ -118,6 +134,17 @@ function RagComment({
             style={{ color: badgeColor, background: badgeBg }}
           >
             {label}
+          </span>
+          <span
+            className="text-[9px] px-1.5 py-0.5 rounded"
+            style={{
+              color: "#8b949e",
+              background: "rgba(255,255,255,0.06)",
+              fontFamily: "monospace",
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
+          >
+            {toolLabel(finding.source)}
           </span>
         </div>
         {/* Message */}
