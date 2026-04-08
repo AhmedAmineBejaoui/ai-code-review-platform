@@ -25,6 +25,10 @@ KNOWN_CODE_SUFFIXES = {
     ".php",
     ".cs",
     ".swift",
+    ".css",
+    ".scss",
+    ".sql",
+    ".mjs",
 }
 
 _LANGUAGE_BY_SUFFIX = {
@@ -34,6 +38,8 @@ _LANGUAGE_BY_SUFFIX = {
     ".jsx": "javascript",
     ".ts": "typescript",
     ".tsx": "typescript",
+    ".mjs": "javascript",
+    ".cjs": "javascript",
     ".go": "go",
     ".java": "java",
     ".kt": "kotlin",
@@ -42,6 +48,12 @@ _LANGUAGE_BY_SUFFIX = {
     ".php": "php",
     ".cs": "csharp",
     ".swift": "swift",
+    ".css": "css",
+    ".scss": "css",
+    ".sass": "css",
+    ".less": "css",
+    ".sql": "sql",
+    ".dart": "dart",
 }
 
 _COMMENT_PREFIXES = {

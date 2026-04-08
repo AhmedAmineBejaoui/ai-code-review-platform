@@ -6,13 +6,13 @@ from typing import Any, Literal, Protocol
 
 StaticSeverity = Literal["INFO", "WARN", "BLOCKER"]
 StaticCategory = Literal["security", "quality", "style", "perf", "maintainability", "other"]
-StaticToolName = Literal["ruff", "semgrep", "clean_code"]
-StaticSourceName = Literal["STATIC_RUFF", "STATIC_SEMGREP", "STATIC_CLEAN_CODE"]
+StaticToolName = str  # e.g. "ruff", "semgrep", "clean_code", "eslint", "rubocop", ...
+StaticSourceName = str  # e.g. "STATIC_RUFF", "STATIC_ESLINT", ...
 
 
 @dataclass(frozen=True)
 class StaticRawFinding:
-    tool: StaticToolName
+    tool: str
     rule_id: str
     file_path: str
     line_start: int | None
@@ -40,7 +40,7 @@ class StaticFinding:
 
 @dataclass(frozen=True)
 class StaticToolResult:
-    tool: StaticToolName
+    tool: str
     findings: list[StaticRawFinding]
     duration_ms: int
     scanned_files: int
@@ -66,7 +66,7 @@ class StaticAnalysisResult:
 
 
 class StaticToolAnalyzer(Protocol):
-    tool_name: StaticToolName
+    tool_name: str
 
     def run(
         self,
