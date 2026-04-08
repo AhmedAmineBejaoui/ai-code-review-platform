@@ -34,6 +34,43 @@ type GithubExternalAccountInfo = {
   login: string | null
 }
 
+function asTrimmedString(raw: unknown): string | null {
+  if (typeof raw !== "string") {
+    return null
+  }
+  const trimmed = raw.trim()
+  return trimmed.length > 0 ? trimmed : null
+}
+
+function toUnknownArray(raw: unknown): unknown[] {
+  if (Array.isArray(raw)) {
+    return raw
+  }
+  if (typeof raw !== "object" || raw === null) {
+    return []
+  }
+  const data = (raw as { data?: unknown }).data
+  return Array.isArray(data) ? data : []
+}
+
+function isGithubProvider(rawProvider: unknown): boolean {
+  const provider = asTrimmedString(rawProvider)?.toLowerCase()
+  if (!provider) {
+    return false
+  }
+  return provider === "github" || provider === "oauth_github" || provider.includes("github")
+}
+
+function normalizeGithubLoginCandidate(raw: unknown): string | null {
+  const rawValue = asTrimmedString(raw)
+  if (!rawValue) {
+    return null
+  }
+
+  const withoutAt = rawValue.startsWith("@") ? rawValue.slice(1) : rawValue
+  return /^[a-z\d](?:[a-z\d-]{0,38})$/i.test(withoutAt) ? withoutAt : null
+}
+
 function normalizeRepo(item: GithubRepoApiItem): GithubRepoOption | null {
   if (typeof item.id !== "number" || typeof item.full_name !== "string" || item.full_name.trim().length === 0) {
     return null
@@ -50,17 +87,30 @@ function normalizeRepo(item: GithubRepoApiItem): GithubRepoOption | null {
   }
 }
 
-function normalizeGithubError(raw: unknown): string {
+function normalizeGithubError(raw: unknown, statusCode?: number, hasToken?: boolean): string {
+  let baseMessage = "GitHub request failed"
+
   if (typeof raw === "string" && raw.trim().length > 0) {
-    return raw.trim()
-  }
-  if (typeof raw === "object" && raw !== null) {
+    baseMessage = raw.trim()
+  } else if (typeof raw === "object" && raw !== null) {
     const message = (raw as { message?: unknown }).message
     if (typeof message === "string" && message.trim().length > 0) {
-      return message.trim()
+      baseMessage = message.trim()
     }
   }
-  return "GitHub request failed"
+
+  if (statusCode === 403 && baseMessage.toLowerCase().includes("rate limit")) {
+    const tokenHint = hasToken
+      ? ""
+      : " No GitHub OAuth token detected. Reconnect GitHub in Clerk to increase the rate limit."
+    return `${baseMessage}${tokenHint}`
+  }
+
+  if (statusCode === 404) {
+    return `${baseMessage}. The user/organization may not exist or may be inaccessible.`
+  }
+
+  return baseMessage
 }
 
 function buildGithubHeaders(token: string | null): Record<string, string> {
@@ -78,28 +128,53 @@ function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccou
   if (typeof rawUser !== "object" || rawUser === null) {
     return { connected: false, login: null }
   }
-  const externalAccounts = (rawUser as { externalAccounts?: unknown }).externalAccounts
-  if (!Array.isArray(externalAccounts)) {
-    return { connected: false, login: null }
-  }
+
+  const userRecord = rawUser as Record<string, unknown>
+  const externalAccounts = [
+    ...toUnknownArray(userRecord.externalAccounts),
+    ...toUnknownArray(userRecord.external_accounts),
+  ]
 
   let connected = false
   for (const account of externalAccounts) {
     if (typeof account !== "object" || account === null) {
       continue
     }
-    const provider = (account as { provider?: unknown }).provider
-    if (provider !== "github" && provider !== "oauth_github") {
+
+    const accountRecord = account as Record<string, unknown>
+    const provider =
+      accountRecord.provider ??
+      accountRecord.providerSlug ??
+      accountRecord.provider_slug
+    if (!isGithubProvider(provider)) {
       continue
     }
+
     connected = true
-    const username = (account as { username?: unknown }).username
-    if (typeof username === "string" && username.trim().length > 0) {
-      return { connected: true, login: username.trim() }
+    const username =
+      normalizeGithubLoginCandidate(accountRecord.username) ??
+      normalizeGithubLoginCandidate(accountRecord.login) ??
+      normalizeGithubLoginCandidate(accountRecord.accountIdentifier) ??
+      normalizeGithubLoginCandidate(accountRecord.account_identifier) ??
+      normalizeGithubLoginCandidate(accountRecord.identificationId) ??
+      normalizeGithubLoginCandidate(accountRecord.identification_id)
+
+    if (username) {
+      return { connected: true, login: username }
     }
   }
 
-  return { connected, login: null }
+  if (!connected) {
+    return { connected: false, login: null }
+  }
+
+  return {
+    connected: true,
+    login:
+      normalizeGithubLoginCandidate(userRecord.githubUsername) ??
+      normalizeGithubLoginCandidate(userRecord.github_username) ??
+      null,
+  }
 }
 
 async function resolveGithubOauthAccessToken(client: Awaited<ReturnType<typeof clerkClient>>, userId: string) {
@@ -152,7 +227,7 @@ async function fetchGithubRepos(
           parsedBody = rawBody
         }
       }
-      return { items: [], error: normalizeGithubError(parsedBody) }
+      return { items: [], error: normalizeGithubError(parsedBody, response.status, Boolean(token)) }
     }
 
     const payload = (await response.json().catch(() => [])) as unknown
@@ -186,11 +261,15 @@ async function fetchGithubRepos(
   return { items, error: null }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const { searchParams } = new URL(request.url)
+  const customAccount = asTrimmedString(searchParams.get("account"))
+  const accountType = searchParams.get("type") === "org" ? "org" : "user"
 
   const client = await clerkClient()
   const [user, oauthToken] = await Promise.all([
@@ -198,6 +277,40 @@ export async function GET() {
     resolveGithubOauthAccessToken(client, userId),
   ])
   const githubAccount = extractGithubExternalAccountInfo(user)
+
+  if (customAccount) {
+    const endpointBuilder =
+      accountType === "org"
+        ? (page: number) =>
+            `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+        : (page: number) =>
+            `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+
+    const reposResult = await fetchGithubRepos(oauthToken, endpointBuilder)
+    if (reposResult.error) {
+      return NextResponse.json(
+        {
+          connected: true,
+          items: [],
+          error: reposResult.error,
+          account: customAccount,
+          accountType,
+        },
+        { status: 200 },
+      )
+    }
+
+    return NextResponse.json(
+      {
+        connected: true,
+        items: reposResult.items,
+        error: null,
+        account: customAccount,
+        accountType,
+      },
+      { status: 200 },
+    )
+  }
 
   if (oauthToken) {
     const reposResult = await fetchGithubRepos(
