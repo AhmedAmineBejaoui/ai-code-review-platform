@@ -526,6 +526,37 @@ Technologies :
 - Tailwind CSS
 - TypeScript
 
+#### Application Mobile (iOS/Android)
+
+Le dashboard est également disponible en tant qu'application mobile native via Capacitor :
+
+```bash
+cd apps/dashboard
+
+# Build l'app pour mobile
+npm run mobile:build
+
+# Ajouter les plateformes (première fois uniquement)
+npm run mobile:add:ios      # macOS + Xcode requis
+npm run mobile:add:android  # Android Studio requis
+
+# Ouvrir dans l'IDE natif
+npm run mobile:ios          # Ouvre Xcode
+npm run mobile:android      # Ouvre Android Studio
+```
+
+Technologies :
+- Capacitor (wrapper natif)
+- Static Export (Next.js)
+- Clerk React SDK (authentification client-side)
+- Plugins natifs (StatusBar, SplashScreen, Keyboard, etc.)
+
+**📖 Documentation complète** : Voir `apps/dashboard/MOBILE.md` pour le guide détaillé du développement mobile, troubleshooting, et configuration.
+
+**Plateformes supportées** :
+- ✅ iOS 13+ (Xcode sur macOS requis)
+- ✅ Android 7.0+ (API 24+)
+
 ### 10.2 Dashboard Features (Prototype Figma)
 
 Le dossier `Developer Dashboard Features` contient un prototype standalone basÃ© sur un design Figma :

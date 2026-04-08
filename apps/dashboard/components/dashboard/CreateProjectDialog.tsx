@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
-import { Loader2, Plus, GitBranch, Users, Settings, FolderGit } from "lucide-react"
+import { Loader2, Plus, GitBranch, Users, Settings, FolderGit, Building2, User } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -25,6 +25,10 @@ import {
 import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { MembersPreviewDialog, type ImportMemberConfig } from "./MembersPreviewDialog"
+import { PermissionValidationDialog } from "./PermissionValidationDialog"
+import { auditService } from "@/lib/audit-service"
+import { type PermissionValidationResult } from "@/lib/github-permissions"
 
 // Types
 interface Team {
@@ -41,6 +45,18 @@ interface GithubRepo {
   language: string | null
   defaultBranch: string
   isPrivate: boolean
+}
+
+interface GithubOrganization {
+  id: number
+  login: string
+  avatarUrl: string | null
+  description: string | null
+}
+
+interface GithubUserInfo {
+  login: string
+  avatarUrl: string | null
 }
 
 interface CreateProjectDialogProps {
@@ -68,12 +84,26 @@ export function CreateProjectDialog({
   
   // GitHub repos
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([])
-  const [selectedGithubRepo, setSelectedGithubRepo] = useState<string>("manual")
+  const [selectedGithubRepo, setSelectedGithubRepo] = useState<string>("")
   const [loadingGithubRepos, setLoadingGithubRepos] = useState(false)
+  
+  // GitHub organizations
+  const [organizations, setOrganizations] = useState<GithubOrganization[]>([])
+  const [githubUser, setGithubUser] = useState<GithubUserInfo | null>(null)
+  const [selectedOrg, setSelectedOrg] = useState<string>("") // "" means not selected, "personal" for user's repos
+  const [loadingOrgs, setLoadingOrgs] = useState(false)
   
   // Teams
   const [teams, setTeams] = useState<Team[]>([])
   const [loadingTeams, setLoadingTeams] = useState(false)
+  
+  // Members preview
+  const [showMembersPreview, setShowMembersPreview] = useState(false)
+  const [pendingImportData, setPendingImportData] = useState<any>(null)
+  
+  // Permission validation
+  const [showPermissionValidation, setShowPermissionValidation] = useState(false)
+  const [validationResult, setValidationResult] = useState<PermissionValidationResult | null>(null)
   
   // Submission
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -82,17 +112,27 @@ export function CreateProjectDialog({
   // Active tab
   const [activeTab, setActiveTab] = useState("basic")
 
-  // Load GitHub repos when dialog opens
+  // Load GitHub organizations when dialog opens
   useEffect(() => {
     if (open) {
-      loadGithubRepos()
+      loadOrganizations()
       loadTeams()
     }
   }, [open])
 
+  // Load repos when organization is selected
+  useEffect(() => {
+    if (selectedOrg) {
+      loadGithubRepos(selectedOrg)
+      setSelectedGithubRepo("") // Reset repo selection when org changes
+    } else {
+      setGithubRepos([])
+    }
+  }, [selectedOrg])
+
   // Update form when GitHub repo is selected
   useEffect(() => {
-    if (selectedGithubRepo !== "manual") {
+    if (selectedGithubRepo && selectedGithubRepo !== "") {
       const repo = githubRepos.find((r) => r.fullName === selectedGithubRepo)
       if (repo) {
         setName(repo.name)
@@ -105,10 +145,44 @@ export function CreateProjectDialog({
     }
   }, [selectedGithubRepo, githubRepos])
 
-  const loadGithubRepos = async () => {
+  const loadOrganizations = async () => {
+    setLoadingOrgs(true)
+    try {
+      const response = await fetch("/api/dashboard/github/orgs", {
+        headers: { "Content-Type": "application/json" },
+      })
+      if (response.ok) {
+        const data = await response.json()
+        setOrganizations(data.organizations || [])
+        setGithubUser(data.user || null)
+      } else {
+        console.warn("Failed to load GitHub organizations:", response.status, response.statusText)
+        setOrganizations([])
+        setGithubUser(null)
+      }
+    } catch (err) {
+      console.warn("Failed to load GitHub organizations:", err)
+      setOrganizations([])
+      setGithubUser(null)
+    } finally {
+      setLoadingOrgs(false)
+    }
+  }
+
+  const loadGithubRepos = async (orgLogin: string) => {
     setLoadingGithubRepos(true)
     try {
-      const response = await fetch("/api/dashboard/github/repos", {
+      // Build URL with organization filter
+      let url = "/api/dashboard/github/repos"
+      if (orgLogin === "personal" && githubUser) {
+        // For personal repos, use the user's login
+        url += `?account=${encodeURIComponent(githubUser.login)}&type=user`
+      } else if (orgLogin && orgLogin !== "personal") {
+        // For organization repos
+        url += `?account=${encodeURIComponent(orgLogin)}&type=org`
+      }
+      
+      const response = await fetch(url, {
         headers: { "Content-Type": "application/json" },
       })
       if (response.ok) {
@@ -157,7 +231,11 @@ export function CreateProjectDialog({
   }
 
   const handleSubmit = async () => {
-    // Validation
+    // Validation - GitHub repository selection is now required
+    if (!selectedGithubRepo || selectedGithubRepo === "") {
+      setError("Veuillez selectionner un repository GitHub")
+      return
+    }
     if (!name.trim()) {
       setError("Le nom du projet est requis")
       return
@@ -167,50 +245,155 @@ export function CreateProjectDialog({
       return
     }
 
+    // Store the import data and show permission validation first
+    setPendingImportData({
+      name: name.trim(),
+      full_name: fullName.trim(),
+      description: description.trim() || null,
+      language: language.trim() || null,
+      visibility,
+      default_branch: defaultBranch,
+      team_id: teamId || null,
+      auto_analysis_enabled: autoAnalysis,
+      repo_full_name: selectedGithubRepo
+    })
+    
+    setShowPermissionValidation(true)
+    setIsSubmitting(false)
+  }
+
+  const handlePermissionValidated = async (result: PermissionValidationResult) => {
+    setValidationResult(result)
+    
+    // Record audit action for permission validation
+    try {
+      await auditService.recordAction(
+        "github.permissions_validated",
+        "github_repository", 
+        pendingImportData?.repo_full_name || "",
+        {
+          valid: result.valid,
+          can_import: result.permissions.can_import,
+          missing_permissions: result.permissions.missing_permissions,
+          warnings: result.permissions.warnings
+        },
+        { 
+          github_repository: pendingImportData?.repo_full_name,
+          project_name: pendingImportData?.name
+        }
+      )
+    } catch (auditError) {
+      console.warn("Failed to record permission validation audit:", auditError)
+    }
+    
+    // Only proceed to members preview if user has import permissions
+    if (result.permissions.can_import) {
+      setShowPermissionValidation(false)
+      setShowMembersPreview(true)
+    } else {
+      // Show error for insufficient permissions
+      setError("Permissions insuffisantes pour importer ce repository. Contactez le propriétaire du repository.")
+      setShowPermissionValidation(false)
+      setIsSubmitting(false)
+    }
+  }
+
+  const handleConfirmImport = async (members: ImportMemberConfig[]) => {
+    if (!pendingImportData) return
+
     setIsSubmitting(true)
     setError(null)
 
     try {
-      const response = await fetch("/api/v1/projects", {
+      // Import repository with selected members
+      const response = await fetch("/api/dashboard/github/import", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: name.trim(),
-          full_name: fullName.trim(),
-          description: description.trim() || null,
-          language: language.trim() || null,
-          visibility,
-          default_branch: defaultBranch,
-          team_id: teamId || null,
-          auto_analysis_enabled: autoAnalysis,
-          branches: [
-            { name: defaultBranch, is_default: true, is_protected: true, require_reviews: 1 },
-          ],
-        }),
+          repoFullName: pendingImportData.repo_full_name,
+          projectName: pendingImportData.name,
+          description: pendingImportData.description,
+          visibility: pendingImportData.visibility,
+          defaultBranch: pendingImportData.default_branch,
+          teamId: pendingImportData.team_id,
+          autoAnalysisEnabled: pendingImportData.auto_analysis_enabled,
+          members: members.map(m => ({
+            github_login: m.github_login,
+            email: m.email,
+            role: m.role
+          })),
+          validationResult: validationResult // Include validation result for audit
+        })
       })
 
       if (!response.ok) {
         const errorData = await response.text()
-        let errorMessage = "Erreur lors de la creation du projet"
+        let errorMessage = "Erreur lors de l'import du projet GitHub"
         try {
           const parsed = JSON.parse(errorData)
-          errorMessage = parsed.detail || errorMessage
+          errorMessage = parsed.error || parsed.detail || errorMessage
         } catch {
           errorMessage = errorData || errorMessage
         }
         throw new Error(errorMessage)
       }
 
-      const project = await response.json()
+      const result = await response.json()
       
-      // Reset form
+      // Record audit action for project import
+      try {
+        const importStats = {
+          total_members: members.length,
+          invited_members: result.invited_count || 0,
+          existing_members: result.already_member_count || 0,
+          failed_invitations: result.invitation_errors?.length || 0,
+          branches_imported: 0, // Would be provided by backend
+          commits_imported: 0   // Would be provided by backend
+        }
+
+        await auditService.recordProjectImport(
+          result.project_id,
+          pendingImportData.repo_full_name,
+          importStats,
+          { 
+            project_name: pendingImportData.name,
+            github_repository: pendingImportData.repo_full_name
+          }
+        )
+
+        // Record individual member invitations
+        for (const member of members) {
+          const invitationResult = result.invitation_errors?.find((err: any) => 
+            err.email === member.email
+          ) ? "failed" : result.already_members?.includes(member.github_login) ? "already_member" : "success"
+
+          await auditService.recordMemberInvitation(
+            result.project_id,
+            member.github_login,
+            member.role,
+            invitationResult,
+            { 
+              project_name: pendingImportData.name,
+              github_repository: pendingImportData.repo_full_name
+            }
+          )
+        }
+      } catch (auditError) {
+        console.warn("Failed to record audit actions:", auditError)
+      }
+      
+      // Reset form and close dialogs
       resetForm()
+      setPendingImportData(null)
+      setValidationResult(null)
+      setShowMembersPreview(false)
+      setShowPermissionValidation(false)
       onOpenChange(false)
       
       if (onSuccess) {
-        onSuccess(project.id)
+        onSuccess(result.project_id)
       } else {
-        router.push(`/dashboard/projects/${encodeURIComponent(project.id)}`)
+        router.push(`/dashboard/projects/${encodeURIComponent(result.project_id)}`)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Erreur inconnue")
@@ -228,9 +411,15 @@ export function CreateProjectDialog({
     setDefaultBranch("main")
     setTeamId("")
     setAutoAnalysis(true)
-    setSelectedGithubRepo("manual")
+    setSelectedGithubRepo("")
+    setSelectedOrg("")
+    setGithubRepos([])
     setError(null)
     setActiveTab("basic")
+    setPendingImportData(null)
+    setValidationResult(null)
+    setShowMembersPreview(false)
+    setShowPermissionValidation(false)
   }
 
   const handleOpenChange = (newOpen: boolean) => {
@@ -275,28 +464,84 @@ export function CreateProjectDialog({
           </TabsList>
 
           <TabsContent value="basic" className="space-y-4 mt-4">
-            {/* GitHub Repo Selection */}
+            {/* Organization Selection */}
             <div className="space-y-2">
-              <Label>Importer depuis GitHub</Label>
-              <Select value={selectedGithubRepo} onValueChange={setSelectedGithubRepo}>
+              <Label>Compte / Organisation GitHub *</Label>
+              <Select value={selectedOrg} onValueChange={setSelectedOrg}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Selectionnez un repository..." />
+                  <SelectValue placeholder="Selectionnez un compte ou une organisation..." />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="manual">Saisie manuelle</SelectItem>
+                  {loadingOrgs && (
+                    <SelectItem value="loading" disabled>
+                      <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
+                      Chargement...
+                    </SelectItem>
+                  )}
+                  {!loadingOrgs && githubUser && (
+                    <SelectItem value="personal">
+                      <div className="flex items-center gap-2">
+                        <User className="h-4 w-4" />
+                        <span>{githubUser.login}</span>
+                        <Badge variant="outline" className="text-xs ml-1">Personnel</Badge>
+                      </div>
+                    </SelectItem>
+                  )}
+                  {!loadingOrgs && organizations.length === 0 && !githubUser && (
+                    <SelectItem value="empty" disabled>
+                      Aucune organisation trouvee. Connectez votre compte GitHub.
+                    </SelectItem>
+                  )}
+                  {organizations.map((org) => (
+                    <SelectItem key={org.id} value={org.login}>
+                      <div className="flex items-center gap-2">
+                        <Building2 className="h-4 w-4" />
+                        <span>{org.login}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                Selectionnez d'abord un compte ou une organisation pour filtrer les repositories.
+              </p>
+            </div>
+
+            {/* GitHub Repo Selection */}
+            <div className="space-y-2">
+              <Label>Selectionnez un repository GitHub *</Label>
+              <Select 
+                value={selectedGithubRepo} 
+                onValueChange={setSelectedGithubRepo}
+                disabled={!selectedOrg}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={selectedOrg ? "Selectionnez un repository..." : "Selectionnez d'abord une organisation"} />
+                </SelectTrigger>
+                <SelectContent>
                   {loadingGithubRepos && (
                     <SelectItem value="loading" disabled>
                       <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
                       Chargement...
                     </SelectItem>
                   )}
+                  {githubRepos.length === 0 && !loadingGithubRepos && selectedOrg && (
+                    <SelectItem value="empty" disabled>
+                      Aucun repository trouve pour cette organisation.
+                    </SelectItem>
+                  )}
                   {githubRepos.map((repo) => (
                     <SelectItem key={repo.fullName} value={repo.fullName}>
                       <div className="flex items-center gap-2">
-                        <span>{repo.fullName}</span>
+                        <span>{repo.name}</span>
                         {repo.language && (
                           <Badge variant="secondary" className="text-xs">
                             {repo.language}
+                          </Badge>
+                        )}
+                        {repo.isPrivate && (
+                          <Badge variant="outline" className="text-xs">
+                            Prive
                           </Badge>
                         )}
                       </div>
@@ -304,6 +549,9 @@ export function CreateProjectDialog({
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground">
+                L'import se fait exclusivement depuis GitHub.
+              </p>
             </div>
 
             {/* Project Name */}
@@ -491,6 +739,22 @@ export function CreateProjectDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Permission Validation Dialog */}
+      <PermissionValidationDialog
+        open={showPermissionValidation}
+        onOpenChange={setShowPermissionValidation}
+        repoFullName={pendingImportData?.repo_full_name || ""}
+        onValidated={handlePermissionValidated}
+      />
+
+      {/* Members Preview Dialog */}
+      <MembersPreviewDialog
+        open={showMembersPreview}
+        onOpenChange={setShowMembersPreview}
+        repoFullName={pendingImportData?.repo_full_name || ""}
+        onConfirmImport={handleConfirmImport}
+      />
     </Dialog>
   )
 }

@@ -50,32 +50,17 @@ function normalizeRepo(item: GithubRepoApiItem): GithubRepoOption | null {
   }
 }
 
-function normalizeGithubError(raw: unknown, statusCode?: number, hasToken?: boolean): string {
-  let baseMessage = "GitHub request failed"
-  
+function normalizeGithubError(raw: unknown): string {
   if (typeof raw === "string" && raw.trim().length > 0) {
-    baseMessage = raw.trim()
-  } else if (typeof raw === "object" && raw !== null) {
+    return raw.trim()
+  }
+  if (typeof raw === "object" && raw !== null) {
     const message = (raw as { message?: unknown }).message
     if (typeof message === "string" && message.trim().length > 0) {
-      baseMessage = message.trim()
+      return message.trim()
     }
   }
-  
-  // Add helpful context for rate limit errors
-  if (statusCode === 403 && baseMessage.toLowerCase().includes("rate limit")) {
-    const tokenHint = hasToken 
-      ? "" 
-      : " Aucun token OAuth GitHub detecte: pour les repos prives, reconnectez GitHub dans Clerk."
-    return `${baseMessage}${tokenHint}`
-  }
-  
-  // Add context for 404 errors (user/org not found or no access)
-  if (statusCode === 404) {
-    return `${baseMessage}. The user/organization may not exist or you don't have access to their repositories.`
-  }
-  
-  return baseMessage
+  return "GitHub request failed"
 }
 
 function buildGithubHeaders(token: string | null): Record<string, string> {
@@ -167,7 +152,7 @@ async function fetchGithubRepos(
           parsedBody = rawBody
         }
       }
-      return { items: [], error: normalizeGithubError(parsedBody, response.status, !!token) }
+      return { items: [], error: normalizeGithubError(parsedBody) }
     }
 
     const payload = (await response.json().catch(() => [])) as unknown
@@ -201,15 +186,11 @@ async function fetchGithubRepos(
   return { items, error: null }
 }
 
-export async function GET(request: Request) {
+export async function GET() {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
-
-  const { searchParams } = new URL(request.url)
-  const customAccount = searchParams.get("account")
-  const accountType = searchParams.get("type") as "user" | "org" | null
 
   const client = await clerkClient()
   const [user, oauthToken] = await Promise.all([
@@ -218,47 +199,6 @@ export async function GET(request: Request) {
   ])
   const githubAccount = extractGithubExternalAccountInfo(user)
 
-  // If custom account is provided, try to fetch repos from that account
-  if (customAccount) {
-    let endpointBuilder: (page: number) => string
-    
-    if (accountType === "org") {
-      // For organizations, use org repos endpoint
-      endpointBuilder = (page) =>
-        `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
-    } else {
-      // For users, use user repos endpoint
-      endpointBuilder = (page) =>
-        `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
-    }
-
-    const reposResult = await fetchGithubRepos(oauthToken, endpointBuilder)
-    if (reposResult.error) {
-      return NextResponse.json(
-        {
-          connected: oauthToken ? true : githubAccount.connected,
-          items: [],
-          error: reposResult.error,
-          account: customAccount,
-          accountType: accountType,
-        },
-        { status: 200 },
-      )
-    }
-
-    return NextResponse.json(
-      {
-        connected: oauthToken ? true : githubAccount.connected,
-        items: reposResult.items,
-        error: null,
-        account: customAccount,
-        accountType: accountType,
-      },
-      { status: 200 },
-    )
-  }
-
-  // Default behavior - load user's repos
   if (oauthToken) {
     const reposResult = await fetchGithubRepos(
       oauthToken,

@@ -2,6 +2,8 @@ import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 
+export const dynamic = "force-dynamic"
+
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 

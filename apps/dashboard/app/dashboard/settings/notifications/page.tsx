@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { motion } from "framer-motion"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -8,6 +8,8 @@ import { Switch } from "@/components/ui/switch"
 import { Badge } from "@/components/ui/badge"
 import { Separator } from "@/components/ui/separator"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Bell,
   Mail,
@@ -26,7 +28,10 @@ import {
   FileCode,
   Shield,
   TrendingUp,
+  RotateCcw,
+  AlertCircle,
 } from "lucide-react"
+import { toast } from "sonner"
 
 interface NotificationSettings {
   // Email notifications
@@ -100,15 +105,103 @@ const defaultSettings: NotificationSettings = {
 
 export default function NotificationsSettingsPage() {
   const [settings, setSettings] = useState<NotificationSettings>(defaultSettings)
+  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [hasChanges, setHasChanges] = useState(false)
+  const [originalSettings, setOriginalSettings] = useState<NotificationSettings>(defaultSettings)
+
+  // Load preferences from backend
+  const loadPreferences = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const response = await fetch("/api/notifications/preferences")
+      if (!response.ok) {
+        throw new Error("Failed to load preferences")
+      }
+      const data = await response.json()
+      // Merge with defaults to ensure all fields exist
+      const merged: NotificationSettings = {
+        email: { ...defaultSettings.email, ...data.email },
+        push: { ...defaultSettings.push, ...data.push },
+        inApp: { ...defaultSettings.inApp, ...data.inApp },
+        schedule: { ...defaultSettings.schedule, ...data.schedule },
+      }
+      setSettings(merged)
+      setOriginalSettings(merged)
+    } catch (err) {
+      console.error("Failed to load notification preferences:", err)
+      setError("Failed to load preferences. Using defaults.")
+      toast.error("Failed to load notification preferences")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadPreferences()
+  }, [loadPreferences])
+
+  // Track changes
+  useEffect(() => {
+    setHasChanges(JSON.stringify(settings) !== JSON.stringify(originalSettings))
+  }, [settings, originalSettings])
 
   const handleSave = async () => {
     setSaving(true)
+    setError(null)
     try {
-      await new Promise(resolve => setTimeout(resolve, 1000))
+      const response = await fetch("/api/notifications/preferences", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(settings),
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to save preferences")
+      }
+
+      setOriginalSettings(settings)
       setSuccess(true)
+      setHasChanges(false)
+      toast.success("Notification preferences saved successfully")
       setTimeout(() => setSuccess(false), 3000)
+    } catch (err) {
+      console.error("Failed to save notification preferences:", err)
+      setError("Failed to save preferences. Please try again.")
+      toast.error("Failed to save notification preferences")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const handleReset = async () => {
+    setSaving(true)
+    try {
+      const response = await fetch("/api/notifications/preferences", {
+        method: "POST", // Reset endpoint
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to reset preferences")
+      }
+
+      const data = await response.json()
+      const merged: NotificationSettings = {
+        email: { ...defaultSettings.email, ...data.preferences?.email },
+        push: { ...defaultSettings.push, ...data.preferences?.push },
+        inApp: { ...defaultSettings.inApp, ...data.preferences?.inApp },
+        schedule: { ...defaultSettings.schedule, ...data.preferences?.schedule },
+      }
+      setSettings(merged)
+      setOriginalSettings(merged)
+      setHasChanges(false)
+      toast.success("Preferences reset to defaults")
+    } catch (err) {
+      console.error("Failed to reset preferences:", err)
+      toast.error("Failed to reset preferences")
     } finally {
       setSaving(false)
     }
@@ -142,6 +235,36 @@ export default function NotificationsSettingsPage() {
     }))
   }
 
+  // Show loading skeleton
+  if (loading) {
+    return (
+      <div className="max-w-4xl mx-auto space-y-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <Skeleton className="h-9 w-64 mb-2" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i} className="bg-white/50 dark:bg-gray-900/50">
+            <CardHeader>
+              <Skeleton className="h-6 w-48" />
+              <Skeleton className="h-4 w-64" />
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                {[1, 2, 3].map((j) => (
+                  <Skeleton key={j} className="h-16 w-full" />
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
@@ -169,7 +292,21 @@ export default function NotificationsSettingsPage() {
               Preferences saved
             </motion.div>
           )}
-          <Button onClick={handleSave} disabled={saving}>
+          {hasChanges && (
+            <Badge variant="outline" className="text-amber-600 border-amber-300">
+              Unsaved changes
+            </Badge>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleReset}
+            disabled={saving}
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset to defaults
+          </Button>
+          <Button onClick={handleSave} disabled={saving || !hasChanges}>
             {saving ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (
@@ -179,6 +316,13 @@ export default function NotificationsSettingsPage() {
           </Button>
         </div>
       </motion.div>
+
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* Email Notifications */}
       <motion.div

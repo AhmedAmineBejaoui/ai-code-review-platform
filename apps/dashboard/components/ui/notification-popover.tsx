@@ -357,7 +357,7 @@ export function NotificationPopover({
       
       <PopoverContent
         align="end"
-        className="w-[420px] p-0 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800"
+        className="w-[calc(100vw-2rem)] sm:w-[380px] md:w-[420px] max-w-[420px] p-0 bg-white dark:bg-gray-950 border border-gray-200 dark:border-gray-800"
       >
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800">

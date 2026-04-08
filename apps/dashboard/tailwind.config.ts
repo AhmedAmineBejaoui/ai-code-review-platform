@@ -9,7 +9,22 @@ const config: Config = {
     "./data/**/*.{ts,tsx}",
   ],
   theme: {
+    // Custom breakpoints for all screen sizes
+    screens: {
+      'xs': '375px',      // Small smartphones
+      'sm': '640px',      // Large smartphones / small tablets
+      'md': '768px',      // Tablets portrait
+      'lg': '1024px',     // Tablets landscape / small laptops
+      'xl': '1280px',     // Desktops
+      '2xl': '1536px',    // Large desktops
+      '3xl': '1920px',    // Full HD TVs / large monitors
+      '4xl': '2560px',    // 2K/QHD TVs / ultra-wide monitors
+    },
     extend: {
+      fontFamily: {
+        sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],
+        mono: ['SF Mono', 'JetBrains Mono', 'monospace'],
+      },
       colors: {
         border: "var(--border)",
         input: "var(--input)",
@@ -54,47 +69,50 @@ const config: Config = {
           border: "var(--sidebar-border)",
           ring: "var(--sidebar-ring)",
         },
-        "chart-1": "var(--chart-1)",
-        "chart-2": "var(--chart-2)",
-        "chart-3": "var(--chart-3)",
-        "chart-4": "var(--chart-4)",
-        "chart-5": "var(--chart-5)",
-        // Dark minimalist palette
-        gray: {
-          50: "#fafafa",
-          100: "#f5f5f5",
-          200: "#e5e5e5",
-          300: "#d4d4d4",
-          400: "#a3a3a3",
-          500: "#737373",
-          600: "#525252",
-          700: "#404040",
-          800: "#262626",
-          900: "#171717",
+        // Graphite Design System - Exact Colors
+        gr: {
+          page: "#0C0C0D",
+          banner: "#1A1A1D",
+          card: "#141416",
+          "card-inner": "#1A1A1E",
+          "card-hover": "#1E1E23",
+          elevated: "#222226",
+          // Text
+          "text-primary": "#F5F5F5",
+          "text-secondary": "#A0A0A8",
+          "text-muted": "#6B6B75",
+          "text-subtle": "#4A4A54",
+          "text-banner": "#C8D5A0",
+          // Brand
+          orange: "#E8713A",
+          "orange-light": "#F09456",
+          "orange-hover": "#F5984F",
+          green: "#22C55E",
+          purple: "#7C5CFC",
+          "yellow-ramp": "#D4E94C",
         },
       },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",
         sm: "calc(var(--radius) - 4px)",
+        // Graphite radius system
+        "gr-sm": "6px",
+        "gr-md": "8px",
+        "gr-lg": "12px",
+        "gr-xl": "16px",
+        "gr-2xl": "20px",
+        "gr-3xl": "24px",
       },
       boxShadow: {
-        // Dark minimal shadow system with subtle white glows
-        glow: "0 0 32px rgba(255, 255, 255, 0.1), 0 0 64px rgba(255, 255, 255, 0.05)",
-        "glow-strong": "0 0 48px rgba(255, 255, 255, 0.15), 0 0 96px rgba(255, 255, 255, 0.08)",
-        "glow-white": "0 0 32px rgba(255, 255, 255, 0.12)",
-        "pro-xs": "0 1px 2px 0 rgba(0, 0, 0, 0.5)",
-        "pro-sm": "0 2px 8px -2px rgba(0, 0, 0, 0.3), 0 4px 16px -4px rgba(0, 0, 0, 0.2)",
-        "pro-md": "0 4px 16px -4px rgba(0, 0, 0, 0.4), 0 8px 24px -8px rgba(0, 0, 0, 0.3)",
-        "pro-lg": "0 8px 32px -8px rgba(0, 0, 0, 0.5), 0 16px 48px -12px rgba(0, 0, 0, 0.4)",
-        "pro-xl": "0 20px 48px -12px rgba(0, 0, 0, 0.6), 0 24px 64px -16px rgba(0, 0, 0, 0.5)",
+        // Graphite shadows
+        "gr-card": "0 4px 12px rgba(0,0,0,0.4)",
+        "gr-elevated": "0 12px 30px rgba(0,0,0,0.5)",
+        "glow-neon": "0 0 40px rgba(255,255,255,0.3), 0 0 80px rgba(255,255,255,0.15)",
+        "glow-orange": "0 0 20px rgba(232,113,58,0.3)",
+        "glow-orange-strong": "0 0 30px rgba(232,113,58,0.4), 0 0 60px rgba(232,113,58,0.2)",
       },
       backgroundImage: {
-        "gradient-primary": "var(--gradient-primary)",
-        "gradient-accent": "var(--gradient-accent)",
-        "gradient-hero": "var(--gradient-hero)",
-        "gradient-success": "var(--gradient-success)",
-        "gradient-mesh": "var(--gradient-mesh)",
         "gradient-radial": "radial-gradient(var(--tw-gradient-stops))",
         "gradient-conic": "conic-gradient(from 180deg at 50% 50%, var(--tw-gradient-stops))",
       },
@@ -107,131 +125,65 @@ const config: Config = {
           from: { height: "var(--radix-accordion-content-height)" },
           to: { height: "0" },
         },
-        // Modern animations
-        shimmerPro: {
-          "0%": { backgroundPosition: "-200% 0" },
-          "100%": { backgroundPosition: "200% 0" },
+        marquee: {
+          "0%": { transform: "translateX(0)" },
+          "100%": { transform: "translateX(-50%)" },
         },
-        pulseGlow: {
-          "0%, 100%": {
-            boxShadow: "0 0 0 0 rgba(255, 255, 255, 0.3)",
-            transform: "scale(1)",
-          },
-          "50%": {
-            boxShadow: "0 0 0 10px rgba(255, 255, 255, 0)",
-            transform: "scale(1.05)",
-          },
+        "marquee-reverse": {
+          "0%": { transform: "translateX(-50%)" },
+          "100%": { transform: "translateX(0)" },
+        },
+        fadeInUp: {
+          from: { opacity: "0", transform: "translateY(20px)" },
+          to: { opacity: "1", transform: "translateY(0)" },
         },
         float: {
           "0%, 100%": { transform: "translateY(0px)" },
           "50%": { transform: "translateY(-12px)" },
         },
-        slideInBottom: {
-          from: {
-            opacity: "0",
-            transform: "translateY(24px)",
+        neonPulse: {
+          "0%, 100%": { 
+            boxShadow: "0 0 20px rgba(255,255,255,0.2), 0 0 40px rgba(255,255,255,0.1)",
+            opacity: "0.9"
           },
-          to: {
-            opacity: "1",
-            transform: "translateY(0)",
-          },
-        },
-        slideInLeft: {
-          from: {
-            opacity: "0",
-            transform: "translateX(-24px)",
-          },
-          to: {
-            opacity: "1",
-            transform: "translateX(0)",
+          "50%": { 
+            boxShadow: "0 0 40px rgba(255,255,255,0.4), 0 0 80px rgba(255,255,255,0.2)",
+            opacity: "1"
           },
         },
-        slideInRight: {
-          from: {
-            opacity: "0",
-            transform: "translateX(24px)",
-          },
-          to: {
-            opacity: "1",
-            transform: "translateX(0)",
-          },
-        },
-        scaleInFade: {
-          from: {
-            opacity: "0",
-            transform: "scale(0.92)",
-          },
-          to: {
-            opacity: "1",
-            transform: "scale(1)",
-          },
-        },
-        fadeInUp: {
-          from: {
-            opacity: "0",
-            transform: "translateY(16px)",
-          },
-          to: {
-            opacity: "1",
-            transform: "translateY(0)",
-          },
-        },
-        spinSmooth: {
-          from: { transform: "rotate(0deg)" },
-          to: { transform: "rotate(360deg)" },
-        },
-        gradientFlow: {
-          "0%": { backgroundPosition: "0% 50%" },
-          "50%": { backgroundPosition: "100% 50%" },
-          "100%": { backgroundPosition: "0% 50%" },
-        },
-        borderGlow: {
-          "0%, 100%": {
-            borderColor: "rgba(255, 255, 255, 0.1)",
-            boxShadow: "0 0 20px rgba(255, 255, 255, 0.05)",
-          },
-          "50%": {
-            borderColor: "rgba(255, 255, 255, 0.2)",
-            boxShadow: "0 0 40px rgba(255, 255, 255, 0.1)",
-          },
-        },
-        glowPulse: {
-          "0%, 100%": {
-            boxShadow: "0 0 20px rgba(255, 255, 255, 0.1), 0 0 40px rgba(255, 255, 255, 0.05)",
-          },
-          "50%": {
-            boxShadow: "0 0 40px rgba(255, 255, 255, 0.15), 0 0 80px rgba(255, 255, 255, 0.08)",
-          },
-        },
-        tiltIn: {
-          from: {
-            transform: "perspective(1000px) rotateX(10deg) rotateY(5deg)",
-            opacity: "0",
-          },
-          to: {
-            transform: "perspective(1000px) rotateX(0) rotateY(0)",
-            opacity: "1",
-          },
+        shimmer: {
+          "0%": { backgroundPosition: "-200% 0" },
+          "100%": { backgroundPosition: "200% 0" },
         },
       },
       animation: {
         "accordion-down": "accordion-down 0.2s ease-out",
         "accordion-up": "accordion-up 0.2s ease-out",
-        // Modern animations
-        shimmerPro: "shimmerPro 2s ease-in-out infinite",
-        "pulse-glow": "pulseGlow 2s ease-in-out infinite",
-        float: "float 3s ease-in-out infinite",
-        "slide-in-bottom": "slideInBottom 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
-        "slide-in-left": "slideInLeft 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
-        "slide-in-right": "slideInRight 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
-        "scale-in-fade": "scaleInFade 0.4s cubic-bezier(0.22, 1, 0.36, 1)",
-        "fade-in-up": "fadeInUp 0.5s cubic-bezier(0.22, 1, 0.36, 1)",
-        "spin-smooth": "spinSmooth 0.6s ease-in-out",
-        "spin-smooth-infinite": "spinSmooth 1s linear infinite",
-        "gradient-flow": "gradientFlow 8s ease infinite",
-        "border-glow": "borderGlow 3s ease-in-out infinite",
-        "glow-pulse": "glowPulse 2s ease-in-out infinite",
-        "tilt-in": "tiltIn 0.6s cubic-bezier(0.22, 1, 0.36, 1)",
+        marquee: "marquee 20s linear infinite",
+        "marquee-reverse": "marquee-reverse 20s linear infinite",
+        "fade-in-up": "fadeInUp 0.5s cubic-bezier(0.4, 0, 0.2, 1) forwards",
+        float: "float 6s ease-in-out infinite",
+        "neon-pulse": "neonPulse 3s ease-in-out infinite",
+        shimmer: "shimmer 2s ease-in-out infinite",
+      },
+      transitionTimingFunction: {
+        "spring": "cubic-bezier(0.34, 1.56, 0.64, 1)",
+        "smooth": "cubic-bezier(0.4, 0, 0.2, 1)",
+      },
+      fontSize: {
+        // Graphite typography
+        "hero": ["52px", { lineHeight: "1.08", letterSpacing: "-0.035em", fontWeight: "800" }],
+        "section": ["40px", { lineHeight: "1.12", letterSpacing: "-0.025em", fontWeight: "700" }],
+        "section-sm": ["34px", { lineHeight: "1.15", letterSpacing: "-0.02em", fontWeight: "700" }],
+        "feature": ["22px", { lineHeight: "1.25", letterSpacing: "-0.015em", fontWeight: "700" }],
+        "card-title": ["18px", { lineHeight: "1.3", letterSpacing: "-0.01em", fontWeight: "700" }],
+      },
+      spacing: {
+        "18": "4.5rem",
+        "22": "5.5rem",
+      },
+      maxWidth: {
+        "8xl": "1280px",
       },
     },
   },

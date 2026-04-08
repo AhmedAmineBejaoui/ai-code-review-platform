@@ -1,6 +1,8 @@
 import { auth } from "@clerk/nextjs/server"
 import { NextResponse, type NextRequest } from "next/server"
 
+export const dynamic = "force-dynamic"
+
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 const BACKEND_FETCH_TIMEOUT_MS = Math.max(

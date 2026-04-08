@@ -2,39 +2,38 @@
 
 import { motion } from "framer-motion"
 import { Zap, Bug, ShieldCheck } from "lucide-react"
-import { Card } from "@/components/ui/card"
 
 const features = [
   {
     icon: Zap,
     title: "Keep velocity high",
     description: "Shorter review cycles, fewer blockers, faster merges.",
-    color: "from-green-400 to-emerald-500",
-    bgColor: "bg-green-50",
-    iconColor: "text-green-600",
+    gradient: "from-green-400 to-emerald-500",
+    glowColor: "rgba(16, 185, 129, 0.15)",
   },
   {
     icon: Bug,
     title: "Kill bugs fast",
     description: "Logic errors and edge cases caught before they create rework.",
-    color: "from-red-400 to-rose-500",
-    bgColor: "bg-red-50",
-    iconColor: "text-red-600",
+    gradient: "from-[#F97316] to-[#EA580C]",
+    glowColor: "rgba(249, 115, 22, 0.15)",
   },
   {
     icon: ShieldCheck,
     title: "Stop vulnerabilities early",
     description: "Security checks from the first line of code to the final merge.",
-    color: "from-blue-400 to-indigo-500",
-    bgColor: "bg-blue-50",
-    iconColor: "text-blue-600",
+    gradient: "from-[#3B82F6] to-[#60A5FA]",
+    glowColor: "rgba(59, 130, 246, 0.15)",
   },
 ]
 
 export function AIEraSection() {
   return (
-    <section className="bg-gradient-to-b from-white to-gray-50 px-6 py-24 sm:py-32 lg:px-8">
-      <div className="mx-auto max-w-7xl">
+    <section className="relative bg-[#0A0A0B] px-6 py-24 sm:py-32 lg:px-8 overflow-hidden">
+      {/* Subtle background gradient */}
+      <div className="absolute inset-0 bg-gradient-to-b from-[#111113] via-[#0A0A0B] to-[#0A0A0B] pointer-events-none" />
+
+      <div className="relative mx-auto max-w-7xl">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
@@ -42,22 +41,22 @@ export function AIEraSection() {
           transition={{ duration: 0.5 }}
           className="text-center"
         >
-          <h2 className="text-3xl font-bold tracking-tight text-gray-900 sm:text-4xl">
-            Code Review for the AI Era
+          <h2 className="text-3xl sm:text-4xl font-bold tracking-[-0.02em] text-[#FAFAFA] mb-4">
+            Code Review for the <span className="text-[#F97316]">AI Era</span>
           </h2>
-          <p className="mx-auto mt-4 max-w-2xl text-lg text-gray-600">
-            Traditional reviews weren&apos;t built for AI-scale code. Sourcery is.
+          <p className="mx-auto max-w-2xl text-lg text-[#A1A1AA] mb-6">
+            Traditional reviews weren&apos;t built for AI-scale code. We are.
           </p>
 
-          {/* Progress Dots */}
+          {/* Progress Dots - Graphite style */}
           <div className="mt-8 flex items-center justify-center gap-2">
-            <div className="h-3 w-3 rounded-full bg-gray-300" />
-            <div className="h-3 w-3 rounded-full bg-green-500" />
-            <div className="h-3 w-3 rounded-full bg-gray-300" />
+            <div className="h-2 w-2 rounded-full bg-[#27272A]" />
+            <div className="h-2 w-2 rounded-full bg-[#F97316] shadow-neon-sm" />
+            <div className="h-2 w-2 rounded-full bg-[#27272A]" />
           </div>
         </motion.div>
 
-        <div className="mt-16 grid gap-8 md:grid-cols-3">
+        <div className="mt-16 grid gap-6 md:grid-cols-3">
           {features.map((feature, index) => {
             const Icon = feature.icon
             return (
@@ -68,19 +67,22 @@ export function AIEraSection() {
                 viewport={{ once: true }}
                 transition={{ duration: 0.5, delay: index * 0.1 }}
               >
-                <Card className="relative h-full overflow-hidden border-none p-8 shadow-lg transition-shadow hover:shadow-xl">
-                  {/* Gradient accent */}
-                  <div className={`absolute left-0 top-0 h-1 w-full bg-gradient-to-r ${feature.color}`} />
+                <div className="group relative h-full overflow-hidden rounded-xl bg-[#18181B] border border-[#27272A] p-6 transition-all duration-300 hover:border-[rgba(249,115,22,0.3)] hover:bg-[#1E1E22]">
+                  {/* Gradient top accent */}
+                  <div className={`absolute left-0 top-0 h-1 w-full bg-gradient-to-r ${feature.gradient}`} />
 
                   <div className="flex flex-col items-center text-center">
-                    <div className={`mb-4 flex h-16 w-16 items-center justify-center rounded-full ${feature.bgColor}`}>
-                      <Icon className={`h-8 w-8 ${feature.iconColor}`} />
+                    {/* Icon container with gradient */}
+                    <div
+                      className={`mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-gradient-to-br ${feature.gradient} shadow-lg`}
+                    >
+                      <Icon className="h-7 w-7 text-white" />
                     </div>
 
-                    <h3 className="mb-3 text-xl font-bold text-gray-900">{feature.title}</h3>
-                    <p className="text-gray-600">{feature.description}</p>
+                    <h3 className="mb-3 text-xl font-bold text-[#FAFAFA]">{feature.title}</h3>
+                    <p className="text-[#A1A1AA] text-sm leading-relaxed">{feature.description}</p>
                   </div>
-                </Card>
+                </div>
               </motion.div>
             )
           })}

@@ -858,6 +858,8 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
   return undefined
 }
 
+export const dynamic = "force-dynamic"
+
 export async function GET(request: NextRequest) {
   const { userId, getToken, sessionClaims } = await auth()
   if (!userId) {
@@ -1122,13 +1124,14 @@ export async function POST(request: NextRequest) {
   }
 
   if (!backendResponse.ok) {
-    // Return the backend error directly for more specific error messages
-    const backendError = parsedBackendBody as any
-    const errorMessage = typeof backendError?.detail === 'string' ? backendError.detail :
-                        typeof backendError?.error === 'string' ? backendError.error :
-                        typeof backendError?.message === 'string' ? backendError.message :
-                        `Backend error (${backendResponse.status})`
-    return NextResponse.json({ error: errorMessage }, { status: backendResponse.status })
+    return NextResponse.json(
+      {
+        error: "Failed to create analysis",
+        backend_status: backendResponse.status,
+        backend_response: parsedBackendBody,
+      },
+      { status: backendResponse.status },
+    )
   }
 
   return NextResponse.json(parsedBackendBody, { status: backendResponse.status })

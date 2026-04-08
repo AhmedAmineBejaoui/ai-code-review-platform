@@ -13,6 +13,9 @@ node_modules/
 testsprite_tests/
 .next/
 
+# Mobile build backups
+.mobile-build-backup/
+
 # Env
 .env
 .env.local
@@ -35,3 +38,5 @@ scans/
 qdrant_storage/
 apps/backend/qdrant_storage/
 .claude/worktrees/silly-shockley
+.claude/worktrees/naughty-ritchie.claude/
+/out
