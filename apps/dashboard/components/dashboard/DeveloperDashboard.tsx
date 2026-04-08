@@ -229,7 +229,13 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           else setShowInsights(false);
         }}
         whileHover={{ backgroundColor: "rgba(39, 39, 42, 0.3)" }}
-        className={`grid grid-cols-[1fr_90px_70px_70px_80px_48px_32px] items-center gap-4 px-5 py-3.5 cursor-pointer transition-colors ${expanded ? "bg-zinc-800/50" : ""}`}
+        className={`
+          /* Mobile: Stack layout */
+          flex flex-col gap-2 px-4 py-3
+          /* Tablet+: Grid layout */
+          md:grid md:grid-cols-[1fr_90px_70px_70px_80px_48px_32px] md:items-center md:gap-4 md:px-5 md:py-3.5
+          cursor-pointer transition-colors ${expanded ? "bg-zinc-800/50" : ""}
+        `}
       >
         {/* Repo info */}
         <div className="flex items-center gap-3 min-w-0">
@@ -264,11 +270,35 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           </div>
         </div>
 
-        {/* Author */}
-        <span className="text-xs text-zinc-500 truncate">{analysis.author}</span>
+        {/* Author - hidden on mobile, shown in tablet+ */}
+        <span className="hidden md:block text-xs text-zinc-500 truncate">{analysis.author}</span>
 
-        {/* Blockers */}
-        <div className="flex items-center gap-1.5">
+        {/* Mobile: Inline stats row */}
+        <div className="flex md:hidden items-center gap-3 flex-wrap">
+          {/* Blockers */}
+          {analysis.blockerCount > 0 ? (
+            <div className="flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded-full">
+              <ShieldAlert className="size-3 text-red-400" />
+              <span className="text-[11px] text-red-400">{analysis.blockerCount}</span>
+            </div>
+          ) : null}
+          {/* Warnings */}
+          {analysis.warnCount > 0 ? (
+            <div className="flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full">
+              <AlertTriangle className="size-3 text-amber-400" />
+              <span className="text-[11px] text-amber-400">{analysis.warnCount}</span>
+            </div>
+          ) : null}
+          {/* Duration */}
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            <Clock className="size-3" />
+            {analysis.durationLabel ?? "—"}
+          </div>
+          <ScoreRing score={score} size={36} />
+        </div>
+
+        {/* Blockers - tablet+ only */}
+        <div className="hidden md:flex items-center gap-1.5">
           {analysis.blockerCount > 0 ? (
             <motion.div
               className="flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded-full"
@@ -283,8 +313,8 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           )}
         </div>
 
-        {/* Warnings */}
-        <div className="flex items-center gap-1.5">
+        {/* Warnings - tablet+ only */}
+        <div className="hidden md:flex items-center gap-1.5">
           {analysis.warnCount > 0 ? (
             <div className="flex items-center gap-1 bg-amber-500/10 px-2 py-0.5 rounded-full">
               <AlertTriangle className="size-3 text-amber-400" />
@@ -295,16 +325,19 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           )}
         </div>
 
-        {/* Duration */}
-        <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+        {/* Duration - tablet+ only */}
+        <div className="hidden md:flex items-center gap-1.5 text-[11px] text-zinc-500">
           <Clock className="size-3" />
           {analysis.durationLabel ?? "—"}
         </div>
 
-        <ScoreRing score={score} />
+        {/* Score ring - tablet+ only (mobile shows inline) */}
+        <div className="hidden md:block">
+          <ScoreRing score={score} />
+        </div>
 
         <motion.div
-          className="flex justify-center"
+          className="hidden md:flex justify-center"
           animate={{ rotate: expanded ? 180 : 0 }}
           transition={{ duration: 0.2 }}
         >
@@ -322,10 +355,10 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="overflow-hidden"
           >
-            <div className="px-5 pb-5 pt-2 bg-zinc-800/30 border-t border-zinc-800/40">
-              <div className="grid grid-cols-12 gap-5 mt-2">
+            <div className="px-4 pb-4 pt-2 md:px-5 md:pb-5 bg-zinc-800/30 border-t border-zinc-800/40">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5 mt-2">
                 {/* AI Analysis panel */}
-                <div className="col-span-7">
+                <div className="lg:col-span-7">
                   <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
                       <div className="size-6 rounded-lg bg-violet-500/20 flex items-center justify-center">
@@ -365,7 +398,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                 </div>
 
                 {/* Stats panel */}
-                <div className="col-span-5 space-y-3">
+                <div className="lg:col-span-5 space-y-3">
                   <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
                       <Code2 className="size-4 text-zinc-500" />
@@ -716,7 +749,7 @@ export function DeveloperDashboard() {
         )}
 
         {/* ── Metrics ── */}
-        <div className="grid grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 3xl:grid-cols-4 gap-3 sm:gap-4">
           {metrics.map((metric, i) => (
             <motion.div
               key={metric.label}
@@ -744,11 +777,11 @@ export function DeveloperDashboard() {
         </div>
 
         {/* ── Charts + Activity ── */}
-        <div className="grid grid-cols-12 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
           {/* Area chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.3, duration: 0.4 }}
-            className="col-span-5 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-5"
+            className="col-span-1 md:col-span-1 lg:col-span-5 3xl:col-span-5 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
             <div className="flex items-center justify-between mb-4">
               <div>
@@ -785,7 +818,7 @@ export function DeveloperDashboard() {
           {/* Pie chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.4, duration: 0.4 }}
-            className="col-span-3 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-5"
+            className="col-span-1 md:col-span-1 lg:col-span-3 3xl:col-span-3 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
             <h3 className="text-sm text-white mb-1">Sévérité</h3>
             <p className="text-[11px] text-zinc-500 mb-2">Répartition des issues</p>
@@ -819,7 +852,7 @@ export function DeveloperDashboard() {
           {/* Live activity feed */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.5, duration: 0.4 }}
-            className="col-span-4 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-5 overflow-hidden"
+            className="col-span-1 md:col-span-2 lg:col-span-4 3xl:col-span-4 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5 overflow-hidden"
           >
             <LiveActivityFeed />
           </motion.div>
@@ -830,7 +863,7 @@ export function DeveloperDashboard() {
           initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.6, duration: 0.4 }}
           className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden"
         >
-          <div className="flex items-center justify-between px-5 py-3.5 border-b border-zinc-800/60">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-zinc-800/60 gap-3 sm:gap-0">
             <div className="flex items-center gap-3">
               <GitPullRequest className="size-4 text-violet-400" />
               <h3 className="text-sm text-white">
@@ -842,9 +875,9 @@ export function DeveloperDashboard() {
                 {insightsLoading ? "..." : filteredRows.length}
               </Badge>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:pb-0">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                <TabsList className="bg-zinc-800/50 h-7">
+                <TabsList className="bg-zinc-800/50 h-7 flex-shrink-0">
                   <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
                   <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✓ Complétés</TabsTrigger>
                   <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">◌ En cours</TabsTrigger>
@@ -859,8 +892,8 @@ export function DeveloperDashboard() {
             </div>
           </div>
 
-          {/* Table header */}
-          <div className="grid grid-cols-[1fr_90px_70px_70px_80px_48px_32px] items-center gap-4 px-5 py-2 text-[10px] text-zinc-600 uppercase tracking-widest border-b border-zinc-800/30">
+          {/* Table header - hidden on mobile */}
+          <div className="hidden md:grid grid-cols-[1fr_90px_70px_70px_80px_48px_32px] items-center gap-4 px-5 py-2 text-[10px] text-zinc-600 uppercase tracking-widest border-b border-zinc-800/30">
             <span>Repository / Commit</span>
             <span>Auteur</span>
             <span>Bloquants</span>

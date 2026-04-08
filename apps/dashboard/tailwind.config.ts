@@ -9,6 +9,17 @@ const config: Config = {
     "./data/**/*.{ts,tsx}",
   ],
   theme: {
+    // Custom breakpoints for all screen sizes
+    screens: {
+      'xs': '375px',      // Small smartphones
+      'sm': '640px',      // Large smartphones / small tablets
+      'md': '768px',      // Tablets portrait
+      'lg': '1024px',     // Tablets landscape / small laptops
+      'xl': '1280px',     // Desktops
+      '2xl': '1536px',    // Large desktops
+      '3xl': '1920px',    // Full HD TVs / large monitors
+      '4xl': '2560px',    // 2K/QHD TVs / ultra-wide monitors
+    },
     extend: {
       fontFamily: {
         sans: ['Inter', '-apple-system', 'BlinkMacSystemFont', 'Segoe UI', 'sans-serif'],

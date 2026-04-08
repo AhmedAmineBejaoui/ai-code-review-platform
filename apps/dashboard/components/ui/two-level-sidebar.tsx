@@ -1146,7 +1146,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
+    <div className="min-h-screen bg-background text-foreground flex">
       {/* Mobile Menu Overlay */}
       {(isMobileMenuOpen || isMobileDetailOpen) && (
         <div
@@ -1158,9 +1158,15 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Mobile Icon Navigation - Fixed overlay */}
+      {/* Desktop: Fixed left sidebars | Mobile: Slide-in overlays */}
+      
+      {/* Icon Navigation */}
       <div className={cn(
-        "fixed left-0 top-0 z-50 h-screen w-16 bg-sidebar border-r border-sidebar-border md:relative md:z-auto transition-transform duration-300 md:translate-x-0",
+        // Mobile: fixed overlay, slide from left
+        "fixed left-0 top-0 z-50 h-screen w-16 bg-sidebar border-r border-sidebar-border transition-transform duration-300",
+        // Desktop: static in flex layout
+        "md:relative md:z-auto md:flex-shrink-0",
+        // Mobile visibility
         isMobileMenuOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         <IconNavigation
@@ -1171,10 +1177,14 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         />
       </div>
 
-      {/* Mobile Detail Sidebar - Slide in overlay */}
+      {/* Detail Sidebar */}
       <div className={cn(
-        "fixed left-16 top-0 z-50 h-screen w-64 bg-sidebar border-r border-sidebar-border md:relative md:left-16 md:z-auto transition-transform duration-300 md:translate-x-0",
-        isMobileDetailOpen ? "translate-x-0" : "translate-x-full md:translate-x-0"
+        // Mobile: fixed overlay, slide from left (positioned after icon nav)
+        "fixed left-16 top-0 z-50 h-screen w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300",
+        // Desktop: static in flex layout
+        "md:relative md:left-0 md:z-auto md:flex-shrink-0",
+        // Mobile visibility
+        isMobileDetailOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"
       )}>
         <DetailSidebar
           activeSection={activeSection}
@@ -1184,13 +1194,13 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
           pendingReviewsCount={pendingReviewsCount}
           overdueCount={overdueCount}
           currentUser={currentUser}
-          isMobile={true}
+          isMobile={!isMobileDetailOpen}
           onBack={handleBackToIconNav}
         />
       </div>
 
-      {/* Main Content */}
-      <div className="md:ml-80 transition-all duration-300">
+      {/* Main Content Area */}
+      <div className="flex-1 flex flex-col min-w-0">
         {/* Mobile Header */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-4 shadow-pro-sm md:hidden">
           <button
@@ -1224,7 +1234,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main content */}
-        <main className="mx-auto w-full max-w-[1200px] p-4 md:p-8 min-h-[calc(100vh-4rem)] md:min-h-[calc(100vh-4.5rem)]">
+        <main className="flex-1 mx-auto w-full max-w-[1200px] p-4 md:p-8">
           <div className="animate-fade-in-up">{children}</div>
         </main>
       </div>

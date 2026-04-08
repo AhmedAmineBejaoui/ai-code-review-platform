@@ -597,3 +597,79 @@ input, textarea, [contenteditable="true"], .selectable {
     border-radius: 8px; /* Slightly more rounded for touch */
   }
 }
+
+/* ============================================
+   TV / LARGE SCREEN STYLES (1920px+)
+   ============================================ */
+
+/* 3xl breakpoint - Full HD TVs / large monitors */
+@media screen and (min-width: 1920px) {
+  html { font-size: 18px; }
+  
+  .hero-title {
+    font-size: 72px;
+  }
+  
+  .section-title {
+    font-size: 52px;
+  }
+  
+  .feature-title {
+    font-size: 28px;
+  }
+  
+  .card-heading {
+    font-size: 22px;
+  }
+  
+  .body-text {
+    font-size: 18px;
+  }
+  
+  /* Enhanced spacing for TV viewing distance */
+  .tv-spacing {
+    padding: 3rem;
+  }
+  
+  /* Larger touch targets for TV remotes/controllers */
+  button, [role="button"], .clickable {
+    min-height: 56px;
+    min-width: 56px;
+  }
+}
+
+/* 4xl breakpoint - 2K/QHD TVs / ultra-wide monitors */
+@media screen and (min-width: 2560px) {
+  html { font-size: 20px; }
+  
+  .hero-title {
+    font-size: 96px;
+  }
+  
+  .section-title {
+    font-size: 64px;
+  }
+  
+  .feature-title {
+    font-size: 32px;
+  }
+  
+  .card-heading {
+    font-size: 26px;
+  }
+  
+  .body-text {
+    font-size: 20px;
+  }
+  
+  /* Extra spacing for ultra-wide viewing */
+  .tv-spacing {
+    padding: 4rem;
+  }
+  
+  /* Even larger targets for 4K displays */
+  button, [role="button"], .clickable {
+    min-height: 64px;
+    min-width: 64px;
+  }
+}

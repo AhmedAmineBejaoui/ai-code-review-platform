@@ -185,7 +185,7 @@ export function CommandPalette({ isOpen, onClose, onCommand }: CommandPalettePro
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: -20 }}
             transition={{ duration: 0.2, ease: [0.4, 0, 0.2, 1] }}
-            className="fixed top-[20%] left-1/2 -translate-x-1/2 w-[560px] bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
+            className="fixed top-[20%] left-1/2 -translate-x-1/2 w-[calc(100vw-2rem)] sm:w-[480px] md:w-[560px] max-w-[560px] bg-zinc-900 border border-zinc-700/60 rounded-2xl shadow-2xl shadow-black/50 z-50 overflow-hidden"
           >
             {/* Search Input */}
             <div className="flex items-center gap-3 px-4 h-12 border-b border-zinc-800">

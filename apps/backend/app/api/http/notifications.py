@@ -50,13 +50,18 @@ async def get_notifications(
     unread_only: bool = Query(False, description="Filter to unread notifications only"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of notifications to return"),
     offset: int = Query(0, ge=0, description="Number of notifications to skip"),
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> NotificationsListResponse:
     """
     Get notifications for the current user.
 
     Returns a list of notifications ordered by creation date (most recent first).
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     notifications = await service.get_user_notifications(
         user_id=principal.user_id,
@@ -86,11 +91,16 @@ async def get_notifications(
 
 @router.get("/unread-count", response_model=UnreadCountResponse)
 async def get_unread_count(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> UnreadCountResponse:
     """
     Get the count of unread notifications for the current user.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     notifications = await service.get_user_notifications(
         user_id=principal.user_id,
@@ -104,7 +114,7 @@ async def get_unread_count(
 @router.post("/mark-read", response_model=MarkReadResponse)
 async def mark_notifications_read(
     request: MarkReadRequest,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> MarkReadResponse:
     """
     Mark specific notifications as read.
@@ -112,6 +122,11 @@ async def mark_notifications_read(
     If notification_ids is provided, only those notifications will be marked as read.
     If notification_ids is None or empty, all notifications for the user will be marked as read.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     success = await service.mark_notifications_read(
         user_id=principal.user_id,
@@ -126,11 +141,16 @@ async def mark_notifications_read(
 
 @router.post("/mark-all-read", response_model=MarkReadResponse)
 async def mark_all_notifications_read(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> MarkReadResponse:
     """
     Mark all notifications for the current user as read.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     success = await service.mark_notifications_read(
         user_id=principal.user_id,
@@ -146,11 +166,16 @@ async def mark_all_notifications_read(
 @router.patch("/{notification_id}/read", response_model=MarkReadResponse)
 async def mark_notification_read(
     notification_id: str,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> MarkReadResponse:
     """
     Mark a single notification as read.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     success = await service.mark_notifications_read(
         user_id=principal.user_id,
@@ -166,12 +191,17 @@ async def mark_notification_read(
 @router.patch("/{notification_id}/archive")
 async def archive_notification(
     notification_id: str,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ):
     """
     Archive a notification (mark as read and hide from default view).
     For now, we just mark it as read. Future enhancement: add archived status.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     service = NotificationService()
     success = await service.mark_notifications_read(
         user_id=principal.user_id,
@@ -184,11 +214,16 @@ async def archive_notification(
 @router.delete("/{notification_id}")
 async def delete_notification(
     notification_id: str,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ):
     """
     Delete a specific notification.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     from sqlalchemy import text
     from app.data.database import get_engine
     
@@ -218,11 +253,16 @@ async def delete_notification(
 
 @router.delete("")
 async def delete_all_notifications(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ):
     """
     Delete all notifications for the current user.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     from sqlalchemy import text
     from app.data.database import get_engine
     
@@ -239,11 +279,16 @@ async def delete_all_notifications(
 
 @router.post("/read-all", response_model=MarkReadResponse)
 async def mark_all_read_alternative(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> MarkReadResponse:
     """
     Alternative endpoint for marking all as read (for frontend compatibility).
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     return await mark_all_notifications_read(principal)
 
 
@@ -310,11 +355,16 @@ DEFAULT_NOTIFICATION_PREFERENCES = {
 
 @router.get("/preferences", response_model=NotificationPreferencesResponse)
 async def get_notification_preferences(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> NotificationPreferencesResponse:
     """
     Get notification preferences for the current user.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     from sqlalchemy import text
     from app.data.database import get_engine
     import json
@@ -348,11 +398,16 @@ async def get_notification_preferences(
 @router.put("/preferences")
 async def update_notification_preferences(
     request: NotificationPreferencesRequest,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ):
     """
     Update notification preferences for the current user.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     from sqlalchemy import text
     from app.data.database import get_engine
     import json
@@ -412,11 +467,16 @@ async def update_notification_preferences(
 
 @router.post("/preferences/reset")
 async def reset_notification_preferences(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ):
     """
     Reset notification preferences to defaults for the current user.
     """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
     from sqlalchemy import text
     from app.data.database import get_engine
     import json

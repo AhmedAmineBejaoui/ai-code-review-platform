@@ -80,18 +80,18 @@ export function AuthShell({ children, mode }: AuthShellProps) {
             ))}
           </div>
 
-          <div className="relative z-10 max-w-[640px] px-10 text-center">
+          <div className="relative z-10 w-full max-w-[640px] px-6 lg:px-10 text-center">
             <motion.p
               initial={{ opacity: 0, y: 18 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.15, duration: 0.52 }}
-              className="text-balance text-[56px] font-semibold leading-[1.08] tracking-tight text-slate-800"
+              className="text-balance text-3xl lg:text-4xl xl:text-[56px] font-semibold leading-[1.08] tracking-tight text-slate-800"
             >
               Review Code Faster And Ship Safer With{" "}
               <span className="text-[#2f80ed]">TrustReview!</span>
             </motion.p>
 
-            <div className="relative mx-auto mt-12 h-[360px] w-full max-w-[560px]">
+            <div className="relative mx-auto mt-8 lg:mt-12 h-[280px] sm:h-[320px] lg:h-[360px] w-full max-w-[560px]">
               <div className="pointer-events-none absolute inset-x-16 bottom-5 h-10 rounded-full bg-slate-900/10 blur-2xl" />
 
               <motion.div
