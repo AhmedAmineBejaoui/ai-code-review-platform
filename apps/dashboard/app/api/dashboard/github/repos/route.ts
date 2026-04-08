@@ -89,7 +89,8 @@ function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccou
       continue
     }
     const provider = (account as { provider?: unknown }).provider
-    if (provider !== "github" && provider !== "oauth_github") {
+    // Match any GitHub provider variant (github, oauth_github, oauth2_github, etc.)
+    if (typeof provider !== "string" || !provider.toLowerCase().includes("github")) {
       continue
     }
     connected = true
@@ -186,11 +187,15 @@ async function fetchGithubRepos(
   return { items, error: null }
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
+
+  const { searchParams } = new URL(request.url)
+  const customAccount = searchParams.get("account")?.trim() || null
+  const accountType = searchParams.get("type") === "org" ? "org" : "user"
 
   const client = await clerkClient()
   const [user, oauthToken] = await Promise.all([
@@ -198,6 +203,25 @@ export async function GET() {
     resolveGithubOauthAccessToken(client, userId),
   ])
   const githubAccount = extractGithubExternalAccountInfo(user)
+
+  // If a custom account is requested, fetch its public repos regardless of OAuth
+  if (customAccount) {
+    const endpoint =
+      accountType === "org"
+        ? (page: number) =>
+            `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=public`
+        : (page: number) =>
+            `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`
+    const reposResult = await fetchGithubRepos(oauthToken, endpoint)
+    return NextResponse.json(
+      {
+        connected: oauthToken !== null || githubAccount.connected,
+        items: reposResult.items,
+        error: reposResult.error,
+      },
+      { status: 200 },
+    )
+  }
 
   if (oauthToken) {
     const reposResult = await fetchGithubRepos(
