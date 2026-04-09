@@ -628,6 +628,10 @@ export function DeveloperDashboard() {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           repo: normalizedRepo,
+          // project_id matches the convention in /api/v1/repositories/import-full
+          // where project_id = lower(full_name). If the repo hasn't been imported
+          // yet, the backend will return a clear "project not found" error.
+          project_id: normalizedRepo.toLowerCase(),
           pr_number: parsedPrNumber,
           commit_sha: normalizedCommitSha.length > 0 ? normalizedCommitSha : null,
           diff_text: normalizedDiff.length > 0 ? normalizedDiff : null,
