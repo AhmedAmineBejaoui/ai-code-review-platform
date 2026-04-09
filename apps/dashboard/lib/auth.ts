@@ -68,8 +68,8 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
   const baseRole = metadataRole !== "developer" ? metadataRole : claimsRole
   const primaryEmailAddressId = user?.primaryEmailAddressId
   const primaryEmail =
-    user?.emailAddresses.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+    user?.emailAddresses?.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress
 
   const name =
     firstString(

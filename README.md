@@ -4,27 +4,55 @@ Plateforme de revue de code automatisÃ©e orientÃ©e sÃ©curitÃ© et qualit�
 
 ---
 
-## Table des matiÃ¨res
+## ⚡ Quick Start - Dashboard Analytics & Teams
+
+**New**: Dashboard pages for statistics, teams, and organization are now fully implemented with real data integration!
+
+- 📊 **Statistics Dashboard**: `/dashboard/statistics` - Code quality, velocity, and team metrics
+- 👥 **Teams Management**: `/dashboard/teams` - Team members, invitations, and settings  
+- 🏢 **Organization**: `/dashboard/organization` - GitHub organization and repository data
+
+**Getting started**:
+```bash
+# 1. Seed sample data
+cd apps/backend
+poetry run python scripts/seed_sample_data.py
+
+# 2. Start backend
+poetry run uvicorn app.main:app --reload
+
+# 3. Start frontend (in another terminal)
+cd apps/dashboard
+npm run dev
+
+# 4. Visit http://localhost:3000/dashboard/statistics
+```
+
+📖 **Documentation**: See [`IMPLEMENTATION_GUIDE.md`](./IMPLEMENTATION_GUIDE.md) and [`DASHBOARD_IMPLEMENTATION_SUMMARY.md`](./DASHBOARD_IMPLEMENTATION_SUMMARY.md)
+
+---
+
+## Table des matières
 
 1. [Vue d'ensemble](#1-vue-densemble)
 2. [Documentation utilisateur](#2-documentation-utilisateur)
 3. [Documentation technique](#3-documentation-technique)
-4. [SchÃ©mas high-level](#4-schÃ©mas-high-level)
+4. [Schémas high-level](#4-schémas-high-level)
 5. [Structure du projet](#5-structure-du-projet)
-6. [PrÃ©requis](#6-prÃ©requis)
+6. [Prérequis](#6-prérequis)
 7. [Configuration `.env`](#7-configuration-env)
-8. [ExÃ©cution en local avec Docker (recommandÃ©)](#8-exÃ©cution-en-local-avec-docker-recommandÃ©)
-9. [ExÃ©cution locale hybride (API/Worker sur host)](#9-exÃ©cution-locale-hybride-apiworker-sur-host)
+8. [Exécution en local avec Docker (recommandé)](#8-exécution-en-local-avec-docker-recommandé)
+9. [Exécution locale hybride (API/Worker sur host)](#9-exécution-locale-hybride-apiworker-sur-host)
 10. [Dashboard et prototypage](#10-dashboard-et-prototypage)
-11. [Commandes complÃ¨tes](#11-commandes-complÃ¨tes)
+11. [Commandes complètes](#11-commandes-complètes)
 12. [API HTTP (contrat d'usage)](#12-api-http-contrat-dusage)
-13. [Migrations base de donnÃ©es](#13-migrations-base-de-donnÃ©es)
-14. [Tests, qualitÃ© et CI/CD](#14-tests-qualitÃ©-et-cicd)
-15. [ObservabilitÃ© et supervision](#15-observabilitÃ©-et-supervision)
-16. [DÃ©ploiement cloud](#16-dÃ©ploiement-cloud)
+13. [Migrations base de données](#13-migrations-base-de-données)
+14. [Tests, qualité et CI/CD](#14-tests-qualité-et-cicd)
+15. [Observabilité et supervision](#15-observabilité-et-supervision)
+16. [Déploiement cloud](#16-déploiement-cloud)
 17. [Troubleshooting (Windows/Linux)](#17-troubleshooting-windowslinux)
-18. [SÃ©curitÃ©](#18-sÃ©curitÃ©)
-19. [Ã‰tat courant des modules](#19-Ã©tat-courant-des-modules)
+18. [Sécurité](#18-sécurité)
+19. [État courant des modules](#19-état-courant-des-modules)
 20. [RepoContext](#20-repocontext-onboarding-initial--diff-context)
 21. [Architecture RAG cible](#21-architecture-rag-cible-hybrid-rag--re-rank--router-leger)
 

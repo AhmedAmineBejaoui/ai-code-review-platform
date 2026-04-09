@@ -378,7 +378,7 @@ async def create_project(
     
     # Add additional members
     for member in request.members:
-        if member.user_id != principal.user_id:  # Skip if already added
+        if member is not None and member.user_id != principal.user_id:  # Skip if already added
             try:
                 rbac_repo.assign_project_role(
                     user_id=member.user_id,

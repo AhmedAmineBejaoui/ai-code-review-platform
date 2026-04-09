@@ -297,7 +297,8 @@ export default function ProjectsPage() {
       
       // Try to fetch from API with cache-busting timestamp
       const timestamp = Date.now()
-      const response = await fetch(`/api/v1/projects?_t=${timestamp}`, {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+      const response = await fetch(`${backendUrl}/api/v1/projects?_t=${timestamp}`, {
         cache: 'no-store' // Disable browser caching
       })
       if (response.ok) {

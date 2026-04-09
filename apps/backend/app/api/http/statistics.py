@@ -103,53 +103,72 @@ def _compute_quality_metrics(engine, start: datetime, end: datetime) -> QualityM
     """Compute quality metrics for the given time range."""
     from sqlalchemy import text
     
-    # Get findings statistics
-    findings_query = text("""
+    # First get findings aggregated by severity and category
+    findings_agg_query = text("""
         SELECT 
-            COUNT(*) as total_findings,
-            SUM(CASE WHEN severity = 'BLOCKER' THEN 1 ELSE 0 END) as blocker_count,
-            SUM(CASE WHEN severity = 'WARN' THEN 1 ELSE 0 END) as critical_count,
-            SUM(CASE WHEN severity = 'INFO' THEN 1 ELSE 0 END) as minor_count,
-            category,
-            COUNT(*) as category_count
+            f.severity,
+            f.category,
+            COUNT(*) as count
         FROM findings f
         JOIN analyses a ON f.analysis_id = a.id
         WHERE a.created_at BETWEEN :start AND :end
-        GROUP BY category
+        GROUP BY f.severity, f.category
     """)
     
     total_findings = 0
     blocker_count = 0
     critical_count = 0
+    major_count = 0
     minor_count = 0
     findings_by_category: dict[str, int] = {}
     
-    with engine.connect() as conn:
-        result = conn.execute(findings_query, {"start": start, "end": end})
-        rows = result.mappings().all()
-        
-        for row in rows:
-            category = row.get("category") or "other"
-            count = row.get("category_count") or 0
-            findings_by_category[category] = count
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(findings_agg_query, {"start": start, "end": end})
+            rows = result.mappings().all()
             
-            total_findings += count
-            blocker_count += row.get("blocker_count") or 0
-            critical_count += row.get("critical_count") or 0
-            minor_count += row.get("minor_count") or 0
+            for row in rows:
+                category = row.get("category") or "other"
+                severity = row.get("severity") or "INFO"
+                count = row.get("count") or 0
+                
+                # Update category count
+                findings_by_category[category] = findings_by_category.get(category, 0) + count
+                
+                # Update severity counts
+                total_findings += count
+                if severity == "BLOCKER":
+                    blocker_count += count
+                elif severity in ("CRITICAL", "WARN"):
+                    critical_count += count
+                elif severity == "MAJOR":
+                    major_count += count
+                else:  # INFO and others
+                    minor_count += count
+    except Exception:
+        # Table might not exist or be empty
+        pass
     
     # Compute scores (simplified scoring model)
     if total_findings == 0:
         overall_score = 100.0
         security_score = 100.0
+        maintainability_score = 100.0
+        reliability_score = 100.0
     else:
         # Penalty based on findings severity
-        penalty = (blocker_count * 10 + critical_count * 5 + minor_count * 1)
+        penalty = (blocker_count * 10 + critical_count * 5 + major_count * 2 + minor_count * 1)
         overall_score = max(0, 100 - min(penalty, 100))
         
         security_findings = findings_by_category.get("security", 0)
         security_penalty = security_findings * 15
         security_score = max(0, 100 - min(security_penalty, 100))
+        
+        maintainability_findings = findings_by_category.get("maintainability", 0) + findings_by_category.get("style", 0)
+        maintainability_score = max(0, 100 - maintainability_findings * 2)
+        
+        reliability_findings = findings_by_category.get("reliability", 0)
+        reliability_score = max(0, 100 - reliability_findings * 3)
     
     # Get trend data
     trend_query = text("""
@@ -164,23 +183,26 @@ def _compute_quality_metrics(engine, start: datetime, end: datetime) -> QualityM
     """)
     
     trend: list[TrendDataPoint] = []
-    with engine.connect() as conn:
-        result = conn.execute(trend_query, {"start": start, "end": end})
-        for row in result.mappings():
-            trend.append(TrendDataPoint(
-                date=row["date"].isoformat() if row.get("date") else "",
-                value=float(row.get("finding_count") or 0)
-            ))
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(trend_query, {"start": start, "end": end})
+            for row in result.mappings():
+                trend.append(TrendDataPoint(
+                    date=row["date"].isoformat() if row.get("date") else "",
+                    value=float(row.get("finding_count") or 0)
+                ))
+    except Exception:
+        pass
     
     return QualityMetrics(
         overall_score=overall_score,
         security_score=security_score,
-        maintainability_score=max(0, 100 - findings_by_category.get("maintainability", 0) * 2),
-        reliability_score=max(0, 100 - findings_by_category.get("reliability", 0) * 3),
+        maintainability_score=maintainability_score,
+        reliability_score=reliability_score,
         total_findings=total_findings,
         blocker_count=blocker_count,
         critical_count=critical_count,
-        major_count=0,  # Not tracked separately
+        major_count=major_count,
         minor_count=minor_count,
         findings_by_category=findings_by_category,
         trend=trend,
@@ -207,45 +229,47 @@ def _compute_velocity_metrics(engine, start: datetime, end: datetime) -> Velocit
     failed = 0
     avg_time_hours = 0.0
     
-    with engine.connect() as conn:
-        result = conn.execute(analyses_query, {"start": start, "end": end})
-        row = result.mappings().first()
-        
-        if row:
-            total_analyses = row.get("total_analyses") or 0
-            completed = row.get("completed") or 0
-            failed = row.get("failed") or 0
-            avg_time_hours = float(row.get("avg_time_hours") or 0)
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(analyses_query, {"start": start, "end": end})
+            row = result.mappings().first()
+            
+            if row:
+                total_analyses = row.get("total_analyses") or 0
+                completed = row.get("completed") or 0
+                failed = row.get("failed") or 0
+                avg_time_hours = float(row.get("avg_time_hours") or 0)
+    except Exception:
+        pass
     
-    # Get review statistics
-    reviews_query = text("""
-        SELECT 
-            COUNT(*) as total_reviews,
-            AVG(EXTRACT(EPOCH FROM (completed_at - assigned_at)) / 3600) as avg_review_time
-        FROM review_assignments
-        WHERE assigned_at BETWEEN :start AND :end
-        AND status = 'completed'
-    """)
-    
+    # Get review statistics (if table exists)
     total_reviews = 0
     avg_review_time = 0.0
     
-    with engine.connect() as conn:
-        try:
+    reviews_query = text("""
+        SELECT 
+            COUNT(*) as total_reviews,
+            AVG(EXTRACT(EPOCH FROM (COALESCE(completed_at, NOW()) - assigned_at)) / 3600) as avg_review_time
+        FROM review_assignments
+        WHERE assigned_at BETWEEN :start AND :end
+    """)
+    
+    try:
+        with engine.connect() as conn:
             result = conn.execute(reviews_query, {"start": start, "end": end})
             row = result.mappings().first()
             
             if row:
                 total_reviews = row.get("total_reviews") or 0
                 avg_review_time = float(row.get("avg_review_time") or 0)
-        except Exception:
-            # Table might not exist
-            pass
+    except Exception:
+        # Table might not exist
+        pass
     
     # Calculate daily rates
     days = max(1, (end - start).days)
-    analyses_per_day = total_analyses / days
-    reviews_per_day = total_reviews / days
+    analyses_per_day = total_analyses / days if days > 0 else 0
+    reviews_per_day = total_reviews / days if days > 0 else 0
     
     # Get trend data
     trend_query = text("""
@@ -259,17 +283,20 @@ def _compute_velocity_metrics(engine, start: datetime, end: datetime) -> Velocit
     """)
     
     trend: list[TrendDataPoint] = []
-    with engine.connect() as conn:
-        result = conn.execute(trend_query, {"start": start, "end": end})
-        for row in result.mappings():
-            trend.append(TrendDataPoint(
-                date=row["date"].isoformat() if row.get("date") else "",
-                value=float(row.get("analysis_count") or 0)
-            ))
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(trend_query, {"start": start, "end": end})
+            for row in result.mappings():
+                trend.append(TrendDataPoint(
+                    date=row["date"].isoformat() if row.get("date") else "",
+                    value=float(row.get("analysis_count") or 0)
+                ))
+    except Exception:
+        pass
     
     return VelocityMetrics(
         avg_review_time_hours=avg_review_time,
-        avg_time_to_first_review_hours=avg_review_time * 0.3,  # Estimated
+        avg_time_to_first_review_hours=max(0, avg_review_time * 0.3),
         reviews_per_day=reviews_per_day,
         analyses_per_day=analyses_per_day,
         total_reviews=total_reviews,
@@ -295,13 +322,16 @@ def _compute_team_metrics(engine, start: datetime, end: datetime) -> TeamMetrics
     total_users = 0
     active_users = 0
     
-    with engine.connect() as conn:
-        result = conn.execute(users_query)
-        row = result.mappings().first()
-        
-        if row:
-            total_users = row.get("total_users") or 0
-            active_users = row.get("active_users") or 0
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(users_query)
+            row = result.mappings().first()
+            
+            if row:
+                total_users = row.get("total_users") or 0
+                active_users = row.get("active_users") or 0
+    except Exception:
+        pass
     
     # Get reviews by reviewer
     reviews_by_reviewer: dict[str, int] = {}
@@ -318,8 +348,8 @@ def _compute_team_metrics(engine, start: datetime, end: datetime) -> TeamMetrics
         LIMIT 10
     """)
     
-    with engine.connect() as conn:
-        try:
+    try:
+        with engine.connect() as conn:
             result = conn.execute(reviews_query, {"start": start, "end": end})
             for row in result.mappings():
                 reviewer_id = row.get("reviewer_id") or "unknown"
@@ -329,13 +359,13 @@ def _compute_team_metrics(engine, start: datetime, end: datetime) -> TeamMetrics
                     "reviewer_id": reviewer_id,
                     "review_count": count,
                 })
-        except Exception:
-            # Table might not exist
-            pass
+    except Exception:
+        # Table might not exist
+        pass
     
     # Calculate averages
     active_reviewers = len(reviews_by_reviewer)
-    avg_reviews = sum(reviews_by_reviewer.values()) / max(1, active_reviewers)
+    avg_reviews = sum(reviews_by_reviewer.values()) / max(1, active_reviewers) if active_reviewers > 0 else 0
     
     # Identify bottlenecks (reviewers with many pending assignments)
     bottlenecks: list[dict[str, Any]] = []
@@ -345,23 +375,23 @@ def _compute_team_metrics(engine, start: datetime, end: datetime) -> TeamMetrics
             reviewer_id,
             COUNT(*) as pending_count
         FROM review_assignments
-        WHERE status = 'pending'
+        WHERE status IN ('pending', 'in_progress')
         GROUP BY reviewer_id
         HAVING COUNT(*) > 3
         ORDER BY pending_count DESC
         LIMIT 5
     """)
     
-    with engine.connect() as conn:
-        try:
+    try:
+        with engine.connect() as conn:
             result = conn.execute(bottleneck_query)
             for row in result.mappings():
                 bottlenecks.append({
                     "reviewer_id": row.get("reviewer_id"),
                     "pending_reviews": row.get("pending_count"),
                 })
-        except Exception:
-            pass
+    except Exception:
+        pass
     
     return TeamMetrics(
         active_reviewers=active_reviewers,

@@ -181,14 +181,14 @@ def _get_team_metrics(engine, team_id: str) -> dict[str, Any]:
         SELECT 
             COUNT(*) as total_reviews,
             SUM(CASE WHEN ra.status = 'pending' OR ra.status = 'in_progress' THEN 1 ELSE 0 END) as active_reviews,
-            AVG(EXTRACT(EPOCH FROM (ra.completed_at - ra.assigned_at)) / 3600) as avg_time_hours
+            AVG(EXTRACT(EPOCH FROM (COALESCE(ra.completed_at, NOW()) - ra.assigned_at)) / 3600) as avg_time_hours
         FROM review_assignments ra
         JOIN organization_memberships om ON ra.reviewer_id = om.user_id
         WHERE om.organization_id = :team_id
     """)
     
-    with engine.connect() as conn:
-        try:
+    try:
+        with engine.connect() as conn:
             result = conn.execute(query, {"team_id": team_id})
             row = result.mappings().first()
             
@@ -198,9 +198,9 @@ def _get_team_metrics(engine, team_id: str) -> dict[str, Any]:
                     "active_reviews": row.get("active_reviews") or 0,
                     "avg_review_time_hours": float(row["avg_time_hours"]) if row.get("avg_time_hours") else None,
                 }
-        except Exception:
-            # Table might not exist
-            pass
+    except Exception:
+        # Table might not exist
+        pass
     
     return {
         "total_reviews": 0,
@@ -501,3 +501,92 @@ async def remove_team_member(
             "user_id": user_id,
             "updated_at": datetime.now(timezone.utc),
         })
+
+
+class OrganizationResponse(BaseModel):
+    """Organization (GitHub) response model."""
+    model_config = ConfigDict(extra="forbid")
+    
+    id: str
+    name: str
+    slug: str | None
+    description: str | None = None
+    
+    repos_count: int = 0
+    members_count: int = 0
+    teams_count: int = 0
+    
+    created_at: str
+    updated_at: str
+
+
+@router.get("/organization", response_model=OrganizationResponse)
+async def get_organization(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> OrganizationResponse:
+    """
+    Get the primary organization for the current user.
+    
+    Returns the user's primary organization with repos, members, and team counts.
+    """
+    enforce_permission(principal, "analyses.read")
+    
+    engine = get_engine()
+    from sqlalchemy import text
+    
+    # Get user's primary organization (first one they're a member of)
+    org_query = text("""
+        SELECT 
+            o.id,
+            o.name,
+            o.slug,
+            o.created_at,
+            o.updated_at,
+            COUNT(DISTINCT om.user_id) as members_count,
+            COUNT(DISTINCT r.id) as repos_count
+        FROM organizations o
+        LEFT JOIN organization_memberships om ON o.id = om.organization_id AND om.status = 'active'
+        LEFT JOIN repositories r ON o.id = r.organization_id
+        WHERE o.is_active = true
+        AND (
+            o.id IN (SELECT organization_id FROM organization_memberships WHERE user_id = :user_id AND status = 'active')
+            OR EXISTS (SELECT 1 FROM organization_memberships WHERE organization_id = o.id LIMIT 1)
+        )
+        GROUP BY o.id, o.name, o.slug, o.created_at, o.updated_at
+        ORDER BY o.created_at DESC
+        LIMIT 1
+    """)
+    
+    try:
+        with engine.connect() as conn:
+            result = conn.execute(org_query, {"user_id": principal.user_id})
+            row = result.mappings().first()
+            
+            if row:
+                return OrganizationResponse(
+                    id=row["id"],
+                    name=row["name"],
+                    slug=row.get("slug"),
+                    description=None,
+                    repos_count=row.get("repos_count") or 0,
+                    members_count=row.get("members_count") or 0,
+                    teams_count=1,  # Default to 1
+                    created_at=row["created_at"].isoformat() if isinstance(row.get("created_at"), datetime) else str(row.get("created_at", "")),
+                    updated_at=row["updated_at"].isoformat() if isinstance(row.get("updated_at"), datetime) else str(row.get("updated_at", "")),
+                )
+    except Exception:
+        pass
+    
+    # Return empty org if none found
+    now = datetime.now(timezone.utc)
+    return OrganizationResponse(
+        id="default",
+        name="Default Organization",
+        slug="default",
+        description=None,
+        repos_count=0,
+        members_count=0,
+        teams_count=0,
+        created_at=now.isoformat(),
+        updated_at=now.isoformat(),
+    )

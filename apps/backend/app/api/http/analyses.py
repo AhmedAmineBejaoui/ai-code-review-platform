@@ -28,7 +28,7 @@ from app.data.repos.review_outputs_repo import ReviewOutputsRepo
 from app.settings import settings
 from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 
-router = APIRouter(prefix="/v1", tags=["analyses"])
+router = APIRouter(tags=["analyses"])
 
 
 def _is_placeholder_email(email: str | None) -> bool:
@@ -609,7 +609,6 @@ async def _load_structured_review_output(analysis_id: str) -> StructuredReviewOu
         return None
 
 
-@router.post("/analyze", response_model=AnalyzeAcceptedResponse, status_code=202)
 @router.post("/analyses", response_model=AnalyzeAcceptedResponse, status_code=202)
 async def create_analysis(
     payload: AnalyzeRequest,
@@ -667,7 +666,6 @@ async def create_analysis(
     return AnalyzeAcceptedResponse(analysis_id=queued.id, status="QUEUED", task_id=enqueued.task_id)
 
 
-@router.post("/analyze/stream", response_model=AnalyzeAcceptedResponse, status_code=202)
 @router.post("/analyses/stream", response_model=AnalyzeAcceptedResponse, status_code=202)
 async def create_analysis_stream(
     request: Request,

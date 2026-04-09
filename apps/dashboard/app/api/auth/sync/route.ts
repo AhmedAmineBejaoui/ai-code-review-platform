@@ -73,8 +73,8 @@ export async function POST() {
   }
 
   const primaryEmail =
-    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+    user?.emailAddresses?.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress
   const displayName = firstNonEmpty(
     [user?.firstName, user?.lastName].filter(Boolean).join(" "),
     user?.fullName ?? undefined,

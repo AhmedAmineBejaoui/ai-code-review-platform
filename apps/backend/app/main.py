@@ -2,6 +2,7 @@ import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.api.errors import register_exception_handlers
@@ -75,6 +76,30 @@ app = FastAPI(
 register_exception_handlers(app)
 app.add_middleware(RateLimitMiddleware)
 
+# ─── CORS Configuration ────────────────────────────────────────────────────────
+# Allow requests from frontend (Next.js running on localhost:3000 or :3001)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+    allow_headers=[
+        "Accept",
+        "Accept-Language",
+        "Content-Type",
+        "Authorization",
+        "X-API-Key",
+        "X-Requested-With",
+    ],
+    expose_headers=["Content-Type", "X-Total-Count"],
+    max_age=3600,
+)
+
 # ─── Prometheus metrics ────────────────────────────────────────────────────────
 # Exposes /metrics endpoint for Prometheus scraping.
 # Called before include_router so all routes are instrumented.
@@ -116,7 +141,7 @@ async def health():
 
 
 app.include_router(webhook_github.router)
-app.include_router(analyses.router)
+app.include_router(analyses.router, prefix="/v1")
 app.include_router(branches.router)
 app.include_router(branch_protection.router)
 app.include_router(branch_policies.router)

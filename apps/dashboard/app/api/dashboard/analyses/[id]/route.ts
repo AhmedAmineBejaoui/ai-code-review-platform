@@ -480,8 +480,8 @@ export async function GET(_request: Request, context: { params: { id: string } }
   const [token, user] = await Promise.all([getToken(), currentUser()])
   const role = resolveUserRole(user, sessionClaims)
   const email =
-    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+    user?.emailAddresses?.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress
 
   const headers: Record<string, string> = {}
   if (token) {
@@ -544,8 +544,8 @@ export async function DELETE(_request: Request, context: { params: { id: string 
 
   const role = resolveUserRole(user, sessionClaims)
   const email =
-    user?.emailAddresses.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses[0]?.emailAddress
+    user?.emailAddresses?.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses?.[0]?.emailAddress
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,

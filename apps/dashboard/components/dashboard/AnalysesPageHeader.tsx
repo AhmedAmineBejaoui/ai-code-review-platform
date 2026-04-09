@@ -155,7 +155,8 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const loadProjects = async () => {
     setIsLoadingProjects(true)
     try {
-      const res = await fetch("/api/v1/projects?page=1&size=100", {
+      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+      const res = await fetch(`${backendUrl}/api/v1/projects?page=1&size=100`, {
         headers: { Accept: "application/json" },
       })
       if (!res.ok) {
@@ -488,7 +489,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                       <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
                       <span className="ml-2 text-muted-foreground">Loading repositories...</span>
                     </div>
-                  ) : !githubConnected ? (
+                  ) : githubConnected === false ? (
                     <div className="text-center py-6 space-y-3">
                       <Github className="h-12 w-12 mx-auto text-muted-foreground" />
                       <p className="text-muted-foreground">

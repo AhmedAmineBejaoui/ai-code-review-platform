@@ -130,6 +130,8 @@ function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccou
   }
 
   const userRecord = rawUser as Record<string, unknown>
+  
+  // Try externalAccounts first (Clerk v5+)
   const externalAccounts = [
     ...toUnknownArray(userRecord.externalAccounts),
     ...toUnknownArray(userRecord.external_accounts),
@@ -151,56 +153,110 @@ function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccou
     }
 
     connected = true
+    
+    // Try to get login/username from various possible fields
     const username =
       normalizeGithubLoginCandidate(accountRecord.username) ??
       normalizeGithubLoginCandidate(accountRecord.login) ??
       normalizeGithubLoginCandidate(accountRecord.accountIdentifier) ??
       normalizeGithubLoginCandidate(accountRecord.account_identifier) ??
       normalizeGithubLoginCandidate(accountRecord.identificationId) ??
-      normalizeGithubLoginCandidate(accountRecord.identification_id)
+      normalizeGithubLoginCandidate(accountRecord.identification_id) ??
+      normalizeGithubLoginCandidate((accountRecord.emailAddress as string)?.split("@")[0])
 
     if (username) {
+      console.log(`✓ Found GitHub login in externalAccounts: ${username}`)
+      return { connected: true, login: username }
+    }
+  }
+
+  // Try externalIdentifiers if externalAccounts didn't work (Clerk v4)
+  if (!connected) {
+    const externalIdentifiers = [
+      ...toUnknownArray(userRecord.externalIdentifiers),
+      ...toUnknownArray(userRecord.external_identifiers),
+    ]
+    
+    for (const identifier of externalIdentifiers) {
+      if (typeof identifier !== "object" || identifier === null) {
+        continue
+      }
+
+      const identifierRecord = identifier as Record<string, unknown>
+      const provider =
+        identifierRecord.provider ??
+        identifierRecord.providerSlug ??
+        identifierRecord.provider_slug
+
+      if (!isGithubProvider(provider)) {
+        continue
+      }
+
+      connected = true
+      const username = normalizeGithubLoginCandidate(identifierRecord.identification)
+
+      if (username) {
+        console.log(`✓ Found GitHub login in externalIdentifiers: ${username}`)
+        return { connected: true, login: username }
+      }
+    }
+  }
+
+  // Try user metadata (some Clerk versions store GitHub username here)
+  if (connected) {
+    const username =
+      normalizeGithubLoginCandidate(userRecord.githubUsername) ??
+      normalizeGithubLoginCandidate(userRecord.github_username) ??
+      normalizeGithubLoginCandidate(userRecord.username) ??
+      normalizeGithubLoginCandidate((userRecord.primaryEmailAddress as Record<string, unknown> | undefined)?.emailAddress) ??
+      null
+    
+    if (username) {
+      console.log(`✓ Found GitHub login in user metadata: ${username}`)
       return { connected: true, login: username }
     }
   }
 
   if (!connected) {
+    console.log("ℹ GitHub account not found in external accounts")
     return { connected: false, login: null }
   }
 
+  console.log("⚠ GitHub account connected but login/username unavailable")
   return {
     connected: true,
-    login:
-      normalizeGithubLoginCandidate(userRecord.githubUsername) ??
-      normalizeGithubLoginCandidate(userRecord.github_username) ??
-      null,
+    login: null,
   }
 }
 
 async function resolveGithubOauthAccessToken(client: Awaited<ReturnType<typeof clerkClient>>, userId: string) {
-  try {
-    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "github")
-    const tokenCandidate = Array.isArray(oauthTokens?.data)
-      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-      : null
-    if (tokenCandidate) {
-      return tokenCandidate.token
+  // Try GitHub OAuth token providers
+  const providers = ["github", "oauth_github", "github_oauth"]
+  
+  for (const provider of providers) {
+    try {
+      const oauthTokens = await client.users.getUserOauthAccessToken(userId, provider as any)
+      const tokenCandidate = Array.isArray(oauthTokens?.data)
+        ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
+        : null
+      if (tokenCandidate) {
+        console.log(`✓ Got GitHub OAuth token from provider: ${provider}`)
+        return tokenCandidate.token
+      }
+    } catch (e) {
+      // Provider not configured, continue to next
+      console.debug(`OAuth token fetch failed for provider ${provider}:`, (e as Error).message)
     }
-  } catch {
-    // Fall through to legacy provider format.
   }
-
-  try {
-    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "oauth_github")
-    const tokenCandidate = Array.isArray(oauthTokens?.data)
-      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-      : null
-    if (tokenCandidate) {
-      return tokenCandidate.token
-    }
-  } catch {
-    // Ignore and return null below.
+  
+  // If no OAuth token from Clerk, check if we have a GitHub token in environment
+  // This is a fallback for local development
+  const envToken = process.env.GITHUB_OAUTH_TOKEN || process.env.GH_TOKEN
+  if (envToken) {
+    console.log("✓ Using GitHub token from environment variable")
+    return envToken
   }
+  
   return null
 }
 
@@ -273,10 +329,13 @@ export async function GET(request: Request) {
 
   const client = await clerkClient()
   const [user, oauthToken] = await Promise.all([
-    client.users.getUser(userId).catch(() => null),
+    client.users.getUser(userId).catch((e) => {
+      console.error("Failed to get user from Clerk:", e)
+      return null
+    }),
     resolveGithubOauthAccessToken(client, userId),
   ])
-  const githubAccount = extractGithubExternalAccountInfo(user)
+  const githubAccount = user ? extractGithubExternalAccountInfo(user) : { connected: false, login: null }
 
   if (customAccount) {
     const endpointBuilder =
@@ -312,11 +371,47 @@ export async function GET(request: Request) {
     )
   }
 
-  if (oauthToken) {
+  // Primary path: use GitHub account detected from Clerk
+  if (githubAccount.connected && githubAccount.login) {
+    // Path A: Try with OAuth token first (includes private + org repos)
+    if (oauthToken) {
+      console.log(`✓ Getting repos for ${githubAccount.login} with OAuth token`)
+      const reposResult = await fetchGithubRepos(
+        oauthToken,
+        (page) =>
+          `/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+      )
+      if (reposResult.error) {
+        return NextResponse.json(
+          {
+            connected: true,
+            items: [],
+            error: reposResult.error,
+            login: githubAccount.login,
+            tokenAvailable: true,
+          },
+          { status: 200 },
+        )
+      }
+
+      return NextResponse.json(
+        {
+          connected: true,
+          items: reposResult.items,
+          error: null,
+          login: githubAccount.login,
+          tokenAvailable: true,
+        },
+        { status: 200 },
+      )
+    }
+
+    // Path B: Fallback to public repos without OAuth token
+    console.log(`ℹ Getting public repos for ${githubAccount.login} without OAuth token`)
     const reposResult = await fetchGithubRepos(
-      oauthToken,
+      null,
       (page) =>
-        `/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+        `/users/${encodeURIComponent(githubAccount.login)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`,
     )
     if (reposResult.error) {
       return NextResponse.json(
@@ -324,6 +419,8 @@ export async function GET(request: Request) {
           connected: true,
           items: [],
           error: reposResult.error,
+          login: githubAccount.login,
+          tokenAvailable: false,
         },
         { status: 200 },
       )
@@ -333,57 +430,24 @@ export async function GET(request: Request) {
       {
         connected: true,
         items: reposResult.items,
-        error: null,
+        error: reposResult.items.length === 0 
+          ? "No repositories found. Check that your GitHub account is public or try connecting via OAuth." 
+          : null,
+        login: githubAccount.login,
+        tokenAvailable: false,
+        note: "Showing only public repositories. Connect GitHub OAuth in Clerk settings to see private repositories.",
       },
       { status: 200 },
     )
   }
 
-  if (!githubAccount.connected) {
-    return NextResponse.json(
-      {
-        connected: false,
-        items: [],
-        error: "GitHub account is not connected to the current user.",
-      },
-      { status: 200 },
-    )
-  }
-
-  if (!githubAccount.login) {
-    return NextResponse.json(
-      {
-        connected: true,
-        items: [],
-        error: "GitHub account is connected but login is unavailable. Reconnect GitHub from Clerk.",
-      },
-      { status: 200 },
-    )
-  }
-  const githubLogin = githubAccount.login
-
-  const reposResult = await fetchGithubRepos(
-    null,
-    (page) =>
-      `/users/${encodeURIComponent(githubLogin)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`,
-  )
-  if (reposResult.error) {
-    return NextResponse.json(
-      {
-        connected: true,
-        items: [],
-        error: reposResult.error,
-      },
-      { status: 200 },
-    )
-  }
-
+  // Fallback: No GitHub account connected
+  console.log("ℹ No GitHub account found for user")
   return NextResponse.json(
     {
-      connected: true,
-      items: reposResult.items,
-      error:
-        "GitHub account is connected but no OAuth access token is available. Only public repositories are listed.",
+      connected: false,
+      items: [],
+      error: "GitHub account is not connected. Please connect it in your account settings.",
     },
     { status: 200 },
   )
