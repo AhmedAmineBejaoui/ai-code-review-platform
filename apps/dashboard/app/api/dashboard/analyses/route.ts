@@ -28,6 +28,7 @@ const DASHBOARD_ANALYSES_ROUTE_CACHE_TTL_MS = 5_000
 
 type CreateAnalysisBody = {
   repo?: unknown
+  project_id?: unknown
   pr_number?: unknown
   commit_sha?: unknown
   diff_text?: unknown
@@ -75,6 +76,7 @@ type AnalysesRouteCacheEntry = {
 
 type ParsedCreateAnalysisBody = {
   repo: string
+  projectId: string
   diffText: string | null
   prNumber: number | null
   commitSha: string | null
@@ -810,9 +812,16 @@ async function resolveGithubDiff(options: {
 
 function parseCreateAnalysisBody(rawBody: CreateAnalysisBody) {
   const repo = asNonEmptyString(rawBody.repo)
+  const projectId = asNonEmptyString(rawBody.project_id)
   const diffText = asNonEmptyString(rawBody.diff_text)
   if (!repo) {
     return { ok: false as const, error: "Le champ 'repo' est obligatoire." }
+  }
+  if (!projectId) {
+    return {
+      ok: false as const,
+      error: "Le champ 'project_id' est obligatoire: une analyse doit etre liee a un projet existant.",
+    }
   }
 
   let prNumber: number | null = null
@@ -841,6 +850,7 @@ function parseCreateAnalysisBody(rawBody: CreateAnalysisBody) {
     ok: true as const,
     value: {
       repo,
+      projectId,
       diffText,
       prNumber,
       commitSha,
@@ -1093,6 +1103,7 @@ export async function POST(request: NextRequest) {
       body: JSON.stringify({
         source: "manual",
         repo: repoNormalization.repo,
+        project_id: parsed.value.projectId,
         pr_number: parsed.value.prNumber,
         commit_sha: commitSha,
         diff_text: normalizedDiffText,

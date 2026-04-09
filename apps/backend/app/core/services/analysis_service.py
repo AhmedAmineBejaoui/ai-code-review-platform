@@ -75,6 +75,7 @@ class CreateAnalysisCommand:
     commit_sha: str | None
     diff_text: str
     metadata: dict[str, Any]
+    project_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -153,6 +154,7 @@ class AnalysisService:
             commit_sha=command.commit_sha,
         )
         diff_text = self._validate_diff_text(command.diff_text)
+        project_id = await self._validate_project_id(command.project_id)
 
         return await self._persist_analysis(
             source=command.source,
@@ -161,6 +163,7 @@ class AnalysisService:
             commit_sha=commit_sha,
             diff_text=diff_text,
             metadata=command.metadata,
+            project_id=project_id,
         )
 
     async def create_analysis_from_stream(
@@ -172,6 +175,7 @@ class AnalysisService:
         commit_sha: str | None,
         metadata: dict[str, Any],
         diff_stream: AsyncIterator[bytes],
+        project_id: str | None = None,
     ) -> Analysis:
         normalized_repo, normalized_commit_sha = self._validate_repo_and_target(
             repo=repo,
@@ -179,6 +183,7 @@ class AnalysisService:
             commit_sha=commit_sha,
         )
         diff_text = await self._read_diff_text_from_stream(diff_stream)
+        validated_project_id = await self._validate_project_id(project_id)
 
         return await self._persist_analysis(
             source=source,
@@ -187,7 +192,44 @@ class AnalysisService:
             commit_sha=normalized_commit_sha,
             diff_text=diff_text,
             metadata=metadata,
+            project_id=validated_project_id,
         )
+
+    async def _validate_project_id(self, project_id: str | None) -> str | None:
+        """Enforce that analyses are tied to an existing project.
+
+        Nullable at the DB layer for the current release (backfill transition),
+        but required at the application layer: callers must provide a
+        project_id that matches an existing project_profiles.id.
+        """
+        if project_id is None or not str(project_id).strip():
+            raise ServiceError(
+                code="PROJECT_ID_REQUIRED",
+                message="project_id is required: an analysis must be linked to an existing project",
+                status_code=422,
+            )
+        normalized = str(project_id).strip()
+
+        def _check() -> bool:
+            from sqlalchemy import text as _text
+            from app.data.database import get_engine as _get_engine
+
+            engine = _get_engine()
+            with engine.connect() as conn:
+                row = conn.execute(
+                    _text("SELECT 1 FROM project_profiles WHERE id = :pid LIMIT 1"),
+                    {"pid": normalized},
+                ).first()
+            return row is not None
+
+        exists = await asyncio.to_thread(_check)
+        if not exists:
+            raise ServiceError(
+                code="PROJECT_NOT_FOUND",
+                message=f"project_id '{normalized}' does not reference an existing project",
+                status_code=404,
+            )
+        return normalized
 
     async def _persist_analysis(
         self,
@@ -198,6 +240,7 @@ class AnalysisService:
         commit_sha: str | None,
         diff_text: str,
         metadata: dict[str, Any],
+        project_id: str | None = None,
     ) -> Analysis:
 
         diff_hash = hashlib.sha256(diff_text.encode("utf-8")).hexdigest()
@@ -218,6 +261,7 @@ class AnalysisService:
                 self._repo_store.create,
                 CreateAnalysisInput(
                     analysis_id=analysis_id,
+                    project_id=project_id,
                     repo=repo,
                     provider="github",
                     pr_number=pr_number,

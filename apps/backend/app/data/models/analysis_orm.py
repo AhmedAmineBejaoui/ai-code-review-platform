@@ -50,9 +50,15 @@ class AnalysisORM(Base):
         Index("idx_analyses_created_at", "created_at"),
         Index("idx_analyses_has_secrets", "has_secrets"),
         Index("idx_analyses_change_type", "change_type"),
+        Index("idx_analyses_project_id", "project_id"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
+    project_id: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("project_profiles.id", ondelete="SET NULL"),
+        nullable=True,
+    )
     repo: Mapped[str] = mapped_column(Text, nullable=False)
     provider: Mapped[str] = mapped_column(Text, nullable=False, server_default="github")
     pr_number: Mapped[int | None] = mapped_column(Integer, nullable=True)

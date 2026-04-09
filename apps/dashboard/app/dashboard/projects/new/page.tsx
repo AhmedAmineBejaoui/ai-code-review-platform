@@ -108,6 +108,8 @@ export default function NewProjectPage() {
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([])
   const [selectedGithubRepo, setSelectedGithubRepo] = useState<string>("manual")
   const [loadingGithubRepos, setLoadingGithubRepos] = useState(false)
+  const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [githubError, setGithubError] = useState<string | null>(null)
   
   // Teams
   const [teams, setTeams] = useState<Team[]>([])
@@ -149,29 +151,37 @@ export default function NewProjectPage() {
 
   const loadGithubRepos = async () => {
     setLoadingGithubRepos(true)
+    setGithubError(null)
     try {
       const response = await fetch("/api/dashboard/github/repos", {
         headers: { "Content-Type": "application/json" },
       })
-      if (response.ok) {
-        const data = await response.json()
-        const items: GithubRepo[] = (data.items || []).map((r: Record<string, unknown>) => ({
-          id: String(r.id ?? ""),
-          fullName: (r.fullName as string) ?? "",
-          name: (r.name as string) ?? "",
-          description: (r.description as string) ?? null,
-          language: (r.language as string) ?? null,
-          defaultBranch: (r.defaultBranch as string) ?? "main",
-          isPrivate: r.private === true,
-        }))
-        setGithubRepos(items)
-      } else {
-        console.warn("Failed to load GitHub repos:", response.status, response.statusText)
-        setGithubRepos([]) // Set empty array on error
+      const data = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        setGithubConnected(false)
+        setGithubError(
+          (data && (data.error as string)) ||
+            `Echec du chargement des repos GitHub (HTTP ${response.status})`,
+        )
+        setGithubRepos([])
+        return
       }
+      setGithubConnected(data.connected !== false)
+      setGithubError((data.error as string) || null)
+      const items: GithubRepo[] = (data.items || []).map((r: Record<string, unknown>) => ({
+        id: String(r.id ?? ""),
+        fullName: (r.fullName as string) ?? "",
+        name: (r.name as string) ?? "",
+        description: (r.description as string) ?? null,
+        language: (r.language as string) ?? null,
+        defaultBranch: (r.defaultBranch as string) ?? "main",
+        isPrivate: r.private === true,
+      }))
+      setGithubRepos(items)
     } catch (err) {
-      console.warn("Failed to load GitHub repos:", err)
-      setGithubRepos([]) // Set empty array on error
+      setGithubConnected(null)
+      setGithubError(err instanceof Error ? err.message : "Erreur reseau")
+      setGithubRepos([])
     } finally {
       setLoadingGithubRepos(false)
     }
@@ -359,7 +369,44 @@ export default function NewProjectPage() {
             Selectionnez un repository existant ou saisissez les informations manuellement
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-3">
+          {githubConnected === false && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <div className="flex-1 space-y-2">
+                <p className="font-medium text-amber-900 dark:text-amber-200">
+                  Compte GitHub non connecte
+                </p>
+                <p className="text-amber-800 dark:text-amber-300">
+                  {githubError ||
+                    "Connectez votre compte GitHub pour importer automatiquement vos repositories."}
+                </p>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => router.push("/dashboard/settings/profile")}
+                >
+                  Connecter GitHub
+                </Button>
+              </div>
+            </div>
+          )}
+          {githubConnected === true && githubError && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <div className="flex-1">
+                <p className="text-amber-800 dark:text-amber-300">{githubError}</p>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={loadGithubRepos}
+                  className="mt-2 h-7 px-2"
+                >
+                  Reessayer
+                </Button>
+              </div>
+            </div>
+          )}
           <Select value={selectedGithubRepo} onValueChange={setSelectedGithubRepo}>
             <SelectTrigger>
               <SelectValue placeholder="Selectionnez un repository..." />
@@ -370,6 +417,11 @@ export default function NewProjectPage() {
                 <SelectItem value="loading" disabled>
                   <Loader2 className="h-4 w-4 animate-spin mr-2 inline" />
                   Chargement...
+                </SelectItem>
+              )}
+              {!loadingGithubRepos && githubConnected && githubRepos.length === 0 && (
+                <SelectItem value="empty" disabled>
+                  Aucun repository trouve
                 </SelectItem>
               )}
               {githubRepos.map((repo) => (

@@ -13,10 +13,14 @@
       "Bash(python -c \"import sys,json; routes=[r for r in json.load\\(sys.stdin\\) if 'repositor' in str\\(r.get\\('path',''\\)\\).lower\\(\\)]; print\\(json.dumps\\(routes, indent=2\\)\\)\")",
       "Bash(curl -s -X POST http://localhost:8000/api/v1/repositories -H \"Content-Type: application/json\" -d '{\"full_name\": \"AhmedAmineBejaoui/TransportManager\", \"source\": \"github\"}')",
       "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/.claude/worktrees/flamboyant-brattain/apps/backend/app/workers -type f -name *.py)",
+      "Bash(grep -r \"new.*analysis\\\\|analyze\" 'C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\.claude\\\\worktrees\\\\keen-diffie\\\\apps\\\\dashboard\\\\app\\\\dashboard' --include=*.tsx -l)",
+      "Bash(find 'C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\.claude\\\\worktrees\\\\keen-diffie\\\\apps\\\\dashboard' -name *Organization* -o -name *organization*)",
+      "Bash(grep -E \"\\\\.\\(py\\)$\")",
       "Bash(xargs grep:*)",
-      "Bash(gh auth:*)",
-      "Read(//c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/**)",
-      "Bash(grep -r capacitor --include=*.json --include=*.ts --include=*.js --include=*.toml apps/dashboard/)"
+      "Bash(grep -r \"clerk.*invitation\\\\|invitations\\\\.create\\\\|organization.*invit\" /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps --include=*.py --include=*.ts --include=*.tsx)",
+      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api -type f -name *.ts -o -name *.tsx -o -name *.js)",
+      "Bash(ls /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/backend/app/api/http/*.py)",
+      "Bash(cd /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform)"
     ]
   }
 }

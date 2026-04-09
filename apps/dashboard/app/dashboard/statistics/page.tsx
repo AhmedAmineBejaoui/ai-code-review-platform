@@ -1,11 +1,9 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useSearchParams } from "next/navigation"
 import { motion } from "motion/react"
 import {
-  TrendingUp,
-  TrendingDown,
   BarChart3,
   LineChart,
   PieChart,
@@ -15,13 +13,13 @@ import {
   Clock,
   Users,
   GitBranch,
-  Code2,
   Zap,
   Target,
   ArrowUpRight,
   ArrowDownRight,
   Loader2,
   RefreshCw,
+  Shield,
 } from "lucide-react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -36,40 +34,79 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 
-// Types for statistics data
-interface QualityTrendsData {
-  month: string
-  score: number
-  issues: number
-  resolved: number
+// Types matching the backend StatisticsResponse contract
+// (apps/backend/app/api/http/statistics.py)
+interface TrendDataPoint {
+  date: string
+  value: number
 }
 
-interface VelocityData {
-  week: string
-  reviews: number
-  avgTime: number
+interface QualityMetrics {
+  overall_score: number
+  security_score: number
+  maintainability_score: number
+  reliability_score: number
+  total_findings: number
+  blocker_count: number
+  critical_count: number
+  major_count: number
+  minor_count: number
+  findings_by_category: Record<string, number>
+  trend: TrendDataPoint[]
 }
 
-interface TeamData {
-  name: string
-  reviews: number
-  avgScore: number
-  efficiency: number
+interface VelocityMetrics {
+  avg_review_time_hours: number
+  avg_time_to_first_review_hours: number
+  reviews_per_day: number
+  analyses_per_day: number
+  total_reviews: number
+  total_analyses: number
+  completed_analyses: number
+  failed_analyses: number
+  trend: TrendDataPoint[]
 }
 
-interface IssueCategory {
-  name: string
-  count: number
-  color: string
+interface TeamMetrics {
+  active_reviewers: number
+  total_team_members: number
+  reviews_by_reviewer: Record<string, number>
+  avg_reviews_per_member: number
+  top_contributors: Array<{ reviewer_id: string; review_count: number; name?: string }>
+  bottlenecks: Array<{ reviewer_id: string; pending_reviews: number }>
 }
 
 interface StatisticsData {
-  quality: {
-    trends: QualityTrendsData[]
-    categories: IssueCategory[]
-  }
-  velocity: VelocityData[]
-  team: TeamData[]
+  time_range: string
+  generated_at: string
+  quality: QualityMetrics | null
+  velocity: VelocityMetrics | null
+  team: TeamMetrics | null
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  security: "bg-red-500",
+  perf: "bg-orange-500",
+  performance: "bg-orange-500",
+  quality: "bg-blue-500",
+  style: "bg-purple-500",
+  maintainability: "bg-yellow-500",
+  reliability: "bg-pink-500",
+  other: "bg-gray-500",
+}
+
+function formatHours(hours: number): string {
+  if (!hours || hours < 0.05) return "0h"
+  if (hours < 1) return `${Math.round(hours * 60)}min`
+  return `${hours.toFixed(1)}h`
+}
+
+function EmptyState({ message }: { message: string }) {
+  return (
+    <div className="flex h-[200px] items-center justify-center text-sm text-muted-foreground">
+      {message}
+    </div>
+  )
 }
 
 function StatCard({
@@ -128,55 +165,50 @@ function StatCard({
   )
 }
 
-function CodeQualityTrends({ data }: { data: { trends: QualityTrendsData[], categories: IssueCategory[] } }) {
-  const { trends, categories } = data
+function CodeQualityTrends({ data }: { data: QualityMetrics | null }) {
+  if (!data) {
+    return <EmptyState message="Aucune donnee de qualite disponible pour cette periode." />
+  }
 
-  // Default values if no data
-  const displayTrends = trends.length > 0 ? trends : [
-    { month: "Jan", score: 72, issues: 45, resolved: 38 },
-    { month: "Feb", score: 75, issues: 52, resolved: 48 },
-  ]
-  
-  const displayCategories = categories.length > 0 ? categories : [
-    { name: "Securite", count: 12, color: "bg-red-500" },
-    { name: "Performance", count: 28, color: "bg-orange-500" },
-    { name: "Style Code", count: 45, color: "bg-blue-500" },
-  ]
+  const trend = data.trend
+  const maxTrend = Math.max(1, ...trend.map((t) => t.value))
+  const categoryEntries = Object.entries(data.findings_by_category)
+  const maxCategoryCount = Math.max(1, ...categoryEntries.map(([, c]) => c))
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard
           title="Score Qualite"
-          value="88%"
-          change={12}
+          value={`${Math.round(data.overall_score)}%`}
+          change={0}
           trend="up"
           icon={Target}
-          description="Evaluation globale de qualite du code"
+          description="Score global calcule a partir des findings"
         />
         <StatCard
           title="Problemes Trouves"
-          value="135"
-          change={-23}
-          trend="down"
-          icon={AlertTriangle}
-          description="Total des problemes ce mois"
-        />
-        <StatCard
-          title="Problemes Resolus"
-          value="128"
-          change={18}
+          value={data.total_findings}
+          change={0}
           trend="up"
-          icon={CheckCircle2}
-          description="Corriges ce mois"
+          icon={AlertTriangle}
+          description="Total des findings sur la periode"
         />
         <StatCard
-          title="Temps Resolution Moyen"
-          value="2.4h"
-          change={-15}
+          title="Bloquants"
+          value={data.blocker_count}
+          change={0}
           trend="down"
-          icon={Clock}
-          description="Temps pour corriger les problemes"
+          icon={CheckCircle2}
+          description="Findings de severite BLOCKER"
+        />
+        <StatCard
+          title="Score Securite"
+          value={`${Math.round(data.security_score)}%`}
+          change={0}
+          trend="up"
+          icon={Shield}
+          description="Score base sur les findings security"
         />
       </div>
 
@@ -185,31 +217,34 @@ function CodeQualityTrends({ data }: { data: { trends: QualityTrendsData[], cate
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <LineChart className="h-5 w-5" />
-              Evolution Score Qualite
+              Findings par jour
             </CardTitle>
             <CardDescription>
-              Progression mensuelle du score de qualite du code
+              Volume de findings detectes au fil du temps
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-[300px] flex items-end justify-between gap-2">
-              {displayTrends.map((item, index) => (
-                <motion.div
-                  key={item.month}
-                  className="flex-1 flex flex-col items-center gap-2"
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <div
-                    className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-md"
-                    style={{ height: `${item.score * 2.5}px` }}
-                  />
-                  <span className="text-xs font-medium">{item.month}</span>
-                  <span className="text-xs text-muted-foreground">{item.score}%</span>
-                </motion.div>
-              ))}
-            </div>
+            {trend.length === 0 ? (
+              <EmptyState message="Aucune donnee de tendance." />
+            ) : (
+              <div className="h-[300px] flex items-end justify-between gap-1">
+                {trend.map((item, index) => (
+                  <motion.div
+                    key={item.date}
+                    className="flex-1 flex flex-col items-center gap-1"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    transition={{ delay: index * 0.02 }}
+                  >
+                    <div
+                      className="w-full bg-gradient-to-t from-primary to-primary/60 rounded-t-md"
+                      style={{ height: `${(item.value / maxTrend) * 250}px` }}
+                      title={`${item.date}: ${item.value}`}
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -220,29 +255,33 @@ function CodeQualityTrends({ data }: { data: { trends: QualityTrendsData[], cate
               Problemes par Categorie
             </CardTitle>
             <CardDescription>
-              Distribution des problemes de code par type
+              Distribution des findings par categorie
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {displayCategories.map((category, index) => (
-                <motion.div
-                  key={category.name}
-                  className="flex items-center gap-3"
-                  initial={{ opacity: 0, x: -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <div className={`h-3 w-3 rounded-full ${category.color}`} />
-                  <span className="flex-1 text-sm">{category.name}</span>
-                  <span className="text-sm font-medium">{category.count}</span>
-                  <Progress
-                    value={(category.count / 50) * 100}
-                    className="w-24"
-                  />
-                </motion.div>
-              ))}
-            </div>
+            {categoryEntries.length === 0 ? (
+              <EmptyState message="Aucune categorie a afficher." />
+            ) : (
+              <div className="space-y-4">
+                {categoryEntries.map(([name, count], index) => (
+                  <motion.div
+                    key={name}
+                    className="flex items-center gap-3"
+                    initial={{ opacity: 0, x: -20 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: index * 0.1 }}
+                  >
+                    <div className={`h-3 w-3 rounded-full ${CATEGORY_COLORS[name] || "bg-gray-500"}`} />
+                    <span className="flex-1 text-sm capitalize">{name}</span>
+                    <span className="text-sm font-medium">{count}</span>
+                    <Progress
+                      value={(count / maxCategoryCount) * 100}
+                      className="w-24"
+                    />
+                  </motion.div>
+                ))}
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -250,156 +289,128 @@ function CodeQualityTrends({ data }: { data: { trends: QualityTrendsData[], cate
   )
 }
 
-function ReviewVelocity({ data }: { data: VelocityData[] }) {
-  const displayData = data.length > 0 ? data : [
-    { week: "S1", reviews: 24, avgTime: 4.2 },
-    { week: "S2", reviews: 32, avgTime: 3.8 },
-  ]
+function ReviewVelocity({ data }: { data: VelocityMetrics | null }) {
+  if (!data) {
+    return <EmptyState message="Aucune donnee de velocite disponible pour cette periode." />
+  }
+
+  const trend = data.trend
+  const maxTrend = Math.max(1, ...trend.map((t) => t.value))
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard
-          title="Reviews Cette Semaine"
-          value="36"
-          change={28}
+          title="Total Reviews"
+          value={data.total_reviews}
+          change={0}
           trend="up"
           icon={GitBranch}
+          description="Reviews completees sur la periode"
         />
         <StatCard
           title="Temps Review Moyen"
-          value="3.2h"
-          change={-18}
+          value={formatHours(data.avg_review_time_hours)}
+          change={0}
           trend="down"
           icon={Clock}
+          description="Du moment de l'assignation a la completion"
         />
         <StatCard
-          title="Debit Reviews"
-          value="8.2/jour"
-          change={15}
+          title="Analyses / jour"
+          value={data.analyses_per_day.toFixed(1)}
+          change={0}
           trend="up"
           icon={Zap}
+          description="Debit moyen d'analyses"
         />
         <StatCard
-          title="Reviews en Attente"
-          value="12"
-          change={-5}
+          title="Analyses Echec"
+          value={data.failed_analyses}
+          change={0}
           trend="down"
           icon={Activity}
+          description={`${data.completed_analyses} completees / ${data.total_analyses} totales`}
         />
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5" />
-              Volume Reviews Hebdomadaire
-            </CardTitle>
-            <CardDescription>
-              Nombre de reviews completees par semaine
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] flex items-end justify-between gap-4">
-              {displayData.map((item, index) => (
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <BarChart3 className="h-5 w-5" />
+            Analyses par jour
+          </CardTitle>
+          <CardDescription>
+            Volume d'analyses creees au fil du temps
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {trend.length === 0 ? (
+            <EmptyState message="Aucune donnee de tendance." />
+          ) : (
+            <div className="h-[300px] flex items-end justify-between gap-1">
+              {trend.map((item, index) => (
                 <motion.div
-                  key={item.week}
-                  className="flex-1 flex flex-col items-center gap-2"
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  transition={{ delay: index * 0.1 }}
+                  key={item.date}
+                  className="flex-1 flex flex-col items-center gap-1"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ delay: index * 0.02 }}
                 >
                   <div
-                    className="w-full bg-gradient-to-t from-blue-500 to-blue-300 rounded-t-md relative"
-                    style={{ height: `${item.reviews * 6}px` }}
-                  >
-                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-medium">
-                      {item.reviews}
-                    </span>
-                  </div>
-                  <span className="text-xs font-medium">{item.week}</span>
+                    className="w-full bg-gradient-to-t from-blue-500 to-blue-300 rounded-t-md"
+                    style={{ height: `${(item.value / maxTrend) * 250}px` }}
+                    title={`${item.date}: ${item.value}`}
+                  />
                 </motion.div>
               ))}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Clock className="h-5 w-5" />
-              Temps Review Moyen
-            </CardTitle>
-            <CardDescription>
-              Heures depensees par review par semaine
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-[300px] flex items-end justify-between gap-4">
-              {displayData.map((item, index) => (
-                <motion.div
-                  key={item.week}
-                  className="flex-1 flex flex-col items-center gap-2"
-                  initial={{ height: 0 }}
-                  animate={{ height: "auto" }}
-                  transition={{ delay: index * 0.1 }}
-                >
-                  <div
-                    className="w-full bg-gradient-to-t from-green-500 to-green-300 rounded-t-md relative"
-                    style={{ height: `${item.avgTime * 50}px` }}
-                  >
-                    <span className="absolute -top-6 left-1/2 -translate-x-1/2 text-xs font-medium">
-                      {item.avgTime}h
-                    </span>
-                  </div>
-                  <span className="text-xs font-medium">{item.week}</span>
-                </motion.div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
 
-function TeamPerformance({ data }: { data: TeamData[] }) {
-  const displayData = data.length > 0 ? data : [
-    { name: "Alice Chen", reviews: 45, avgScore: 92, efficiency: 95 },
-    { name: "Bob Smith", reviews: 38, avgScore: 88, efficiency: 87 },
-  ]
+function TeamPerformance({ data }: { data: TeamMetrics | null }) {
+  if (!data) {
+    return <EmptyState message="Aucune donnee d'equipe disponible pour cette periode." />
+  }
+
+  const contributors = data.top_contributors
+  const maxReviews = Math.max(1, ...contributors.map((c) => c.review_count))
 
   return (
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard
           title="Membres Equipe"
-          value="5"
+          value={data.total_team_members}
           change={0}
           trend="up"
           icon={Users}
         />
         <StatCard
-          title="Reviews/Personne Moyen"
-          value="42"
-          change={8}
+          title="Reviewers Actifs"
+          value={data.active_reviewers}
+          change={0}
+          trend="up"
+          icon={Users}
+        />
+        <StatCard
+          title="Reviews / Membre"
+          value={data.avg_reviews_per_member.toFixed(1)}
+          change={0}
           trend="up"
           icon={GitBranch}
         />
         <StatCard
-          title="Efficacite Equipe"
-          value="91%"
-          change={5}
-          trend="up"
+          title="Bottlenecks"
+          value={data.bottlenecks.length}
+          change={0}
+          trend="down"
           icon={Target}
-        />
-        <StatCard
-          title="Score Collaboration"
-          value="87"
-          change={12}
-          trend="up"
-          icon={Users}
+          description="Reviewers avec plus de 3 reviews en attente"
         />
       </div>
 
@@ -407,52 +418,93 @@ function TeamPerformance({ data }: { data: TeamData[] }) {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Users className="h-5 w-5" />
-            Ventilation Performance Equipe
+            Top Contributors
           </CardTitle>
           <CardDescription>
-            Metriques individuelles et performance des reviewers
+            Reviewers les plus actifs sur la periode
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-6">
-            {displayData.map((member, index) => (
-              <motion.div
-                key={member.name}
-                className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.1 }}
-              >
-                <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold">
-                  {member.name.split(" ").map((n) => n[0]).join("")}
-                </div>
-                <div className="flex-1">
-                  <h4 className="font-medium">{member.name}</h4>
-                  <div className="flex items-center gap-4 mt-1">
-                    <span className="text-xs text-muted-foreground">
-                      {member.reviews} reviews
-                    </span>
-                    <Badge variant="secondary" className="text-xs">
-                      Score: {member.avgScore}%
-                    </Badge>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm font-medium">
-                    Efficacite: {member.efficiency}%
-                  </div>
-                  <Progress value={member.efficiency} className="w-24 mt-1" />
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          {contributors.length === 0 ? (
+            <EmptyState message="Aucun reviewer actif sur la periode." />
+          ) : (
+            <div className="space-y-3">
+              {contributors.map((member, index) => {
+                const display = member.name || member.reviewer_id
+                const initials = display
+                  .split(/[\s_-]+/)
+                  .filter(Boolean)
+                  .slice(0, 2)
+                  .map((n) => n[0]?.toUpperCase() || "")
+                  .join("") || "?"
+                return (
+                  <motion.div
+                    key={member.reviewer_id}
+                    className="flex items-center gap-4 p-4 rounded-lg border bg-card hover:bg-muted/50 transition-colors"
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                  >
+                    <div className="h-10 w-10 rounded-full bg-gradient-to-br from-primary to-primary/60 flex items-center justify-center text-primary-foreground font-bold">
+                      {initials}
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="font-medium truncate">{display}</h4>
+                      <span className="text-xs text-muted-foreground">
+                        {member.review_count} reviews
+                      </span>
+                    </div>
+                    <Progress
+                      value={(member.review_count / maxReviews) * 100}
+                      className="w-32"
+                    />
+                  </motion.div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {data.bottlenecks.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              Bottlenecks
+            </CardTitle>
+            <CardDescription>
+              Reviewers avec une charge importante de reviews en attente
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {data.bottlenecks.map((b) => (
+                <div
+                  key={b.reviewer_id}
+                  className="flex items-center justify-between rounded-md border p-3 text-sm"
+                >
+                  <span className="font-medium">{b.reviewer_id}</span>
+                  <Badge variant="secondary">{b.pending_reviews} en attente</Badge>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   )
 }
 
 export default function StatisticsPage() {
+  return (
+    <Suspense fallback={<div className="p-6 text-muted-foreground">Chargement des statistiques...</div>}>
+      <StatisticsPageInner />
+    </Suspense>
+  )
+}
+
+function StatisticsPageInner() {
   const searchParams = useSearchParams()
   const defaultTab = searchParams.get("tab") || "quality"
   const [timeRange, setTimeRange] = useState("30d")
@@ -464,35 +516,15 @@ export default function StatisticsPage() {
     try {
       setLoading(true)
       setError(null)
-      
-      // Try to fetch from API
-      const response = await fetch(`/api/statistics?range=${timeRange}`)
-      if (response.ok) {
-        const statsData = await response.json()
-        setData(statsData)
-      } else {
-        // Return default empty data if API not available
-        const defaultData: StatisticsData = {
-          quality: {
-            trends: [],
-            categories: []
-          },
-          velocity: [],
-          team: []
-        }
-        setData(defaultData)
+      const response = await fetch(`/api/dashboard/statistics?timeRange=${timeRange}`)
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
       }
+      const statsData: StatisticsData = await response.json()
+      setData(statsData)
     } catch (err) {
-      // Return default empty data if API not available
-      const defaultData: StatisticsData = {
-        quality: {
-          trends: [],
-          categories: []
-        },
-        velocity: [],
-        team: []
-      }
-      setData(defaultData)
+      setError(err instanceof Error ? err.message : "Erreur de chargement")
+      setData(null)
     } finally {
       setLoading(false)
     }
@@ -595,6 +627,10 @@ export default function StatisticsPage() {
           <TeamPerformance data={data.team} />
         </TabsContent>
       </Tabs>
+
+      <p className="text-xs text-muted-foreground">
+        Genere a {new Date(data.generated_at).toLocaleString()}
+      </p>
     </div>
   )
 }

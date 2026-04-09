@@ -141,12 +141,46 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [inputMode, setInputMode] = useState<"github" | "manual">("github")
   const [customGithubAccount, setCustomGithubAccount] = useState("")
   const [accountType, setAccountType] = useState<"user" | "org">("user")
+  const [projects, setProjects] = useState<Array<{ id: string; name: string; repo: string }>>([])
+  const [selectedProjectId, setSelectedProjectId] = useState<string>("")
+  const [isLoadingProjects, setIsLoadingProjects] = useState(false)
 
   // Load GitHub repos when dialog opens
   useEffect(() => {
     if (!isNewAnalysisOpen) return
     loadGithubRepos()
+    loadProjects()
   }, [isNewAnalysisOpen])
+
+  const loadProjects = async () => {
+    setIsLoadingProjects(true)
+    try {
+      const res = await fetch("/api/v1/projects?page=1&size=100", {
+        headers: { Accept: "application/json" },
+      })
+      if (!res.ok) {
+        setProjects([])
+        return
+      }
+      const data = await res.json()
+      const items = (data.items || data || []) as Array<Record<string, unknown>>
+      const normalized = items
+        .map((p) => ({
+          id: String(p.id ?? p.project_id ?? p.repo_id ?? ""),
+          name: String(p.name ?? p.project_name ?? p.repo_id ?? p.id ?? ""),
+          repo: String(p.repo_id ?? p.full_name ?? p.repo ?? ""),
+        }))
+        .filter((p) => p.id.length > 0)
+      setProjects(normalized)
+      if (normalized.length > 0 && !selectedProjectId) {
+        setSelectedProjectId(normalized[0].id)
+      }
+    } catch {
+      setProjects([])
+    } finally {
+      setIsLoadingProjects(false)
+    }
+  }
 
   const loadGithubRepos = async (account?: string) => {
     setIsLoadingRepos(true)
@@ -224,7 +258,12 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const handleStartAnalysis = async () => {
     setSubmitError(null)
     setSubmitSuccess(null)
-    
+
+    if (!selectedProjectId) {
+      setSubmitError("Selectionnez un projet: une analyse doit etre liee a un projet existant.")
+      return
+    }
+
     let repoFullName = ""
     let prNumber: number | null = null
     
@@ -278,6 +317,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
         },
         body: JSON.stringify({
           repo: repoFullName,
+          project_id: selectedProjectId,
           pr_number: prNumber,
           commit_sha: null,
           diff_text: null,
@@ -385,6 +425,40 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
             </DialogHeader>
             
             <div className="space-y-4 py-4">
+              {/* Project Selection (required) */}
+              <div className="space-y-2">
+                <Label htmlFor="analysis-project">Projet *</Label>
+                <Select
+                  value={selectedProjectId}
+                  onValueChange={setSelectedProjectId}
+                  disabled={isLoadingProjects || projects.length === 0}
+                >
+                  <SelectTrigger id="analysis-project">
+                    <SelectValue
+                      placeholder={
+                        isLoadingProjects
+                          ? "Chargement des projets..."
+                          : projects.length === 0
+                            ? "Aucun projet - importez d'abord un repo"
+                            : "Selectionnez un projet..."
+                      }
+                    />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        {p.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {!isLoadingProjects && projects.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    Une analyse doit etre liee a un projet. Importez un repository depuis GitHub pour creer un projet.
+                  </p>
+                )}
+              </div>
+
               {/* Input Mode Toggle */}
               <div className="flex gap-2">
                 <Button
