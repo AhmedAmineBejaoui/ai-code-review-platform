@@ -12,7 +12,11 @@
       "Bash(curl -s http://localhost:8000/__routes)",
       "Bash(python -c \"import sys,json; routes=[r for r in json.load\\(sys.stdin\\) if 'repositor' in str\\(r.get\\('path',''\\)\\).lower\\(\\)]; print\\(json.dumps\\(routes, indent=2\\)\\)\")",
       "Bash(curl -s -X POST http://localhost:8000/api/v1/repositories -H \"Content-Type: application/json\" -d '{\"full_name\": \"AhmedAmineBejaoui/TransportManager\", \"source\": \"github\"}')",
-      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/.claude/worktrees/flamboyant-brattain/apps/backend/app/workers -type f -name *.py)"
+      "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/.claude/worktrees/flamboyant-brattain/apps/backend/app/workers -type f -name *.py)",
+      "Bash(xargs grep:*)",
+      "Bash(gh auth:*)",
+      "Read(//c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/**)",
+      "Bash(grep -r capacitor --include=*.json --include=*.ts --include=*.js --include=*.toml apps/dashboard/)"
     ]
   }
 }
