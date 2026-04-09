@@ -39,6 +39,7 @@ class Analysis:
     blocker_count: int = 0
     warn_count: int = 0
     info_count: int = 0
+    project_id: str | None = None
 
     @property
     def metadata(self) -> dict[str, Any]:

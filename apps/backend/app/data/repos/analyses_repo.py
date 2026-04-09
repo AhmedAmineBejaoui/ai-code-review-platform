@@ -54,6 +54,7 @@ class CreateAnalysisInput:
     error_code: str | None = None
     error_message: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    project_id: str | None = None
 
 
 @dataclass
@@ -118,14 +119,14 @@ class AnalysesRepo:
                     text(
                         """
                         INSERT INTO analyses (
-                            id, repo, provider, pr_number, commit_sha, source, status,
+                            id, project_id, repo, provider, pr_number, commit_sha, source, status,
                             stage, progress, nb_files_changed, additions_total, deletions_total,
                             created_at, updated_at, diff_hash, diff_raw, summary, diff_text, diff_redacted,
                             has_secrets, redaction_stats, static_stats, change_type, change_type_confidence,
                             change_type_source, change_type_signals, error_code, error_message, metadata_json
                         )
                         VALUES (
-                            :id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
+                            :id, :project_id, :repo, :provider, :pr_number, :commit_sha, :source, :status,
                             :stage, :progress, :nb_files_changed, :additions_total, :deletions_total,
                             :created_at, :updated_at, :diff_hash, :diff_raw, :summary, :diff_text, :diff_redacted,
                             :has_secrets, CAST(:redaction_stats AS jsonb), CAST(:static_stats AS jsonb),
@@ -136,6 +137,7 @@ class AnalysesRepo:
                     ),
                     {
                         "id": payload.analysis_id,
+                        "project_id": payload.project_id,
                         "repo": payload.repo,
                         "provider": payload.provider,
                         "pr_number": payload.pr_number,
@@ -923,6 +925,7 @@ class AnalysesRepo:
             blocker_count=blocker_count,
             warn_count=warn_count,
             info_count=info_count,
+            project_id=(str(row["project_id"]) if row.get("project_id") else None),
         )
 
     @staticmethod

@@ -45,6 +45,11 @@ class AnalyzeRequest(BaseModel):
 
     source: Literal["github_actions", "github_webhook", "cli", "manual"] = "github_actions"
     repo: str = Field(max_length=255)
+    project_id: str = Field(
+        min_length=1,
+        max_length=255,
+        description="Project the analysis belongs to (required). Must reference an existing project_profiles.id.",
+    )
     pr_number: int | None = Field(default=None, ge=1)
     commit_sha: str | None = Field(default=None, min_length=6, max_length=64, pattern=r"^[0-9a-fA-F]+$")
     diff_text: str
@@ -621,6 +626,7 @@ async def create_analysis(
                 commit_sha=payload.commit_sha,
                 diff_text=payload.diff_text,
                 metadata=payload.metadata,
+                project_id=payload.project_id,
             )
         )
         queued = await service.update_analysis_status(
@@ -667,6 +673,7 @@ async def create_analysis_stream(
     request: Request,
     source: Literal["github_actions", "github_webhook", "cli", "manual"] = Query(default="github_actions"),
     repo: str = Query(max_length=255),
+    project_id: str = Query(min_length=1, max_length=255),
     pr_number: int | None = Query(default=None, ge=1),
     commit_sha: str | None = Query(default=None, min_length=6, max_length=64, pattern=r"^[0-9a-fA-F]+$"),
     metadata: str | None = Query(default=None),
@@ -682,6 +689,7 @@ async def create_analysis_stream(
             commit_sha=commit_sha,
             metadata=_parse_metadata_query(metadata),
             diff_stream=request.stream(),
+            project_id=project_id,
         )
         queued = await service.update_analysis_status(
             UpdateAnalysisStatusCommand(

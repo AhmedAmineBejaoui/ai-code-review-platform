@@ -357,6 +357,10 @@ export function GlobalReport() {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           repo: analysis.repo,
+          // Re-runs reuse the original repo's project_id (derived from the lowered full_name,
+          // matching the import-full convention). Historical analyses may predate project_id
+          // enforcement; the backend will surface a clear error if the project no longer exists.
+          project_id: analysis.repo.toLowerCase(),
           pr_number: analysis.prNumber,
           commit_sha: analysis.commitSha,
           diff_text: rerunDiffText,
