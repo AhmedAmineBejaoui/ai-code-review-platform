@@ -1,5 +1,7 @@
 import { Metadata } from "next"
 import { InlineCodeReview } from "@/components/review/InlineCodeReview"
+import SimpleEditor from "@/components/SimpleEditor"
+import MonacoEditor from "@/components/MonacoEditor"
 
 export const metadata: Metadata = {
   title: "Code Review Demo - AI Code Review Platform",
@@ -17,6 +19,10 @@ export default function CodeReviewDemoPage() {
       </div>
 
       <InlineCodeReview />
+
+      <SimpleEditor />
+
+      <MonacoEditor />
     </div>
   )
 }

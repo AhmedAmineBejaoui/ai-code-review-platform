@@ -10,6 +10,7 @@
     "prebuild": "npm run sync:clerk-assets",
     "prestart": "npm run sync:clerk-assets",
     "dev": "npm run clean:next && next dev -p 3001",
+    "start:y-websocket": "node ../../tools/y-websocket-server.js",
     "dev:reset": "npm run clean:next && next dev -p 3001",
     "build": "npm run clean:next && next build",
     "start": "next start -p 3001",
@@ -70,7 +71,12 @@
     "sonner": "^2.0.3",
     "tailwind-merge": "^2.6.0",
     "three": "^0.183.2",
-    "vaul": "^1.1.2"
+    "vaul": "^1.1.2",
+    "@monaco-editor/react": "^4.4.6",
+    "monaco-editor": "^0.46.1",
+    "yjs": "^13.5.46",
+    "y-websocket": "^1.4.5",
+    "y-monaco": "^13.0.12"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",
