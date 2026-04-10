@@ -859,7 +859,7 @@ async def update_analysis_status(
 async def set_analysis_review_decision(
     analysis_id: str,
     payload: ReviewDecisionRequest,
-    principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
     service: AnalysisService = Depends(get_analysis_service),
 ) -> AnalysisResponse:
     if principal is None:

@@ -127,29 +127,59 @@ class UpdateProjectRequest(BaseModel):
 
 # ── Helper Functions ────────────────────────────────────────────────────────────
 
-def _get_project_stats(engine, project_id: str) -> dict[str, Any]:
+def _get_project_stats(engine, project_id: str, repo_id: str | None = None) -> dict[str, Any]:
     """Get statistics for a project from analyses."""
     from sqlalchemy import text
     
-    query = text("""
-        SELECT 
-            COUNT(*) as analysis_count,
-            MAX(created_at) as last_analysis_at,
-            COALESCE((
-                SELECT COUNT(*) 
-                FROM findings f 
-                WHERE f.analysis_id IN (
-                    SELECT id FROM analyses a2 WHERE a2.repo = :project_id
-                )
-            ), 0) as total_findings,
-            SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
-            SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
-        FROM analyses
-        WHERE repo = :project_id
-    """)
+    # If we have a UUID project_id, use it directly; otherwise use repo_id
+    import uuid
+    try:
+        uuid.UUID(project_id)
+        use_project_id = True
+    except ValueError:
+        use_project_id = False
+    
+    if use_project_id:
+        # project_id is a UUID, query by project_id
+        query = text("""
+            SELECT 
+                COUNT(*) as analysis_count,
+                MAX(created_at) as last_analysis_at,
+                COALESCE((
+                    SELECT COUNT(*) 
+                    FROM findings f 
+                    WHERE f.analysis_id IN (
+                        SELECT id FROM analyses a2 WHERE a2.project_id = :project_id
+                    )
+                ), 0) as total_findings,
+                SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
+            FROM analyses
+            WHERE project_id = :project_id
+        """)
+        params = {"project_id": project_id}
+    else:
+        # project_id is a repo_id, query by repo
+        query = text("""
+            SELECT 
+                COUNT(*) as analysis_count,
+                MAX(created_at) as last_analysis_at,
+                COALESCE((
+                    SELECT COUNT(*) 
+                    FROM findings f 
+                    WHERE f.analysis_id IN (
+                        SELECT id FROM analyses a2 WHERE a2.repo = :repo_id
+                    )
+                ), 0) as total_findings,
+                SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed_count,
+                SUM(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) as failed_count
+            FROM analyses
+            WHERE repo = :repo_id
+        """)
+        params = {"repo_id": project_id}
     
     with engine.connect() as conn:
-        result = conn.execute(query, {"project_id": project_id})
+        result = conn.execute(query, params)
         row = result.mappings().first()
         
         if row and row.get("analysis_count"):
@@ -248,6 +278,87 @@ def _get_team_info(engine, team_id: str | None) -> tuple[str | None, str | None]
     return team_id, None
 
 
+def _ensure_project_profile(
+    engine,
+    *,
+    repo_id: str,
+    org_id: str | None = None,
+    display_name: str | None = None,
+    description: str | None = None,
+    primary_language: str | None = None,
+    visibility: str | None = None,
+) -> str:
+    """Return the canonical `project_profiles.id` (UUID) for the given repo_id.
+
+    Creates the row on-demand if missing. This is the authoritative identifier
+    that `AnalyzeRequest.project_id` must reference (enforced by the FK
+    `analyses.project_id -> project_profiles.id`).
+    """
+    from sqlalchemy import text
+
+    normalized_repo_id = repo_id.strip().lower()
+    if not normalized_repo_id:
+        raise HTTPException(status_code=422, detail="repo_id is required")
+
+    # 1) Try to find an existing row.
+    with engine.connect() as conn:
+        row = conn.execute(
+            text("SELECT id FROM project_profiles WHERE repo_id = :repo_id LIMIT 1"),
+            {"repo_id": normalized_repo_id},
+        ).mappings().first()
+    if row and row.get("id"):
+        return str(row["id"])
+
+    # 2) Otherwise insert a minimal placeholder row. The comprehension service
+    #    will populate the rest of the columns asynchronously.
+    import json as _json
+
+    new_id = str(uuid.uuid4())
+    raw_metadata = {
+        "display_name": display_name,
+        "description": description,
+        "primary_language": primary_language,
+        "visibility": visibility,
+    }
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO project_profiles (
+                    id, repo_id, org_id, context_version,
+                    main_languages, raw_metadata,
+                    business_description, analysis_status,
+                    created_at, last_analyzed_at
+                ) VALUES (
+                    :id, :repo_id, :org_id, 1,
+                    CAST(:main_languages AS jsonb), CAST(:raw_metadata AS jsonb),
+                    :description, 'pending',
+                    now(), now()
+                )
+                ON CONFLICT (repo_id) DO UPDATE
+                SET raw_metadata = COALESCE(project_profiles.raw_metadata, EXCLUDED.raw_metadata)
+                RETURNING id
+                """
+            ),
+            {
+                "id": new_id,
+                "repo_id": normalized_repo_id,
+                "org_id": org_id,
+                "main_languages": _json.dumps([primary_language] if primary_language else []),
+                "raw_metadata": _json.dumps(raw_metadata),
+                "description": description,
+            },
+        )
+        # Read the final id (ON CONFLICT may have returned a different one).
+        final_row = conn.execute(
+            text("SELECT id FROM project_profiles WHERE repo_id = :repo_id LIMIT 1"),
+            {"repo_id": normalized_repo_id},
+        ).mappings().first()
+    if not final_row or not final_row.get("id"):
+        raise HTTPException(status_code=500, detail="Failed to create project profile")
+    return str(final_row["id"])
+
+
 def _create_branch(engine, project_id: str, branch_config: BranchConfig, org_id: str | None) -> None:
     """Create a branch record."""
     from sqlalchemy import text
@@ -308,12 +419,13 @@ async def create_project(
 ) -> ProjectResponse:
     """
     Create a new project with team and branch configuration.
-    
+
     This endpoint creates:
-    1. A repository profile for tracking
-    2. Project settings with auto-analysis config
-    3. Team member assignments (if provided)
-    4. Branch configurations (if provided)
+    1. A canonical project_profiles row (UUID id — authoritative project identifier)
+    2. A repository profile for tracking
+    3. Project settings with auto-analysis config
+    4. Team member assignments (if provided)
+    5. Branch configurations (if provided)
     """
     enforce_permission(principal, "analyses.create")
 
@@ -322,12 +434,24 @@ async def create_project(
     settings_repo = ProjectSettingsRepo()
     rbac_repo = RBACRepo()
 
-    project_id = request.full_name.strip().lower()
+    repo_id = request.full_name.strip().lower()
     now = datetime.now(timezone.utc)
-    
-    # 1. Create repository profile
+
+    # 1. Create canonical project_profiles row (authoritative id for analyses FK)
+    #    This row's `id` is the UUID that AnalyzeRequest.project_id must reference.
+    project_id = _ensure_project_profile(
+        engine,
+        repo_id=repo_id,
+        org_id=request.team_id,
+        display_name=request.name,
+        description=request.description,
+        primary_language=request.language,
+        visibility=request.visibility,
+    )
+
+    # 2. Create repository profile (legacy table, keyed by repo_id)
     repo_profiles.upsert_profile(
-        repo_id=project_id,
+        repo_id=repo_id,
         repo_path=None,
         indexed_commit=None,
         default_branch=request.default_branch,
@@ -340,29 +464,29 @@ async def create_project(
         },
     )
     
-    # 2. Create project settings
+    # 3. Create project settings (keyed by legacy repo_id for backward compat)
     settings = settings_repo.get_or_create_settings(
-        project_id=project_id,
+        project_id=repo_id,
         organization_id=request.team_id,
     )
-    
+
     # Update auto-analysis if different from default
     if not request.auto_analysis_enabled:
         settings_repo.set_auto_analysis_enabled(
-            project_id=project_id,
+            project_id=repo_id,
             enabled=False,
             changed_by=principal.user_id,
             reason="Disabled on project creation",
         )
-    
-    # 3. Assign team members
+
+    # 4. Assign team members
     assigned_members: list[ProjectMember] = []
-    
+
     # Always add the creator as admin
     try:
         rbac_repo.assign_project_role(
             user_id=principal.user_id,
-            project_id=project_id,
+            project_id=repo_id,
             role_code="admin",
             assigned_by=principal.user_id,
             notes="Project creator",
@@ -375,24 +499,24 @@ async def create_project(
         ))
     except Exception:
         pass
-    
+
     # Add additional members
     for member in request.members:
         if member is not None and member.user_id != principal.user_id:  # Skip if already added
             try:
                 rbac_repo.assign_project_role(
                     user_id=member.user_id,
-                    project_id=project_id,
+                    project_id=repo_id,
                     role_code=member.role,
                     assigned_by=principal.user_id,
                 )
                 assigned_members.append(member)
             except Exception:
                 pass
-    
-    # 4. Create branches
+
+    # 5. Create branches
     created_branches: list[BranchConfig] = []
-    
+
     # Always create default branch
     default_branch_config = BranchConfig(
         name=request.default_branch,
@@ -400,22 +524,24 @@ async def create_project(
         is_protected=True,
         require_reviews=1,
     )
-    _create_branch(engine, project_id, default_branch_config, request.team_id)
+    _create_branch(engine, repo_id, default_branch_config, request.team_id)
     created_branches.append(default_branch_config)
-    
+
     # Create additional branches
     for branch in request.branches:
         if branch.name != request.default_branch:
-            _create_branch(engine, project_id, branch, request.team_id)
+            _create_branch(engine, repo_id, branch, request.team_id)
             created_branches.append(branch)
-    
+
     # Get team info
     team_id, team_name = _get_team_info(engine, request.team_id)
-    
+
+    # IMPORTANT: the response `id` must be the project_profiles UUID so the
+    # dashboard can pass it back as AnalyzeRequest.project_id.
     return ProjectResponse(
         id=project_id,
         name=request.name,
-        full_name=project_id,
+        full_name=repo_id,
         description=request.description,
         language=request.language,
         visibility=request.visibility,
@@ -447,6 +573,15 @@ async def list_projects(
 ) -> ProjectListResponse:
     """
     List all projects accessible to the current user.
+
+    Canonical source of truth is the `project_profiles` table — the `id`
+    column of every returned item is the project UUID that must be passed
+    back as `AnalyzeRequest.project_id` (enforced by the FK
+    `analyses.project_id -> project_profiles.id`).
+
+    For backward compatibility we also backfill `project_profiles` for any
+    legacy `analyses.repo` that doesn't yet have a matching profile so
+    existing data remains analysable.
     """
     enforce_permission(principal, "analyses.read")
 
@@ -456,102 +591,183 @@ async def list_projects(
     settings_repo = ProjectSettingsRepo()
 
     from sqlalchemy import text
-    
-    # Build query conditions
-    conditions = []
+
+    # 0) Backfill: make sure every repo that has analyses has a matching
+    #    project_profiles row. Without this, legacy analyses created before
+    #    the project_id FK existed would be invisible in the project list.
+    try:
+        with engine.begin() as conn:
+            conn.execute(
+                text(
+                    """
+                    INSERT INTO project_profiles (id, repo_id, context_version, analysis_status)
+                    SELECT gen_random_uuid()::text, lower(a.repo), 1, 'pending'
+                    FROM (SELECT DISTINCT repo FROM analyses WHERE repo IS NOT NULL) a
+                    WHERE lower(a.repo) NOT IN (SELECT repo_id FROM project_profiles)
+                    ON CONFLICT (repo_id) DO NOTHING
+                    """
+                )
+            )
+            # Backfill analyses.project_id that are still NULL.
+            conn.execute(
+                text(
+                    """
+                    UPDATE analyses a
+                    SET project_id = pp.id
+                    FROM project_profiles pp
+                    WHERE a.project_id IS NULL
+                      AND lower(a.repo) = pp.repo_id
+                    """
+                )
+            )
+    except Exception:
+        # Non-fatal: listing should still work if backfill fails.
+        pass
+
+    # 1) Build query conditions against project_profiles.
+    conditions: list[str] = []
     params: dict[str, Any] = {"limit": limit, "offset": (page - 1) * limit}
-    
+
     if search:
-        conditions.append("repo ILIKE :search")
+        conditions.append("(pp.repo_id ILIKE :search OR COALESCE(pp.raw_metadata->>'display_name','') ILIKE :search)")
         params["search"] = f"%{search}%"
-    
+
+    if team_id:
+        conditions.append("pp.org_id = :team_id")
+        params["team_id"] = team_id
+
     where_clause = f"WHERE {' AND '.join(conditions)}" if conditions else ""
-    
-    # Get projects from analyses (repositories with analyses)
-    query = text(f"""
-        WITH project_stats AS (
-            SELECT 
-                repo as project_id,
-                COUNT(*) as analysis_count,
-                MAX(created_at) as last_analysis_at,
-                MIN(created_at) as first_seen
+
+    query = text(
+        f"""
+        SELECT
+            pp.id                           AS project_id,
+            pp.repo_id                      AS repo_id,
+            pp.org_id                       AS org_id,
+            pp.raw_metadata                 AS raw_metadata,
+            pp.business_description         AS business_description,
+            pp.created_at                   AS created_at,
+            pp.last_analyzed_at             AS last_analyzed_at,
+            COALESCE(a.analysis_count, 0)   AS analysis_count,
+            a.last_analysis_at              AS last_analysis_at
+        FROM project_profiles pp
+        LEFT JOIN (
+            SELECT project_id, COUNT(*) AS analysis_count, MAX(created_at) AS last_analysis_at
             FROM analyses
-            {where_clause}
-            GROUP BY repo
-        )
-        SELECT * FROM project_stats
-        ORDER BY last_analysis_at DESC NULLS LAST
-        LIMIT :limit OFFSET :offset
-    """)
-    
-    count_query = text(f"""
-        SELECT COUNT(DISTINCT repo) as total
-        FROM analyses
+            WHERE project_id IS NOT NULL
+            GROUP BY project_id
+        ) a ON a.project_id = pp.id
         {where_clause}
-    """)
-    
+        ORDER BY COALESCE(a.last_analysis_at, pp.last_analyzed_at, pp.created_at) DESC NULLS LAST
+        LIMIT :limit OFFSET :offset
+        """
+    )
+
+    count_query = text(
+        f"""
+        SELECT COUNT(*) AS total
+        FROM project_profiles pp
+        {where_clause}
+        """
+    )
+
     items: list[ProjectResponse] = []
     total = 0
-    
+
     with engine.connect() as conn:
-        # Get total
-        count_result = conn.execute(count_query, params)
-        count_row = count_result.mappings().first()
-        total = count_row.get("total") or 0 if count_row else 0
-        
-        # Get projects
+        count_row = conn.execute(count_query, params).mappings().first()
+        total = (count_row.get("total") if count_row else 0) or 0
+
         result = conn.execute(query, params)
-        
         for row in result.mappings().all():
-            project_id = row["project_id"]
-            
-            # Get profile
-            profile = repo_profiles.get_profile(project_id)
+            project_id_uuid = str(row["project_id"])  # ← canonical UUID
+            repo_id = str(row["repo_id"])
+
+            # Legacy repo_profiles blob (display metadata)
+            profile = repo_profiles.get_profile(repo_id)
             profile_data = profile.profile if profile else {}
-            
-            # Get settings
-            settings = settings_repo.get_settings(project_id)
-            
-            # Get stats
-            stats = _get_project_stats(engine, project_id)
-            
-            # Get members
-            members = _get_project_members(engine, project_id, rbac_repo)
-            
-            # Get branches
-            branches = _get_project_branches(engine, project_id)
-            
-            # Get team info
-            org_id = settings.organization_id if settings else None
+
+            raw_meta_val = row.get("raw_metadata") or {}
+            if isinstance(raw_meta_val, str):
+                import json as _json
+                try:
+                    raw_meta = _json.loads(raw_meta_val)
+                except Exception:
+                    raw_meta = {}
+            elif isinstance(raw_meta_val, dict):
+                raw_meta = raw_meta_val
+            else:
+                raw_meta = {}
+
+            # Settings / members / branches keyed by legacy repo_id
+            settings = settings_repo.get_settings(repo_id)
+            members = _get_project_members(engine, repo_id, rbac_repo)
+            branches = _get_project_branches(engine, repo_id)
+
+            # Stats: reuse helper keyed by repo_id for findings aggregation.
+            stats = _get_project_stats(engine, repo_id)
+            # Override analysis_count / last_analysis_at from the canonical
+            # project_id join so we count rows tied to the real project FK.
+            stats["analysis_count"] = int(row.get("analysis_count") or 0)
+            last_analysis_at_val = row.get("last_analysis_at")
+            stats["last_analysis_at"] = (
+                last_analysis_at_val.isoformat() if last_analysis_at_val else None
+            )
+
+            # Team info
+            org_id = row.get("org_id") or (settings.organization_id if settings else None)
             team_id_val, team_name = _get_team_info(engine, org_id)
-            
-            # Parse name
-            parts = project_id.split("/")
-            name = profile_data.get("name") or (parts[-1] if parts else project_id)
-            
-            items.append(ProjectResponse(
-                id=project_id,
-                name=name,
-                full_name=project_id,
-                description=profile_data.get("description"),
-                language=profile_data.get("primary_language"),
-                visibility=profile_data.get("visibility", "private"),
-                default_branch=profile.default_branch if profile else "main",
-                status="active",
-                team_id=team_id_val,
-                team_name=team_name,
-                member_count=len(members),
-                members=members[:5],  # Limit to first 5 for list view
-                branch_count=len(branches),
-                branches=branches[:5],  # Limit to first 5 for list view
-                auto_analysis_enabled=settings.auto_analysis_enabled if settings else True,
-                health_score=stats["health_score"],
-                analysis_count=stats["analysis_count"],
-                last_analysis_at=stats["last_analysis_at"],
-                created_at=row["first_seen"].isoformat() if row.get("first_seen") else datetime.now(timezone.utc).isoformat(),
-                updated_at=row["last_analysis_at"].isoformat() if row.get("last_analysis_at") else datetime.now(timezone.utc).isoformat(),
-            ))
-    
+
+            parts = repo_id.split("/")
+            name = (
+                raw_meta.get("display_name")
+                or profile_data.get("name")
+                or (parts[-1] if parts else repo_id)
+            )
+            description = (
+                raw_meta.get("description")
+                or row.get("business_description")
+                or profile_data.get("description")
+            )
+            language = raw_meta.get("primary_language") or profile_data.get("primary_language")
+            visibility = raw_meta.get("visibility") or profile_data.get("visibility") or "private"
+
+            created_at_val = row.get("created_at")
+            updated_at_val = row.get("last_analyzed_at") or row.get("last_analysis_at") or created_at_val
+
+            items.append(
+                ProjectResponse(
+                    id=project_id_uuid,
+                    name=name,
+                    full_name=repo_id,
+                    description=description,
+                    language=language,
+                    visibility=visibility,
+                    default_branch=profile.default_branch if profile else "main",
+                    status="active",
+                    team_id=team_id_val,
+                    team_name=team_name,
+                    member_count=len(members),
+                    members=members[:5],
+                    branch_count=len(branches),
+                    branches=branches[:5],
+                    auto_analysis_enabled=settings.auto_analysis_enabled if settings else True,
+                    health_score=stats["health_score"],
+                    analysis_count=stats["analysis_count"],
+                    last_analysis_at=stats["last_analysis_at"],
+                    created_at=(
+                        created_at_val.isoformat()
+                        if created_at_val
+                        else datetime.now(timezone.utc).isoformat()
+                    ),
+                    updated_at=(
+                        updated_at_val.isoformat()
+                        if updated_at_val
+                        else datetime.now(timezone.utc).isoformat()
+                    ),
+                )
+            )
+
     return ProjectListResponse(
         items=items,
         total=total,
@@ -580,40 +796,65 @@ async def get_project(
     rbac_repo = RBACRepo()
     settings_repo = ProjectSettingsRepo()
 
-    # Get profile
-    profile = repo_profiles.get_profile(project_id)
+    # Determine if project_id is a UUID or repo_id
+    from sqlalchemy import text
+    import uuid
+
+    try:
+        # Try to parse as UUID
+        uuid.UUID(project_id)
+        is_uuid = True
+    except ValueError:
+        is_uuid = False
+
+    if is_uuid:
+        # project_id is a UUID, get the corresponding repo_id from project_profiles
+        with engine.connect() as conn:
+            row = conn.execute(
+                text("SELECT repo_id FROM project_profiles WHERE id = :project_id LIMIT 1"),
+                {"project_id": project_id},
+            ).mappings().first()
+            if not row:
+                raise HTTPException(status_code=404, detail="Project not found")
+            repo_id = str(row["repo_id"])
+    else:
+        # project_id is already a repo_id
+        repo_id = project_id
+
+    # Get profile using repo_id
+    profile = repo_profiles.get_profile(repo_id)
     
-    # Get stats
-    stats = _get_project_stats(engine, project_id)
+    # Get stats using project_id (UUID) if available, otherwise repo_id
+    stats = _get_project_stats(engine, project_id, repo_id)
     
     if not profile and stats["analysis_count"] == 0:
         raise HTTPException(status_code=404, detail="Project not found")
-    
+
     profile_data = profile.profile if profile else {}
-    
-    # Get settings
-    settings = settings_repo.get_settings(project_id)
-    
-    # Get members
-    members = _get_project_members(engine, project_id, rbac_repo)
-    
-    # Get branches  
-    branches = _get_project_branches(engine, project_id)
-    
+
+    # Get settings using repo_id (for backward compatibility)
+    settings = settings_repo.get_settings(repo_id)
+
+    # Get members using repo_id
+    members = _get_project_members(engine, repo_id, rbac_repo)
+
+    # Get branches using repo_id
+    branches = _get_project_branches(engine, repo_id)
+
     # Get team info
     org_id = settings.organization_id if settings else None
     team_id, team_name = _get_team_info(engine, org_id)
-    
+
     # Parse name
-    parts = project_id.split("/")
-    name = profile_data.get("name") or (parts[-1] if parts else project_id)
-    
+    parts = repo_id.split("/")
+    name = profile_data.get("name") or (parts[-1] if parts else repo_id)
+
     now = datetime.now(timezone.utc).isoformat()
-    
+
     return ProjectResponse(
-        id=project_id,
+        id=project_id if is_uuid else repo_id,  # Return the original project_id format
         name=name,
-        full_name=project_id,
+        full_name=repo_id,
         description=profile_data.get("description"),
         language=profile_data.get("primary_language"),
         visibility=profile_data.get("visibility", "private"),

@@ -350,6 +350,39 @@ function normalizeOptionalObject(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null
+  }
+  return value as Record<string, unknown>
+}
+
+function extractBackendError(parsedBackendBody: unknown): {
+  message: string | null
+  details: Record<string, unknown> | null
+  code: string | null
+} {
+  const topLevel = asRecord(parsedBackendBody)
+  if (!topLevel) {
+    return { message: null, details: null, code: null }
+  }
+
+  const nestedError = asRecord(topLevel.error)
+  const topLevelErrorString = typeof topLevel.error === "string" ? asNonEmptyString(topLevel.error) : null
+
+  const message =
+    topLevelErrorString ??
+    asNonEmptyString(topLevel.message) ??
+    asNonEmptyString(topLevel.detail) ??
+    (nestedError ? asNonEmptyString(nestedError.message) : null) ??
+    (nestedError ? asNonEmptyString(nestedError.detail) : null)
+
+  const details = asRecord(topLevel.details) ?? (nestedError ? asRecord(nestedError.details) : null)
+  const code = asNonEmptyString(topLevel.code) ?? (nestedError ? asNonEmptyString(nestedError.code) : null)
+
+  return { message, details, code }
+}
+
 function readStringFromClaims(claims: unknown, key: string): string | null {
   if (typeof claims !== "object" || claims === null) {
     return null
@@ -1063,7 +1096,7 @@ export async function POST(request: NextRequest) {
 
   const user = await currentUser()
   const primaryEmail =
-    user?.emailAddresses?.find((address) => address.id === user.primaryEmailAddressId)?.emailAddress ??
+    user?.emailAddresses?.find((address) => address.id === user?.primaryEmailAddressId)?.emailAddress ??
     user?.emailAddresses?.[0]?.emailAddress
   const displayName = firstNonEmpty(
     [user?.firstName, user?.lastName].filter(Boolean).join(" "),
@@ -1135,13 +1168,23 @@ export async function POST(request: NextRequest) {
   }
 
   if (!backendResponse.ok) {
+    // Never proxy a backend 404 as-is: the browser would interpret it as
+    // "Next.js route not found" rather than "resource not found on backend".
+    // Map backend 404 → 422 (Unprocessable Entity) so the client can distinguish
+    // a missing project/resource from a missing API route.
+    const proxyStatus = backendResponse.status === 404 ? 422 : backendResponse.status
+    const backendError = extractBackendError(parsedBackendBody)
+    const fallbackMessage = "Failed to create analysis"
     return NextResponse.json(
       {
-        error: "Failed to create analysis",
+        error: backendError.message ?? fallbackMessage,
+        message: backendError.message ?? fallbackMessage,
+        code: backendError.code,
+        details: backendError.details,
         backend_status: backendResponse.status,
         backend_response: parsedBackendBody,
       },
-      { status: backendResponse.status },
+      { status: proxyStatus },
     )
   }
 

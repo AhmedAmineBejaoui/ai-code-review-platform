@@ -1,8 +1,13 @@
 "use client"
 
 import { Suspense } from "react"
+import dynamic from "next/dynamic"
 import { OrganizationWorkspace } from "@/components/dashboard/OrganizationWorkspace"
-import { GitHubOrganizationData } from "@/components/dashboard/GitHubOrganizationData"
+
+const GitHubOrganizationData = dynamic(() => import("@/components/dashboard/GitHubOrganizationData").then(mod => ({ default: mod.GitHubOrganizationData })), {
+  ssr: false,
+  loading: () => <div className="p-6 text-muted-foreground">Loading GitHub organization data...</div>
+})
 
 export default function OrganizationPage() {
   return (

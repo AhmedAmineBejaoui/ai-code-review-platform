@@ -53,10 +53,11 @@ export async function GET(request: Request) {
     if (Array.isArray(data)) {
       for (const item of data) {
         if (typeof item?.login === "string") {
+          // GitHub collaborators API doesn't include email/name - these will be null
           collaborators.push({
             login: item.login,
-            email: typeof item.email === "string" ? item.email : null,
-            name: typeof item.name === "string" ? item.name : null,
+            email: null, // GitHub doesn't provide email in collaborators endpoint
+            name: null,  // GitHub doesn't provide name in collaborators endpoint
           })
         }
       }

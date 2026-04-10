@@ -49,7 +49,8 @@ class BranchPolicyValidator:
             # Pas de politiques = nom valide
             return ValidationResult(True, "No naming policies configured")
 
-        violated = []
+        violated_messages = []
+        violated_policies = []
 
         for policy in policies:
             if not policy["enforce_naming"]:
@@ -63,16 +64,17 @@ class BranchPolicyValidator:
             if branch_type in patterns:
                 pattern = patterns[branch_type]
                 if not self._matches_pattern(branch_name, pattern):
-                    violated.append(
+                    violated_messages.append(
                         f"Branch name '{branch_name}' does not match pattern '{pattern}' "
                         f"for type '{branch_type}' (policy: {policy['policy_name']})"
                     )
+                    violated_policies.append(policy['policy_name'])
 
-        if violated:
+        if violated_policies:
             return ValidationResult(
                 False,
-                f"Branch name violates {len(violated)} naming policy(ies)",
-                violated,
+                f"Branch name violates {len(violated_policies)} naming policy(ies): {', '.join(violated_messages)}",
+                violated_policies,
             )
 
         return ValidationResult(True, "Branch name is valid")
@@ -106,27 +108,30 @@ class BranchPolicyValidator:
         if not workflow_policies:
             return ValidationResult(True, "No workflow policies configured")
 
-        violated = []
+        violated_messages = []
+        violated_policies = []
 
         for policy in workflow_policies:
             # Vérifier si une base branch est requise
             if operation == "create" and policy["require_base_branch"]:
                 if not base_branch:
-                    violated.append(
+                    violated_messages.append(
                         f"Policy '{policy['policy_name']}' requires a base branch to be specified"
                     )
+                    violated_policies.append(policy['policy_name'])
                 elif policy["allowed_base_branches"]:
                     if base_branch not in policy["allowed_base_branches"]:
-                        violated.append(
+                        violated_messages.append(
                             f"Base branch '{base_branch}' is not allowed by policy '{policy['policy_name']}'. "
                             f"Allowed: {', '.join(policy['allowed_base_branches'])}"
                         )
+                        violated_policies.append(policy['policy_name'])
 
-        if violated:
+        if violated_policies:
             return ValidationResult(
                 False,
-                f"Workflow violations: {len(violated)}",
-                violated,
+                f"Workflow violations: {len(violated_policies)} - {', '.join(violated_messages)}",
+                violated_policies,
             )
 
         return ValidationResult(True, "Workflow is valid")
@@ -165,7 +170,7 @@ class BranchPolicyValidator:
                 False,
                 f"Merge method '{merge_method}' is not allowed. "
                 f"Allowed methods: {', '.join(allowed_methods)}",
-                [f"Policy: {policy['policy_name']}"],
+                [policy['policy_name']],
             )
 
         return ValidationResult(True, f"Merge method '{merge_method}' is allowed")

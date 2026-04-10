@@ -491,7 +491,13 @@ async def get_current_principal(
         token = authorization.credentials.strip()
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty bearer token")
-        return await _build_principal_from_clerk_token(token, repo)
+        # Only validate the Clerk JWT when CLERK_AUTH_ENABLED=True.
+        # When disabled (default in development), the Bearer token is ignored and
+        # the request falls through to the X-User-Id header path so that the
+        # backend does not reject requests from the dashboard with "Invalid Clerk token".
+        if settings.CLERK_AUTH_ENABLED:
+            return await _build_principal_from_clerk_token(token, repo)
+        # Auth disabled: token intentionally ignored; fall through to X-User-Id.
 
     if not _is_auth_enforced() and not x_user_id:
         return None
@@ -500,8 +506,14 @@ async def get_current_principal(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
 
     user = await asyncio.to_thread(repo.get_user, x_user_id.strip())
-    if user is None or not user.is_active:
+    if user is None:
+        # When auth is not enforced, tolerate unknown users (e.g. first request
+        # before /auth/sync has been called) instead of blocking the call.
+        if not _is_auth_enforced():
+            return None
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is missing or inactive")
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
 
     return AuthenticatedPrincipal(
         user_id=user.id,

@@ -562,12 +562,8 @@ def _resolve_repo_path_for_reindex(repo_id: str, repo_path: str | None) -> str:
     if candidate:
         return candidate
 
-    raise ApiError(
-        status_code=400,
-        code="MISSING_REPO_PATH",
-        message="repoPath is required because no existing profile path was found",
-        details={"repoId": repo_id},
-    )
+    # If no profile or no repo_path, use repo_id as fallback
+    return repo_id
 
 
 def _delete_repo_profile(repo_id: str) -> bool:

@@ -20,7 +20,8 @@
       "Bash(grep -r \"clerk.*invitation\\\\|invitations\\\\.create\\\\|organization.*invit\" /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps --include=*.py --include=*.ts --include=*.tsx)",
       "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api -type f -name *.ts -o -name *.tsx -o -name *.js)",
       "Bash(ls /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/backend/app/api/http/*.py)",
-      "Bash(cd /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform)"
+      "Bash(cd /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform)",
+      "Bash(node -c '/c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api/dashboard/analyses/route.ts')"
     ]
   }
 }

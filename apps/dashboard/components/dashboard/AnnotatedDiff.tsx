@@ -1,11 +1,27 @@
 "use client"
 /* eslint-disable react/no-unescaped-entities */
 
-import { useEffect, useMemo, useState, useCallback, useRef } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
 import { AnimatePresence } from "framer-motion"
-import { Loader2 } from "lucide-react"
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronRight,
+  FileDiff,
+  Files,
+  GitBranch,
+  GitPullRequest,
+  Loader2,
+  MessageSquarePlus,
+  Play,
+  Save,
+  Search,
+  Settings,
+  Shield,
+  SplitSquareHorizontal,
+} from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewer } from "@/lib/roles"
 import {
@@ -186,12 +202,16 @@ function DiffLine({
   findings,
   dismissedFindings,
   onDismiss,
+  onComment,
+  isCommenting,
 }: {
   line: DashboardAnalysisDiffFile["lines"][number]
   lineNumber: number
   findings: DashboardAnalysisDetails["findings"]
   dismissedFindings: Set<string>
   onDismiss: (id: string) => void
+  onComment: (lineNumber: number) => void
+  isCommenting: boolean
 }) {
   const lineFindings = findings.filter(
     (f) =>
@@ -230,27 +250,49 @@ function DiffLine({
   return (
     <>
       <div
-        className="flex"
+        className="group flex items-stretch"
         style={{ background: bgColor, borderLeft: `3px solid ${borderColor}` }}
       >
-        {/* Line number */}
+        {/* Old line number */}
         <span
-          className="w-[52px] text-right pr-3 select-none text-[11px] flex-shrink-0"
-          style={{ color: lineNumColor }}
+          className="w-[42px] text-right pr-2 select-none text-[11px] flex-shrink-0 border-r"
+          style={{ color: lineNumColor, borderColor: "rgba(48,54,61,0.6)" }}
         >
-          {line.lineType !== "header" ? lineNumber : ""}
+          {line.lineType !== "header" ? (line.oldLineNo ?? "") : ""}
+        </span>
+        {/* New line number */}
+        <span
+          className="w-[42px] text-right pr-2 select-none text-[11px] flex-shrink-0 border-r"
+          style={{ color: lineNumColor, borderColor: "rgba(48,54,61,0.6)" }}
+        >
+          {line.lineType !== "header" ? (line.newLineNo ?? "") : ""}
         </span>
         {/* Prefix */}
-        <span className="w-4 text-[12px] font-mono select-none flex-shrink-0" style={{ color: prefixColor }}>
+        <span className="w-4 text-[12px] font-mono select-none flex-shrink-0 ml-1" style={{ color: prefixColor }}>
           {prefix}
         </span>
         {/* Content */}
         <span
-          className="flex-1 text-[12px] font-mono whitespace-pre"
+          className="flex-1 text-[12px] font-mono whitespace-pre overflow-x-auto"
           style={{ color: line.lineType === "remove" ? "#ff7b72" : line.lineType === "header" ? "#79c0ff" : "#e6edf3" }}
         >
           {line.content}
         </span>
+        {/* Inline comment trigger */}
+        {line.lineType !== "header" && (
+          <button
+            onClick={() => onComment(lineNumber)}
+            className="mr-2 my-0.5 h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition"
+            style={{
+              color: isCommenting ? "#0d1117" : "#79c0ff",
+              background: isCommenting ? "#79c0ff" : "rgba(121,192,255,0.12)",
+              border: "1px solid rgba(121,192,255,0.3)",
+            }}
+            title="Comment this line"
+          >
+            <MessageSquarePlus className="h-3.5 w-3.5" />
+          </button>
+        )}
       </div>
 
       {/* RAG comments after this line */}
@@ -276,7 +318,6 @@ export function AnnotatedDiff() {
   const [loading, setLoading] = useState(true)
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null)
   const [dismissedFindings, setDismissedFindings] = useState<Set<string>>(new Set())
-  const [activeTab, setActiveTab] = useState<"files" | "conversation">("files")
 
   // Review state
   const [pendingComments, setPendingComments] = useState<PendingComment[]>([])
@@ -365,7 +406,6 @@ export function AnnotatedDiff() {
   }, [existingComments])
 
   const canReview = isReviewer(currentUser.role) || currentUser.role === "admin"
-  const ragReferenceCount = analysis?.reviewOutput?.contextReferences.length ?? 0
 
   const handleAddPendingComment = (comment: PendingComment) => {
     setPendingComments((prev) => [...prev, comment])
@@ -461,7 +501,7 @@ export function AnnotatedDiff() {
 
   if (loading) {
     return (
-      <div className="fixed inset-0 z-[60] bg-[#0d1117] flex items-center justify-center">
+      <div className="flex min-h-[60vh] w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
         <Loader2 className="h-6 w-6 animate-spin text-[#7f77dd]" />
         <span className="ml-3 text-[#8b949e] text-sm">Chargement de l'analyse...</span>
       </div>
@@ -470,7 +510,7 @@ export function AnnotatedDiff() {
 
   if (!analysis) {
     return (
-      <div className="fixed inset-0 z-[60] bg-[#0d1117] flex items-center justify-center">
+      <div className="flex min-h-[60vh] w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
         <span className="text-[#8b949e]">Analyse non trouvée</span>
       </div>
     )
@@ -484,110 +524,128 @@ export function AnnotatedDiff() {
   const totalDeletions = analysis.files.reduce((s, f) => s + (f.deletionsCount ?? 0), 0)
   const prBranch = analysis.prLabel ?? "feat/branch"
   const selectedFileInfo = selectedFilePath ? getFileInfo(selectedFilePath) : null
+  const coverage = Math.max(52, 96 - errorCount * 6 - warningCount * 2)
+  const complexity = fileFindings.length > 16 ? "High" : fileFindings.length > 8 ? "Medium" : "Low"
+  const openThreadCount = existingComments.filter((comment) => !comment.parent_id && comment.status !== "resolved").length
+  const tabFiles = (() => {
+    if (analysis.files.length <= 3) return analysis.files
+    const active = analysis.files.find((file) => file.pathNew === selectedFilePath)
+    const picked: DashboardAnalysisDiffFile[] = []
+    if (active) picked.push(active)
+    for (const file of analysis.files) {
+      if (picked.some((entry) => entry.id === file.id)) continue
+      picked.push(file)
+      if (picked.length >= 3) break
+    }
+    return picked
+  })()
 
   return (
     <div
-      className="fixed inset-0 z-[60] flex flex-col overflow-hidden select-none"
+      className="relative flex min-h-[calc(100vh-10rem)] w-full flex-col overflow-hidden rounded-xl border select-none"
       style={{ background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif" }}
     >
 
-      {/* ── MenuBar ──────────────────────────────────────────────────── */}
       <div
-        className="flex-shrink-0 flex items-center px-2 border-b"
-        style={{ height: 32, background: "#161b22", borderColor: "#30363d" }}
+        className="flex h-8 flex-shrink-0 items-center border-b px-2"
+        style={{ background: "#0d1424", borderColor: "#23304a" }}
       >
-        {/* macOS dots */}
-        <div className="flex items-center gap-[6px] mr-6">
+        <div className="mr-5 flex items-center gap-[6px]">
           <Link href="/dashboard">
-            <div className="rounded-full cursor-pointer hover:opacity-80" style={{ width: 12, height: 12, background: "#ff5f57" }} />
+            <div className="h-3 w-3 cursor-pointer rounded-full hover:opacity-80" style={{ background: "#ff5f57" }} />
           </Link>
-          <div className="rounded-full" style={{ width: 12, height: 12, background: "#febc2e" }} />
-          <div className="rounded-full" style={{ width: 12, height: 12, background: "#28c840" }} />
+          <div className="h-3 w-3 rounded-full" style={{ background: "#febc2e" }} />
+          <div className="h-3 w-3 rounded-full" style={{ background: "#28c840" }} />
         </div>
-        {/* Menu items */}
         {["File", "Edit", "Selection", "View", "Go", "Run", "Terminal"].map((item) => (
-          <span key={item} className="text-[12px] mr-4 cursor-pointer hover:text-white" style={{ color: "#8b949e" }}>
+          <span key={item} className="mr-4 cursor-pointer text-[12px]" style={{ color: "#8ea1c7" }}>
             {item}
           </span>
         ))}
-        <span className="text-[12px] mr-4 cursor-pointer font-semibold" style={{ color: "#7f77dd" }}>
+        <span className="mr-4 cursor-pointer text-[12px] font-semibold" style={{ color: "#7f9dff" }}>
           Review
         </span>
-        <span className="text-[12px] mr-4 cursor-pointer hover:text-white" style={{ color: "#8b949e" }}>
+        <span className="cursor-pointer text-[12px]" style={{ color: "#8ea1c7" }}>
           Help
         </span>
-        {/* PR Badge */}
-        <div className="ml-auto flex items-center gap-2">
-          <div
-            className="flex items-center gap-2 px-2 rounded"
-            style={{ background: "#21262e", height: 20 }}
-          >
-            <span className="text-[11px]" style={{ color: "#8b949e" }}>
-              {prBranch}
-            </span>
-            <div className="rounded-sm" style={{ width: 8, height: 8, background: "#56d364" }} />
-            <span className="text-[11px] font-medium" style={{ color: "#56d364" }}>Open</span>
-          </div>
+        <div className="ml-auto flex items-center gap-2 rounded-md border px-2 py-0.5" style={{ borderColor: "#2f4166", background: "#121c30" }}>
+          <GitPullRequest className="h-3.5 w-3.5" style={{ color: "#7f9dff" }} />
+          <span className="text-[11px]" style={{ color: "#9eb1d8" }}>
+            {prBranch}
+          </span>
+          <div className="h-2 w-2 rounded-full" style={{ background: "#4bd38b" }} />
+          <span className="text-[11px] font-semibold" style={{ color: "#4bd38b" }}>
+            Open
+          </span>
         </div>
       </div>
 
-      {/* ── Body ─────────────────────────────────────────────────────── */}
-      <div className="flex flex-1 overflow-hidden">
-
-        {/* ── ActivityBar ─────────────────────────────────────────── */}
+      <div className="flex min-h-0 flex-1">
         <div
-          className="flex-shrink-0 flex flex-col items-center pt-2 border-r"
-          style={{ width: 48, background: "#161b22", borderColor: "#30363d" }}
+          className="flex w-11 flex-shrink-0 flex-col items-center border-r py-2"
+          style={{ background: "#0d1424", borderColor: "#23304a" }}
         >
-          <div className="relative mb-1">
-            <div className="absolute left-0 top-0 bottom-0 w-[2px] rounded-r" style={{ background: "#7f77dd" }} />
-            <button className="flex items-center justify-center text-[18px] mt-1 rounded w-8 h-8" style={{ color: "#7f77dd" }}>⊞</button>
-          </div>
-          {["⌕", "⎇", "⚙", "◉", "⬡"].map((icon, i) => (
-            <button key={i} className="flex items-center justify-center text-[18px] mt-1 rounded w-8 h-8 hover:text-white" style={{ color: "#6e7681" }}>
-              {icon}
+          <button
+            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md"
+            style={{ background: "rgba(127,157,255,0.16)", color: "#7f9dff" }}
+            title="Explorer"
+          >
+            <Files className="h-4.5 w-4.5" />
+          </button>
+          {[
+            { icon: Search, label: "Search" },
+            { icon: GitBranch, label: "Source control" },
+            { icon: Shield, label: "Security" },
+            { icon: Settings, label: "Settings" },
+          ].map((entry) => (
+            <button
+              key={entry.label}
+              className="mt-1 flex h-8 w-8 items-center justify-center rounded-md"
+              style={{ color: "#60739a" }}
+              title={entry.label}
+            >
+              <entry.icon className="h-4.5 w-4.5" />
             </button>
           ))}
         </div>
 
-        {/* ── Sidebar ─────────────────────────────────────────────── */}
-        <div
-          className="flex-shrink-0 flex flex-col border-r overflow-hidden"
-          style={{ width: 220, background: "#161b22", borderColor: "#30363d" }}
+        <aside
+          className="hidden w-[250px] flex-shrink-0 flex-col border-r md:flex"
+          style={{ background: "#111a2d", borderColor: "#23304a" }}
         >
-          {/* Explorer header */}
-          <div className="flex items-center justify-between px-2 py-2 border-b" style={{ borderColor: "#30363d" }}>
-            <span className="text-[10px] font-semibold" style={{ color: "#6e7681" }}>EXPLORER</span>
-            <button className="text-[13px]" style={{ color: "#8b949e" }}>⟳</button>
+          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "#23304a" }}>
+            <span className="text-[10px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
+              EXPLORER
+            </span>
+            <Search className="h-3.5 w-3.5" style={{ color: "#7a8fb8" }} />
           </div>
 
-          {/* Changed files */}
-          <div className="flex-shrink-0">
-            <div className="px-3 py-1.5 border-b" style={{ borderColor: "#30363d" }}>
-              <span className="text-[9px] font-semibold" style={{ color: "#6e7681" }}>CHANGED FILES</span>
-            </div>
+          <div className="border-b px-3 py-1.5" style={{ borderColor: "#23304a" }}>
+            <span className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
+              CHANGED FILES
+            </span>
+          </div>
+
+          <div className="max-h-[44%] overflow-y-auto py-1">
             {analysis.files.map((file) => {
               const info = getFileInfo(file.pathNew)
               const isActive = selectedFilePath === file.pathNew
               const hasAdditions = (file.additionsCount ?? 0) > 0
               const hasDeletions = (file.deletionsCount ?? 0) > 0
               const statusChar = hasAdditions && hasDeletions ? "M" : hasAdditions ? "A" : hasDeletions ? "D" : "M"
-              const statusColor = statusChar === "A" ? "#56d364" : "#e3b341"
+              const statusColor = statusChar === "A" ? "#4bd38b" : statusChar === "D" ? "#ff8e8e" : "#f3c969"
               return (
                 <button
                   key={file.id}
                   onClick={() => setSelectedFilePath(file.pathNew)}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-left hover:opacity-90"
-                  style={{ background: isActive ? "#7f77dd" : "transparent" }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left"
+                  style={{ background: isActive ? "#4d56a526" : "transparent" }}
                 >
                   <ExtBadge ext={info.ext} color={info.extColor} />
-                  <span
-                    className="flex-1 text-[11px] truncate"
-                    style={{ color: isActive ? "#fff" : "#8b949e" }}
-                  >
+                  <span className="flex-1 truncate text-[11px]" style={{ color: isActive ? "#eef4ff" : "#9cb0d7" }}>
                     {info.filename}
                   </span>
-                  <span className="text-[10px] font-semibold flex-shrink-0" style={{ color: isActive ? "#fff" : statusColor }}>
+                  <span className="text-[10px] font-semibold" style={{ color: statusColor }}>
                     {statusChar}
                   </span>
                 </button>
@@ -595,123 +653,109 @@ export function AnnotatedDiff() {
             })}
           </div>
 
-          <div className="border-t my-1" style={{ borderColor: "#30363d" }} />
-
-          {/* Outline */}
-          <div className="flex-shrink-0 overflow-hidden">
-            <div className="px-3 py-1.5">
-              <span className="text-[9px] font-semibold" style={{ color: "#6e7681" }}>OUTLINE</span>
-            </div>
-            {fileFindings.slice(0, 5).map((f, i) => {
-              const colors = ["#d2a8ff", "#ffa657", "#d2a8ff", "#56d364", "#d2a8ff"]
-              return (
-                <div key={f.id} className="flex items-center gap-2 px-3 py-0.5">
-                  <span className="text-[9px] font-semibold" style={{ color: colors[i % colors.length] }}>fn</span>
-                  <span className="text-[11px] truncate" style={{ color: "#8b949e" }}>
-                    {f.ruleId ?? f.category}
-                  </span>
-                </div>
-              )
-            })}
+          <div className="border-y px-3 py-1.5" style={{ borderColor: "#23304a" }}>
+            <span className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
+              OUTLINE
+            </span>
+          </div>
+          <div className="space-y-1 px-3 py-2">
+            {fileFindings.slice(0, 5).map((finding) => (
+              <div key={finding.id} className="flex items-center gap-2">
+                <ChevronRight className="h-3.5 w-3.5" style={{ color: "#7f9dff" }} />
+                <span className="truncate text-[11px]" style={{ color: "#8ea1c7" }}>
+                  {finding.ruleId ?? finding.category}
+                </span>
+              </div>
+            ))}
+            {fileFindings.length === 0 && (
+              <span className="text-[11px]" style={{ color: "#5f7197" }}>
+                No indexed symbols
+              </span>
+            )}
           </div>
 
-          <div className="flex-1" />
-
-          {/* Git Blame */}
-          <div className="border-t px-3 py-2" style={{ borderColor: "#30363d" }}>
-            <div className="text-[9px] font-semibold mb-1" style={{ color: "#6e7681" }}>GIT BLAME</div>
-            <div className="text-[11px] font-medium" style={{ color: "#8b949e" }}>{currentUser.name ?? "Developer"}</div>
-            <div className="text-[10px]" style={{ color: "#6e7681" }}>
-              {analysis.commitSha ? `${analysis.commitSha.slice(0, 7)}` : "latest commit"}
+          <div className="mt-auto border-t px-3 py-2" style={{ borderColor: "#23304a" }}>
+            <div className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
+              GIT BLAME
             </div>
-            <div className="flex items-center gap-1.5 mt-1">
-              <div className="rounded-sm" style={{ width: 6, height: 6, background: "#56d364" }} />
-              <span className="text-[10px] font-medium" style={{ color: "#56d364" }}>up to date</span>
+            <div className="mt-1 text-[11px] font-medium" style={{ color: "#a7b8da" }}>
+              {currentUser.name ?? "Developer"}
+            </div>
+            <div className="text-[10px]" style={{ color: "#60739a" }}>
+              {analysis.commitSha ? analysis.commitSha.slice(0, 7) : "latest commit"}
             </div>
           </div>
-        </div>
+        </aside>
 
-        {/* ── Editor + Right panel ─────────────────────────────────── */}
-        <div className="flex flex-1 overflow-hidden">
-
-          {/* ── Editor column ──────────────────────────────────────── */}
-          <div className="flex flex-col flex-1 overflow-hidden" style={{ background: "#0d1117" }}>
-
-            {/* TabBar */}
-            <div
-              className="flex-shrink-0 flex items-end border-b overflow-hidden"
-              style={{ height: 34, background: "#161b22", borderColor: "#30363d" }}
-            >
-              {analysis.files.map((file, idx) => {
+        <div className="flex min-w-0 flex-1">
+          <div className="flex min-w-0 flex-1 flex-col" style={{ background: "#070c16" }}>
+            <div className="flex h-9 items-end overflow-x-auto border-b" style={{ background: "#0f182b", borderColor: "#23304a" }}>
+              {tabFiles.map((file) => {
                 const info = getFileInfo(file.pathNew)
                 const isActive = selectedFilePath === file.pathNew
-                const hasChanges = (file.additionsCount ?? 0) + (file.deletionsCount ?? 0) > 0
+                const changedCount = (file.additionsCount ?? 0) + (file.deletionsCount ?? 0)
                 return (
                   <button
                     key={file.id}
                     onClick={() => setSelectedFilePath(file.pathNew)}
-                    className="flex items-center gap-1.5 px-3 h-full border-r flex-shrink-0"
+                    className="flex h-full min-w-[180px] items-center gap-2 border-r px-3"
                     style={{
-                      background: isActive ? "#0d1117" : "#161b22",
-                      borderColor: "#30363d",
-                      borderTop: isActive ? "2px solid #7f77dd" : "2px solid transparent",
-                      minWidth: idx === 0 ? 160 : 140,
+                      background: isActive ? "#070c16" : "#0f182b",
+                      borderColor: "#23304a",
+                      borderTop: isActive ? "2px solid #7f9dff" : "2px solid transparent",
                     }}
                   >
                     <ExtBadge ext={info.ext} color={info.extColor} />
-                    <span className="text-[11px]" style={{ color: isActive ? "#e6edf3" : "#8b949e" }}>
+                    <span className="truncate text-[11px]" style={{ color: isActive ? "#e8efff" : "#90a3cc" }}>
                       {info.filename}
                     </span>
-                    {hasChanges && (
-                      <div className="rounded-sm ml-1 flex-shrink-0" style={{ width: 7, height: 7, background: "#e3b341" }} />
+                    {changedCount > 0 && (
+                      <span className="ml-auto text-[10px]" style={{ color: "#f3c969" }}>
+                        {changedCount}
+                      </span>
                     )}
                   </button>
                 )
               })}
             </div>
 
-            {/* Breadcrumb + toolbar */}
-            <div
-              className="flex-shrink-0 flex items-center px-3 border-b"
-              style={{ height: 26, background: "#0d1117", borderColor: "#30363d" }}
-            >
-              {/* Breadcrumb */}
-              <div className="flex items-center gap-1 text-[10px] flex-1">
-                {selectedFilePath?.split("/").map((part, i, arr) => (
-                  <span key={i} className="flex items-center gap-1">
-                    <span style={{ color: i === arr.length - 1 ? "#79c0ff" : "#6e7681" }}>{part}</span>
-                    {i < arr.length - 1 && <span style={{ color: "#6e7681" }}>›</span>}
-                  </span>
-                ))}
+            <div className="flex h-8 items-center border-b px-2" style={{ background: "#0a1222", borderColor: "#23304a" }}>
+              <div className="flex items-center gap-1 overflow-hidden text-[10px]" style={{ color: "#7f8cab" }}>
+                <Search className="h-3.5 w-3.5 flex-shrink-0" />
+                <div className="truncate">
+                  {selectedFilePath?.split("/").map((part, index, arr) => (
+                    <span key={`${part}-${index}`}>
+                      <span style={{ color: index === arr.length - 1 ? "#7f9dff" : "#6f82a8" }}>{part}</span>
+                      {index < arr.length - 1 && <span className="mx-1">/</span>}
+                    </span>
+                  ))}
+                </div>
               </div>
-              {/* Tool buttons */}
-              <div className="flex items-center gap-1">
-                {[
-                  { label: "Split", bg: "#21262e", color: "#8b949e" },
-                  { label: "Diff ✓", bg: "rgba(127,119,221,0.18)", color: "#7f77dd" },
-                  { label: "Format", bg: "#21262e", color: "#8b949e" },
-                  { label: "⌘ Save", bg: "rgba(86,211,100,0.15)", color: "#56d364" },
-                  { label: "▶ Run", bg: "rgba(210,168,255,0.15)", color: "#d2a8ff" },
-                ].map((btn) => (
-                  <button
-                    key={btn.label}
-                    className="text-[9px] font-semibold px-2 rounded"
-                    style={{ background: btn.bg, color: btn.color, height: 18 }}
-                  >
-                    {btn.label}
-                  </button>
-                ))}
+              <div className="ml-auto flex items-center gap-1">
+                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#152036", color: "#8ea1c7" }}>
+                  <SplitSquareHorizontal className="h-3.5 w-3.5" />
+                  Split
+                </button>
+                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#253056", color: "#9bb1df" }}>
+                  <FileDiff className="h-3.5 w-3.5" />
+                  Diff
+                </button>
+                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#193024", color: "#63d69c" }}>
+                  <Save className="h-3.5 w-3.5" />
+                  Save
+                </button>
+                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#2b2346", color: "#c0a9ff" }}>
+                  <Play className="h-3.5 w-3.5" />
+                  Run
+                </button>
               </div>
             </div>
 
-            {/* Code area + minimap */}
-            <div className="flex flex-1 overflow-hidden">
-
-              {/* Code */}
-              <div className="flex-1 overflow-auto" style={{ background: "#0d1117" }}>
+            <div className="flex min-h-0 flex-1">
+              <div className="min-w-0 flex-1 overflow-auto" style={{ background: "#070c16" }}>
                 {!selectedFile || selectedFile.lines.length === 0 ? (
-                  <div className="p-8 text-[13px]" style={{ color: "#6e7681" }}>
-                    Aucun diff détaillé disponible pour ce fichier.
+                  <div className="p-8 text-[13px]" style={{ color: "#60739a" }}>
+                    No detailed diff is available for this file.
                   </div>
                 ) : (
                   <div className="py-1">
@@ -725,8 +769,9 @@ export function AnnotatedDiff() {
                             findings={fileFindings}
                             dismissedFindings={dismissedFindings}
                             onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
+                            onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
+                            isCommenting={activeCommentLine === lineNumber}
                           />
-                          {/* Existing comment threads */}
                           {commentsByLine.get(lineNumber)?.map((comment) => (
                             <div key={comment.id} className="mx-4 my-2">
                               <CommentThread
@@ -740,7 +785,6 @@ export function AnnotatedDiff() {
                               />
                             </div>
                           ))}
-                          {/* Inline comment form */}
                           <AnimatePresence>
                             {activeCommentLine === lineNumber && (
                               <InlineCommentForm
@@ -760,26 +804,20 @@ export function AnnotatedDiff() {
                 )}
               </div>
 
-              {/* Minimap */}
-              <div
-                className="flex-shrink-0 border-l pt-2 overflow-hidden"
-                style={{ width: 78, background: "#10151c", borderColor: "#30363d" }}
-              >
-                {/* Viewport indicator */}
-                <div className="rounded mx-1 mb-1" style={{ height: 60, background: "rgba(255,255,255,0.06)" }} />
-                {/* Mini lines */}
-                {fileFindings.slice(0, 12).map((f, i) => {
+              <div className="w-[82px] flex-shrink-0 overflow-hidden border-l px-1.5 pt-2" style={{ background: "#0a1222", borderColor: "#23304a" }}>
+                <div className="mb-2 h-14 rounded-md" style={{ background: "rgba(255,255,255,0.05)" }} />
+                {fileFindings.slice(0, 14).map((finding, index) => {
                   const color =
-                    f.severity === "BLOCKER"
-                      ? "rgba(255,123,114,0.5)"
-                      : f.severity === "WARN"
-                      ? "rgba(227,179,65,0.5)"
-                      : "rgba(127,119,221,0.5)"
-                  const width = 20 + Math.random() * 30
+                    finding.severity === "BLOCKER"
+                      ? "rgba(255,132,132,0.55)"
+                      : finding.severity === "WARN"
+                        ? "rgba(243,201,105,0.55)"
+                        : "rgba(127,157,255,0.55)"
+                  const width = 24 + (((finding.lineStart ?? index + 1) * 17) % 34)
                   return (
                     <div
-                      key={f.id}
-                      className="rounded mx-2 mb-[5px]"
+                      key={finding.id}
+                      className="mb-[6px] rounded"
                       style={{ height: 3, width: `${width}px`, background: color }}
                     />
                   )
@@ -788,159 +826,179 @@ export function AnnotatedDiff() {
             </div>
           </div>
 
-          {/* ── Right Panel ────────────────────────────────────────── */}
-          <div
-            className="flex-shrink-0 flex flex-col border-l overflow-y-auto"
-            style={{ width: 240, background: "#161b22", borderColor: "#30363d" }}
+          <aside
+            className="hidden w-[280px] flex-shrink-0 flex-col overflow-y-auto border-l lg:flex"
+            style={{ background: "#111a2d", borderColor: "#23304a" }}
           >
-            <div className="p-3">
+            <div className="p-4">
+              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
+                CODE QUALITY
+              </div>
+              <div className="mb-2 flex items-end gap-1">
+                <span className="text-[36px] font-bold leading-none" style={{ color: "#f0f5ff" }}>
+                  {qualityScore}
+                </span>
+                <span className="mb-1 text-[12px]" style={{ color: "#7085af" }}>
+                  / 100
+                </span>
+              </div>
+              <div className="mb-3 h-[6px] rounded" style={{ background: "#1e2a43" }}>
+                <div className="h-full rounded" style={{ width: `${qualityScore}%`, background: scoreColor }} />
+              </div>
 
-              {/* Code Quality */}
-              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>CODE QUALITY</div>
-              <div className="flex items-baseline gap-1 mb-2">
-                <span className="text-[32px] font-bold leading-none" style={{ color: "#e6edf3" }}>{qualityScore}</span>
-                <span className="text-[12px]" style={{ color: "#6e7681" }}>/ 100</span>
-              </div>
-              {/* Score bar */}
-              <div className="rounded h-[5px] mb-3" style={{ background: "#21262e" }}>
-                <div
-                  className="rounded h-full"
-                  style={{ width: `${qualityScore}%`, background: scoreColor }}
-                />
-              </div>
-              {/* Metrics */}
               {[
-                { label: "Errors", value: String(errorCount), color: errorCount > 0 ? "#ff7b72" : "#56d364" },
-                { label: "Warnings", value: String(warningCount), color: warningCount > 0 ? "#e3b341" : "#56d364" },
-                { label: "Complexity", value: warningCount > 2 ? "High" : errorCount > 0 ? "Medium" : "Low", color: "#79c0ff" },
-                { label: "Coverage", value: `${Math.max(50, 95 - errorCount * 5)}%`, color: "#56d364" },
-              ].map((m) => (
-                <div key={m.label} className="flex justify-between items-center mb-1.5">
-                  <span className="text-[11px]" style={{ color: "#8b949e" }}>{m.label}</span>
-                  <span className="text-[11px] font-semibold" style={{ color: m.color }}>{m.value}</span>
+                { label: "Errors", value: String(errorCount), color: errorCount > 0 ? "#ff8e8e" : "#4bd38b" },
+                { label: "Warnings", value: String(warningCount), color: warningCount > 0 ? "#f3c969" : "#4bd38b" },
+                { label: "Complexity", value: complexity, color: "#8fb1ff" },
+                { label: "Coverage", value: `${coverage}%`, color: "#4bd38b" },
+              ].map((metric) => (
+                <div key={metric.label} className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px]" style={{ color: "#8ea1c7" }}>
+                    {metric.label}
+                  </span>
+                  <span className="text-[11px] font-semibold" style={{ color: metric.color }}>
+                    {metric.value}
+                  </span>
                 </div>
               ))}
 
-              {/* Divider */}
-              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
 
-              {/* RAG Issues */}
-              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>RAG ISSUES</div>
-              {fileFindings.slice(0, 5).map((f) => {
-                const dotColor = f.severity === "BLOCKER" ? "#ff7b72" : "#e3b341"
-                return (
-                  <div key={f.id} className="flex items-start gap-2 mb-2">
-                    <div className="rounded-sm flex-shrink-0 mt-1" style={{ width: 7, height: 7, background: dotColor }} />
-                    <span className="text-[10px] leading-snug" style={{ color: "#8b949e" }}>
-                      {f.message.length > 30 ? f.message.slice(0, 30) + "…" : f.message}
-                      {f.lineStart != null && ` l.${f.lineStart}`}
+              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
+                RAG ISSUES
+              </div>
+              <div className="space-y-2">
+                {fileFindings.slice(0, 6).map((finding) => (
+                  <div key={finding.id} className="flex items-start gap-2">
+                    <AlertTriangle
+                      className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+                      style={{ color: finding.severity === "BLOCKER" ? "#ff8e8e" : "#f3c969" }}
+                    />
+                    <span className="text-[10px] leading-snug" style={{ color: "#95a8d0" }}>
+                      {finding.message.length > 46 ? `${finding.message.slice(0, 46)}...` : finding.message}
+                      {finding.lineStart != null && ` l.${finding.lineStart}`}
                     </span>
                   </div>
-                )
-              })}
-              {fileFindings.length === 0 && (
-                <p className="text-[10px]" style={{ color: "#6e7681" }}>No issues detected.</p>
-              )}
+                ))}
+                {fileFindings.length === 0 && (
+                  <span className="text-[10px]" style={{ color: "#60739a" }}>
+                    No open findings on this file.
+                  </span>
+                )}
+              </div>
 
-              {/* Divider */}
-              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
 
-              {/* PR Info */}
-              <div className="text-[9px] font-semibold mb-2" style={{ color: "#6e7681" }}>PR INFO</div>
+              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
+                PR INFO
+              </div>
               {[
-                { label: "+lines", value: `+${totalAdditions}`, color: "#56d364" },
-                { label: "-lines", value: `-${totalDeletions}`, color: "#ff7b72" },
-                { label: "Files", value: String(analysis.files.length), color: "#79c0ff" },
-                { label: "Reviewer", value: "RAG Bot", color: "#d2a8ff" },
-              ].map((m) => (
-                <div key={m.label} className="flex justify-between items-center mb-1.5">
-                  <span className="text-[11px]" style={{ color: "#8b949e" }}>{m.label}</span>
-                  <span className="text-[11px] font-semibold" style={{ color: m.color }}>{m.value}</span>
+                { label: "+lines", value: `+${totalAdditions}`, color: "#4bd38b" },
+                { label: "-lines", value: `-${totalDeletions}`, color: "#ff8e8e" },
+                { label: "Files", value: String(analysis.files.length), color: "#8fb1ff" },
+                { label: "Threads", value: String(openThreadCount), color: "#c4b0ff" },
+              ].map((metric) => (
+                <div key={metric.label} className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px]" style={{ color: "#8ea1c7" }}>
+                    {metric.label}
+                  </span>
+                  <span className="text-[11px] font-semibold" style={{ color: metric.color }}>
+                    {metric.value}
+                  </span>
                 </div>
               ))}
 
-              {/* Divider */}
-              <div className="border-t my-3" style={{ borderColor: "#30363d" }} />
+              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
 
-              {/* Action buttons */}
               <button
-                className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-semibold mb-2 cursor-pointer"
-                style={{ background: "rgba(86,211,100,0.15)", color: "#56d364", height: 32, border: "1px solid rgba(86,211,100,0.3)" }}
+                className="mb-2 flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-semibold"
+                style={{ background: "#1f6a46", color: "#d4ffe8", border: "1px solid #2f9b66" }}
               >
-                ✓ Save changes
+                <Save className="h-3.5 w-3.5" />
+                Save changes
               </button>
               {canReview && (
                 <>
                   <button
                     onClick={() => setShowSubmitDialog(true)}
-                    className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-semibold mb-2 cursor-pointer"
-                    style={{ background: "rgba(127,119,221,0.15)", color: "#7f77dd", height: 32, border: "1px solid rgba(127,119,221,0.3)" }}
+                    className="mb-2 flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-semibold"
+                    style={{ background: "#2b2f68", color: "#d6ddff", border: "1px solid #4f56a5" }}
                   >
-                    ⬡ Approve PR
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    Approve PR
                   </button>
                   <button
-                    className="w-full flex items-center justify-center gap-1 rounded text-[12px] font-medium cursor-pointer"
-                    style={{ background: "#21262e", color: "#8b949e", height: 32 }}
+                    className="flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-medium"
+                    style={{ background: "#1e2a43", color: "#9db1da", border: "1px solid #2f4166" }}
                   >
-                    ⚑ Request changes
+                    <AlertTriangle className="h-3.5 w-3.5" />
+                    Request changes
                   </button>
                 </>
               )}
 
-              {/* Links */}
-              <div className="mt-3 flex flex-col gap-1">
+              <div className="mt-3 flex flex-col gap-1.5">
                 <Link
                   href={`/dashboard/report/${id}`}
-                  className="text-[10px] text-center py-1 rounded hover:opacity-80"
-                  style={{ color: "#79c0ff", background: "rgba(121,192,255,0.08)" }}
+                  className="rounded px-2 py-1 text-center text-[10px]"
+                  style={{ background: "#1e2a43", color: "#8fb1ff" }}
                 >
-                  Rapport global →
+                  Open full report
                 </Link>
                 <Link
                   href={`/dashboard/history/${id}`}
-                  className="text-[10px] text-center py-1 rounded hover:opacity-80"
-                  style={{ color: "#8b949e", background: "#21262e" }}
+                  className="rounded px-2 py-1 text-center text-[10px]"
+                  style={{ background: "#172033", color: "#90a3cc" }}
                 >
-                  Historique
+                  View history
                 </Link>
               </div>
             </div>
-          </div>
+          </aside>
         </div>
       </div>
 
       {/* ── StatusBar ────────────────────────────────────────────────── */}
       <div
-        className="flex-shrink-0 flex items-center px-3 border-t gap-2"
-        style={{ height: 24, background: "#10141a", borderColor: "#30363d" }}
+        className="flex-shrink-0 flex items-center gap-2 border-t px-3"
+        style={{ height: 24, background: "#0d1424", borderColor: "#23304a" }}
       >
         <div className="flex items-center gap-1.5">
-          <div className="rounded-sm" style={{ width: 8, height: 8, background: "#56d364" }} />
-          <span className="text-[10px] font-medium" style={{ color: "#56d364" }}>RAG connected</span>
+          <div className="h-2 w-2 rounded-sm" style={{ background: "#4bd38b" }} />
+          <span className="text-[10px] font-medium" style={{ color: "#4bd38b" }}>
+            RAG connected
+          </span>
         </div>
-        <span style={{ color: "#6e7681" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#6e7681" }}>
-          {selectedFileInfo?.ext === "TS" || selectedFileInfo?.ext === "TX" ? "TypeScript 5.4" :
-           selectedFileInfo?.ext === "PY" ? "Python 3.11" : selectedFileInfo?.filename?.split(".").pop() ?? "Text"}
+        <span style={{ color: "#60739a" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#60739a" }}>
+          {selectedFileInfo?.ext === "TS" || selectedFileInfo?.ext === "TX"
+            ? "TypeScript 5.4"
+            : selectedFileInfo?.ext === "PY"
+              ? "Python 3.11"
+              : selectedFileInfo?.filename?.split(".").pop() ?? "Text"}
         </span>
-        <span style={{ color: "#6e7681" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#6e7681" }}>UTF-8 LF</span>
-        <span style={{ color: "#6e7681" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#6e7681" }}>Spaces: 2</span>
+        <span style={{ color: "#60739a" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#60739a" }}>
+          UTF-8 LF
+        </span>
+        <span style={{ color: "#60739a" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#60739a" }}>
+          Spaces: 2
+        </span>
         <div className="flex-1" />
         {(errorCount > 0 || warningCount > 0) && (
-          <span className="text-[10px] font-medium" style={{ color: "#e3b341" }}>
+          <span className="text-[10px] font-medium" style={{ color: "#f3c969" }}>
             {errorCount > 0 ? `${errorCount} error${errorCount > 1 ? "s" : ""}` : ""}
             {errorCount > 0 && warningCount > 0 ? " · " : ""}
             {warningCount > 0 ? `${warningCount} warning${warningCount > 1 ? "s" : ""}` : ""}
           </span>
         )}
-        <span style={{ color: "#6e7681" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#8b949e" }}>
+        <span style={{ color: "#60739a" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#8ea1c7" }}>
           {analysis.prLabel ?? prBranch}
         </span>
-        <span style={{ color: "#6e7681" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#8b949e" }}>
+        <span style={{ color: "#60739a" }}>|</span>
+        <span className="text-[10px]" style={{ color: "#8ea1c7" }}>
           {analysis.commitSha ? `${analysis.commitSha.slice(0, 7)}` : "Ln 1, Col 1"}
         </span>
       </div>

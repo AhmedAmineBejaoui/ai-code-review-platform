@@ -9,7 +9,7 @@ import pytest
 
 from app.services.branch_policy_validator import (
     BranchPolicyValidator,
-    PolicyValidationResult,
+    ValidationResult,
 )
 
 
@@ -69,12 +69,12 @@ def _make_merge_strategy_policy(
     }
 
 
-class TestPolicyValidationResult:
-    """Tests pour PolicyValidationResult dataclass."""
+class TestValidationResult:
+    """Tests pour ValidationResult dataclass."""
 
     def test_valid_result(self) -> None:
         """Test d'un résultat valide."""
-        result = PolicyValidationResult(valid=True, reason="Branch name is valid")
+        result = ValidationResult(valid=True, reason="Branch name is valid")
 
         assert result.valid is True
         assert result.reason == "Branch name is valid"
@@ -82,7 +82,7 @@ class TestPolicyValidationResult:
 
     def test_invalid_result_with_violations(self) -> None:
         """Test d'un résultat invalide avec violations."""
-        result = PolicyValidationResult(
+        result = ValidationResult(
             valid=False,
             reason="Branch name does not match pattern",
             violated_policies=["naming-convention"],
@@ -281,7 +281,7 @@ class TestBranchPolicyValidatorMerge:
 
         validator = BranchPolicyValidator()
         result = validator.validate_merge_method(
-            method="squash",
+            merge_method="squash",
             target_branch_type="main",
             org_id="org_789",
             repo_id="repo_456",
@@ -300,7 +300,7 @@ class TestBranchPolicyValidatorMerge:
 
         validator = BranchPolicyValidator()
         result = validator.validate_merge_method(
-            method="merge",  # Non autorisé
+            merge_method="merge",  # Non autorisé
             target_branch_type="main",
             org_id="org_789",
             repo_id="repo_456",
@@ -379,7 +379,7 @@ class TestBranchPolicyValidatorIntegration:
 
         # 3. Valider la méthode de merge
         merge_result = validator.validate_merge_method(
-            method="squash",
+            merge_method="squash",
             target_branch_type="develop",
             org_id="org_789",
             repo_id="repo_456",

@@ -94,8 +94,9 @@ function isUploadedPdfFile(value: FormDataEntryValue): value is UploadedPdfFile 
 
 function resolvePdfExtractorScript(): string {
   const scriptCandidates = [
-    join(process.cwd(), "scripts", "extract-pdf-text.cjs"),
     join(process.cwd(), "apps", "dashboard", "scripts", "extract-pdf-text.cjs"),
+    join(process.cwd(), "scripts", "extract-pdf-text.cjs"),
+    join(process.cwd(), "tools", "frontend", "extract-pdf-text.cjs"),
   ]
   const scriptPath = scriptCandidates.find((candidate) => existsSync(candidate))
   if (!scriptPath) {

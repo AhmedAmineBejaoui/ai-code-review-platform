@@ -471,18 +471,32 @@ async def import_repository_full(
     settings_repo = ProjectSettingsRepo()
     rbac_repo = RBACRepo()
 
-    project_id = request.full_name.strip().lower()
+    repo_id = request.full_name.strip().lower()
     now = datetime.now(timezone.utc)
     now_iso = now.isoformat()
 
     # Derive display name
-    parts = project_id.split("/")
-    repo_name = parts[-1] if parts else project_id
+    parts = repo_id.split("/")
+    repo_name = parts[-1] if parts else repo_id
     project_name = request.project_name or repo_name
 
-    # 1. Upsert repo profile
+    # 0. Ensure a canonical project_profiles row (UUID id) exists.
+    #    This is the identifier required by AnalyzeRequest.project_id (FK to
+    #    project_profiles.id). Without this row, /v1/analyze would 404 later.
+    from app.api.http.projects import _ensure_project_profile  # local import avoids cycle
+    project_id = _ensure_project_profile(
+        engine,
+        repo_id=repo_id,
+        org_id=request.org_github_login,
+        display_name=project_name,
+        description=request.description,
+        primary_language=request.language,
+        visibility=request.visibility,
+    )
+
+    # 1. Upsert legacy repo profile (display metadata keyed by repo_id)
     repo_profiles.upsert_profile(
-        repo_id=project_id,
+        repo_id=repo_id,
         repo_path=None,
         indexed_commit=None,
         default_branch=request.default_branch,
@@ -616,10 +630,11 @@ async def import_repository_full(
     if request.members:
         from sqlalchemy import text as _text
         for member in request.members:
-            if not member.email:
+            # Allow members without emails - they can be invited later by GitHub login
+            if not member.github_login:
                 continue
             # Skip creator
-            if principal and member.email.lower() == (principal.email or "").lower():
+            if principal and member.github_login.lower() == (principal.github_login or "").lower():
                 continue
             try:
                 with engine.begin() as conn:
@@ -633,14 +648,14 @@ async def import_repository_full(
                         {
                             "id": f"inv_{uuid.uuid4().hex[:20]}",
                             "project_id": project_id,
-                            "email": member.email.lower().strip(),
+                            "email": member.email.lower().strip() if member.email else None,
                             "github_login": member.github_login,
                             "role_code": member.role,
                             "invited_by": principal.user_id if principal else None,
                         },
                     )
                 members_to_invite.append(MemberToInvite(
-                    email=member.email.lower().strip(),
+                    email=member.email.lower().strip() if member.email else None,
                     github_login=member.github_login,
                     role=member.role,
                     project_id=project_id,

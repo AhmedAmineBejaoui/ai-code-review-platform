@@ -29,10 +29,10 @@ function ghHeaders(token: string) {
   }
 }
 
-async function ghGet<T>(url: string, token: string): Promise<T | null> {
+async function ghGet<T>(url: string, token: string): Promise<{ success: true; data: T } | { success: false; status: number }> {
   const res = await fetch(url, { headers: ghHeaders(token), cache: "no-store" })
-  if (!res.ok) return null
-  return (await res.json()) as T
+  if (!res.ok) return { success: false, status: res.status }
+  return { success: true, data: (await res.json()) as T }
 }
 
 /**
@@ -59,8 +59,26 @@ export async function GET(request: Request) {
   const org = searchParams.get("org")?.trim()
 
   if (!org) {
-    const orgs = await ghGet<Array<Record<string, unknown>>>(`${GITHUB_API}/user/orgs?per_page=100`, token)
-    const items = (orgs || []).map((o) => ({
+    const orgsRes = await ghGet<Array<Record<string, unknown>>>(`${GITHUB_API}/user/orgs?per_page=100`, token)
+    if (!orgsRes.success) {
+      if (orgsRes.status === 401) {
+        return NextResponse.json(
+          { connected: false, error: "GitHub token expired or invalid. Please reconnect your GitHub account.", organizations: [] },
+          { status: 200 },
+        )
+      }
+      if (orgsRes.status === 403) {
+        return NextResponse.json(
+          { connected: false, error: "GitHub access insufficient. Please reconnect your GitHub account with organization permissions.", organizations: [] },
+          { status: 200 },
+        )
+      }
+      return NextResponse.json(
+        { connected: false, error: `GitHub API error: ${orgsRes.status}`, organizations: [] },
+        { status: 200 },
+      )
+    }
+    const items = orgsRes.data.map((o) => ({
       login: o.login as string,
       id: o.id as number,
       description: (o.description as string) || null,
@@ -70,7 +88,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ connected: true, organizations: items })
   }
 
-  const [info, repos, members] = await Promise.all([
+  const [infoRes, reposRes, membersRes] = await Promise.all([
     ghGet<Record<string, unknown>>(`${GITHUB_API}/orgs/${encodeURIComponent(org)}`, token),
     ghGet<Array<Record<string, unknown>>>(
       `${GITHUB_API}/orgs/${encodeURIComponent(org)}/repos?per_page=100&sort=updated`,
@@ -82,9 +100,20 @@ export async function GET(request: Request) {
     ),
   ])
 
-  if (!info) {
-    return NextResponse.json({ error: `Organization '${org}' not found` }, { status: 404 })
+  if (!infoRes.success) {
+    if (infoRes.status === 401) {
+      return NextResponse.json({ connected: false, error: "GitHub token expired or invalid. Please reconnect your GitHub account." }, { status: 200 })
+    }
+    if (infoRes.status === 403) {
+      return NextResponse.json({ connected: false, error: "GitHub access insufficient. Please reconnect your GitHub account with organization permissions." }, { status: 200 })
+    }
+    if (infoRes.status === 404) {
+      return NextResponse.json({ error: `Organization '${org}' not found` }, { status: 404 })
+    }
+    return NextResponse.json({ error: `Failed to fetch organization: ${infoRes.status}` }, { status: 500 })
   }
+
+  const info = infoRes.data
 
   return NextResponse.json({
     connected: true,
@@ -99,7 +128,7 @@ export async function GET(request: Request) {
       location: info.location || null,
       blog: info.blog || null,
     },
-    repos: (repos || []).map((r) => ({
+    repos: reposRes.success ? reposRes.data.map((r) => ({
       id: r.id,
       name: r.name,
       fullName: r.full_name,
@@ -111,14 +140,14 @@ export async function GET(request: Request) {
       forks: r.forks_count || 0,
       updatedAt: r.updated_at || null,
       defaultBranch: r.default_branch || null,
-    })),
-    members: (members || []).map((m) => ({
+    })) : [],
+    members: membersRes.success ? membersRes.data.map((m) => ({
       login: m.login,
       id: m.id,
       avatarUrl: m.avatar_url || null,
       htmlUrl: m.html_url || null,
       type: m.type || "User",
       siteAdmin: m.site_admin || false,
-    })),
+    })) : [],
   })
 }

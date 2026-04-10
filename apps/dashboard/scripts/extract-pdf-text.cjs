@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 const fs = require("node:fs");
-const pdfParse = require("pdf-parse");
+const { PDFParse } = require("pdf-parse");
 
 async function main() {
   const filePath = process.argv[2];
@@ -14,7 +14,8 @@ async function main() {
 
   try {
     const dataBuffer = fs.readFileSync(filePath);
-    const result = await pdfParse(dataBuffer);
+    const parser = new PDFParse({ data: dataBuffer });
+    const result = await parser.getText();
     process.stdout.write(
       JSON.stringify({
         ok: true,

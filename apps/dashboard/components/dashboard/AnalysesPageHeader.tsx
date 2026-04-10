@@ -20,6 +20,7 @@ import {
   Zap,
   User,
   Building,
+  ExternalLink,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -131,6 +132,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
   const [startedAnalysisId, setStartedAnalysisId] = useState<string | null>(null)
+  const [existingAnalysisId, setExistingAnalysisId] = useState<string | null>(null)
   
   // GitHub repos state
   const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([])
@@ -145,34 +147,37 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [selectedProjectId, setSelectedProjectId] = useState<string>("")
   const [isLoadingProjects, setIsLoadingProjects] = useState(false)
 
-  // Load GitHub repos when dialog opens
-  useEffect(() => {
-    if (!isNewAnalysisOpen) return
-    loadGithubRepos()
-    loadProjects()
-  }, [isNewAnalysisOpen])
-
   const loadProjects = async () => {
     setIsLoadingProjects(true)
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-      const res = await fetch(`${backendUrl}/api/v1/projects?page=1&size=100`, {
+      // Use the Next.js proxy route so Clerk auth headers are included automatically.
+      const res = await fetch("/api/dashboard/projects?page=1&limit=100", {
         headers: { Accept: "application/json" },
       })
       if (!res.ok) {
         setProjects([])
         return
       }
-      const data = await res.json()
+      let data: Record<string, unknown>
+      try {
+        data = await res.json()
+      } catch {
+        setProjects([])
+        return
+      }
       const items = (data.items || data || []) as Array<Record<string, unknown>>
       const normalized = items
         .map((p) => ({
           id: String(p.id ?? p.project_id ?? p.repo_id ?? ""),
           name: String(p.name ?? p.project_name ?? p.repo_id ?? p.id ?? ""),
-          repo: String(p.repo_id ?? p.full_name ?? p.repo ?? ""),
+          repo: String(p.repo ?? p.full_name ?? p.repo_id ?? ""),
         }))
         .filter((p) => p.id.length > 0)
       setProjects(normalized)
+      // Clear selectedProjectId if it's no longer in the list, then set default if available
+      if (selectedProjectId && !normalized.find(p => p.id === selectedProjectId)) {
+        setSelectedProjectId("")
+      }
       if (normalized.length > 0 && !selectedProjectId) {
         setSelectedProjectId(normalized[0].id)
       }
@@ -211,6 +216,14 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
       setIsLoadingRepos(false)
     }
   }
+
+  // Load GitHub repos when dialog opens
+  useEffect(() => {
+    if (!isNewAnalysisOpen) return
+    loadGithubRepos()
+    loadProjects()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNewAnalysisOpen])
 
   let title = "All Analyses"
   let description = "View and manage all code review analyses"
@@ -256,12 +269,57 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     return null
   }
 
+  const asObject = (value: unknown): Record<string, unknown> | null => {
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return null
+    }
+    return value as Record<string, unknown>
+  }
+
+  const asString = (value: unknown): string | null => {
+    if (typeof value !== "string") {
+      return null
+    }
+    const trimmed = value.trim()
+    return trimmed.length > 0 ? trimmed : null
+  }
+
+  const extractApiErrorInfo = (payload: Record<string, unknown>): { message: string | null; existingId: string | null } => {
+    const payloadDetails = asObject(payload.details)
+    const backendResponse = asObject(payload.backend_response)
+    const nestedError = backendResponse ? asObject(backendResponse.error) : null
+    const nestedDetails =
+      payloadDetails ?? asObject(backendResponse?.details) ?? (nestedError ? asObject(nestedError.details) : null)
+
+    const existingIdRaw = nestedDetails?.existing_id ?? payload.existing_id
+    const existingId = asString(existingIdRaw)
+
+    const message =
+      asString(payload.message) ??
+      asString(payload.error) ??
+      asString(payload.detail) ??
+      (nestedError ? asString(nestedError.message) : null) ??
+      (nestedError ? asString(nestedError.detail) : null) ??
+      (backendResponse ? asString(backendResponse.message) : null) ??
+      (backendResponse ? asString(backendResponse.detail) : null)
+
+    return { message, existingId }
+  }
+
   const handleStartAnalysis = async () => {
     setSubmitError(null)
     setSubmitSuccess(null)
+    setExistingAnalysisId(null)
 
     if (!selectedProjectId) {
-      setSubmitError("Selectionnez un projet: une analyse doit etre liee a un projet existant.")
+      setSubmitError("Sélectionnez un projet: une analyse doit être liée à un projet existant.")
+      return
+    }
+
+    // Additional validation: ensure selectedProjectId exists in current projects list
+    const selectedProject = projects.find(p => p.id === selectedProjectId)
+    if (!selectedProject) {
+      setSubmitError("Projet sélectionné invalide. Rechargez la page et sélectionnez un projet valide.")
       return
     }
 
@@ -330,10 +388,28 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
         }),
       })
 
-      const data = await response.json()
+      let data: Record<string, unknown> = {}
+      try {
+        const parsed = await response.json()
+        data = asObject(parsed) ?? {}
+      } catch {
+        // Response was not JSON (e.g. HTML error page)
+        throw new Error(`Server error (HTTP ${response.status})`)
+      }
 
       if (!response.ok) {
-        throw new Error(data.error || data.message || "Failed to start analysis")
+        const errorInfo = extractApiErrorInfo(data)
+
+        // Handle 409 Conflict (duplicate analysis) specially
+        if (response.status === 409) {
+          if (errorInfo.existingId) {
+            setExistingAnalysisId(errorInfo.existingId)
+          }
+          setSubmitError(errorInfo.message ?? "An identical analysis already exists for this repository and context.")
+          return
+        }
+
+        throw new Error(errorInfo.message ?? "Failed to start analysis")
       }
 
       const analysisId = data.analysis_id || data.id || null
@@ -367,6 +443,14 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     }
   }
 
+  const handleOpenExistingAnalysis = () => {
+    if (existingAnalysisId) {
+      router.push(`/dashboard/report/${existingAnalysisId}`)
+      setIsNewAnalysisOpen(false)
+      resetForm()
+    }
+  }
+
   const resetForm = () => {
     setRepoInput("")
     setPrNumberInput("")
@@ -377,6 +461,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     setSubmitError(null)
     setSubmitSuccess(null)
     setStartedAnalysisId(null)
+    setExistingAnalysisId(null)
     setInputMode("github")
     setGithubError(null)
   }
@@ -454,9 +539,9 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                   </SelectContent>
                 </Select>
                 {!isLoadingProjects && projects.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    Une analyse doit etre liee a un projet. Importez un repository depuis GitHub pour creer un projet.
-                  </p>
+                    <p className="text-xs text-muted-foreground">
+                      Une analyse doit être liée à un projet. Importez un repository depuis GitHub pour créer un projet.
+                    </p>
                 )}
               </div>
 
@@ -664,9 +749,22 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
 
               {/* Error/Success Messages */}
               {submitError && (
-                <div className="flex items-center gap-2 p-3 bg-destructive/10 text-destructive rounded-md text-sm">
-                  <AlertTriangle className="h-4 w-4" />
-                  {submitError}
+                <div className="flex items-start gap-3 p-3 bg-amber-500/10 text-amber-700 dark:text-amber-400 rounded-md text-sm border border-amber-500/20">
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                  <div className="flex-1 space-y-2">
+                    <p>{submitError}</p>
+                    {existingAnalysisId && (
+                      <Button 
+                        variant="outline" 
+                        size="sm" 
+                        onClick={handleOpenExistingAnalysis}
+                        className="bg-white hover:bg-gray-50 text-amber-700 border-amber-500"
+                      >
+                        <ExternalLink className="h-3 w-3 mr-2" />
+                        Open existing analysis
+                      </Button>
+                    )}
+                  </div>
                 </div>
               )}
               {submitSuccess && (

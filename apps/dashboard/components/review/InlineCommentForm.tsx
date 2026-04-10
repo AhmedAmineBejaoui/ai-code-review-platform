@@ -155,12 +155,12 @@ export function InlineCommentForm({
           {/* Severity */}
           <div className="flex-1 min-w-[140px]">
             <Label className="text-xs text-muted-foreground mb-1.5 block">Severity</Label>
-            <Select value={severity || ""} onValueChange={(v) => setSeverity(v as PendingComment["severity"] || undefined)}>
+            <Select value={severity || "none"} onValueChange={(v) => setSeverity(v === "none" ? undefined : v as PendingComment["severity"])}>
               <SelectTrigger className="h-9">
                 <SelectValue placeholder="None" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
+                <SelectItem value="none">None</SelectItem>
                 {severityOptions.map((sev) => (
                   <SelectItem key={sev.value} value={sev.value}>
                     <div className="flex items-center gap-2">
