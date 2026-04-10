@@ -21,7 +21,12 @@
       "Bash(find /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api -type f -name *.ts -o -name *.tsx -o -name *.js)",
       "Bash(ls /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/backend/app/api/http/*.py)",
       "Bash(cd /c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform)",
-      "Bash(node -c '/c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api/dashboard/analyses/route.ts')"
+      "Bash(node -c '/c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/api/dashboard/analyses/route.ts')",
+      "Bash(python -m py_compile app/api/http/projects.py)",
+      "Bash(python -m py_compile app/api/http/repositories.py)",
+      "Bash(grep -l \"router = APIRouter\" \"C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\apps\\\\backend\\\\app\\\\api\\\\http\"/*.py)",
+      "Bash(xargs -I {} basename {})",
+      "Bash(xxd \"C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/components/MonacoEditor.tsx\")"
     ]
   }
 }

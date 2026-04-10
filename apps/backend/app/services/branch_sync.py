@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 import uuid
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any
 
 from app.data.repos.branch_repo import BranchRepo, CreateBranchInput, UpdateBranchInput
@@ -289,7 +289,7 @@ class BranchSyncService:
                 last_commit_author=commit_author,
                 last_commit_message=commit_message[:500] if commit_message else None,
                 last_commit_at=commit_timestamp,
-                last_synced_at=datetime.utcnow(),
+                last_synced_at=datetime.now(timezone.utc),
             ))
 
             logger.debug(
@@ -405,7 +405,7 @@ class BranchSyncService:
                 self.branch_repo.update(UpdateBranchInput(
                     branch_id=existing["id"],
                     last_commit_sha=commit_sha,
-                    last_synced_at=datetime.utcnow(),
+                    last_synced_at=datetime.now(timezone.utc),
                 ))
 
             return BranchSyncResult(

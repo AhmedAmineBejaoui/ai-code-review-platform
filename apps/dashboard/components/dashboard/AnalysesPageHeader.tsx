@@ -533,7 +533,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                   <SelectContent>
                     {projects.map((p) => (
                       <SelectItem key={p.id} value={p.id}>
-                        {p.name}
+                        {p.name}{p.repo && p.repo !== p.name ? ` (${p.repo})` : ""}
                       </SelectItem>
                     ))}
                   </SelectContent>

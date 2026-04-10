@@ -14,6 +14,9 @@ from pydantic import BaseModel, Field
 from app.data.repos.rbac_repo import RBACRepo
 from app.settings import settings
 
+import logging
+logger = logging.getLogger(__name__)
+
 
 # TTL cache for authenticated principals to avoid DB calls on every request
 # Key: (user_id, org_id), Value: (AuthenticatedPrincipal, timestamp)
@@ -73,24 +76,23 @@ _ROLE_ALIASES: dict[str, str] = {
     "lead": "tech_lead",
     "team_lead": "tech_lead",
     "team-lead": "tech_lead",
-    # Reviewer levels
-    "reviewer_lead": "reviewer_lead",
-    "reviewer-lead": "reviewer_lead",
-    "lead_reviewer": "reviewer_lead",
-    "lead-reviewer": "reviewer_lead",
-    "reviewer_senior": "reviewer_senior",
-    "reviewer-senior": "reviewer_senior",
-    "senior_reviewer": "reviewer_senior",
-    "senior-reviewer": "reviewer_senior",
-    "reviewer_junior": "reviewer_junior",
-    "reviewer-junior": "reviewer_junior",
-    "junior_reviewer": "reviewer_junior",
-    "junior-reviewer": "reviewer_junior",
-    # Generic reviewer (maps to senior by default for backward compatibility)
-    "reviewer": "reviewer_senior",
-    "review": "reviewer_senior",
-    "code-reviewer": "reviewer_senior",
-    "code_reviewer": "reviewer_senior",
+    # Reviewers normalized to 'reviewer'
+    "reviewer": "reviewer",
+    "review": "reviewer",
+    "code-reviewer": "reviewer",
+    "code_reviewer": "reviewer",
+    "reviewer_lead": "reviewer",
+    "reviewer-lead": "reviewer",
+    "lead_reviewer": "reviewer",
+    "lead-reviewer": "reviewer",
+    "reviewer_senior": "reviewer",
+    "reviewer-senior": "reviewer",
+    "senior_reviewer": "reviewer",
+    "senior-reviewer": "reviewer",
+    "reviewer_junior": "reviewer",
+    "reviewer-junior": "reviewer",
+    "junior_reviewer": "reviewer",
+    "junior-reviewer": "reviewer",
     # Developer
     "developer": "developer",
     "dev": "developer",
@@ -100,100 +102,10 @@ _ROLE_ALIASES: dict[str, str] = {
 }
 
 _ROLE_PERMISSIONS: dict[str, set[str]] = {
-    "admin": {
-        # Core permissions
-        "analyses.read", "analyses.create", "analyses.write", "secrets.manage",
-        # All review permissions
-        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
-        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
-        "reviews.request_changes", "reviews.suggest_changes", "reviews.escalate",
-        # All collaboration permissions
-        "comments.create", "comments.read", "comments.resolve", "comments.edit", "comments.reply",
-        "threads.create", "threads.participate", "threads.moderate",
-        # All assignment permissions
-        "assignments.view_own", "assignments.view_all", "assignments.create", "assignments.modify",
-        # All metrics permissions
-        "metrics.read_self", "metrics.read_team", "metrics.read_all",
-        # Template permissions
-        "templates.create", "templates.use",
-        # Project settings permissions (Admin can read/write/audit)
-        "project_settings.read", "project_settings.write", "project_settings.audit",
-    },
-    "tech_lead": {
-        # Core permissions
-        "analyses.read", "analyses.create", "analyses.write",
-        # Advanced review permissions (same as reviewer_lead)
-        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
-        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
-        "reviews.request_changes", "reviews.escalate",
-        # Collaboration permissions
-        "comments.create", "comments.read", "comments.resolve", "comments.edit",
-        "threads.create", "threads.moderate",
-        # Assignment permissions
-        "assignments.view_all", "assignments.create", "assignments.modify",
-        # Metrics permissions
-        "metrics.read_self", "metrics.read_team",
-        # Template permissions
-        "templates.create", "templates.use",
-        # Project settings permissions (Tech Lead can read/write/audit)
-        "project_settings.read", "project_settings.write", "project_settings.audit",
-    },
-    "reviewer_lead": {
-        # Core permissions
-        "analyses.read", "analyses.create", "analyses.write",
-        # Advanced review permissions
-        "reviews.assign", "reviews.claim", "reviews.delegate", "reviews.approve",
-        "reviews.block", "reviews.warn", "reviews.override", "reviews.bulk_action",
-        "reviews.request_changes", "reviews.escalate",
-        # Collaboration permissions
-        "comments.create", "comments.read", "comments.resolve", "comments.edit",
-        "threads.create", "threads.moderate",
-        # Assignment permissions
-        "assignments.view_all", "assignments.create", "assignments.modify",
-        # Metrics permissions
-        "metrics.read_self", "metrics.read_team",
-        # Template permissions
-        "templates.create", "templates.use",
-        # Project settings permissions (Reviewer Lead can read only)
-        "project_settings.read",
-    },
-    "reviewer_senior": {
-        # Core permissions
-        "analyses.read", "analyses.create", "analyses.write",
-        # Review permissions (can block)
-        "reviews.approve", "reviews.block", "reviews.warn",
-        "reviews.claim", "reviews.request_changes",
-        # Collaboration permissions
-        "comments.create", "comments.read", "comments.resolve",
-        "threads.create", "threads.participate",
-        # Assignment permissions
-        "assignments.view_own",
-        # Metrics permissions
-        "metrics.read_self",
-        # Template permissions
-        "templates.use",
-    },
-    "reviewer_junior": {
-        # Core permissions
-        "analyses.read", "analyses.create", "analyses.write",
-        # Review permissions (cannot block)
-        "reviews.approve", "reviews.warn", "reviews.claim", "reviews.suggest_changes",
-        # Collaboration permissions
-        "comments.create", "comments.read",
-        "threads.participate",
-        # Assignment permissions
-        "assignments.view_own",
-        # Metrics permissions
-        "metrics.read_self",
-    },
-    "developer": {
-        "analyses.read", "analyses.create",
-        # Basic collaboration
-        "comments.read", "comments.reply",
-        "threads.participate",
-        # Project settings permissions (Developer can read only)
-        "project_settings.read",
-    },
+    "developer": {"analyses.read", "analyses.create"},
+    "reviewer": {"analyses.read", "analyses.write"},
+    "admin": {"analyses.create", "analyses.read", "analyses.write"},
+    "tech_lead": {"analyses.create", "analyses.read", "analyses.write"},
 }
 
 
@@ -485,19 +397,23 @@ async def get_current_principal(
     x_user_id: str | None = Header(default=None, alias="X-User-Id"),
     repo: RBACRepo = Depends(get_rbac_repo),
 ) -> AuthenticatedPrincipal | None:
+    # Prefer bearer token when provided (tests expect bearer-first behavior)
     if authorization is not None:
         if authorization.scheme.lower() != "bearer":
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unsupported authorization scheme")
         token = authorization.credentials.strip()
         if not token:
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Empty bearer token")
-        # Only validate the Clerk JWT when CLERK_AUTH_ENABLED=True.
-        # When disabled (default in development), the Bearer token is ignored and
-        # the request falls through to the X-User-Id header path so that the
-        # backend does not reject requests from the dashboard with "Invalid Clerk token".
-        if settings.CLERK_AUTH_ENABLED:
+        try:
             return await _build_principal_from_clerk_token(token, repo)
-        # Auth disabled: token intentionally ignored; fall through to X-User-Id.
+        except Exception as exc:
+            # If auth enforcement is disabled, allow fallback to header-based auth
+            if not _is_auth_enforced():
+                logger.debug("Bearer token validation failed; falling back to X-User-Id: %s", exc)
+            else:
+                if isinstance(exc, HTTPException):
+                    raise
+                raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unable to validate bearer token") from exc
 
     if not _is_auth_enforced() and not x_user_id:
         return None

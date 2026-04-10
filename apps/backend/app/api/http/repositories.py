@@ -609,15 +609,15 @@ async def import_repository_full(
                 )
                 commits_imported = len(commit_rows)
 
-    # 5. Create project settings
-    settings_repo.get_or_create_settings(project_id=project_id, organization_id=org_id)
+    # 5. Create project settings (keyed by repo_id for backward compat)
+    settings_repo.get_or_create_settings(project_id=repo_id, organization_id=org_id)
 
-    # 6. Assign creator as admin
+    # 6. Assign creator as admin (keyed by repo_id for backward compat)
     if principal:
         try:
             rbac_repo.assign_project_role(
                 user_id=principal.user_id,
-                project_id=project_id,
+                project_id=repo_id,
                 role_code="admin",
                 assigned_by=principal.user_id,
                 notes="Project creator via GitHub import",
@@ -667,7 +667,7 @@ async def import_repository_full(
         repository=RepositoryResponse(
             id=project_id,
             name=repo_name,
-            full_name=project_id,
+            full_name=repo_id,
             description=request.description,
             language=request.language,
             visibility=request.visibility,

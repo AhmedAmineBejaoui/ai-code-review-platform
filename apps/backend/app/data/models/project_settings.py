@@ -9,7 +9,7 @@ This module provides:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Any
 
@@ -66,12 +66,12 @@ class ProjectSettings:
             return AutoAnalysisEffectiveState.DISABLED
         
         if self.auto_analysis_disabled_until is not None:
-            now = datetime.utcnow()
+            now = datetime.now(timezone.utc)
             # Handle timezone-aware datetimes
             disabled_until = self.auto_analysis_disabled_until
             if disabled_until.tzinfo is not None:
-                from datetime import timezone
-                now = datetime.now(timezone.utc)
+                # already using timezone-aware now
+                pass
             
             if disabled_until > now:
                 return AutoAnalysisEffectiveState.TEMPORARILY_DISABLED
@@ -92,13 +92,12 @@ class ProjectSettings:
         if self.auto_analysis_disabled_until is None:
             return None
         
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         disabled_until = self.auto_analysis_disabled_until
         
-        # Handle timezone-aware datetimes
+        # Handle timezone-aware datetimes (we already use timezone-aware now)
         if disabled_until.tzinfo is not None:
-            from datetime import timezone
-            now = datetime.now(timezone.utc)
+            pass
         
         remaining = (disabled_until - now).total_seconds()
         return max(0, int(remaining)) if remaining > 0 else None

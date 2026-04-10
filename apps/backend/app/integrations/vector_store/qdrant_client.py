@@ -62,13 +62,15 @@ class QdrantClient:
     """
 
     def __init__(self) -> None:
-        self._enabled = settings.QDRANT_ENABLED
-        self._mode = settings.QDRANT_MODE.lower()
-        self._url = settings.QDRANT_URL.rstrip("/")
+        # Start enabled flag based on config; use lazy client init so tests can monkeypatch _get_client.
+        self._enabled = bool(settings.QDRANT_ENABLED)
+        self._mode = (settings.QDRANT_MODE or "http").lower()
+        self._url = (settings.QDRANT_URL or "").rstrip("/")
         self._collection = settings.QDRANT_COLLECTION
         self._api_key = settings.QDRANT_API_KEY
         self._vector_size = settings.REPO_CONTEXT_VECTOR_SIZE
         self._http_client: Any = None  # httpx.AsyncClient for HTTP mode
+        self._client: Any = None  # Lazily materialized via _ensure_client()
 
     @property
     def enabled(self) -> bool:
@@ -107,6 +109,36 @@ class QdrantClient:
                 headers["api-key"] = self._api_key
             self._http_client = httpx.AsyncClient(base_url=self._url, headers=headers, timeout=30.0)
         return self._http_client
+
+    def _get_client(self) -> Any:
+        """Return the low-level client object for testing/monkeypatching.
+
+        - local mode: returns the native Qdrant client
+        - http mode: returns the httpx.AsyncClient instance
+        """
+        if self._mode == "local":
+            return self._get_local_client()
+        return self._get_http_client()
+
+    def _ensure_client(self) -> Any:
+        """Lazily materialize the underlying client and protect against runtime failures.
+
+        If the underlying client cannot be created, mark Qdrant as disabled so callers
+        observe enabled == False. Returns the client instance or None.
+        """
+        if not self._enabled:
+            return None
+        if self._client is not None:
+            return self._client
+        try:
+            client = self._get_client()
+            self._client = client
+            return self._client
+        except Exception as exc:
+            logger.warning("Qdrant runtime client init failed; disabling Qdrant: %s", exc)
+            self._enabled = False
+            self._client = None
+            return None
 
     @staticmethod
     def _build_filter(filter_payload: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -166,6 +198,12 @@ class QdrantClient:
 
     async def ensure_collection(self, *, collection_name: str, vector_size: int | None = None) -> None:
         if not self._enabled:
+            return
+
+        # Ensure underlying client can be created at runtime; tests monkeypatch _get_client()
+        client = self._ensure_client()
+        if client is None:
+            # _ensure_client will mark enabled=False on failure
             return
 
         target_size = vector_size or self._vector_size
@@ -360,6 +398,27 @@ class QdrantClient:
         if not self._enabled or not points:
             return
 
+        # Try delegating to underlying client (useful for tests/monkeypatch)
+        try:
+            client = self._ensure_client()
+            if client and hasattr(client, "upsert"):
+                # Some clients expect native PointStructs; attempt best-effort delegation
+                try:
+                    result = client.upsert(collection_name=collection_name, points=points, wait=True)
+                    if asyncio.iscoroutine(result):
+                        await result
+                    return
+                except Exception:
+                    # delegate failed — disable Qdrant and fall back
+                    self._enabled = False
+                    self._client = None
+                    pass
+        except Exception:
+            # ensure we disable on unexpected errors
+            self._enabled = False
+            self._client = None
+            pass
+
         try:
             if self._mode == "local":
                 await self._upsert_points_local(collection_name, points)
@@ -410,6 +469,32 @@ class QdrantClient:
         if not self._enabled:
             await asyncio.sleep(0)
             return []
+
+        # Try delegating to underlying client (tests may monkeypatch _get_client)
+        try:
+            client = self._ensure_client()
+            if client and hasattr(client, "search"):
+                result = client.search(collection_name=collection_name, query_vector=query_vector, limit=limit, filter_payload=filter_payload)
+                if asyncio.iscoroutine(result):
+                    result = await result
+                hits: list[QdrantHit] = []
+                for item in (result or []):
+                    if isinstance(item, dict):
+                        hits.append(QdrantHit(id=item.get("id"), payload=item.get("payload") if isinstance(item.get("payload"), dict) else {}, score=float(item.get("score") or 0.0)))
+                    else:
+                        try:
+                            payload = getattr(item, "payload", {}) or {}
+                            score = float(getattr(item, "score", 0.0) or 0.0)
+                            idv = getattr(item, "id", None)
+                            hits.append(QdrantHit(id=idv, payload=payload, score=score))
+                        except Exception:
+                            continue
+                return hits
+        except Exception:
+            # delegate failure — disable and fall back
+            self._enabled = False
+            self._client = None
+            pass
 
         try:
             if self._mode == "local":

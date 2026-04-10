@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent / "tools" / "github"))
 
 # Import and run the actual script
-from github_pr_review import main
+from github_pr_review import main, format_review_markdown
 
 if __name__ == "__main__":
     print("⚠️  WARNING: scripts/github_pr_review.py is deprecated!")

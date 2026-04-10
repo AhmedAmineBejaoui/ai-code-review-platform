@@ -177,17 +177,17 @@ class BranchPolicyValidator:
 
     def get_default_merge_method(
         self,
-        target_branch_type: str,
         org_id: str,
         repo_id: str,
+        target_branch_type: str | None = None,
     ) -> str:
         """
         Récupère la méthode de merge par défaut selon les politiques.
 
         Args:
-            target_branch_type: Type de branche cible
             org_id: ID de l'organisation
             repo_id: ID du repository
+            target_branch_type: (optionnel) Type de branche cible
 
         Returns:
             Méthode de merge par défaut (merge, squash, ou rebase)
@@ -198,7 +198,7 @@ class BranchPolicyValidator:
         if not merge_policies:
             return "merge"  # Valeur par défaut
 
-        return merge_policies[0]["default_merge_method"]
+        return merge_policies[0].get("default_merge_method", "merge")
 
     def validate_branch_age(
         self,
