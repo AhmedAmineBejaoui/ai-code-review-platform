@@ -26,11 +26,14 @@ import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider
 import type { Notification } from "@/lib/review-types"
 import { cn } from "@/components/ui/utils"
 import { formatCompactRelativeTime as formatRelativeTime } from "@/lib/domain/dates"
+import { useAuth } from "@clerk/nextjs"
 
 function getNotificationIcon(type: string) {
   const iconMap: Record<string, React.ReactNode> = {
     "assignment.new": <FileCode className="h-4 w-4 text-blue-500" />,
     "assignment.reassigned": <Users className="h-4 w-4 text-purple-500" />,
+    "review.completed": <Check className="h-4 w-4 text-green-500" />,
+    "comment.added": <MessageSquare className="h-4 w-4 text-blue-500" />,
     "comment.reply": <MessageSquare className="h-4 w-4 text-green-500" />,
     "comment.mention": <MessageSquare className="h-4 w-4 text-orange-500" />,
     "comment.resolved": <Check className="h-4 w-4 text-green-500" />,
@@ -50,7 +53,9 @@ function getNotificationLink(notification: Notification): string | null {
   switch (type) {
     case "assignment.new":
     case "assignment.reassigned":
+    case "review.completed":
       return data.analysis_id ? `/dashboard/diff/${data.analysis_id}` : null
+    case "comment.added":
     case "comment.reply":
     case "comment.mention":
     case "comment.resolved":
@@ -70,10 +75,14 @@ function getNotificationLink(notification: Notification): string | null {
 
 export function NotificationBell() {
   const currentUser = useDashboardUser()
+  const { getToken } = useAuth()
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [unreadCount, setUnreadCount] = useState(0)
   const [open, setOpen] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [desktopEnabled, setDesktopEnabled] = useState(true)
+  const [soundEnabled, setSoundEnabled] = useState(false)
+  const [showPreview, setShowPreview] = useState(true)
 
   const fetchNotifications = useCallback(async () => {
     setLoading(true)
@@ -102,18 +111,146 @@ export function NotificationBell() {
     }
   }, [])
 
+  const fetchNotificationBehavior = useCallback(async () => {
+    try {
+      const response = await fetch("/api/notifications/preferences")
+      if (!response.ok) return
+      const data = await response.json()
+      const inApp = data?.inApp ?? {}
+      if (typeof inApp.desktop === "boolean") setDesktopEnabled(inApp.desktop)
+      if (typeof inApp.sound === "boolean") setSoundEnabled(inApp.sound)
+      if (typeof inApp.show_preview === "boolean") setShowPreview(inApp.show_preview)
+    } catch (error) {
+      console.error("Failed to fetch notification behavior:", error)
+    }
+  }, [])
+
+  const playNotificationSound = useCallback(() => {
+    if (!soundEnabled) {
+      return
+    }
+
+    try {
+      const audioContext = new AudioContext()
+      const oscillator = audioContext.createOscillator()
+      const gainNode = audioContext.createGain()
+      oscillator.type = "sine"
+      oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
+      gainNode.gain.setValueAtTime(0.03, audioContext.currentTime)
+      oscillator.connect(gainNode)
+      gainNode.connect(audioContext.destination)
+      oscillator.start()
+      oscillator.stop(audioContext.currentTime + 0.1)
+    } catch (error) {
+      console.error("Failed to play notification sound:", error)
+    }
+  }, [soundEnabled])
+
+  const showDesktopNotification = useCallback(
+    (incoming: Notification) => {
+      if (!desktopEnabled || typeof window === "undefined") {
+        return
+      }
+      if (!("Notification" in window) || Notification.permission !== "granted") {
+        return
+      }
+      if (document.visibilityState === "visible") {
+        return
+      }
+
+      const notificationTitle = incoming.title || "AI Code Review"
+      const notificationBody = showPreview ? incoming.message : "You have a new notification."
+      new Notification(notificationTitle, {
+        body: notificationBody,
+        tag: incoming.id,
+      })
+    },
+    [desktopEnabled, showPreview],
+  )
+
   useEffect(() => {
     fetchUnreadCount()
-    // Poll for new notifications every 30 seconds
-    const interval = setInterval(fetchUnreadCount, 30000)
-    return () => clearInterval(interval)
-  }, [fetchUnreadCount])
+    fetchNotifications()
+    void fetchNotificationBehavior()
+  }, [fetchUnreadCount, fetchNotifications, fetchNotificationBehavior])
 
   useEffect(() => {
     if (open) {
       fetchNotifications()
+      void fetchNotificationBehavior()
     }
-  }, [open, fetchNotifications])
+  }, [open, fetchNotificationBehavior, fetchNotifications])
+
+  useEffect(() => {
+    let socket: WebSocket | null = null
+    let isClosed = false
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+
+    const backendUrl = (process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000").replace(/\/$/, "")
+    const wsBase = backendUrl.replace(/^http/i, "ws")
+
+    const connect = async () => {
+      try {
+        const token = await getToken()
+        if (isClosed) return
+
+        const params = new URLSearchParams({ user_id: currentUser.id })
+        if (token) {
+          params.set("token", token)
+        }
+
+        socket = new WebSocket(`${wsBase}/ws/notifications?${params.toString()}`)
+        socket.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data ?? "{}")
+            if (payload?.type === "notification:new" && payload.notification) {
+              const incoming: Notification = payload.notification
+              setNotifications((prev) => {
+                const exists = prev.some((n) => n.id === incoming.id)
+                if (exists) return prev
+                return [incoming, ...prev].slice(0, 100)
+              })
+              if (!incoming.read) {
+                setUnreadCount((prev) => prev + 1)
+                showDesktopNotification(incoming)
+                playNotificationSound()
+              }
+            } else if (payload?.type === "notification:read" && Array.isArray(payload.notification_ids)) {
+              const readIds = new Set<string>(payload.notification_ids)
+              setNotifications((prev) => prev.map((n) => (readIds.has(n.id) ? { ...n, read: true } : n)))
+              setUnreadCount((prev) => Math.max(0, prev - readIds.size))
+            }
+          } catch (error) {
+            console.error("Failed to parse notification websocket message:", error)
+          }
+        }
+
+        socket.onclose = () => {
+          if (isClosed) return
+          reconnectTimer = setTimeout(() => {
+            void connect()
+          }, 2000)
+        }
+      } catch (error) {
+        console.error("Failed to connect notification websocket:", error)
+        reconnectTimer = setTimeout(() => {
+          if (!isClosed) void connect()
+        }, 3000)
+      }
+    }
+
+    void connect()
+
+    return () => {
+      isClosed = true
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer)
+      }
+      if (socket) {
+        socket.close()
+      }
+    }
+  }, [currentUser.id, getToken, playNotificationSound, showDesktopNotification])
 
   const markAsRead = async (notificationId: string) => {
     try {

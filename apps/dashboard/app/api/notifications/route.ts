@@ -32,3 +32,22 @@ export async function GET(request: Request) {
     userId: authContext.userId,
   })
 }
+
+/**
+ * DELETE /api/notifications
+ *
+ * Deletes all notifications for current user.
+ */
+export async function DELETE() {
+  const authContext = await requireBackendAuth()
+  if (!authContext.ok) {
+    return authContext.response
+  }
+
+  return proxyBackendRequest({
+    method: "DELETE",
+    path: "/api/v1/notifications",
+    token: authContext.token,
+    userId: authContext.userId,
+  })
+}

@@ -32,6 +32,16 @@ import {
   AlertCircle,
 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  ensurePushSubscription,
+  fetchPushPublicKey,
+  getNotificationPermission,
+  hasActivePushSubscription,
+  isPushNotificationsSupported,
+  registerNotificationServiceWorker,
+  requestNotificationPermission,
+  unregisterPushSubscription,
+} from "@/lib/push-notifications"
 
 interface NotificationSettings {
   // Email notifications
@@ -111,6 +121,10 @@ export default function NotificationsSettingsPage() {
   const [error, setError] = useState<string | null>(null)
   const [hasChanges, setHasChanges] = useState(false)
   const [originalSettings, setOriginalSettings] = useState<NotificationSettings>(defaultSettings)
+  const [pushSupported, setPushSupported] = useState(false)
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>("default")
+  const [pushPublicKey, setPushPublicKey] = useState<string | null>(null)
+  const [pushConfigured, setPushConfigured] = useState(false)
 
   // Load preferences from backend
   const loadPreferences = useCallback(async () => {
@@ -134,15 +148,68 @@ export default function NotificationsSettingsPage() {
     } catch (err) {
       console.error("Failed to load notification preferences:", err)
       setError("Failed to load preferences. Using defaults.")
+      setSettings(defaultSettings)
+      setOriginalSettings(defaultSettings)
       toast.error("Failed to load notification preferences")
     } finally {
       setLoading(false)
     }
   }, [])
 
+  const loadBrowserPushState = useCallback(async () => {
+    const supported = isPushNotificationsSupported()
+    setPushSupported(supported)
+    setPushPermission(getNotificationPermission())
+
+    if (!supported) {
+      setPushPublicKey(null)
+      setPushConfigured(false)
+      return
+    }
+
+    await registerNotificationServiceWorker()
+    const keyResponse = await fetchPushPublicKey()
+    const publicKey = keyResponse?.enabled ? keyResponse.public_key : null
+    setPushPublicKey(publicKey ?? null)
+    setPushConfigured(await hasActivePushSubscription())
+  }, [])
+
+  const syncPushSubscriptionState = useCallback(
+    async (enabled: boolean): Promise<boolean> => {
+      if (!pushSupported) {
+        return false
+      }
+
+      if (!enabled) {
+        const removed = await unregisterPushSubscription()
+        setPushConfigured(false)
+        return removed
+      }
+
+      if (!pushPublicKey) {
+        return false
+      }
+
+      let permission = getNotificationPermission()
+      if (permission !== "granted") {
+        permission = await requestNotificationPermission()
+        setPushPermission(permission)
+      }
+      if (permission !== "granted") {
+        return false
+      }
+
+      const subscribed = await ensurePushSubscription(pushPublicKey)
+      setPushConfigured(subscribed || (await hasActivePushSubscription()))
+      return subscribed
+    },
+    [pushPublicKey, pushSupported],
+  )
+
   useEffect(() => {
     loadPreferences()
-  }, [loadPreferences])
+    void loadBrowserPushState()
+  }, [loadPreferences, loadBrowserPushState])
 
   // Track changes
   useEffect(() => {
@@ -153,6 +220,31 @@ export default function NotificationsSettingsPage() {
     setSaving(true)
     setError(null)
     try {
+      if (settings.inApp.desktop && getNotificationPermission() !== "granted") {
+        const permission = await requestNotificationPermission()
+        setPushPermission(permission)
+        if (permission !== "granted") {
+          setSettings((prev) => ({
+            ...prev,
+            inApp: { ...prev.inApp, desktop: false },
+          }))
+          throw new Error("desktop_notifications_permission_denied")
+        }
+      }
+
+      if (settings.push.enabled) {
+        const pushReady = await syncPushSubscriptionState(true)
+        if (!pushReady) {
+          setSettings((prev) => ({
+            ...prev,
+            push: { ...prev.push, enabled: false },
+          }))
+          throw new Error("push_subscription_unavailable")
+        }
+      } else if (pushConfigured) {
+        await syncPushSubscriptionState(false)
+      }
+
       const response = await fetch("/api/notifications/preferences", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -170,7 +262,7 @@ export default function NotificationsSettingsPage() {
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
       console.error("Failed to save notification preferences:", err)
-      setError("Failed to save preferences. Please try again.")
+      setError("Failed to save preferences. Please verify browser notification permissions.")
       toast.error("Failed to save notification preferences")
     } finally {
       setSaving(false)
@@ -180,8 +272,8 @@ export default function NotificationsSettingsPage() {
   const handleReset = async () => {
     setSaving(true)
     try {
-      const response = await fetch("/api/notifications/preferences", {
-        method: "POST", // Reset endpoint
+      const response = await fetch("/api/notifications/preferences/reset", {
+        method: "POST",
       })
 
       if (!response.ok) {
@@ -198,6 +290,9 @@ export default function NotificationsSettingsPage() {
       setSettings(merged)
       setOriginalSettings(merged)
       setHasChanges(false)
+      if (!merged.push.enabled) {
+        await syncPushSubscriptionState(false)
+      }
       toast.success("Preferences reset to defaults")
     } catch (err) {
       console.error("Failed to reset preferences:", err)
@@ -233,6 +328,48 @@ export default function NotificationsSettingsPage() {
       ...prev,
       schedule: { ...prev.schedule, [key]: value }
     }))
+  }
+
+  const handlePushEnabledChange = async (enabled: boolean) => {
+    if (enabled) {
+      if (!pushSupported) {
+        toast.error("Push notifications are not supported in this browser.")
+        return
+      }
+      const ready = await syncPushSubscriptionState(true)
+      if (!ready) {
+        toast.error("Push permission denied or subscription failed.")
+        setSettings((prev) => ({
+          ...prev,
+          push: { ...prev.push, enabled: false },
+        }))
+        return
+      }
+    } else {
+      await syncPushSubscriptionState(false)
+    }
+
+    setSettings((prev) => ({
+      ...prev,
+      push: { ...prev.push, enabled },
+    }))
+  }
+
+  const handleDesktopEnabledChange = async (enabled: boolean) => {
+    if (enabled) {
+      const permission = await requestNotificationPermission()
+      setPushPermission(permission)
+      if (permission !== "granted") {
+        toast.error("Desktop notification permission was not granted.")
+        setSettings((prev) => ({
+          ...prev,
+          inApp: { ...prev.inApp, desktop: false },
+        }))
+        return
+      }
+    }
+
+    updateInAppSetting("desktop", enabled)
   }
 
   // Show loading skeleton
@@ -424,15 +561,40 @@ export default function NotificationsSettingsPage() {
                 </div>
                 <div>
                   <CardTitle>Push Notifications</CardTitle>
-                  <CardDescription>Receive real-time push notifications</CardDescription>
+                  <CardDescription>
+                    Receive real-time push notifications
+                    {pushPermission !== "granted" ? ` (permission: ${pushPermission})` : ""}
+                  </CardDescription>
                 </div>
               </div>
               <Switch
                 checked={settings.push.enabled}
-                onCheckedChange={(checked) => updatePushSetting('enabled', checked)}
+                onCheckedChange={(checked) => {
+                  void handlePushEnabledChange(checked)
+                }}
               />
             </div>
           </CardHeader>
+          {settings.push.enabled && !pushConfigured && (
+            <CardContent className="pt-0">
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Push is enabled in preferences but not fully subscribed in your browser yet.
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
+          {!pushSupported && (
+            <CardContent className="pt-0">
+              <Alert variant="destructive">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  This browser does not support Web Push notifications.
+                </AlertDescription>
+              </Alert>
+            </CardContent>
+          )}
           {settings.push.enabled && (
             <CardContent className="space-y-4">
               <div className="grid gap-4">
@@ -516,7 +678,9 @@ export default function NotificationsSettingsPage() {
                   title="Desktop Notifications"
                   description="Show browser desktop notifications"
                   checked={settings.inApp.desktop}
-                  onChange={(v) => updateInAppSetting('desktop', v)}
+                  onChange={(v) => {
+                    void handleDesktopEnabledChange(v)
+                  }}
                 />
                 <NotificationItem
                   icon={<MessageSquare className="h-4 w-4" />}

@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import json
+import re
 from datetime import datetime, timezone, date, timedelta
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
 
 from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal, require_permission
 from app.data.database import get_engine
@@ -23,8 +26,105 @@ from app.data.repos.change_requests_repo import (
     CreateChangeRequestInput,
     UpdateChangeRequestInput,
 )
+from app.services.notifications import NotificationChannel, NotificationService
 
 router = APIRouter(prefix="/api/v1/reviews", tags=["reviews"])
+
+_MENTION_PATTERN = re.compile(r"@([A-Za-z0-9._-]{3,80})")
+
+
+def _get_analysis_context(analysis_id: str) -> dict[str, Any] | None:
+    engine = get_engine()
+    with engine.connect() as conn:
+        row = conn.execute(
+            text(
+                """
+                SELECT id, repo, pr_number, project_id, metadata_json
+                FROM analyses
+                WHERE id = :analysis_id
+                LIMIT 1
+                """
+            ),
+            {"analysis_id": analysis_id},
+        ).mappings().first()
+    return dict(row) if row else None
+
+
+def _resolve_analysis_owner_ids(analysis: dict[str, Any] | None) -> list[str]:
+    if not analysis:
+        return []
+    metadata = analysis.get("metadata_json") or {}
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:  # noqa: BLE001
+            metadata = {}
+    owner_keys = ("author_id", "user_id", "actor_id", "clerk_user_id")
+    owner_ids: list[str] = []
+    for key in owner_keys:
+        value = metadata.get(key) if isinstance(metadata, dict) else None
+        if isinstance(value, str) and value.strip() and value.strip() not in owner_ids:
+            owner_ids.append(value.strip())
+    return owner_ids
+
+
+def _resolve_assigned_reviewer_ids(analysis_id: str) -> list[str]:
+    try:
+        engine = get_engine()
+        with engine.connect() as conn:
+            rows = conn.execute(
+                text(
+                    """
+                    SELECT DISTINCT reviewer_id
+                    FROM review_assignments
+                    WHERE analysis_id = :analysis_id
+                      AND status IN ('pending', 'in_progress', 'completed')
+                    """
+                ),
+                {"analysis_id": analysis_id},
+            ).mappings().all()
+    except Exception:  # noqa: BLE001
+        return []
+    return [str(row["reviewer_id"]) for row in rows if row.get("reviewer_id")]
+
+
+def _resolve_mentions_user_ids(text_content: str) -> list[str]:
+    """
+    Resolve @mentions to user ids using id/email/display_name prefixes.
+    """
+    mention_tokens = {m.group(1).strip().lower() for m in _MENTION_PATTERN.finditer(text_content or "")}
+    if not mention_tokens:
+        return []
+
+    engine = get_engine()
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text(
+                """
+                SELECT id, email, display_name
+                FROM users
+                WHERE is_active = TRUE
+                """
+            )
+        ).mappings().all()
+
+    matched_ids: list[str] = []
+    for row in rows:
+        user_id = str(row.get("id") or "").strip()
+        if not user_id:
+            continue
+        email = str(row.get("email") or "").strip().lower()
+        display_name = str(row.get("display_name") or "").strip().lower()
+        email_local = email.split("@", 1)[0] if "@" in email else email
+
+        candidates = {user_id.lower(), email_local}
+        if display_name:
+            candidates.add(display_name.replace(" ", ""))
+            candidates.update(part for part in re.split(r"[^a-z0-9._-]+", display_name) if part)
+
+        if mention_tokens.intersection(candidates):
+            matched_ids.append(user_id)
+    return list(dict.fromkeys(matched_ids))
 
 
 # Review Assignment Models
@@ -173,6 +273,22 @@ async def create_assignment(
     if not assignment:
         raise HTTPException(status_code=500, detail="Failed to create assignment")
 
+    analysis = _get_analysis_context(request.analysis_id)
+    notification_service = NotificationService()
+    await notification_service.send_assignment_notification(
+        assignment_data={
+            "id": assignment_id,
+            "analysis_id": request.analysis_id,
+            "reviewer_id": request.reviewer_id,
+            "assigner_id": principal.user_id,
+            "project_id": (analysis or {}).get("project_id"),
+            "priority": request.priority,
+            "due_at": request.due_at,
+            "analysis": {"repo": (analysis or {}).get("repo", "Unknown")},
+        },
+        channels=[NotificationChannel.IN_APP, NotificationChannel.EMAIL, NotificationChannel.PUSH],
+    )
+
     return AssignmentResponse(**dict(assignment))
 
 
@@ -254,6 +370,24 @@ async def update_assignment(
         raise HTTPException(status_code=500, detail="Failed to update assignment")
 
     updated_assignment = repo.get_assignment_by_id(assignment_id)
+
+    if request.status == "completed":
+        analysis = _get_analysis_context(str(assignment["analysis_id"]))
+        recipient_ids = _resolve_analysis_owner_ids(analysis)
+        assigner_id = assignment.get("assigner_id")
+        if isinstance(assigner_id, str) and assigner_id.strip() and assigner_id not in recipient_ids:
+            recipient_ids.append(assigner_id)
+        if recipient_ids:
+            notification_service = NotificationService()
+            await notification_service.send_review_completed_notification(
+                analysis_id=str(assignment["analysis_id"]),
+                reviewer_id=principal.user_id,
+                decision="completed",
+                summary=None,
+                recipient_ids=recipient_ids,
+                project_id=(analysis or {}).get("project_id"),
+            )
+
     return AssignmentResponse(**dict(updated_assignment))
 
 
@@ -320,6 +454,47 @@ async def create_comment(
 
     if not comment:
         raise HTTPException(status_code=500, detail="Failed to create comment")
+
+    analysis = _get_analysis_context(request.analysis_id) or {}
+    project_id = analysis.get("project_id")
+    comment_payload = dict(comment)
+    comment_payload["project_id"] = project_id
+
+    notification_service = NotificationService()
+
+    parent_author_id: str | None = None
+    if request.parent_id:
+        parent_comment = repo.get_comment_by_id(request.parent_id)
+        if parent_comment and parent_comment.get("author_id"):
+            parent_author_id = str(parent_comment["author_id"])
+            await notification_service.send_comment_reply_notification(
+                comment_data=comment_payload,
+                parent_comment_author=parent_author_id,
+            )
+
+    mentioned_user_ids = _resolve_mentions_user_ids(request.content)
+    for mentioned_user_id in mentioned_user_ids:
+        await notification_service.send_comment_mention_notification(
+            mentioned_user_id=mentioned_user_id,
+            author_id=principal.user_id,
+            comment_data=comment_payload,
+        )
+
+    general_recipients = set(_resolve_analysis_owner_ids(analysis))
+    general_recipients.update(_resolve_assigned_reviewer_ids(request.analysis_id))
+    general_recipients.discard(principal.user_id)
+    if parent_author_id:
+        general_recipients.discard(parent_author_id)
+    for mentioned_user_id in mentioned_user_ids:
+        general_recipients.discard(mentioned_user_id)
+
+    if general_recipients:
+        await notification_service.send_comment_added_notification(
+            comment_data=comment_payload,
+            recipient_ids=list(general_recipients),
+            actor_id=principal.user_id,
+            recipient_roles=["admin"],
+        )
 
     return CommentResponse(**dict(comment))
 
@@ -425,6 +600,17 @@ async def create_change_request(
 
     if not change_request:
         raise HTTPException(status_code=500, detail="Failed to create change request")
+
+    analysis = _get_analysis_context(request.analysis_id)
+    owner_ids = _resolve_analysis_owner_ids(analysis)
+    if owner_ids:
+        notification_service = NotificationService()
+        payload = dict(change_request)
+        payload["project_id"] = (analysis or {}).get("project_id")
+        await notification_service.send_change_request_notification(
+            change_request_data=payload,
+            analysis_author=owner_ids[0],
+        )
 
     return ChangeRequestResponse(**dict(change_request))
 
@@ -891,7 +1077,24 @@ async def submit_review(
     )
     
     assignments_repo.update_assignment(assignment["id"], update_data)
-    
+
+    analysis = _get_analysis_context(request.analysis_id)
+    recipient_ids = _resolve_analysis_owner_ids(analysis)
+    assigner_id = assignment.get("assigner_id")
+    if isinstance(assigner_id, str) and assigner_id.strip() and assigner_id not in recipient_ids:
+        recipient_ids.append(assigner_id)
+
+    if recipient_ids:
+        notification_service = NotificationService()
+        await notification_service.send_review_completed_notification(
+            analysis_id=request.analysis_id,
+            reviewer_id=principal.user_id,
+            decision=request.decision,
+            summary=request.summary,
+            recipient_ids=recipient_ids,
+            project_id=(analysis or {}).get("project_id"),
+        )
+
     return SubmitReviewResponse(
         success=True,
         assignment_id=assignment["id"],

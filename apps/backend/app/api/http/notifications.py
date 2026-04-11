@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import List
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
+from app.settings import settings
 from app.services.notifications import NotificationService
 
 router = APIRouter(prefix="/api/v1/notifications", tags=["notifications"])
@@ -35,6 +36,11 @@ class UnreadCountResponse(BaseModel):
     count: int
 
 
+class PushPublicKeyResponse(BaseModel):
+    enabled: bool
+    public_key: str | None
+
+
 class MarkReadRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
     notification_ids: List[str] | None = None
@@ -50,6 +56,7 @@ async def get_notifications(
     unread_only: bool = Query(False, description="Filter to unread notifications only"),
     limit: int = Query(50, ge=1, le=100, description="Maximum number of notifications to return"),
     offset: int = Query(0, ge=0, description="Number of notifications to skip"),
+    role: str | None = Query(None, description="Optional role filter (admin/reviewer/developer)"),
     principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> NotificationsListResponse:
     """
@@ -68,6 +75,7 @@ async def get_notifications(
         unread_only=unread_only,
         limit=limit,
         offset=offset,
+        role_filter=role,
     )
 
     return NotificationsListResponse(
@@ -436,7 +444,7 @@ async def update_notification_preferences(
         )
         row = result.mappings().first()
 
-        current_prefs = DEFAULT_NOTIFICATION_PREFERENCES.copy()
+        current_prefs = json.loads(json.dumps(DEFAULT_NOTIFICATION_PREFERENCES))
         if row and row.get("notification_preferences"):
             stored = row["notification_preferences"]
             if isinstance(stored, str):
@@ -463,6 +471,17 @@ async def update_notification_preferences(
         )
 
     return {"success": True, "preferences": current_prefs}
+
+
+@router.patch("/preferences")
+async def patch_notification_preferences(
+    request: NotificationPreferencesRequest,
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+):
+    """
+    Partial update notification preferences (alias for PUT).
+    """
+    return await update_notification_preferences(request, principal)
 
 
 @router.post("/preferences/reset")
@@ -498,3 +517,83 @@ async def reset_notification_preferences(
         )
 
     return {"success": True, "preferences": DEFAULT_NOTIFICATION_PREFERENCES}
+
+
+class PushSubscriptionKeys(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    p256dh: str
+    auth: str
+
+
+class PushSubscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint: str
+    keys: PushSubscriptionKeys
+    expirationTime: int | None = None
+
+
+@router.post("/push-subscriptions")
+async def register_push_subscription(
+    request: PushSubscriptionRequest,
+    http_request: Request,
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+):
+    """
+    Register or update browser push subscription for current user.
+    """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
+    service = NotificationService()
+    success = service.register_push_subscription(
+        user_id=principal.user_id,
+        subscription=request.model_dump(),
+        user_agent=http_request.headers.get("user-agent"),
+    )
+    if not success:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="invalid_subscription")
+    return {"success": True}
+
+
+class DeletePushSubscriptionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    endpoint: str
+
+
+@router.delete("/push-subscriptions")
+async def delete_push_subscription(
+    request: DeletePushSubscriptionRequest,
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+):
+    """
+    Delete browser push subscription for current user.
+    """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
+    service = NotificationService()
+    deleted = service.unregister_push_subscription(
+        user_id=principal.user_id,
+        endpoint=request.endpoint,
+    )
+    return {"success": deleted}
+
+
+@router.get("/push-public-key", response_model=PushPublicKeyResponse)
+async def get_push_public_key(
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
+) -> PushPublicKeyResponse:
+    """
+    Return VAPID public key so clients can subscribe for web push.
+    """
+    if principal is None or not getattr(principal, "user_id", None):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="authentication_required",
+        )
+    enabled = bool(settings.PUSH_NOTIFICATIONS_ENABLED and settings.VAPID_PUBLIC_KEY)
+    return PushPublicKeyResponse(enabled=enabled, public_key=settings.VAPID_PUBLIC_KEY if enabled else None)

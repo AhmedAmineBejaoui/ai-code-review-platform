@@ -24,6 +24,7 @@ class NotificationType(Enum):
     REVIEW_OVERDUE_SOON = "review.overdue_soon"
     REVIEW_OVERDUE = "review.overdue"
     REVIEW_COMPLETED = "review.completed"
+    COMMENT_ADDED = "comment.added"
     COMMENT_REPLY = "comment.reply"
     COMMENT_MENTION = "comment.mention"
     COMMENT_RESOLVED = "comment.resolved"
@@ -159,6 +160,33 @@ class NotificationService:
             "actor_id": comment_data.get("author_id"),
         }
         channels = [NotificationChannel.IN_APP, NotificationChannel.PUSH]
+        return await self._send_notification(notification_data, channels)
+
+    async def send_comment_added_notification(
+        self,
+        *,
+        comment_data: dict[str, Any],
+        recipient_ids: list[str] | None = None,
+        actor_id: str | None = None,
+        recipient_roles: list[str] | None = None,
+    ) -> bool:
+        notification_data = {
+            "type": NotificationType.COMMENT_ADDED.value,
+            "title": "New comment added",
+            "message": f"New comment in {comment_data.get('file_path', 'review')}",
+            "data": {
+                "comment_id": comment_data.get("id"),
+                "analysis_id": comment_data.get("analysis_id"),
+                "file_path": comment_data.get("file_path"),
+                "line_start": comment_data.get("line_start"),
+                "project_id": comment_data.get("project_id"),
+            },
+            "recipient_ids": recipient_ids or [],
+            "recipient_roles": recipient_roles or [],
+            "actor_id": actor_id,
+            "project_id": comment_data.get("project_id"),
+        }
+        channels = [NotificationChannel.IN_APP, NotificationChannel.PUSH, NotificationChannel.EMAIL]
         return await self._send_notification(notification_data, channels)
 
     async def send_comment_mention_notification(
@@ -500,7 +528,7 @@ class NotificationService:
                         return prefs
         except Exception as exc:  # noqa: BLE001
             logger.error("Failed to get user notification preferences: %s", exc)
-        return dict(DEFAULT_NOTIFICATION_PREFERENCES)
+        return self._default_preferences_copy()
 
     def _is_channel_enabled_for_event(
         self,
@@ -537,6 +565,7 @@ class NotificationService:
             NotificationType.ASSIGNMENT_NEW.value: "new_review_assigned",
             NotificationType.ASSIGNMENT_REASSIGNED.value: "new_review_assigned",
             NotificationType.REVIEW_COMPLETED.value: "review_completed",
+            NotificationType.COMMENT_ADDED.value: "comment_replies",
             NotificationType.COMMENT_REPLY.value: "comment_replies",
             NotificationType.COMMENT_MENTION.value: "mention",
         }
@@ -749,4 +778,26 @@ class NotificationService:
                 row["data"] = {}
         elif data is None:
             row["data"] = {}
+        row["data"] = NotificationService._json_safe(row.get("data", {}))
+
+        for key in ("id", "user_id", "type", "title", "message"):
+            if key in row and row[key] is not None:
+                row[key] = str(row[key])
+        for key in ("created_at", "read_at"):
+            if isinstance(row.get(key), datetime):
+                row[key] = row[key].isoformat()
         return row
+
+    @staticmethod
+    def _json_safe(value: Any) -> Any:
+        if isinstance(value, datetime):
+            return value.isoformat()
+        if isinstance(value, dict):
+            return {str(k): NotificationService._json_safe(v) for k, v in value.items()}
+        if isinstance(value, list):
+            return [NotificationService._json_safe(v) for v in value]
+        return value
+
+    @staticmethod
+    def _default_preferences_copy() -> dict[str, Any]:
+        return json.loads(json.dumps(DEFAULT_NOTIFICATION_PREFERENCES))

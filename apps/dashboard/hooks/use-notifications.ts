@@ -1,57 +1,52 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useAuth } from "@clerk/nextjs"
+import { useCallback, useEffect, useMemo, useState } from "react"
 import { Notification } from "@/components/ui/notification-popover"
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 
 interface UseNotificationsOptions {
   userId?: string
-  autoRefresh?: boolean
-  refreshInterval?: number
+  enableRealtime?: boolean
 }
 
+type BackendNotification = {
+  id: string
+  type: string
+  title: string
+  message: string
+  data?: Record<string, unknown>
+  read: boolean
+  created_at: string
+}
+
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+const WS_BASE = BACKEND_URL.replace(/^http/i, "ws").replace(/\/$/, "")
+
 export function useNotifications(options: UseNotificationsOptions = {}) {
-  const { userId, autoRefresh = true, refreshInterval = 30000 } = options
-  
+  const { userId, enableRealtime = true } = options
+  const { getToken } = useAuth()
+
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  
+
   const fetchNotifications = useCallback(async () => {
     if (!userId) {
       setLoading(false)
       return
     }
-    
+
+    setLoading(true)
     try {
-      const response = await fetch(`${BACKEND_URL}/api/v1/notifications`, {
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      })
-      
+      const response = await fetch("/api/notifications?limit=100")
       if (!response.ok) {
-        throw new Error(`Failed to fetch notifications: ${response.statusText}`)
+        throw new Error(`Failed to fetch notifications: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
-      // Transform backend data to frontend format
-      const transformedNotifications: Notification[] = (data.notifications || []).map((n: any) => ({
-        id: n.id,
-        type: mapNotificationType(n.type),
-        title: n.title,
-        message: n.message,
-        timestamp: n.created_at || new Date().toISOString(),
-        status: n.read ? "read" : "unread",
-        actionUrl: n.data?.url,
-        actionLabel: n.data?.actionLabel,
-        metadata: n.data,
-      }))
-      
-      setNotifications(transformedNotifications)
+      const rows: BackendNotification[] = data.notifications || []
+      const mapped = rows.map(mapBackendNotification)
+      setNotifications(mapped)
       setError(null)
     } catch (err) {
       console.error("Failed to fetch notifications:", err)
@@ -60,125 +55,140 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
       setLoading(false)
     }
   }, [userId])
-  
-  // Mark notification as read
+
   const markAsRead = useCallback(async (notificationId: string) => {
     try {
-      await fetch(`${BACKEND_URL}/api/v1/notifications/${notificationId}/read`, {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
+      await fetch("/api/notifications/mark-read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ notification_ids: [notificationId] }),
       })
-      
-      // Update local state
       setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, status: "read" as const } : n
-        )
+        prev.map((n) => (n.id === notificationId ? { ...n, status: "read" } : n)),
       )
     } catch (err) {
       console.error("Failed to mark notification as read:", err)
     }
   }, [])
-  
-  // Archive notification
+
   const archiveNotification = useCallback(async (notificationId: string) => {
     try {
-      await fetch(`${BACKEND_URL}/api/v1/notifications/${notificationId}/archive`, {
+      await fetch(`/api/notifications/${notificationId}/archive`, {
         method: "PATCH",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
       })
-      
-      // Update local state
       setNotifications((prev) =>
-        prev.map((n) =>
-          n.id === notificationId ? { ...n, status: "archived" as const } : n
-        )
+        prev.map((n) => (n.id === notificationId ? { ...n, status: "archived" } : n)),
       )
     } catch (err) {
       console.error("Failed to archive notification:", err)
     }
   }, [])
-  
-  // Delete notification
+
   const deleteNotification = useCallback(async (notificationId: string) => {
     try {
-      await fetch(`${BACKEND_URL}/api/v1/notifications/${notificationId}`, {
+      await fetch(`/api/notifications/${notificationId}`, {
         method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
       })
-      
-      // Update local state
       setNotifications((prev) => prev.filter((n) => n.id !== notificationId))
     } catch (err) {
       console.error("Failed to delete notification:", err)
     }
   }, [])
-  
-  // Mark all as read
+
   const markAllAsRead = useCallback(async () => {
     try {
-      await fetch(`${BACKEND_URL}/api/v1/notifications/read-all`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      })
-      
-      // Update local state
+      await fetch("/api/notifications/mark-all-read", { method: "POST" })
       setNotifications((prev) =>
-        prev.map((n) => ({ ...n, status: n.status === "unread" ? "read" as const : n.status }))
+        prev.map((n) => (n.status === "unread" ? { ...n, status: "read" } : n)),
       )
     } catch (err) {
       console.error("Failed to mark all as read:", err)
     }
   }, [])
-  
-  // Clear all notifications
+
   const clearAll = useCallback(async () => {
     try {
-      await fetch(`${BACKEND_URL}/api/v1/notifications`, {
-        method: "DELETE",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        credentials: "include",
-      })
-      
-      // Update local state
+      await fetch("/api/notifications", { method: "DELETE" })
       setNotifications([])
     } catch (err) {
       console.error("Failed to clear all notifications:", err)
     }
   }, [])
-  
-  // Initial fetch
+
   useEffect(() => {
-    fetchNotifications()
+    void fetchNotifications()
   }, [fetchNotifications])
-  
-  // Auto-refresh
+
   useEffect(() => {
-    if (!autoRefresh || !userId) return
-    
-    const interval = setInterval(() => {
-      fetchNotifications()
-    }, refreshInterval)
-    
-    return () => clearInterval(interval)
-  }, [autoRefresh, refreshInterval, fetchNotifications, userId])
-  
+    if (!enableRealtime || !userId) {
+      return
+    }
+
+    let socket: WebSocket | null = null
+    let reconnectTimer: ReturnType<typeof setTimeout> | null = null
+    let closed = false
+
+    const connect = async () => {
+      try {
+        const token = await getToken()
+        if (closed) return
+
+        const params = new URLSearchParams({ user_id: userId })
+        if (token) {
+          params.set("token", token)
+        }
+        socket = new WebSocket(`${WS_BASE}/ws/notifications?${params.toString()}`)
+        socket.onmessage = (event) => {
+          try {
+            const payload = JSON.parse(event.data ?? "{}")
+            if (payload?.type === "notification:new" && payload.notification) {
+              const incoming = mapBackendNotification(payload.notification)
+              setNotifications((prev) => {
+                if (prev.some((n) => n.id === incoming.id)) return prev
+                return [incoming, ...prev]
+              })
+            }
+            if (payload?.type === "notification:read" && Array.isArray(payload.notification_ids)) {
+              const readIds = new Set<string>(payload.notification_ids)
+              setNotifications((prev) =>
+                prev.map((n) => (readIds.has(n.id) ? { ...n, status: "read" } : n)),
+              )
+            }
+          } catch (parseErr) {
+            console.error("Invalid notification websocket payload:", parseErr)
+          }
+        }
+        socket.onclose = () => {
+          if (closed) return
+          reconnectTimer = setTimeout(() => {
+            void connect()
+          }, 2000)
+        }
+      } catch (connectErr) {
+        console.error("Notification websocket connection failed:", connectErr)
+        reconnectTimer = setTimeout(() => {
+          if (!closed) void connect()
+        }, 3000)
+      }
+    }
+
+    void connect()
+
+    return () => {
+      closed = true
+      if (reconnectTimer) clearTimeout(reconnectTimer)
+      if (socket) socket.close()
+    }
+  }, [enableRealtime, getToken, userId])
+
+  const unreadCount = useMemo(
+    () => notifications.filter((n) => n.status === "unread").length,
+    [notifications],
+  )
+
   return {
     notifications,
+    unreadCount,
     loading,
     error,
     refetch: fetchNotifications,
@@ -190,19 +200,32 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
   }
 }
 
-// Helper function to map backend notification types to frontend types
-function mapNotificationType(backendType: string): "info" | "success" | "warning" | "error" {
-  const typeMap: Record<string, "info" | "success" | "warning" | "error"> = {
-    review_assigned: "info",
-    review_completed: "success",
-    changes_requested: "warning",
-    review_approved: "success",
-    attention_required: "warning",
-    analysis_completed: "success",
-    analysis_failed: "error",
-    comment_reply: "info",
-    mention: "info",
+function mapBackendNotification(notification: BackendNotification): Notification {
+  return {
+    id: notification.id,
+    type: mapNotificationType(notification.type),
+    title: notification.title,
+    message: notification.message,
+    timestamp: notification.created_at,
+    status: notification.read ? "read" : "unread",
+    metadata: notification.data || {},
   }
-  
+}
+
+function mapNotificationType(
+  backendType: string,
+): "info" | "success" | "warning" | "error" {
+  const typeMap: Record<string, "info" | "success" | "warning" | "error"> = {
+    "assignment.new": "info",
+    "assignment.reassigned": "info",
+    "review.completed": "success",
+    "comment.added": "info",
+    "comment.reply": "info",
+    "comment.mention": "info",
+    "change_request.created": "warning",
+    "change_request.resolved": "success",
+    "review.overdue_soon": "warning",
+    "review.overdue": "error",
+  }
   return typeMap[backendType] || "info"
 }
