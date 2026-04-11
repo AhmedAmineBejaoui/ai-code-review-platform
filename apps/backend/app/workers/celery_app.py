@@ -37,6 +37,7 @@ def configure_celery_app() -> None:
     celery_app.conf.imports = (
         "app.workers.tasks.analyze_pr",
         "app.workers.tasks.ingest_kb",
+        "app.workers.tasks.langgraph_analysis",
     )
     if settings.KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES > 0:
         celery_app.conf.beat_schedule = {

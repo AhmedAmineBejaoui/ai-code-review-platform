@@ -5,8 +5,7 @@
 
 const http = require('http')
 const WebSocket = require('ws')
-const { setupWSConnection } = require('y-websocket/bin/utils.js')
-
+const { setupWSConnection } = require('y-websocket')
 const port = process.env.PORT || 1234
 
 const server = http.createServer((req, res) => {

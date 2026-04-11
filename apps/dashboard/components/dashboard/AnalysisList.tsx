@@ -35,17 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-
-function normalizeStatus(status: string): "RECEIVED" | "QUEUED" | "RUNNING" | "COMPLETED" | "FAILED" {
-  const raw = status.trim().toUpperCase()
-  if (raw === "DONE") {
-    return "COMPLETED"
-  }
-  if (raw === "RECEIVED" || raw === "QUEUED" || raw === "RUNNING" || raw === "COMPLETED" || raw === "FAILED") {
-    return raw
-  }
-  return "QUEUED"
-}
+import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status"
 
 function formatCreatedAt(value: string): string {
   if (!value) {

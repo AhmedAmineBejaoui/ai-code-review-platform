@@ -1,11 +1,13 @@
 /**
  * Reviewer Dashboard Library
- * 
+ *
  * Provides functions to fetch reviewer dashboard data.
  * Falls back to computing data from analyses when backend endpoint is unavailable.
  */
 
 import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "./dashboard-analyses"
+import { normalizeAnalysisStatus as normalizeStatus } from "./domain/analysis-status"
+import { createPoller } from "./polling"
 
 // ============================================================================
 // Types
@@ -149,14 +151,6 @@ export const defaultReviewerDashboardData: ReviewerDashboardData = {
 // Utility Functions
 // ============================================================================
 
-function normalizeStatus(status: string): string {
-  const upper = status.toUpperCase()
-  if (upper === "DONE" || upper === "COMPLETED") return "COMPLETED"
-  if (upper === "FAILED") return "FAILED"
-  if (upper === "RUNNING") return "RUNNING"
-  return "QUEUED"
-}
-
 function getPriority(item: DashboardAnalysisItem): "high" | "medium" | "low" {
   if (item.blockerCount > 0) return "high"
   if (item.warnCount > 5) return "medium"
@@ -164,15 +158,15 @@ function getPriority(item: DashboardAnalysisItem): "high" | "medium" | "low" {
 }
 
 function formatTimeAgo(dateString: string): string {
-  if (!dateString) return "récemment"
-  
+  if (!dateString) return "rÃ©cemment"
+
   const date = new Date(dateString)
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffMins = Math.floor(diffMs / (1000 * 60))
   const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  
+
   if (diffMins < 60) return `${diffMins}m`
   if (diffHours < 24) return `${diffHours}h`
   return `${diffDays}j`
@@ -180,11 +174,11 @@ function formatTimeAgo(dateString: string): string {
 
 function isThisWeek(dateString: string): boolean {
   if (!dateString) return false
-  
+
   const date = new Date(dateString)
   const now = new Date()
   const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
-  
+
   return date >= weekAgo && date <= now
 }
 
@@ -194,21 +188,21 @@ function isThisWeek(dateString: string): boolean {
 
 function computeReviewerDataFromAnalyses(analyses: DashboardAnalysisItem[]): ReviewerDashboardData {
   const now = new Date()
-  
+
   // Categorize analyses
-  const pendingAnalyses = analyses.filter(a => 
-    normalizeStatus(a.status) === "COMPLETED" && 
+  const pendingAnalyses = analyses.filter(a =>
+    normalizeStatus(a.status) === "COMPLETED" &&
     (a.blockerCount > 0 || a.warnCount > 0)
   )
-  
-  const runningAnalyses = analyses.filter(a => 
+
+  const runningAnalyses = analyses.filter(a =>
     normalizeStatus(a.status) === "RUNNING"
   )
-  
-  const completedThisWeek = analyses.filter(a => 
+
+  const completedThisWeek = analyses.filter(a =>
     normalizeStatus(a.status) === "COMPLETED" && isThisWeek(a.updatedAt)
   )
-  
+
   // Create active reviews from running analyses
   const activeReviews: ActiveReview[] = runningAnalyses.slice(0, 5).map((a) => ({
     id: `rev_${a.id}`,
@@ -222,7 +216,7 @@ function computeReviewerDataFromAnalyses(analyses: DashboardAnalysisItem[]): Rev
     started_at: a.createdAt,
     due_at: new Date(new Date(a.createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString(),
   }))
-  
+
   // Create unassigned reviews from completed analyses with issues
   const unassignedReviews: UnassignedReview[] = pendingAnalyses.slice(0, 5).map((a) => ({
     id: `unrev_${a.id}`,
@@ -231,7 +225,7 @@ function computeReviewerDataFromAnalyses(analyses: DashboardAnalysisItem[]): Rev
     priority: getPriority(a),
     waiting_since: formatTimeAgo(a.updatedAt),
   }))
-  
+
   // Create recent activity from recent analyses
   const recentActivity: RecentActivity[] = analyses
     .filter(a => a.updatedAt)
@@ -245,7 +239,7 @@ function computeReviewerDataFromAnalyses(analyses: DashboardAnalysisItem[]): Rev
         time: formatTimeAgo(a.updatedAt),
       }
     })
-  
+
   // Calculate KPIs
   const avgDuration = completedThisWeek.length > 0
     ? completedThisWeek.reduce((sum, a) => {
@@ -258,7 +252,7 @@ function computeReviewerDataFromAnalyses(analyses: DashboardAnalysisItem[]): Rev
         return sum
       }, 0) / completedThisWeek.length
     : 30
-  
+
   return {
     kpis: {
       pending_reviews: pendingAnalyses.length,
@@ -297,7 +291,7 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
     avg_review_time_minutes: data.kpis?.avg_review_time_minutes ?? 0,
     sla_compliance_rate: data.kpis?.sla_compliance_rate ?? 1,
   }
-  
+
   const activeReviews: ActiveReview[] = (data.active_reviews ?? [])
     .filter(r => r.id || r.analysis_id)
     .map(r => ({
@@ -312,14 +306,14 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
       started_at: r.started_at ?? new Date().toISOString(),
       due_at: r.due_at ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
     }))
-  
+
   const recentActivity: RecentActivity[] = (data.recent_activity ?? [])
     .map(a => ({
       type: (a.type as "completed" | "comment" | "assigned") ?? "assigned",
       repo: a.repo ?? "Unknown",
       time: a.time ?? formatTimeAgo(a.created_at ?? ""),
     }))
-  
+
   const teamStats: TeamStats = {
     totalReviewers: data.team_stats?.totalReviewers ?? 0,
     activeReviewers: data.team_stats?.activeReviewers ?? 0,
@@ -327,7 +321,7 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
     avgTeamResponseTime: data.team_stats?.avgTeamResponseTime ?? 0,
     teamCompletionRate: data.team_stats?.teamCompletionRate ?? 0,
   }
-  
+
   const teamMembers: TeamMember[] = (data.team_members ?? [])
     .filter(m => m.id)
     .map(m => ({
@@ -337,7 +331,7 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
       pendingReviews: m.pending_reviews ?? 0,
       completedThisWeek: m.completed_this_week ?? 0,
     }))
-  
+
   const unassignedReviews: UnassignedReview[] = (data.unassigned_reviews ?? [])
     .filter(r => r.id)
     .map(r => ({
@@ -347,7 +341,7 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
       priority: (r.priority as "high" | "medium" | "low") ?? "medium",
       waiting_since: r.waiting_since ?? formatTimeAgo(r.created_at ?? ""),
     }))
-  
+
   return {
     kpis,
     activeReviews,
@@ -374,20 +368,20 @@ export async function fetchReviewerDashboardData(options?: {
       cache: "no-store",
       headers: { Accept: "application/json" },
     })
-    
+
     if (response.ok) {
       const data = await response.json() as BackendReviewerDashboardResponse
       return normalizeBackendResponse(data)
     }
-    
+
     // If backend returns 404 or error, fall back to computing from analyses
     console.warn("[reviewer-dashboard] Backend API unavailable, computing from analyses")
     const analyses = await fetchDashboardAnalyses({ force: options?.force, size: 40 })
     return computeReviewerDataFromAnalyses(analyses)
-    
+
   } catch (error) {
     console.error("[reviewer-dashboard] Error fetching data:", error)
-    
+
     // Try fallback to analyses data
     try {
       const analyses = await fetchDashboardAnalyses({ force: options?.force, size: 40 })
@@ -395,7 +389,7 @@ export async function fetchReviewerDashboardData(options?: {
     } catch {
       return {
         ...defaultReviewerDashboardData,
-        error: "Erreur lors du chargement des données reviewer",
+        error: "Erreur lors du chargement des donnÃ©es reviewer",
       }
     }
   }
@@ -411,37 +405,16 @@ export function createReviewerDashboardPoller(
   onUpdate: (data: ReviewerDashboardData) => void,
   options?: { intervalMs?: number }
 ) {
-  const interval = options?.intervalMs ?? POLL_INTERVAL_MS
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let isRunning = false
-  
-  const poll = async () => {
-    if (!isRunning) return
-    
-    try {
+  return createPoller(
+    async () => {
       const data = await fetchReviewerDashboardData({ force: true })
       onUpdate(data)
-    } catch (error) {
-      console.error("[reviewer-dashboard-poller] Poll error:", error)
-    }
-    
-    if (isRunning) {
-      timeoutId = setTimeout(poll, interval)
-    }
-  }
-  
-  return {
-    start: () => {
-      if (isRunning) return
-      isRunning = true
-      poll()
     },
-    stop: () => {
-      isRunning = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+    {
+      intervalMs: options?.intervalMs ?? POLL_INTERVAL_MS,
+      onError: (error) => {
+        console.error("[reviewer-dashboard-poller] Poll error:", error)
+      },
     },
-  }
+  )
 }

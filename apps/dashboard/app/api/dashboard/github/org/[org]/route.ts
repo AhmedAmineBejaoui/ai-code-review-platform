@@ -1,5 +1,10 @@
-import { auth, clerkClient } from "@clerk/nextjs/server"
+import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { resolveGithubTokenForUser } from "@/lib/server/github/auth"
+import {
+  buildGithubHeaders,
+  GITHUB_API_BASE_URL,
+} from "@/lib/server/github/client"
 
 type GithubOrgApiResponse = {
   login?: string
@@ -34,46 +39,6 @@ type GithubMember = {
   role?: string
 }
 
-const GITHUB_API_BASE_URL = "https://api.github.com"
-
-async function resolveGithubOauthAccessToken(client: Awaited<ReturnType<typeof clerkClient>>, userId: string) {
-  // Try GitHub OAuth token providers
-  const providers = ["github", "oauth_github", "github_oauth"]
-
-  for (const provider of providers) {
-    try {
-      const oauthTokens = await client.users.getUserOauthAccessToken(userId, provider as any)
-      const tokenCandidate = Array.isArray(oauthTokens?.data)
-        ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-        : null
-      if (tokenCandidate) {
-        return tokenCandidate.token
-      }
-    } catch (e) {
-      // Provider not configured, continue to next
-    }
-  }
-
-  // If no OAuth token from Clerk, check if we have a GitHub token in environment
-  const envToken = process.env.GITHUB_OAUTH_TOKEN || process.env.GH_TOKEN
-  if (envToken) {
-    return envToken
-  }
-
-  return null
-}
-
-function buildGithubHeaders(token: string | null): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: "application/vnd.github+json",
-    "X-GitHub-Api-Version": "2022-11-28",
-  }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
-}
-
 export async function GET(request: Request, { params }: { params: { org: string } }) {
   const { userId } = await auth()
   if (!userId) {
@@ -83,8 +48,7 @@ export async function GET(request: Request, { params }: { params: { org: string 
   const { searchParams } = new URL(request.url)
   const orgName = params.org
 
-  const client = await clerkClient()
-  const oauthToken = await resolveGithubOauthAccessToken(client, userId)
+  const oauthToken = await resolveGithubTokenForUser(userId)
 
   try {
     // Fetch organization info

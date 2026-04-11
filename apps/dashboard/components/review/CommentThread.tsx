@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { ReviewComment, CommentAuthor } from "@/lib/review-types"
 import { cn } from "@/components/ui/utils"
+import { formatCompactRelativeTime as formatRelativeTime } from "@/lib/domain/dates"
 
 interface CommentThreadProps {
   rootComment: ReviewComment
@@ -36,21 +37,6 @@ interface CommentThreadProps {
   onResolve: (commentId: string) => void
   onUnresolve: (commentId: string) => void
   onEdit?: (commentId: string, newContent: string) => void
-}
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
 }
 
 function severityIcon(severity: string | null | undefined) {

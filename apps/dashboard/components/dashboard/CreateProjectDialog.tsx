@@ -29,6 +29,7 @@ import { MembersPreviewDialog, type ImportMemberConfig } from "./MembersPreviewD
 import { PermissionValidationDialog } from "./PermissionValidationDialog"
 import { auditService } from "@/lib/audit-service"
 import { type PermissionValidationResult } from "@/lib/github-permissions"
+import { fetchGithubRepos } from "@/lib/github-repos"
 
 // Types
 interface Team {
@@ -172,34 +173,22 @@ export function CreateProjectDialog({
   const loadGithubRepos = async (orgLogin: string) => {
     setLoadingGithubRepos(true)
     try {
-      // Build URL with organization filter
-      let url = "/api/dashboard/github/repos"
-      if (orgLogin === "personal" && githubUser) {
-        // For personal repos, use the user's login
-        url += `?account=${encodeURIComponent(githubUser.login)}&type=user`
-      } else if (orgLogin && orgLogin !== "personal") {
-        // For organization repos
-        url += `?account=${encodeURIComponent(orgLogin)}&type=org`
-      }
-      
-      const response = await fetch(url, {
-        headers: { "Content-Type": "application/json" },
+      const data = await fetchGithubRepos({
+        account: orgLogin === "personal" ? githubUser?.login : orgLogin,
+        accountType: orgLogin === "personal" ? "user" : "org",
       })
-      if (response.ok) {
-        const data = await response.json()
-        const items: GithubRepo[] = (data.items || []).map((r: Record<string, unknown>) => ({
-          id: String(r.id ?? ""),
-          fullName: (r.fullName as string) ?? "",
-          name: (r.name as string) ?? "",
-          description: (r.description as string) ?? null,
-          language: (r.language as string) ?? null,
-          defaultBranch: (r.defaultBranch as string) ?? "main",
-          isPrivate: r.private === true,
-        }))
-        setGithubRepos(items)
-      } else {
-        console.warn("Failed to load GitHub repos:", response.status, response.statusText)
-        setGithubRepos([]) // Set empty array on error
+      const items: GithubRepo[] = data.items.map((r) => ({
+        id: String(r.id ?? ""),
+        fullName: r.fullName ?? "",
+        name: r.name ?? "",
+        description: r.description ?? null,
+        language: r.language ?? null,
+        defaultBranch: r.defaultBranch ?? "main",
+        isPrivate: r.private === true,
+      }))
+      setGithubRepos(items)
+      if (data.error) {
+        console.warn("Failed to load GitHub repos:", data.error)
       }
     } catch (err) {
       console.warn("Failed to load GitHub repos:", err)
@@ -273,10 +262,13 @@ export function CreateProjectDialog({
         "github_repository", 
         pendingImportData?.repo_full_name || "",
         {
-          valid: result.valid,
-          can_import: result.permissions.can_import,
-          missing_permissions: result.permissions.missing_permissions,
-          warnings: result.permissions.warnings
+          source: "github_import",
+          after: {
+            valid: result.valid,
+            can_import: result.permissions.can_import,
+            missing_permissions: result.permissions.missing_permissions,
+            warnings: result.permissions.warnings,
+          },
         },
         { 
           github_repository: pendingImportData?.repo_full_name,
@@ -504,7 +496,7 @@ export function CreateProjectDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                Selectionnez d'abord un compte ou une organisation pour filtrer les repositories.
+                Selectionnez d&apos;abord un compte ou une organisation pour filtrer les repositories.
               </p>
             </div>
 
@@ -551,7 +543,7 @@ export function CreateProjectDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                L'import se fait exclusivement depuis GitHub.
+                L&apos;import se fait exclusivement depuis GitHub.
               </p>
             </div>
 
@@ -655,7 +647,7 @@ export function CreateProjectDialog({
                 </SelectContent>
               </Select>
               <p className="text-xs text-muted-foreground">
-                L'equipe aura acces a ce projet et recevra les notifications.
+                L&apos;equipe aura acces a ce projet et recevra les notifications.
               </p>
             </div>
 
@@ -706,7 +698,7 @@ export function CreateProjectDialog({
             <div className="rounded-lg border border-dashed p-4 text-center">
               <Settings className="h-8 w-8 mx-auto text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">
-                Plus d'options disponibles sur la page de creation avancee.
+                Plus d&apos;options disponibles sur la page de creation avancee.
               </p>
               <Button variant="link" size="sm" onClick={goToAdvancedPage}>
                 Configuration avancee

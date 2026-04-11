@@ -47,6 +47,7 @@ import {
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
+import { formatDateTime } from "@/lib/domain/dates"
 
 // Types
 interface Branch {
@@ -75,31 +76,6 @@ interface Branch {
 interface BranchListProps {
   repoId?: string
   orgId?: string
-}
-
-// Helper functions
-function formatDate(value: string | null): string {
-  if (!value) return "-"
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return "-"
-  return date.toLocaleString("fr-FR", {
-    month: "short",
-    day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
-}
-
-function getBranchTypeColor(type: string): string {
-  const colors: Record<string, string> = {
-    main: "bg-blue-500",
-    develop: "bg-green-500",
-    feature: "bg-purple-500",
-    hotfix: "bg-red-500",
-    release: "bg-orange-500",
-    custom: "bg-gray-500",
-  }
-  return colors[type] || colors.custom
 }
 
 function getBranchTypeBadgeVariant(type: string): "default" | "secondary" | "destructive" | "outline" {
@@ -563,7 +539,7 @@ export function BranchList({ repoId, orgId }: BranchListProps) {
                     </TableCell>
                     <TableCell>
                       <span className="text-sm text-muted-foreground">
-                        {formatDate(branch.created_at)}
+                        {formatDateTime(branch.created_at)}
                       </span>
                     </TableCell>
                     <TableCell className="text-right">

@@ -63,6 +63,7 @@ const ACTION_ICONS = {
   "repository.webhook.created": Activity,
   "repository.webhook.updated": Activity,
   "repository.webhook.deleted": Activity,
+  "github.permissions_validated": Activity,
   "member.invited": User,
   "member.added": Users,
   "member.removed": Users,
@@ -82,6 +83,7 @@ const ACTION_COLORS = {
   "repository.webhook.created": "green",
   "repository.webhook.updated": "orange",
   "repository.webhook.deleted": "red",
+  "github.permissions_validated": "green",
   "member.invited": "blue",
   "member.added": "green",
   "member.removed": "red",
@@ -92,22 +94,23 @@ const ACTION_COLORS = {
 } as const
 
 const ACTION_LABELS = {
-  "project.created": "Projet créé",
-  "project.imported": "Projet importé depuis GitHub",
-  "project.updated": "Projet mis à jour",
-  "project.deleted": "Projet supprimé",
-  "repository.imported": "Repository importé",
-  "repository.synchronized": "Repository synchronisé",
-  "repository.webhook.created": "Webhook créé",
-  "repository.webhook.updated": "Webhook mis à jour",
-  "repository.webhook.deleted": "Webhook supprimé",
-  "member.invited": "Membre invité",
-  "member.added": "Membre ajouté",
-  "member.removed": "Membre retiré",
-  "member.role.updated": "Rôle de membre mis à jour",
-  "member.permissions.updated": "Permissions de membre mises à jour",
-  "organization.imported": "Organisation importée",
-  "organization.synchronized": "Organisation synchronisée",
+  "project.created": "Projet cree",
+  "project.imported": "Projet importe depuis GitHub",
+  "project.updated": "Projet mis a jour",
+  "project.deleted": "Projet supprime",
+  "repository.imported": "Repository importe",
+  "repository.synchronized": "Repository synchronise",
+  "repository.webhook.created": "Webhook cree",
+  "repository.webhook.updated": "Webhook mis a jour",
+  "repository.webhook.deleted": "Webhook supprime",
+  "github.permissions_validated": "Permissions GitHub validees",
+  "member.invited": "Membre invite",
+  "member.added": "Membre ajoute",
+  "member.removed": "Membre retire",
+  "member.role.updated": "Role de membre mis a jour",
+  "member.permissions.updated": "Permissions de membre mises a jour",
+  "organization.imported": "Organisation importee",
+  "organization.synchronized": "Organisation synchronisee",
 } as const
 
 export function AuditTrail({ resourceType, resourceId, title, className }: AuditTrailProps) {
@@ -143,7 +146,7 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
     loadAuditTrail()
   }, [resourceType, resourceId, filter])
 
-  const filteredActions = actions.filter(action => 
+  const filteredActions = actions.filter(action =>
     filter === "all" || action.action_type === filter
   )
 
@@ -154,13 +157,13 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
 
   const renderActionDetails = (action: AuditAction) => {
     const { details } = action
-    
+
     if (details.import_stats) {
       return (
         <div className="mt-2 text-xs text-muted-foreground">
           <div className="flex gap-4">
-            <span>{details.import_stats.total_members} membres détectés</span>
-            <span>{details.import_stats.invited_members} invités</span>
+            <span>{details.import_stats.total_members} membres detectes</span>
+            <span>{details.import_stats.invited_members} invites</span>
             <span>{details.import_stats.branches_imported} branches</span>
             <span>{details.import_stats.commits_imported} commits</span>
           </div>
@@ -175,7 +178,7 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
             <Badge variant="outline" className="text-xs">
               {JSON.stringify(details.before)}
             </Badge>
-            <span>→</span>
+            <span>-&gt;</span>
             <Badge variant="outline" className="text-xs">
               {JSON.stringify(details.after)}
             </Badge>
@@ -193,7 +196,7 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
         <CardContent className="p-6">
           <div className="flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin" />
-            <span className="ml-2">Chargement du journal d'audit...</span>
+            <span className="ml-2">Chargement du journal d&apos;audit...</span>
           </div>
         </CardContent>
       </Card>
@@ -206,13 +209,13 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
         <CardContent className="p-6">
           <div className="text-center text-red-600">
             <p>Erreur: {error}</p>
-            <Button 
-              variant="outline" 
-              size="sm" 
+            <Button
+              variant="outline"
+              size="sm"
               onClick={loadAuditTrail}
               className="mt-2"
             >
-              Réessayer
+              Reessayer
             </Button>
           </div>
         </CardContent>
@@ -227,13 +230,13 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
           <div>
             <CardTitle className="flex items-center gap-2">
               <Activity className="h-5 w-5" />
-              {title || "Journal d'Audit"}
+              {title || "Journal d&apos;Audit"}
             </CardTitle>
             <CardDescription>
               Historique des actions sur cette ressource
             </CardDescription>
           </div>
-          
+
           <Select value={filter} onValueChange={(value) => setFilter(value as any)}>
             <SelectTrigger className="w-[200px]">
               <SelectValue placeholder="Filtrer les actions" />
@@ -243,19 +246,19 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
               <Separator className="my-1" />
               <SelectItem value="project.imported">Imports de projet</SelectItem>
               <SelectItem value="member.invited">Invitations de membres</SelectItem>
-              <SelectItem value="member.role.updated">Changements de rôle</SelectItem>
+              <SelectItem value="member.role.updated">Changements de role</SelectItem>
               <SelectItem value="repository.synchronized">Synchronisations</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </CardHeader>
-      
+
       <CardContent className="p-0">
         <ScrollArea className="h-[500px] p-6">
           {filteredActions.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
               <Activity className="h-8 w-8 mx-auto mb-2 opacity-50" />
-              <p>Aucune action trouvée</p>
+              <p>Aucune action trouvee</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -272,32 +275,32 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
                       {renderActionIcon(action.action_type)}
                     </div>
                   </div>
-                  
+
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <h4 className="font-medium text-sm">
                           {ACTION_LABELS[action.action_type]}
                         </h4>
-                        <Badge 
-                          variant="secondary" 
+                        <Badge
+                          variant="secondary"
                           className="text-xs"
                         >
                           {action.details.source || "manuel"}
                         </Badge>
                       </div>
-                      
-                      <time 
+
+                      <time
                         className="text-xs text-muted-foreground"
                         title={format(new Date(action.timestamp), "PPpp", { locale: fr })}
                       >
-                        {formatDistanceToNow(new Date(action.timestamp), { 
-                          addSuffix: true, 
-                          locale: fr 
+                        {formatDistanceToNow(new Date(action.timestamp), {
+                          addSuffix: true,
+                          locale: fr
                         })}
                       </time>
                     </div>
-                    
+
                     <div className="flex items-center gap-2 mt-1">
                       <span className="text-sm text-muted-foreground">
                         par {action.actor_email}
@@ -308,10 +311,10 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
                         </Badge>
                       )}
                     </div>
-                    
+
                     {renderActionDetails(action)}
                   </div>
-                  
+
                   <Sheet>
                     <SheetTrigger asChild>
                       <Button variant="ghost" size="sm">
@@ -320,12 +323,12 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
                     </SheetTrigger>
                     <SheetContent>
                       <SheetHeader>
-                        <SheetTitle>Détails de l'Action</SheetTitle>
+                        <SheetTitle>Details de l&apos;Action</SheetTitle>
                         <SheetDescription>
-                          Informations complètes sur cette action d'audit
+                          Informations completes sur cette action d&apos;audit
                         </SheetDescription>
                       </SheetHeader>
-                      
+
                       <div className="mt-6 space-y-4">
                         <div>
                           <h4 className="font-medium mb-2">Action</h4>
@@ -333,33 +336,33 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
                             {ACTION_LABELS[action.action_type]}
                           </p>
                         </div>
-                        
+
                         <div>
                           <h4 className="font-medium mb-2">Acteur</h4>
                           <p className="text-sm text-muted-foreground">
                             {action.actor_email} ({action.actor_id})
                           </p>
                         </div>
-                        
+
                         <div>
                           <h4 className="font-medium mb-2">Timestamp</h4>
                           <p className="text-sm text-muted-foreground">
                             {format(new Date(action.timestamp), "PPpp", { locale: fr })}
                           </p>
                         </div>
-                        
+
                         {Object.keys(action.metadata).length > 0 && (
                           <div>
-                            <h4 className="font-medium mb-2">Métadonnées</h4>
+                            <h4 className="font-medium mb-2">Metadonnees</h4>
                             <pre className="text-xs bg-muted p-2 rounded overflow-auto">
                               {JSON.stringify(action.metadata, null, 2)}
                             </pre>
                           </div>
                         )}
-                        
+
                         {Object.keys(action.details).length > 0 && (
                           <div>
-                            <h4 className="font-medium mb-2">Détails</h4>
+                            <h4 className="font-medium mb-2">Details</h4>
                             <pre className="text-xs bg-muted p-2 rounded overflow-auto">
                               {JSON.stringify(action.details, null, 2)}
                             </pre>

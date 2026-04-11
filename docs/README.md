@@ -25,6 +25,7 @@ Step-by-step operational procedures:
 
 ### 📖 User & Developer Guides
 How-to guides for users and developers:
+- **[AI + RAG Complete Guide (FR)](guides/ai-rag-code-review-system-complete-guide-fr.md)** - End-to-end implementation guide for this project
 - **[Performance Optimization](guides/OPTIMIZATION_GUIDE.md)** - Performance tuning and optimization
 - **[Repository Context](guides/repo-context-manual.md)** - Repository context configuration
 - **[Reviewer System](guides/reviewer-system.md)** - Code review workflow and system

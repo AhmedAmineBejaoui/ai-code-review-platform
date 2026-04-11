@@ -25,21 +25,7 @@ import { Separator } from "@/components/ui/separator"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import type { Notification } from "@/lib/review-types"
 import { cn } from "@/components/ui/utils"
-
-function formatRelativeTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / 60000)
-  const diffHours = Math.floor(diffMs / 3600000)
-  const diffDays = Math.floor(diffMs / 86400000)
-
-  if (diffMins < 1) return "just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
-}
+import { formatCompactRelativeTime as formatRelativeTime } from "@/lib/domain/dates"
 
 function getNotificationIcon(type: string) {
   const iconMap: Record<string, React.ReactNode> = {

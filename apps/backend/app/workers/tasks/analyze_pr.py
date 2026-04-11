@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any
 
+from analysis.langGraph.models import LangGraphAnalysisRequest
+from analysis.langGraph.pipeline import run_langgraph_analysis
 from app.core.ai_orchestration import GroundedReviewService
 from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.ingestor import RepoContextIngestor
@@ -126,6 +128,26 @@ def _llm_fingerprint(
         [
             analysis_id,
             "llm_grounded_kb",
+            file_path or "",
+            str(line_start or ""),
+            category,
+            message.strip(),
+        ]
+    )
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def _langgraph_fingerprint(
+    analysis_id: str,
+    file_path: str | None,
+    line_start: int | None,
+    category: str,
+    message: str,
+) -> str:
+    payload = "|".join(
+        [
+            analysis_id,
+            "llm_langgraph",
             file_path or "",
             str(line_start or ""),
             category,
@@ -670,6 +692,102 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         repo.update_static_analysis_result(analysis_id=analysis_id, static_stats=static_stats)
 
+        langgraph_findings_count = 0
+        langgraph_pipeline_payload: dict[str, Any] = {"status": "skipped", "enabled": settings.LANGGRAPH_ANALYSIS_ENABLED}
+        if settings.LANGGRAPH_ANALYSIS_ENABLED:
+            langgraph_repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
+            if langgraph_repo_path:
+                try:
+                    langgraph_request = LangGraphAnalysisRequest(
+                        analysis_id=analysis_id,
+                        repo_id=analysis.repo,
+                        repo_path=langgraph_repo_path,
+                        diff_text=diff_redacted or analysis.diff_raw,
+                        changed_files=files_changed,
+                        pr_number=analysis.pr_number,
+                        commit_sha=analysis.commit_sha,
+                        metadata={
+                            "diff_hash": analysis.diff_hash,
+                            **(analysis.metadata or {}),
+                        },
+                    )
+                    langgraph_result = asyncio.run(run_langgraph_analysis(request=langgraph_request))
+                    langgraph_pipeline_payload = langgraph_result.to_dict()
+                    langgraph_pipeline_payload["enabled"] = True
+
+                    if not kb_context_preview and langgraph_result.retrieval.context_text:
+                        kb_context_preview = langgraph_result.retrieval.context_text
+                        kb_context_references = [item.to_dict() for item in langgraph_result.retrieval.references]
+                        kb_context_chunks_count = len(kb_context_references)
+                        kb_retrieval_mode = f"langgraph::{langgraph_result.retrieval.retrieval_mode}"
+                    elif langgraph_result.retrieval.references:
+                        existing_keys = {
+                            (str(ref.get("path") or ""), str(ref.get("title") or ""))
+                            for ref in kb_context_references
+                            if isinstance(ref, dict)
+                        }
+                        for ref in langgraph_result.retrieval.references:
+                            serialized = ref.to_dict()
+                            key = (str(serialized.get("path") or ""), str(serialized.get("title") or ""))
+                            if key in existing_keys:
+                                continue
+                            kb_context_references.append(serialized)
+                            existing_keys.add(key)
+                        kb_context_chunks_count = len(kb_context_references)
+
+                    if langgraph_result.llm_output.status == "completed":
+                        for finding in langgraph_result.llm_output.findings:
+                            try:
+                                repo.create_finding(
+                                    CreateFindingInput(
+                                        finding_id=hashlib.md5(
+                                            (
+                                                f"{analysis_id}:LLM_LANGGRAPH:{finding.file_path}:{finding.line_start}:"
+                                                f"{finding.category}:{finding.message}"
+                                            ).encode("utf-8")
+                                        ).hexdigest(),
+                                        analysis_id=analysis_id,
+                                        source="LLM_LANGGRAPH",
+                                        file_path=finding.file_path,
+                                        line_start=finding.line_start,
+                                        line_end=finding.line_end,
+                                        severity=finding.severity,
+                                        category=finding.category,
+                                        message=finding.message,
+                                        suggestion=finding.suggestion,
+                                        confidence=finding.confidence,
+                                        issue_type="langgraph_rag",
+                                        rule_id="LANGGRAPH_RAG_LLM",
+                                        evidence={
+                                            "references": list(finding.references),
+                                            "retrieval_mode": langgraph_result.retrieval.retrieval_mode,
+                                            "cached": langgraph_result.cached,
+                                        },
+                                        fingerprint=_langgraph_fingerprint(
+                                            analysis_id=analysis_id,
+                                            file_path=finding.file_path,
+                                            line_start=finding.line_start,
+                                            category=finding.category,
+                                            message=finding.message,
+                                        ),
+                                    )
+                                )
+                                langgraph_findings_count += 1
+                            except Exception:
+                                continue
+                except Exception as exc:
+                    langgraph_pipeline_payload = {
+                        "status": "failed",
+                        "enabled": True,
+                        "error": str(exc),
+                    }
+            else:
+                langgraph_pipeline_payload = {
+                    "status": "skipped",
+                    "enabled": True,
+                    "reason": "repo_path_unresolved",
+                }
+
         langchain_review_engine = _get_langchain_review_engine()
         run_langchain_shadow = bool(
             langchain_review_engine
@@ -1066,10 +1184,16 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "files_changed": files_count,
             "additions_total": additions_total,
             "deletions_total": deletions_total,
-            "findings_count": security_findings_count + static_findings_count + llm_grounded_findings_count,
+            "findings_count": (
+                security_findings_count
+                + static_findings_count
+                + llm_grounded_findings_count
+                + langgraph_findings_count
+            ),
             "security_findings_count": security_findings_count,
             "static_findings_count": static_findings_count,
             "llm_grounded_findings_count": llm_grounded_findings_count,
+            "langgraph_findings_count": langgraph_findings_count,
             "duration_ms": duration_ms,
             "kb_retrieval": {
                 "stack": selected_kb_stack,
@@ -1082,6 +1206,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "legacy_confidence_score": legacy_kb_result.rag_confidence_score if legacy_kb_result else 0.0,
             },
         }
+        metrics["langgraph_pipeline"] = langgraph_pipeline_payload
         if langchain_kb_result is not None:
             metrics["kb_retrieval"]["langchain_trace"] = langchain_kb_result.trace
             metrics["kb_retrieval"]["langchain_confidence_score"] = langchain_kb_result.rag_confidence_score

@@ -1,17 +1,20 @@
 /**
  * Notifications Library
- * 
+ *
  * Provides functions to fetch real-time notifications and activity events.
  * Falls back to computing events from analyses data when backend is unavailable.
  */
 
 import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "./dashboard-analyses"
+import { normalizeAnalysisStatus as normalizeStatus } from "./domain/analysis-status"
+import { formatRelativeTime } from "./domain/dates"
+import { createPoller } from "./polling"
 
 // ============================================================================
 // Types
 // ============================================================================
 
-export type NotificationType = 
+export type NotificationType =
   | "analysis_complete"
   | "analysis_failed"
   | "review_assigned"
@@ -85,32 +88,9 @@ export const defaultActivityFeedData: ActivityFeedData = {
 // Utility Functions
 // ============================================================================
 
-function normalizeStatus(status: string): string {
-  const upper = status.toUpperCase()
-  if (upper === "DONE" || upper === "COMPLETED") return "COMPLETED"
-  if (upper === "FAILED") return "FAILED"
-  if (upper === "RUNNING") return "RUNNING"
-  return "QUEUED"
-}
-
-function formatRelativeTime(date: Date): string {
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffSecs = Math.floor(diffMs / 1000)
-  const diffMins = Math.floor(diffSecs / 60)
-  const diffHours = Math.floor(diffMins / 60)
-  const diffDays = Math.floor(diffHours / 24)
-
-  if (diffSecs < 60) return "à l'instant"
-  if (diffMins < 60) return `il y a ${diffMins} min`
-  if (diffHours < 24) return `il y a ${diffHours}h`
-  if (diffDays < 7) return `il y a ${diffDays}j`
-  return date.toLocaleDateString("fr-FR")
-}
-
 function getNotificationType(analysis: DashboardAnalysisItem): NotificationType {
   const status = normalizeStatus(analysis.status)
-  
+
   if (status === "FAILED") return "analysis_failed"
   if (status === "COMPLETED") {
     if (analysis.blockerCount >= 3) return "vulnerability_detected"
@@ -163,51 +143,51 @@ function getIconType(type: NotificationType): ActivityEvent["iconType"] {
 function generateMessage(analysis: DashboardAnalysisItem): string {
   const status = normalizeStatus(analysis.status)
   const repoName = analysis.repo.split("/").pop() || analysis.repo
-  
+
   if (status === "FAILED") {
-    return `Analyse échouée sur ${repoName}`
+    return `Analyse Ã©chouÃ©e sur ${repoName}`
   }
-  
+
   if (status === "COMPLETED") {
     if (analysis.blockerCount >= 3) {
-      return `${analysis.blockerCount} vulnérabilités critiques sur ${repoName}`
+      return `${analysis.blockerCount} vulnÃ©rabilitÃ©s critiques sur ${repoName}`
     }
     if (analysis.blockerCount > 0) {
-      return `${analysis.blockerCount} bloqueur(s) détecté(s) sur ${repoName}`
+      return `${analysis.blockerCount} bloqueur(s) dÃ©tectÃ©(s) sur ${repoName}`
     }
     if (analysis.warnCount > 5) {
       return `${analysis.warnCount} warnings sur ${analysis.prLabel || repoName}`
     }
-    return `Analyse terminée sur ${repoName}`
+    return `Analyse terminÃ©e sur ${repoName}`
   }
-  
+
   if (status === "RUNNING") {
     return `Analyse en cours sur ${repoName}`
   }
-  
-  return `Nouvelle PR détectée: ${analysis.prLabel || repoName}`
+
+  return `Nouvelle PR dÃ©tectÃ©e: ${analysis.prLabel || repoName}`
 }
 
 function generateTitle(type: NotificationType): string {
   switch (type) {
     case "vulnerability_detected":
-      return "Vulnérabilité détectée"
+      return "VulnÃ©rabilitÃ© dÃ©tectÃ©e"
     case "analysis_failed":
-      return "Analyse échouée"
+      return "Analyse Ã©chouÃ©e"
     case "blocker_found":
-      return "Bloqueur trouvé"
+      return "Bloqueur trouvÃ©"
     case "warning_found":
-      return "Warnings détectés"
+      return "Warnings dÃ©tectÃ©s"
     case "analysis_complete":
-      return "Analyse terminée"
+      return "Analyse terminÃ©e"
     case "review_assigned":
-      return "Review assignée"
+      return "Review assignÃ©e"
     case "review_completed":
-      return "Review complétée"
+      return "Review complÃ©tÃ©e"
     case "ai_review_complete":
-      return "Revue IA complétée"
+      return "Revue IA complÃ©tÃ©e"
     case "auto_approved":
-      return "PR approuvée automatiquement"
+      return "PR approuvÃ©e automatiquement"
     case "pr_detected":
       return "Nouvelle PR"
     default:
@@ -225,7 +205,7 @@ function computeNotificationsFromAnalyses(analyses: DashboardAnalysisItem[]): No
     .map((analysis) => {
       const type = getNotificationType(analysis)
       const severity = getSeverity(type)
-      
+
       return {
         id: `notif_${analysis.id}`,
         type,
@@ -243,12 +223,12 @@ function computeNotificationsFromAnalyses(analyses: DashboardAnalysisItem[]): No
         },
       }
     })
-  
+
   // Sort by timestamp (most recent first)
-  notifications.sort((a, b) => 
+  notifications.sort((a, b) =>
     new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
   )
-  
+
   return {
     notifications,
     unreadCount: notifications.filter(n => !n.read).length,
@@ -264,7 +244,7 @@ function computeActivityFromAnalyses(analyses: DashboardAnalysisItem[]): Activit
     .map((analysis) => {
       const type = getNotificationType(analysis)
       const timestamp = new Date(analysis.createdAt)
-      
+
       return {
         id: eventId++,
         type,
@@ -274,10 +254,10 @@ function computeActivityFromAnalyses(analyses: DashboardAnalysisItem[]): Activit
         timestamp,
       }
     })
-  
+
   // Sort by timestamp (most recent first)
   events.sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-  
+
   return {
     events,
     isLoading: false,
@@ -335,7 +315,7 @@ function normalizeNotificationsResponse(data: BackendNotificationsResponse): Not
     read: n.read ?? n.is_read ?? false,
     metadata: n.metadata as Notification["metadata"],
   }))
-  
+
   return {
     notifications,
     unreadCount: data.unread_count ?? notifications.filter(n => !n.read).length,
@@ -349,7 +329,7 @@ function normalizeActivityResponse(data: BackendActivityResponse): ActivityFeedD
   const events: ActivityEvent[] = rawEvents.map((e, index) => {
     const type = (e.type as NotificationType) ?? "analysis_complete"
     const timestamp = new Date(e.timestamp ?? e.created_at ?? new Date())
-    
+
     return {
       id: e.id ?? index,
       type,
@@ -359,7 +339,7 @@ function normalizeActivityResponse(data: BackendActivityResponse): ActivityFeedD
       timestamp,
     }
   })
-  
+
   return {
     events,
     isLoading: false,
@@ -376,7 +356,7 @@ export async function fetchNotifications(options?: {
   limit?: number
 }): Promise<NotificationsData> {
   const limit = options?.limit ?? 20
-  
+
   try {
     // Try backend API first
     const response = await fetch(`/api/dashboard/notifications?limit=${limit}`, {
@@ -384,20 +364,20 @@ export async function fetchNotifications(options?: {
       cache: "no-store",
       headers: { Accept: "application/json" },
     })
-    
+
     if (response.ok) {
       const data = await response.json() as BackendNotificationsResponse
       return normalizeNotificationsResponse(data)
     }
-    
+
     // Fall back to computing from analyses
     console.warn("[notifications] Backend API unavailable, computing from analyses")
     const analyses = await fetchDashboardAnalyses({ force: options?.force, size: limit })
     return computeNotificationsFromAnalyses(analyses)
-    
+
   } catch (error) {
     console.error("[notifications] Error fetching:", error)
-    
+
     // Try fallback
     try {
       const analyses = await fetchDashboardAnalyses({ force: options?.force, size: limit })
@@ -416,7 +396,7 @@ export async function fetchActivityFeed(options?: {
   limit?: number
 }): Promise<ActivityFeedData> {
   const limit = options?.limit ?? 10
-  
+
   try {
     // Try backend API first
     const response = await fetch(`/api/dashboard/activity?limit=${limit}`, {
@@ -424,20 +404,20 @@ export async function fetchActivityFeed(options?: {
       cache: "no-store",
       headers: { Accept: "application/json" },
     })
-    
+
     if (response.ok) {
       const data = await response.json() as BackendActivityResponse
       return normalizeActivityResponse(data)
     }
-    
+
     // Fall back to computing from analyses
     console.warn("[activity-feed] Backend API unavailable, computing from analyses")
     const analyses = await fetchDashboardAnalyses({ force: options?.force, size: limit })
     return computeActivityFromAnalyses(analyses)
-    
+
   } catch (error) {
     console.error("[activity-feed] Error fetching:", error)
-    
+
     // Try fallback
     try {
       const analyses = await fetchDashboardAnalyses({ force: options?.force, size: limit })
@@ -445,7 +425,7 @@ export async function fetchActivityFeed(options?: {
     } catch {
       return {
         ...defaultActivityFeedData,
-        error: "Erreur lors du chargement de l'activité",
+        error: "Erreur lors du chargement de l'activitÃ©",
       }
     }
   }
@@ -462,11 +442,11 @@ export async function markNotificationRead(notificationId: string): Promise<{ su
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
     })
-    
+
     if (response.ok) {
       return { success: true }
     }
-    
+
     // If backend fails, we still mark it locally (soft fail)
     return { success: true }
   } catch (error) {
@@ -482,11 +462,11 @@ export async function markAllNotificationsRead(): Promise<{ success: boolean; er
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
     })
-    
+
     if (response.ok) {
       return { success: true }
     }
-    
+
     return { success: true } // Soft fail
   } catch (error) {
     console.error("[notifications] Mark all read error:", error)
@@ -505,76 +485,34 @@ export function createNotificationsPoller(
   onUpdate: (data: NotificationsData) => void,
   options?: { intervalMs?: number }
 ) {
-  const interval = options?.intervalMs ?? NOTIFICATIONS_POLL_INTERVAL_MS
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let isRunning = false
-  
-  const poll = async () => {
-    if (!isRunning) return
-    
-    try {
+  return createPoller(
+    async () => {
       const data = await fetchNotifications({ force: true })
       onUpdate(data)
-    } catch (error) {
-      console.error("[notifications-poller] Poll error:", error)
-    }
-    
-    if (isRunning) {
-      timeoutId = setTimeout(poll, interval)
-    }
-  }
-  
-  return {
-    start: () => {
-      if (isRunning) return
-      isRunning = true
-      poll()
     },
-    stop: () => {
-      isRunning = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+    {
+      intervalMs: options?.intervalMs ?? NOTIFICATIONS_POLL_INTERVAL_MS,
+      onError: (error) => {
+        console.error("[notifications-poller] Poll error:", error)
+      },
     },
-  }
+  )
 }
 
 export function createActivityFeedPoller(
   onUpdate: (data: ActivityFeedData) => void,
   options?: { intervalMs?: number }
 ) {
-  const interval = options?.intervalMs ?? ACTIVITY_POLL_INTERVAL_MS
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let isRunning = false
-  
-  const poll = async () => {
-    if (!isRunning) return
-    
-    try {
+  return createPoller(
+    async () => {
       const data = await fetchActivityFeed({ force: true })
       onUpdate(data)
-    } catch (error) {
-      console.error("[activity-feed-poller] Poll error:", error)
-    }
-    
-    if (isRunning) {
-      timeoutId = setTimeout(poll, interval)
-    }
-  }
-  
-  return {
-    start: () => {
-      if (isRunning) return
-      isRunning = true
-      poll()
     },
-    stop: () => {
-      isRunning = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+    {
+      intervalMs: options?.intervalMs ?? ACTIVITY_POLL_INTERVAL_MS,
+      onError: (error) => {
+        console.error("[activity-feed-poller] Poll error:", error)
+      },
     },
-  }
+  )
 }

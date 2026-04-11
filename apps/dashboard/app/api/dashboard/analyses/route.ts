@@ -1,11 +1,21 @@
-import { auth, clerkClient, currentUser } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse, type NextRequest } from "next/server"
 import { createHash } from "node:crypto"
 import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
+import {
+  isTerminalAnalysisStatus,
+  normalizeAnalysisStatus,
+} from "@/lib/domain/analysis-status"
+import { resolveDurationLabel } from "@/lib/domain/dates"
+import { resolveGithubTokenForUser } from "@/lib/server/github/auth"
+import {
+  buildGithubHeaders,
+  GITHUB_API_BASE_URL,
+  normalizeGithubError,
+} from "@/lib/server/github/client"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-const GITHUB_API_BASE_URL = "https://api.github.com"
 const BACKEND_FETCH_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
@@ -486,50 +496,6 @@ function hasOwnerIdentity(metadata: Record<string, unknown> | undefined): boolea
   return identityCandidates.some((candidate) => typeof candidate === "string" && candidate.trim().length > 0)
 }
 
-function normalizeAnalysisStatus(status: string | undefined): string {
-  const raw = (status ?? "").trim().toUpperCase()
-  if (raw === "DONE") {
-    return "COMPLETED"
-  }
-  if (raw === "RUNNING" || raw === "FAILED" || raw === "QUEUED" || raw === "RECEIVED" || raw === "COMPLETED") {
-    return raw
-  }
-  return "QUEUED"
-}
-
-function safeDateValue(input: string | undefined): Date | null {
-  if (!input) {
-    return null
-  }
-  const candidate = new Date(input)
-  if (Number.isNaN(candidate.getTime())) {
-    return null
-  }
-  return candidate
-}
-
-function formatDurationMs(ms: number): string {
-  const totalSeconds = Math.max(0, Math.round(ms / 1000))
-  const minutes = Math.floor(totalSeconds / 60)
-  const seconds = totalSeconds % 60
-  if (minutes <= 0) {
-    return `${seconds}s`
-  }
-  return `${minutes}m ${seconds}s`
-}
-
-function resolveDurationLabel(createdAt: string | undefined, updatedAt: string | undefined, status: string): string {
-  const created = safeDateValue(createdAt)
-  if (!created) {
-    return "-"
-  }
-  const updated = safeDateValue(updatedAt)
-  const now = new Date()
-  const terminal = status === "FAILED" || status === "COMPLETED"
-  const end = terminal && updated ? updated : now
-  return formatDurationMs(end.getTime() - created.getTime())
-}
-
 function normalizeDashboardAnalysesSize(raw: string | null): number {
   if (!raw) {
     return DASHBOARD_ANALYSES_DEFAULT_SIZE
@@ -570,58 +536,6 @@ async function fetchBackendJSON<T>(path: string, token: string | null, userId: s
   }
 }
 
-function normalizeGithubApiError(raw: unknown): string {
-  if (typeof raw === "string" && raw.trim().length > 0) {
-    return raw.trim()
-  }
-  if (typeof raw === "object" && raw !== null) {
-    const message = (raw as { message?: unknown }).message
-    if (typeof message === "string" && message.trim().length > 0) {
-      return message.trim()
-    }
-  }
-  return "GitHub request failed"
-}
-
-async function getGithubOauthAccessToken(userId: string): Promise<string | null> {
-  const client = await clerkClient()
-  try {
-    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "github")
-    const tokenCandidate = Array.isArray(oauthTokens?.data)
-      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-      : null
-    if (tokenCandidate) {
-      return tokenCandidate.token
-    }
-  } catch {
-    // Fall through to legacy provider format.
-  }
-
-  try {
-    const oauthTokens = await client.users.getUserOauthAccessToken(userId, "oauth_github")
-    const tokenCandidate = Array.isArray(oauthTokens?.data)
-      ? oauthTokens.data.find((item) => typeof item?.token === "string" && item.token.trim().length > 0)
-      : null
-    if (tokenCandidate) {
-      return tokenCandidate.token
-    }
-  } catch {
-    // Ignore and return null below.
-  }
-  return null
-}
-
-function buildGithubHeaders(token: string | null, accept: string): Record<string, string> {
-  const headers: Record<string, string> = {
-    Accept: accept,
-    "X-GitHub-Api-Version": "2022-11-28",
-  }
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  return headers
-}
-
 async function fetchGithubJson<T>(token: string | null, path: string): Promise<T> {
   const response = await fetch(`${GITHUB_API_BASE_URL}${path}`, {
     method: "GET",
@@ -638,7 +552,7 @@ async function fetchGithubJson<T>(token: string | null, path: string): Promise<T
         parsedBody = rawBody
       }
     }
-    throw new Error(normalizeGithubApiError(parsedBody))
+    throw new Error(normalizeGithubError(parsedBody))
   }
   return (await response.json()) as T
 }
@@ -659,7 +573,7 @@ async function fetchGithubDiffText(token: string | null, path: string): Promise<
         parsedBody = rawBody
       }
     }
-    throw new Error(normalizeGithubApiError(parsedBody))
+    throw new Error(normalizeGithubError(parsedBody))
   }
   return await response.text()
 }
@@ -940,7 +854,7 @@ export async function GET(request: NextRequest) {
         status,
         createdAt: typeof item.created_at === "string" ? item.created_at : "",
         updatedAt: typeof item.updated_at === "string" ? item.updated_at : "",
-        durationLabel: resolveDurationLabel(item.created_at, item.updated_at, status),
+        durationLabel: resolveDurationLabel(item.created_at, item.updated_at, isTerminalAnalysisStatus(status)),
         blockerCount: typeof item.blocker_count === "number" ? item.blocker_count : 0,
         warnCount: typeof item.warn_count === "number" ? item.warn_count : 0,
         infoCount: typeof item.info_count === "number" ? item.info_count : 0,
@@ -1027,7 +941,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const githubOauthToken = await getGithubOauthAccessToken(userId)
+    const githubOauthToken = await resolveGithubTokenForUser(userId)
     metadata.github_auth_mode = githubOauthToken ? "oauth" : "public_unauthenticated"
 
     try {
@@ -1170,7 +1084,7 @@ export async function POST(request: NextRequest) {
   if (!backendResponse.ok) {
     // Never proxy a backend 404 as-is: the browser would interpret it as
     // "Next.js route not found" rather than "resource not found on backend".
-    // Map backend 404 → 422 (Unprocessable Entity) so the client can distinguish
+    // Map backend 404 â†’ 422 (Unprocessable Entity) so the client can distinguish
     // a missing project/resource from a missing API route.
     const proxyStatus = backendResponse.status === 404 ? 422 : backendResponse.status
     const backendError = extractBackendError(parsedBackendBody)

@@ -1,11 +1,13 @@
 /**
  * Review Queue Library
- * 
+ *
  * Provides functions to fetch review queue data for reviewers.
  * Falls back to computing data from analyses when backend endpoint is unavailable.
  */
 
 import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "./dashboard-analyses"
+import { normalizeAnalysisStatus as normalizeStatus } from "./domain/analysis-status"
+import { createPoller } from "./polling"
 
 // ============================================================================
 // Types
@@ -130,14 +132,6 @@ export const defaultReviewQueueData: ReviewQueueData = {
 // Utility Functions
 // ============================================================================
 
-function normalizeStatus(status: string): string {
-  const upper = status.toUpperCase()
-  if (upper === "DONE" || upper === "COMPLETED") return "COMPLETED"
-  if (upper === "FAILED") return "FAILED"
-  if (upper === "RUNNING") return "RUNNING"
-  return "QUEUED"
-}
-
 function getPriority(item: DashboardAnalysisItem): "critical" | "high" | "medium" | "low" {
   if (item.blockerCount >= 3) return "critical"
   if (item.blockerCount > 0) return "high"
@@ -170,25 +164,25 @@ function isOverdue(dueAt: string): boolean {
 
 function computeQueueFromAnalyses(analyses: DashboardAnalysisItem[]): ReviewQueueData {
   const now = new Date()
-  
+
   // Filter completed analyses with issues (need review)
   const needsReview = analyses.filter(a => {
     const status = normalizeStatus(a.status)
     return status === "COMPLETED" && (a.blockerCount > 0 || a.warnCount > 0)
   })
-  
+
   // Filter running analyses (potentially available for assignment)
   const running = analyses.filter(a => normalizeStatus(a.status) === "RUNNING")
-  
+
   // Create assigned queue (simulated - take first half of needs review)
   const halfPoint = Math.ceil(needsReview.length / 2)
   const assignedAnalyses = needsReview.slice(0, halfPoint)
   const availableAnalyses = needsReview.slice(halfPoint)
-  
+
   const assigned: QueueAssignment[] = assignedAnalyses.map((a, index) => {
     const waitTime = computeWaitTimeHours(a.createdAt)
     const dueAt = new Date(new Date(a.createdAt).getTime() + 24 * 60 * 60 * 1000).toISOString()
-    
+
     return {
       id: `asg_${a.id}`,
       analysis: {
@@ -212,11 +206,11 @@ function computeQueueFromAnalyses(analyses: DashboardAnalysisItem[]): ReviewQueu
       is_overdue: isOverdue(dueAt),
     }
   })
-  
+
   const available: QueueAssignment[] = availableAnalyses.map((a) => {
     const waitTime = computeWaitTimeHours(a.createdAt)
     const dueAt = new Date(new Date(a.createdAt).getTime() + 48 * 60 * 60 * 1000).toISOString()
-    
+
     return {
       id: `avl_${a.id}`,
       analysis: {
@@ -240,9 +234,9 @@ function computeQueueFromAnalyses(analyses: DashboardAnalysisItem[]): ReviewQueu
       is_overdue: false,
     }
   })
-  
+
   const overdueCount = assigned.filter(a => a.is_overdue).length
-  
+
   return {
     assigned,
     available,
@@ -265,7 +259,7 @@ function normalizeBackendResponse(data: BackendQueueResponse): ReviewQueueData {
     const analysis = item.analysis ?? {}
     const waitTime = item.wait_time_hours ?? computeWaitTimeHours(item.assigned_at ?? "")
     const dueAt = item.due_at ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-    
+
     return {
       id: item.id ?? item.assignment_id ?? `asg_${analysis.id ?? Math.random()}`,
       analysis: {
@@ -289,13 +283,13 @@ function normalizeBackendResponse(data: BackendQueueResponse): ReviewQueueData {
       is_overdue: item.is_overdue ?? isOverdue(dueAt),
     }
   }
-  
+
   const assigned = (data.assigned ?? []).filter(a => a.id || a.assignment_id).map(normalizeAssignment)
   const available = (data.available ?? []).filter(a => a.id || a.analysis_id).map((item) => ({
     ...normalizeAssignment(item as BackendAssignedItem),
     status: "pending" as const,
   }))
-  
+
   return {
     assigned,
     available,
@@ -323,20 +317,20 @@ export async function fetchReviewQueueData(options?: {
       cache: "no-store",
       headers: { Accept: "application/json" },
     })
-    
+
     if (response.ok) {
       const data = await response.json() as BackendQueueResponse
       return normalizeBackendResponse(data)
     }
-    
+
     // If backend returns 404 or error, fall back to computing from analyses
     console.warn("[review-queue] Backend API unavailable, computing from analyses")
     const analyses = await fetchDashboardAnalyses({ force: options?.force, size: 40 })
     return computeQueueFromAnalyses(analyses)
-    
+
   } catch (error) {
     console.error("[review-queue] Error fetching data:", error)
-    
+
     // Try fallback to analyses data
     try {
       const analyses = await fetchDashboardAnalyses({ force: options?.force, size: 40 })
@@ -361,21 +355,21 @@ export async function claimReviewAssignment(assignmentId: string): Promise<{ suc
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
     })
-    
+
     if (response.ok) {
       return { success: true }
     }
-    
+
     const data = await response.json().catch(() => ({}))
-    return { 
-      success: false, 
-      error: data.error ?? "Erreur lors de la réclamation de la review" 
+    return {
+      success: false,
+      error: data.error ?? "Erreur lors de la rÃ©clamation de la review"
     }
   } catch (error) {
     console.error("[review-queue] Claim error:", error)
-    return { 
-      success: false, 
-      error: "Erreur réseau lors de la réclamation" 
+    return {
+      success: false,
+      error: "Erreur rÃ©seau lors de la rÃ©clamation"
     }
   }
 }
@@ -387,15 +381,15 @@ export async function startReview(assignmentId: string): Promise<{ success: bool
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
     })
-    
+
     if (response.ok) {
       return { success: true }
     }
-    
+
     const data = await response.json().catch(() => ({}))
-    return { 
-      success: false, 
-      error: data.error ?? "Erreur lors du démarrage de la review" 
+    return {
+      success: false,
+      error: data.error ?? "Erreur lors du dÃ©marrage de la review"
     }
   } catch (error) {
     console.error("[review-queue] Start error:", error)
@@ -411,21 +405,21 @@ export async function declineReviewAssignment(assignmentId: string, reason?: str
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
     })
-    
+
     if (response.ok) {
       return { success: true }
     }
-    
+
     const data = await response.json().catch(() => ({}))
-    return { 
-      success: false, 
-      error: data.error ?? "Erreur lors du refus de la review" 
+    return {
+      success: false,
+      error: data.error ?? "Erreur lors du refus de la review"
     }
   } catch (error) {
     console.error("[review-queue] Decline error:", error)
-    return { 
-      success: false, 
-      error: "Erreur réseau lors du refus" 
+    return {
+      success: false,
+      error: "Erreur rÃ©seau lors du refus"
     }
   }
 }
@@ -440,37 +434,16 @@ export function createReviewQueuePoller(
   onUpdate: (data: ReviewQueueData) => void,
   options?: { intervalMs?: number }
 ) {
-  const interval = options?.intervalMs ?? POLL_INTERVAL_MS
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let isRunning = false
-  
-  const poll = async () => {
-    if (!isRunning) return
-    
-    try {
+  return createPoller(
+    async () => {
       const data = await fetchReviewQueueData({ force: true })
       onUpdate(data)
-    } catch (error) {
-      console.error("[review-queue-poller] Poll error:", error)
-    }
-    
-    if (isRunning) {
-      timeoutId = setTimeout(poll, interval)
-    }
-  }
-  
-  return {
-    start: () => {
-      if (isRunning) return
-      isRunning = true
-      poll()
     },
-    stop: () => {
-      isRunning = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+    {
+      intervalMs: options?.intervalMs ?? POLL_INTERVAL_MS,
+      onError: (error) => {
+        console.error("[review-queue-poller] Poll error:", error)
+      },
     },
-  }
+  )
 }

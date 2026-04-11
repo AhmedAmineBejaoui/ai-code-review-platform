@@ -63,6 +63,11 @@ import {
 } from "@/components/ui/dialog"
 import { Skeleton } from "@/components/ui/skeleton"
 import { Badge } from "@/components/ui/badge"
+import {
+  fetchGithubRepos,
+  type GithubRepoOption,
+} from "@/lib/github-repos"
+import { formatCompactRelativeTime } from "@/lib/domain/dates"
 
 // Types for repository data from backend
 interface Repository {
@@ -116,20 +121,6 @@ function RepositoryRow({ repo }: { repo: Repository }) {
   const [isStarred, setIsStarred] = useState(false)
   const CiIcon = ciStatusConfig[repo.ci_status]?.icon || ciStatusConfig.unknown.icon
   const ciClassName = ciStatusConfig[repo.ci_status]?.className || ciStatusConfig.unknown.className
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return "Never"
-    const date = new Date(dateStr)
-    const now = new Date()
-    const diffMs = now.getTime() - date.getTime()
-    const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-    const diffDays = Math.floor(diffHours / 24)
-    
-    if (diffHours < 1) return "Just now"
-    if (diffHours < 24) return `${diffHours}h ago`
-    if (diffDays < 7) return `${diffDays}d ago`
-    return date.toLocaleDateString()
-  }
 
   return (
     <TableRow className="group hover:bg-muted/50">
@@ -191,7 +182,7 @@ function RepositoryRow({ repo }: { repo: Repository }) {
             {repo.default_branch || "main"}
           </p>
           <p className="text-xs text-muted-foreground">
-            Last analysis: {formatDate(repo.last_analysis_at)}
+            Last analysis: {repo.last_analysis_at ? formatCompactRelativeTime(repo.last_analysis_at) : "Never"}
           </p>
         </div>
       </TableCell>
@@ -259,17 +250,6 @@ function RepositoryRowSkeleton() {
       <TableCell><Skeleton className="h-8 w-16" /></TableCell>
     </TableRow>
   )
-}
-
-type GithubRepoOption = {
-  id: number
-  name: string
-  fullName: string
-  private: boolean
-  htmlUrl: string | null
-  defaultBranch: string | null
-  ownerLogin: string | null
-  updatedAt: string | null
 }
 
 // Role options for project members
@@ -375,11 +355,9 @@ export default function RepositoriesPage() {
   const loadGithubRepos = async () => {
     setIsLoadingGithubRepos(true)
     try {
-      const response = await fetch("/api/dashboard/github/repos")
-      if (!response.ok) throw new Error("Failed to fetch GitHub repositories")
-      const data = await response.json()
-      setGithubConnected(data.connected ?? false)
-      setGithubRepos(data.items ?? [])
+      const data = await fetchGithubRepos()
+      setGithubConnected(data.connected)
+      setGithubRepos(data.items)
     } catch (err) {
       console.error("Error loading GitHub repos:", err)
       setGithubConnected(false)

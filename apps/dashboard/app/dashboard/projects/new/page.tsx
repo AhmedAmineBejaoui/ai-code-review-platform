@@ -40,6 +40,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { fetchGithubRepos } from "@/lib/github-repos"
 
 // Types
 interface Team {
@@ -153,28 +154,16 @@ export default function NewProjectPage() {
     setLoadingGithubRepos(true)
     setGithubError(null)
     try {
-      const response = await fetch("/api/dashboard/github/repos", {
-        headers: { "Content-Type": "application/json" },
-      })
-      const data = await response.json().catch(() => ({}))
-      if (!response.ok) {
-        setGithubConnected(false)
-        setGithubError(
-          (data && (data.error as string)) ||
-            `Echec du chargement des repos GitHub (HTTP ${response.status})`,
-        )
-        setGithubRepos([])
-        return
-      }
-      setGithubConnected(data.connected !== false)
-      setGithubError((data.error as string) || null)
-      const items: GithubRepo[] = (data.items || []).map((r: Record<string, unknown>) => ({
+      const data = await fetchGithubRepos()
+      setGithubConnected(data.connected)
+      setGithubError(data.error)
+      const items: GithubRepo[] = data.items.map((r) => ({
         id: String(r.id ?? ""),
-        fullName: (r.fullName as string) ?? "",
-        name: (r.name as string) ?? "",
-        description: (r.description as string) ?? null,
-        language: (r.language as string) ?? null,
-        defaultBranch: (r.defaultBranch as string) ?? "main",
+        fullName: r.fullName ?? "",
+        name: r.name ?? "",
+        description: r.description ?? null,
+        language: r.language ?? null,
+        defaultBranch: r.defaultBranch ?? "main",
         isPrivate: r.private === true,
       }))
       setGithubRepos(items)
@@ -718,7 +707,7 @@ export default function NewProjectPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Settings className="h-5 w-5 text-gray-500" />
-            Parametres d'analyse
+            Parametres d&apos;analyse
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">

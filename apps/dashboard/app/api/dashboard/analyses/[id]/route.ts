@@ -1,6 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
+import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status"
 
 export const dynamic = "force-dynamic"
 
@@ -297,17 +298,6 @@ function resolveUserRole(user: Awaited<ReturnType<typeof currentUser>>, claims: 
     return normalizeRole(roleCandidate)
   }
   return claimsRole
-}
-
-function normalizeStatus(status: string | undefined): string {
-  const raw = (status ?? "").trim().toUpperCase()
-  if (raw === "DONE") {
-    return "COMPLETED"
-  }
-  if (raw === "RECEIVED" || raw === "QUEUED" || raw === "RUNNING" || raw === "COMPLETED" || raw === "FAILED") {
-    return raw
-  }
-  return "QUEUED"
 }
 
 function normalizeReviewDecision(metadata: Record<string, unknown>): DashboardReviewDecision | null {

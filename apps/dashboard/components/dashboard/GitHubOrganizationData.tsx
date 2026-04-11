@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { formatDate } from "@/lib/domain/dates"
 
 interface GitHubOrg {
   login: string
@@ -56,19 +57,6 @@ interface OrgDetailsResponse {
   error?: string
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "—"
-  try {
-    return new Date(dateStr).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    })
-  } catch {
-    return dateStr
-  }
-}
-
 export function GitHubOrganizationData() {
   const [orgs, setOrgs] = useState<Array<{ login: string; name?: string; description?: string; avatarUrl?: string | null }>>([])
   const [selectedOrg, setSelectedOrg] = useState<string | null>(null)
@@ -84,7 +72,7 @@ export function GitHubOrganizationData() {
         setError(null)
         const res = await fetch("/api/dashboard/github/organizations")
         const data: OrganizationResponse = await res.json()
-        
+
         if (!data.connected) {
           setError(data.error || "GitHub not connected")
           setOrgs([])
@@ -116,7 +104,7 @@ export function GitHubOrganizationData() {
         setError(null)
         const res = await fetch(`/api/dashboard/github/organizations?org=${encodeURIComponent(selectedOrg)}`)
         const data: OrgDetailsResponse = await res.json()
-        
+
         if (!data.connected) {
           setError(data.error || "Failed to fetch organization details")
           setOrgDetails(null)
@@ -328,7 +316,7 @@ export function GitHubOrganizationData() {
                         </div>
                       </div>
                       <p className="text-xs text-muted-foreground mt-2">
-                        Updated {formatDate(repo.updatedAt)}
+                        Updated {formatDate(repo.updatedAt, "en-US")}
                       </p>
                     </a>
                   ))}
@@ -357,7 +345,7 @@ export function GitHubOrganizationData() {
                   {orgDetails.members.slice(0, 12).map((member) => (
                     <a
                       key={member.id}
-                      href={member.htmlUrl}
+                      href={member.htmlUrl ?? undefined}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="flex items-center gap-3 p-3 rounded-lg border hover:border-primary hover:bg-primary/5 transition-colors"

@@ -212,6 +212,19 @@ class Settings(BaseSettings):
     # ── HyDE (Hypothetical Document Embeddings) ─────────────────────────────
     HYDE_ENABLED: bool = True
     HYDE_ROUTES: str = "diff_review,code_query"  # comma-separated QueryRoute values
+    LANGGRAPH_ANALYSIS_ENABLED: bool = True
+    LANGGRAPH_USE_STATEGRAPH: bool = True
+    LANGGRAPH_RETRIEVAL_LIMIT: int = 16
+    LANGGRAPH_LLM_MAX_FINDINGS: int = 6
+    LANGGRAPH_MIN_FINDING_CONFIDENCE: float = 0.55
+    LANGGRAPH_REQUIRE_SOURCE_REFERENCES: bool = True
+    LANGGRAPH_CACHE_TTL_SECONDS: int = 1800
+
+    NEO4J_ENABLED: bool = False
+    NEO4J_URI: str = "bolt://localhost:7687"
+    NEO4J_USER: str = "neo4j"
+    NEO4J_PASSWORD: str = "neo4j"
+    NEO4J_DATABASE: str = "neo4j"
 
     # ── Redis RAG Cache ───────────────────────────────────────────────────────
     RAG_CACHE_ENABLED: bool = True

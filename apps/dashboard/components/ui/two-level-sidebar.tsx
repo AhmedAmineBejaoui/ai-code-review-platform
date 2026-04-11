@@ -30,6 +30,8 @@ import {
   Integration,
   UserMultiple,
   Code,
+  Terminal,
+  RequestQuote,
   DataBase,
   Policy,
   Activity,
@@ -411,6 +413,57 @@ function getSidebarContent(
       ],
     },
 
+    editor: {
+      title: "Code Editor",
+      sections: [
+        {
+          title: "Editor",
+          items: [
+            {
+              icon: <Terminal size={16} className="text-sidebar-foreground" />,
+              label: "Open Editor",
+              href: "/dashboard/editor",
+              isActive: pathname === "/dashboard/editor",
+            },
+          ],
+        },
+        {
+          title: "Quick Actions",
+          items: [
+            {
+              icon: <Code size={16} className="text-sidebar-foreground" />,
+              label: "Repositories",
+              href: "/dashboard/repositories",
+              isActive: pathname === "/dashboard/repositories",
+            },
+            {
+              icon: <FolderDetails size={16} className="text-sidebar-foreground" />,
+              label: "Projects",
+              href: "/dashboard/projects",
+              isActive: pathname === "/dashboard/projects",
+            },
+          ],
+        },
+      ],
+    },
+
+    pulls: {
+      title: "Pull Requests",
+      sections: [
+        {
+          title: "PR Workflow",
+          items: [
+            {
+              icon: <RequestQuote size={16} className="text-sidebar-foreground" />,
+              label: "All PRs",
+              href: "/dashboard/pulls",
+              isActive: pathname === "/dashboard/pulls",
+            },
+          ],
+        },
+      ],
+    },
+
     reviews: {
       title: "Reviews",
       sections: [
@@ -650,6 +703,8 @@ function IconNavigation({
     { id: "dashboard", icon: <Dashboard size={18} />, label: "Dashboard" },
     { id: "analyses", icon: <List size={18} />, label: "Analyses" },
     { id: "workspace", icon: <Building size={18} />, label: "Workspace" },
+    { id: "editor", icon: <Terminal size={18} />, label: "Editor" },
+    { id: "pulls", icon: <RequestQuote size={18} />, label: "PRs" },
     { id: "reviews", icon: <DocumentTasks size={18} />, label: "Reviews", requiresReviewer: true },
     { id: "admin", icon: <Security size={18} />, label: "Admin", requiresAdmin: true },
   ];
@@ -1102,6 +1157,8 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/dashboard/reviewer")) return "reviews";
     if (pathname.startsWith("/dashboard/organization")) return "workspace";
     if (pathname.startsWith("/dashboard/analyses")) return "analyses";
+    if (pathname.startsWith("/dashboard/editor")) return "editor";
+    if (pathname.startsWith("/dashboard/pulls")) return "pulls";
     return "dashboard";
   });
 

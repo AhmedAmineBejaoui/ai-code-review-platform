@@ -40,6 +40,11 @@ import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider
 import { LiveActivityFeed } from "@/components/dashboard/LiveActivityFeed";
 import { emptyDashboardInsights, fetchDashboardInsights, type DashboardRole } from "@/lib/dashboard-insights";
 import { isReviewer } from "@/lib/roles";
+import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status";
+import {
+  fetchGithubRepos,
+  type GithubRepoOption,
+} from "@/lib/github-repos";
 import {
   fetchDashboardAnalyses,
   hasActiveDashboardAnalysis,
@@ -62,7 +67,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AnimatedCounter } from "@/components/ui/animated-counter";
 
-// ── types ──────────────────────────────────────────────────────────────────────
+// â”€â”€ types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 type LaunchAnalysisResponse = {
   analysis_id?: string;
   status?: string;
@@ -71,24 +76,6 @@ type LaunchAnalysisResponse = {
   backend_response?: { message?: string; detail?: string };
 };
 
-type GithubRepoOption = {
-  id: number;
-  name: string;
-  fullName: string;
-  private: boolean;
-  htmlUrl: string | null;
-  defaultBranch: string | null;
-  ownerLogin: string | null;
-  updatedAt: string | null;
-};
-
-type GithubReposResponse = {
-  connected?: boolean;
-  items?: GithubRepoOption[];
-  error?: string | null;
-};
-
-// ── chart sample data ──────────────────────────────────────────────────────────
 const chartData = [
   { day: "Lun", issues: 12, resolved: 8 },
   { day: "Mar", issues: 18, resolved: 15 },
@@ -99,14 +86,7 @@ const chartData = [
   { day: "Dim", issues: 9, resolved: 7 },
 ];
 
-// ── score helpers ──────────────────────────────────────────────────────────────
-function normalizeStatus(status: string): string {
-  const raw = status.trim().toUpperCase();
-  if (raw === "DONE") return "COMPLETED";
-  if (["RUNNING", "FAILED", "QUEUED", "RECEIVED", "COMPLETED"].includes(raw)) return raw;
-  return "QUEUED";
-}
-
+// â”€â”€ score helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function computeScore(analysis: DashboardAnalysisItem): number {
   const s = normalizeStatus(analysis.status);
   if (s === "RUNNING" || s === "QUEUED" || s === "RECEIVED") return 0;
@@ -116,7 +96,7 @@ function computeScore(analysis: DashboardAnalysisItem): number {
   return 96;
 }
 
-// ── ScoreRing ──────────────────────────────────────────────────────────────────
+// â”€â”€ ScoreRing â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
   const radius = (size - 6) / 2;
   const circumference = 2 * Math.PI * radius;
@@ -141,13 +121,13 @@ function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
         />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-xs" style={{ color }}>
-        {score > 0 ? score : "—"}
+        {score > 0 ? score : "â€”"}
       </span>
     </div>
   );
 }
 
-// ── TypewriterText ─────────────────────────────────────────────────────────────
+// â”€â”€ TypewriterText â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TypewriterText({ text, delay = 0 }: { text: string; delay?: number }) {
   const [displayed, setDisplayed] = useState("");
   const [started, setStarted] = useState(false);
@@ -182,7 +162,7 @@ function TypewriterText({ text, delay = 0 }: { text: string; delay?: number }) {
   );
 }
 
-// ── AnalysisRow ────────────────────────────────────────────────────────────────
+// â”€â”€ AnalysisRow â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AnalysisRowProps {
   analysis: DashboardAnalysisItem;
   index: number;
@@ -196,24 +176,24 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
   const s = normalizeStatus(analysis.status);
 
   const statusConfig = {
-    COMPLETED: { dot: "bg-emerald-400", label: "Complété", badgeBg: "bg-emerald-500/15 text-emerald-400" },
+    COMPLETED: { dot: "bg-emerald-400", label: "ComplÃ©tÃ©", badgeBg: "bg-emerald-500/15 text-emerald-400" },
     RUNNING:   { dot: "bg-blue-400 animate-pulse", label: "En cours", badgeBg: "bg-blue-500/15 text-blue-400" },
-    FAILED:    { dot: "bg-red-400", label: "Échoué", badgeBg: "bg-red-500/15 text-red-400" },
+    FAILED:    { dot: "bg-red-400", label: "Ã‰chouÃ©", badgeBg: "bg-red-500/15 text-red-400" },
     QUEUED:    { dot: "bg-zinc-500", label: "En attente", badgeBg: "bg-zinc-500/15 text-zinc-400" },
-    RECEIVED:  { dot: "bg-zinc-500", label: "Reçu", badgeBg: "bg-zinc-500/15 text-zinc-400" },
+    RECEIVED:  { dot: "bg-zinc-500", label: "ReÃ§u", badgeBg: "bg-zinc-500/15 text-zinc-400" },
   } as Record<string, { dot: string; label: string; badgeBg: string }>;
 
   const cfg = statusConfig[s] ?? statusConfig["QUEUED"];
 
   // Build mini AI insights list
   const insights: string[] = [];
-  if (analysis.blockerCount > 0) insights.push(`⚠️ ${analysis.blockerCount} problème(s) bloquant(s) détecté(s)`);
-  if (analysis.warnCount > 0)    insights.push(`⚠️ ${analysis.warnCount} avertissement(s) à corriger`);
-  if (analysis.infoCount > 0)    insights.push(`💡 ${analysis.infoCount} suggestion(s) d'amélioration`);
+  if (analysis.blockerCount > 0) insights.push(`âš ï¸ ${analysis.blockerCount} problÃ¨me(s) bloquant(s) dÃ©tectÃ©(s)`);
+  if (analysis.warnCount > 0)    insights.push(`âš ï¸ ${analysis.warnCount} avertissement(s) Ã  corriger`);
+  if (analysis.infoCount > 0)    insights.push(`ðŸ’¡ ${analysis.infoCount} suggestion(s) d'amÃ©lioration`);
   if (s === "COMPLETED" && analysis.blockerCount === 0 && analysis.warnCount === 0) {
-    insights.push("✅ Code de qualité excellente, aucun problème critique détecté");
+    insights.push("âœ… Code de qualitÃ© excellente, aucun problÃ¨me critique dÃ©tectÃ©");
   }
-  if (aiSummary) insights.unshift(`🤖 ${aiSummary}`);
+  if (aiSummary) insights.unshift(`ðŸ¤– ${aiSummary}`);
 
   return (
     <motion.div
@@ -263,7 +243,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
                 <GitPullRequest className="size-3" />
                 <span className="font-mono text-zinc-600 truncate">
-                  {analysis.commitSha ? analysis.commitSha.slice(0, 8) : "—"}
+                  {analysis.commitSha ? analysis.commitSha.slice(0, 8) : "â€”"}
                 </span>
               </div>
             </div>
@@ -292,7 +272,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           {/* Duration */}
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Clock className="size-3" />
-            {analysis.durationLabel ?? "—"}
+            {analysis.durationLabel ?? "â€”"}
           </div>
           <ScoreRing score={score} size={36} />
         </div>
@@ -309,7 +289,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <span className="text-[11px] text-red-400">{analysis.blockerCount}</span>
             </motion.div>
           ) : (
-            <span className="text-xs text-zinc-700">—</span>
+            <span className="text-xs text-zinc-700">â€”</span>
           )}
         </div>
 
@@ -321,14 +301,14 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <span className="text-[11px] text-amber-400">{analysis.warnCount}</span>
             </div>
           ) : (
-            <span className="text-xs text-zinc-700">—</span>
+            <span className="text-xs text-zinc-700">â€”</span>
           )}
         </div>
 
         {/* Duration - tablet+ only */}
         <div className="hidden md:flex items-center gap-1.5 text-[11px] text-zinc-500">
           <Clock className="size-3" />
-          {analysis.durationLabel ?? "—"}
+          {analysis.durationLabel ?? "â€”"}
         </div>
 
         {/* Score ring - tablet+ only (mobile shows inline) */}
@@ -402,7 +382,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                   <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
                       <Code2 className="size-4 text-zinc-500" />
-                      <span className="text-xs text-zinc-500 uppercase tracking-wider">Résultats</span>
+                      <span className="text-xs text-zinc-500 uppercase tracking-wider">RÃ©sultats</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <motion.div
@@ -469,7 +449,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
   );
 }
 
-// ── DeveloperDashboard ─────────────────────────────────────────────────────────
+// â”€â”€ DeveloperDashboard â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export function DeveloperDashboard() {
   const router = useRouter();
   const currentUser = useDashboardUser();
@@ -493,12 +473,12 @@ export function DeveloperDashboard() {
   const [isSubmittingAnalysis, setIsSubmittingAnalysis] = useState(false);
   const [statusFilter, setStatusFilter] = useState("all");
   const [isLoaded, setIsLoaded] = useState(false);
-  
+
   // Use ref to track analysisRows for polling interval without causing re-renders
   const analysisRowsRef = useRef<DashboardAnalysisItem[]>(analysisRows);
   analysisRowsRef.current = analysisRows;
 
-  // ── derived metrics (memoized) ─────────────────────────────────────────────
+  // â”€â”€ derived metrics (memoized) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { totalErrors, totalWarnings, completedCount, avgScore, totalInfo, okCount } = useMemo(() => {
     const errors = analysisRows.reduce((a, b) => a + b.blockerCount, 0);
     const warnings = analysisRows.reduce((a, b) => a + b.warnCount, 0);
@@ -536,7 +516,7 @@ export function DeveloperDashboard() {
     { label: "Analyses OK", value: completedCount, suffix: `/${analysisRows.length}`, icon: CheckCircle2, color: "text-emerald-400", bg: "from-emerald-500/10 to-emerald-500/5", glow: "shadow-emerald-500/5", trend: `${analysisRows.length > 0 ? Math.round((completedCount / analysisRows.length) * 100) : 0}%`, trendUp: true },
   ], [avgScore, totalErrors, totalWarnings, completedCount, analysisRows.length]);
 
-  // ── effects ────────────────────────────────────────────────────────────────
+  // â”€â”€ effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     setIsLoaded(true);
     let cancelled = false;
@@ -593,7 +573,7 @@ export function DeveloperDashboard() {
     if (!stillExists) setGithubRepoSelection("manual");
   }, [githubRepoSelection, githubRepos]);
 
-  // ── handlers ───────────────────────────────────────────────────────────────
+  // â”€â”€ handlers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const openLaunchDialog = () => {
     setFormError(null);
     setActionMessage(null);
@@ -664,7 +644,6 @@ export function DeveloperDashboard() {
       setAnalysisDialogOpen(false);
       setPrNumberInput("");
       setCommitShaInput("");
-      setImportedProjectSummary(null);
       setGithubRepoSelection("manual");
       await refreshDashboardData();
       router.refresh();
@@ -690,13 +669,10 @@ export function DeveloperDashboard() {
     setIsLoadingGithubRepos(true);
     setGithubReposError(null);
     try {
-      const response = await fetch("/api/dashboard/github/repos", { method: "GET", headers: { Accept: "application/json" }, cache: "no-store" });
-      if (!response.ok) throw new Error("Impossible de recuperer les repositories GitHub.");
-      const payload = (await response.json().catch(() => ({}))) as GithubReposResponse;
-      const items = Array.isArray(payload.items) ? payload.items : [];
-      setGithubRepos(items);
-      setGithubConnected(payload.connected === true);
-      if (typeof payload.error === "string" && payload.error.trim().length > 0) setGithubReposError(payload.error);
+      const payload = await fetchGithubRepos();
+      setGithubRepos(payload.items);
+      setGithubConnected(payload.connected);
+      if (payload.error) setGithubReposError(payload.error);
     } catch (error) {
       setGithubRepos([]);
       setGithubConnected(false);
@@ -706,10 +682,10 @@ export function DeveloperDashboard() {
     }
   };
 
-  // ── render ─────────────────────────────────────────────────────────────────
+  // â”€â”€ render â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   return (
     <div className="space-y-6">
-      {/* ── Page Header ── */}
+      {/* â”€â”€ Page Header â”€â”€ */}
       <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
@@ -719,11 +695,11 @@ export function DeveloperDashboard() {
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <span className="inline-block size-2 rounded-full bg-emerald-400 animate-pulse" />
             {isReviewer(currentUser.role) || currentUser.role === "admin"
-              ? "Vue d'ensemble de l'équipe"
-              : "Tableau de bord développeur"}
+              ? "Vue d'ensemble de l'Ã©quipe"
+              : "Tableau de bord dÃ©veloppeur"}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Analysez votre code avec l'IA — RAG-powered · Résultats en temps réel
+            Analysez votre code avec l'IA â€” RAG-powered Â· RÃ©sultats en temps rÃ©el
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -742,7 +718,7 @@ export function DeveloperDashboard() {
       </motion.div>
 
       <div className="space-y-6">
-        {/* ── Success/Error Messages ── */}
+        {/* â”€â”€ Success/Error Messages â”€â”€ */}
         {(formError || actionMessage) && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
             <div className={`flex items-center gap-3 p-3 rounded-xl text-sm ${formError ? "bg-red-500/10 border border-red-500/20 text-red-300" : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"}`}>
@@ -752,7 +728,7 @@ export function DeveloperDashboard() {
           </motion.div>
         )}
 
-        {/* ── Metrics ── */}
+        {/* â”€â”€ Metrics â”€â”€ */}
         <div className="grid grid-cols-1 xs:grid-cols-2 lg:grid-cols-4 3xl:grid-cols-4 gap-3 sm:gap-4">
           {metrics.map((metric, i) => (
             <motion.div
@@ -768,7 +744,7 @@ export function DeveloperDashboard() {
                   <metric.icon className={`size-5 ${metric.color}`} />
                 </motion.div>
                 <span className={`text-[11px] px-2 py-0.5 rounded-full ${metric.trendUp ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                  {metric.trendUp ? "↗" : "↘"} {metric.trend}
+                  {metric.trendUp ? "â†—" : "â†˜"} {metric.trend}
                 </span>
               </div>
               <div className="text-3xl text-white flex items-baseline gap-0.5">
@@ -780,7 +756,7 @@ export function DeveloperDashboard() {
           ))}
         </div>
 
-        {/* ── Charts + Activity ── */}
+        {/* â”€â”€ Charts + Activity â”€â”€ */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-12 gap-4">
           {/* Area chart */}
           <motion.div
@@ -789,12 +765,12 @@ export function DeveloperDashboard() {
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm text-white">Activité semaine</h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">Issues détectés vs résolus</p>
+                <h3 className="text-sm text-white">ActivitÃ© semaine</h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Issues dÃ©tectÃ©s vs rÃ©solus</p>
               </div>
               <div className="flex items-center gap-3 text-[10px]">
                 <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-violet-500" /><span className="text-zinc-500">Issues</span></div>
-                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">Résolus</span></div>
+                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">RÃ©solus</span></div>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -824,8 +800,8 @@ export function DeveloperDashboard() {
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.4, duration: 0.4 }}
             className="col-span-1 md:col-span-1 lg:col-span-3 3xl:col-span-3 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
-            <h3 className="text-sm text-white mb-1">Sévérité</h3>
-            <p className="text-[11px] text-zinc-500 mb-2">Répartition des issues</p>
+            <h3 className="text-sm text-white mb-1">SÃ©vÃ©ritÃ©</h3>
+            <p className="text-[11px] text-zinc-500 mb-2">RÃ©partition des issues</p>
             {pieData.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={130}>
@@ -848,7 +824,7 @@ export function DeveloperDashboard() {
               </>
             ) : (
               <div className="flex items-center justify-center h-[130px] text-xs text-zinc-600">
-                Aucune donnée
+                Aucune donnÃ©e
               </div>
             )}
           </motion.div>
@@ -862,7 +838,7 @@ export function DeveloperDashboard() {
           </motion.div>
         </div>
 
-        {/* ── Analyses Table ── */}
+        {/* â”€â”€ Analyses Table â”€â”€ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.6, duration: 0.4 }}
           className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden"
@@ -872,7 +848,7 @@ export function DeveloperDashboard() {
               <GitPullRequest className="size-4 text-violet-400" />
               <h3 className="text-sm text-white">
                 {isReviewer(currentUser.role) || currentUser.role === "admin"
-                  ? "Analyses de l'équipe"
+                  ? "Analyses de l'Ã©quipe"
                   : "Vos analyses"}
               </h3>
               <Badge className="bg-zinc-800 text-zinc-400 border-0 text-[10px]">
@@ -883,9 +859,9 @@ export function DeveloperDashboard() {
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList className="bg-zinc-800/50 h-7 flex-shrink-0">
                   <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
-                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✓ Complétés</TabsTrigger>
-                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">◌ En cours</TabsTrigger>
-                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✗ Échoués</TabsTrigger>
+                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ“ ComplÃ©tÃ©s</TabsTrigger>
+                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">â—Œ En cours</TabsTrigger>
+                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ— Ã‰chouÃ©s</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Link href="/dashboard/analyses">
@@ -902,7 +878,7 @@ export function DeveloperDashboard() {
             <span>Auteur</span>
             <span>Bloquants</span>
             <span>Warnings</span>
-            <span>Durée</span>
+            <span>DurÃ©e</span>
             <span>Score</span>
             <span />
           </div>
@@ -930,12 +906,12 @@ export function DeveloperDashboard() {
 
           {!insightsLoading && filteredRows.length === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 text-center text-sm text-zinc-600">
-              Aucune analyse trouvée pour ce filtre
+              Aucune analyse trouvÃ©e pour ce filtre
             </motion.div>
           )}
         </motion.div>
 
-        {/* ── AI PR Descriptions ── */}
+        {/* â”€â”€ AI PR Descriptions â”€â”€ */}
         {insights.prSummaries.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.7, duration: 0.4 }}>
             <div className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden">
@@ -944,7 +920,7 @@ export function DeveloperDashboard() {
                   <Sparkles className="size-3.5 text-violet-400" />
                 </div>
                 <h3 className="text-sm text-white">
-                  {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs récentes"}
+                  {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs rÃ©centes"}
                 </h3>
               </div>
               <div className="divide-y divide-zinc-800/30">
@@ -962,7 +938,7 @@ export function DeveloperDashboard() {
                         {summary.prNumber ? `PR #${summary.prNumber}` : (summary.commitSha ?? "Commit")}
                       </Badge>
                       <Badge className={`border-0 text-[10px] px-2 capitalize ${summary.status === "COMPLETED" ? "bg-emerald-500/15 text-emerald-400" : summary.status === "FAILED" ? "bg-red-500/15 text-red-400" : "bg-zinc-700 text-zinc-400"}`}>
-                        {summary.status?.toLowerCase() ?? "—"}
+                        {summary.status?.toLowerCase() ?? "â€”"}
                       </Badge>
                       {summary.createdAt && (
                         <span className="text-[10px] text-zinc-600 ml-auto">
@@ -979,7 +955,7 @@ export function DeveloperDashboard() {
         )}
       </div>
 
-      {/* ── Launch Analysis Dialog ── */}
+      {/* â”€â”€ Launch Analysis Dialog â”€â”€ */}
       <Dialog open={analysisDialogOpen} onOpenChange={setAnalysisDialogOpen}>
         <DialogContent className="sm:max-w-3xl bg-zinc-900 border-zinc-800 text-white">
           <DialogHeader>

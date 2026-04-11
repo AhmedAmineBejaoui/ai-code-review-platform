@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { ProjectDetail, ProjectSummary, AnalysisSummary, BranchInfo, QualityMetrics, DependencySummary } from "@/types/project"
 import { ProjectProfile, fetchProjectProfile, analyzeProject } from "@/lib/project-comprehension"
+import { formatCompactRelativeTime as formatRelativeTime } from "@/lib/domain/dates"
 
 // Cache configuration
 const CACHE_TTL_MS = 2 * 60 * 1000 // 2 minutes
@@ -50,22 +51,6 @@ function transformProfileToDetail(profile: ProjectProfile, projectId: string): P
     organizationId: profile.org_id,
     teamMembers: [], // Would come from a separate API
   }
-}
-
-// Helper to format relative time
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffMins = Math.floor(diffMs / (1000 * 60))
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffMins < 1) return "Just now"
-  if (diffMins < 60) return `${diffMins}m ago`
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
 }
 
 // Hook for fetching project detail

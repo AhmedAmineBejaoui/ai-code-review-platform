@@ -43,6 +43,10 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { AnalysisPipeline } from "./AnalysisPipeline"
+import {
+  fetchGithubRepos,
+  type GithubRepoOption,
+} from "@/lib/github-repos"
 
 interface AnalysesPageHeaderProps {
   filter?: string | null
@@ -106,17 +110,6 @@ const statusLabels: Record<string, { title: string; description: string; icon: R
     description: "Analyses requiring immediate action",
     icon: AlertTriangle,
   },
-}
-
-type GithubRepoOption = {
-  id: number
-  name: string
-  fullName: string
-  private: boolean
-  htmlUrl: string | null
-  defaultBranch: string | null
-  ownerLogin: string | null
-  updatedAt: string | null
 }
 
 export function AnalysesPageHeader({ filter, status, view, action, period }: AnalysesPageHeaderProps) {
@@ -192,23 +185,13 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     setIsLoadingRepos(true)
     setGithubError(null)
     try {
-      const url = account 
-        ? `/api/dashboard/github/repos?account=${encodeURIComponent(account)}&type=${accountType}`
-        : "/api/dashboard/github/repos"
-      
-      const response = await fetch(url)
-      if (response.ok) {
-        const data = await response.json()
-        setGithubConnected(data.connected ?? false)
-        setGithubRepos(data.items ?? [])
-        // Store error from API response (e.g., rate limit warnings)
-        if (data.error) {
-          setGithubError(data.error)
-        }
-      } else {
-        setGithubConnected(false)
-        setGithubError("Failed to fetch repositories")
-      }
+      const data = await fetchGithubRepos({
+        account,
+        accountType,
+      })
+      setGithubConnected(data.connected)
+      setGithubRepos(data.items)
+      setGithubError(data.error)
     } catch {
       setGithubConnected(false)
       setGithubError("Network error while fetching repositories")
@@ -412,7 +395,12 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
         throw new Error(errorInfo.message ?? "Failed to start analysis")
       }
 
-      const analysisId = data.analysis_id || data.id || null
+      const analysisId =
+        typeof data.analysis_id === "string"
+          ? data.analysis_id
+          : typeof data.id === "string"
+            ? data.id
+            : null
       setStartedAnalysisId(analysisId)
       setSubmitSuccess(`Analysis started! ID: ${analysisId || "pending"}`)
       
@@ -431,10 +419,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
 
   const handleGithubConnect = () => {
     // Ouvrir le profil utilisateur pour connecter GitHub
-    openUserProfile({ 
-      routing: "path",
-      path: "/user-profile" 
-    })
+    openUserProfile()
   }
 
   const handleLoadCustomAccount = () => {

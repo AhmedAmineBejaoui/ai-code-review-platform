@@ -48,6 +48,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { formatCompactRelativeTime as formatDate } from "@/lib/domain/dates"
 
 // Mock data for reports
 const reportsData = [
@@ -156,19 +157,6 @@ const typeConfig = {
   security: { label: "Security", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
   performance: { label: "Performance", className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" },
   review: { label: "Review", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
-}
-
-function formatDate(dateString: string) {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffHours = Math.floor(diffMs / (1000 * 60 * 60))
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-
-  if (diffHours < 1) return "Just now"
-  if (diffHours < 24) return `${diffHours}h ago`
-  if (diffDays < 7) return `${diffDays}d ago`
-  return date.toLocaleDateString()
 }
 
 function isWithinPeriod(dateString: string, period: string) {

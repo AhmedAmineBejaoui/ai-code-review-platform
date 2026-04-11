@@ -30,41 +30,42 @@ import {
 } from "@/lib/dashboard-analyses"
 import { cn } from "@/lib/utils"
 import { AnalysisPipeline, MiniPipeline } from "./AnalysisPipeline"
+import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status"
 
-// ─── STATUS CONFIG ───────────────────────────────────────────
+// â”€â”€â”€ STATUS CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const statusConfig = {
-  COMPLETED: { 
-    color: "#34d399", 
-    label: "Completed", 
-    bg: "rgba(52, 211, 153, 0.08)", 
+  COMPLETED: {
+    color: "#34d399",
+    label: "Completed",
+    bg: "rgba(52, 211, 153, 0.08)",
     border: "rgba(52, 211, 153, 0.2)",
     darkBg: "rgba(52, 211, 153, 0.15)",
   },
-  FAILED: { 
-    color: "#f87171", 
-    label: "Failed", 
-    bg: "rgba(248, 113, 113, 0.08)", 
+  FAILED: {
+    color: "#f87171",
+    label: "Failed",
+    bg: "rgba(248, 113, 113, 0.08)",
     border: "rgba(248, 113, 113, 0.25)",
     darkBg: "rgba(248, 113, 113, 0.15)",
   },
-  RUNNING: { 
-    color: "#60a5fa", 
-    label: "Running", 
-    bg: "rgba(96, 165, 250, 0.08)", 
+  RUNNING: {
+    color: "#60a5fa",
+    label: "Running",
+    bg: "rgba(96, 165, 250, 0.08)",
     border: "rgba(96, 165, 250, 0.2)",
     darkBg: "rgba(96, 165, 250, 0.15)",
   },
-  QUEUED: { 
-    color: "#a78bfa", 
-    label: "Queued", 
-    bg: "rgba(167, 139, 250, 0.08)", 
+  QUEUED: {
+    color: "#a78bfa",
+    label: "Queued",
+    bg: "rgba(167, 139, 250, 0.08)",
     border: "rgba(167, 139, 250, 0.2)",
     darkBg: "rgba(167, 139, 250, 0.15)",
   },
-  RECEIVED: { 
-    color: "#fbbf24", 
-    label: "Received", 
-    bg: "rgba(251, 191, 36, 0.08)", 
+  RECEIVED: {
+    color: "#fbbf24",
+    label: "Received",
+    bg: "rgba(251, 191, 36, 0.08)",
     border: "rgba(251, 191, 36, 0.2)",
     darkBg: "rgba(251, 191, 36, 0.15)",
   },
@@ -72,19 +73,11 @@ const statusConfig = {
 
 type StatusKey = keyof typeof statusConfig
 
-function normalizeStatus(status: string): StatusKey {
-  const raw = status.trim().toUpperCase()
-  if (raw === "DONE") return "COMPLETED"
-  if (raw in statusConfig) return raw as StatusKey
-  return "QUEUED"
-}
-
-// ─── HELPERS ─────────────────────────────────────────────────
 function timeAgo(dateStr: string): string {
   if (!dateStr) return "-"
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return "-"
-  
+
   const s = Math.floor((Date.now() - date.getTime()) / 1000)
   if (s < 60) return "just now"
   if (s < 3600) return `${Math.floor(s / 60)}m ago`
@@ -96,11 +89,11 @@ function getTimeGroup(dateStr: string): "today" | "yesterday" | "this_week" | "o
   if (!dateStr) return "older"
   const date = new Date(dateStr)
   if (isNaN(date.getTime())) return "older"
-  
+
   const now = new Date()
   const diffMs = now.getTime() - date.getTime()
   const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  
+
   if (diffDays === 0) return "today"
   if (diffDays === 1) return "yesterday"
   if (diffDays < 7) return "this_week"
@@ -111,39 +104,39 @@ function groupLabel(key: string): string {
   return { today: "Today", yesterday: "Yesterday", this_week: "This Week", older: "Older" }[key] || key
 }
 
-// ─── IMPACT SCORE RING ──────────────────────────────────────
+// â”€â”€â”€ IMPACT SCORE RING â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ImpactRing({ score, size = 40, status }: { score: number; size?: number; status: StatusKey }) {
   const c = statusConfig[status]?.color || "#888"
   const r = (size - 6) / 2
   const circ = 2 * Math.PI * r
   const offset = circ - (score / 100) * circ
-  
+
   return (
     <div className="relative flex-shrink-0" style={{ width: size, height: size }}>
       <svg width={size} height={size} style={{ transform: "rotate(-90deg)" }}>
-        <circle 
-          cx={size / 2} 
-          cy={size / 2} 
-          r={r} 
-          fill="none" 
-          className="stroke-muted/20" 
-          strokeWidth={3} 
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          className="stroke-muted/20"
+          strokeWidth={3}
         />
         <motion.circle
-          cx={size / 2} 
-          cy={size / 2} 
-          r={r} 
-          fill="none" 
-          stroke={c} 
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          stroke={c}
           strokeWidth={3}
-          strokeLinecap="round" 
+          strokeLinecap="round"
           strokeDasharray={circ}
           initial={{ strokeDashoffset: circ }}
           animate={{ strokeDashoffset: offset }}
           transition={{ duration: 1.2, delay: 0.3, ease: "easeOut" }}
         />
       </svg>
-      <span 
+      <span
         className="absolute inset-0 flex items-center justify-center text-[11px] font-bold font-mono"
         style={{ color: c }}
       >
@@ -153,10 +146,10 @@ function ImpactRing({ score, size = 40, status }: { score: number; size?: number
   )
 }
 
-// ─── STATUS DOT ─────────────────────────────────────────────
+// â”€â”€â”€ STATUS DOT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StatusDot({ status }: { status: StatusKey }) {
   const c = statusConfig[status]?.color || "#888"
-  
+
   if (status === "RUNNING" || status === "QUEUED" || status === "RECEIVED") {
     return (
       <div className="relative w-3.5 h-3.5 flex-shrink-0">
@@ -170,7 +163,7 @@ function StatusDot({ status }: { status: StatusKey }) {
       </div>
     )
   }
-  
+
   if (status === "FAILED") {
     return (
       <motion.div
@@ -181,7 +174,7 @@ function StatusDot({ status }: { status: StatusKey }) {
       />
     )
   }
-  
+
   return (
     <motion.div
       initial={{ scale: 0 }}
@@ -193,27 +186,27 @@ function StatusDot({ status }: { status: StatusKey }) {
   )
 }
 
-// ─── STATUS ICON ────────────────────────────────────────────
+// â”€â”€â”€ STATUS ICON â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StatusIcon({ status }: { status: StatusKey }) {
   const c = statusConfig[status]?.color
-  
+
   if (status === "COMPLETED") {
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
         <motion.path
-          d="M3 7.5L5.5 10L11 4" 
-          stroke={c} 
-          strokeWidth="2" 
-          strokeLinecap="round" 
+          d="M3 7.5L5.5 10L11 4"
+          stroke={c}
+          strokeWidth="2"
+          strokeLinecap="round"
           strokeLinejoin="round"
-          initial={{ pathLength: 0 }} 
+          initial={{ pathLength: 0 }}
           animate={{ pathLength: 1 }}
           transition={{ duration: 0.5, delay: 0.2 }}
         />
       </svg>
     )
   }
-  
+
   if (status === "FAILED") {
     return (
       <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
@@ -221,14 +214,14 @@ function StatusIcon({ status }: { status: StatusKey }) {
       </svg>
     )
   }
-  
+
   return (
-    <motion.svg 
-      width="14" 
-      height="14" 
-      viewBox="0 0 14 14" 
+    <motion.svg
+      width="14"
+      height="14"
+      viewBox="0 0 14 14"
       fill="none"
-      animate={{ rotate: 360 }} 
+      animate={{ rotate: 360 }}
       transition={{ duration: 2, repeat: Infinity, ease: "linear" }}
     >
       <path d="M7 1a6 6 0 015.92 5" stroke={c} strokeWidth="2" strokeLinecap="round" />
@@ -236,7 +229,7 @@ function StatusIcon({ status }: { status: StatusKey }) {
   )
 }
 
-// ─── SHIMMER BAR ────────────────────────────────────────────
+// â”€â”€â”€ SHIMMER BAR â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ShimmerBar() {
   return (
     <div className="h-[3px] rounded bg-blue-500/10 overflow-hidden w-full mt-3">
@@ -250,18 +243,18 @@ function ShimmerBar() {
   )
 }
 
-// ─── FINDING BADGE ──────────────────────────────────────────
+// â”€â”€â”€ FINDING BADGE â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function FindingBadge({ type, count }: { type: "blocker" | "warn" | "info"; count: number }) {
   if (count === 0) return null
-  
+
   const config = {
     blocker: { bg: "bg-red-500/10 dark:bg-red-500/20", color: "text-red-500", icon: AlertCircle },
     warn: { bg: "bg-yellow-500/10 dark:bg-yellow-500/20", color: "text-yellow-500", icon: AlertCircle },
     info: { bg: "bg-blue-500/10 dark:bg-blue-500/20", color: "text-blue-500", icon: AlertCircle },
   }
-  
+
   const { bg, color, icon: Icon } = config[type]
-  
+
   return (
     <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium", bg, color)}>
       <Icon className="h-3 w-3" />
@@ -270,7 +263,7 @@ function FindingBadge({ type, count }: { type: "blocker" | "warn" | "info"; coun
   )
 }
 
-// ─── ANALYSIS CARD ──────────────────────────────────────────
+// â”€â”€â”€ ANALYSIS CARD â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AnalysisCardProps {
   item: DashboardAnalysisItem
   index: number
@@ -285,7 +278,7 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
   const [expanded, setExpanded] = useState(false)
   const ref = useRef<HTMLDivElement>(null)
   const inView = useInView(ref, { once: true, margin: "-40px" })
-  
+
   const status = normalizeStatus(item.status)
   const sc = statusConfig[status]
   const findingsTotal = item.blockerCount + item.warnCount + item.infoCount
@@ -305,7 +298,7 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
       <div className="w-12 flex flex-col items-center relative flex-shrink-0 pt-5">
         <StatusDot status={status} />
         {!isLast && (
-          <div 
+          <div
             className="flex-1 w-0.5 mt-1.5"
             style={{ background: `linear-gradient(to bottom, ${sc.color}33, transparent)` }}
           />
@@ -320,11 +313,11 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
         transition={{ type: "spring", stiffness: 300, damping: 25 }}
         className={cn(
           "flex-1 mb-4 cursor-pointer rounded-xl p-5 backdrop-blur-xl border transition-all",
-          expanded 
-            ? "bg-card/80 dark:bg-card/60" 
+          expanded
+            ? "bg-card/80 dark:bg-card/60"
             : "bg-card/50 dark:bg-card/40 hover:bg-card/70 dark:hover:bg-card/50"
         )}
-        style={{ 
+        style={{
           borderColor: expanded ? sc.border : "rgba(255,255,255,0.06)",
         }}
       >
@@ -338,13 +331,13 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
               </span>
               <span className={cn(
                 "px-2 py-0.5 rounded text-[11px] font-semibold font-mono",
-                isPR 
-                  ? "bg-purple-500/15 text-purple-400" 
+                isPR
+                  ? "bg-purple-500/15 text-purple-400"
                   : "bg-yellow-500/12 text-yellow-500"
               )}>
                 {isPR ? item.prLabel : "COMMIT"}
               </span>
-              <span 
+              <span
                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-semibold font-mono"
                 style={{ background: sc.bg, color: sc.color }}
               >
@@ -402,9 +395,9 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
             <ShimmerBar />
             {/* Pipeline Progress */}
             <div className="mt-4">
-              <AnalysisPipeline 
-                analysisStatus={item.status} 
-                compact 
+              <AnalysisPipeline
+                analysisStatus={item.status}
+                compact
                 className="px-1"
               />
             </div>
@@ -423,7 +416,7 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
             >
               <div className="pt-4 flex flex-col gap-4">
                 <div className="h-px bg-border" />
-                
+
                 {/* Actions */}
                 <div className="flex flex-wrap gap-2">
                   {isCompleted && findingsTotal > 0 && (
@@ -442,27 +435,27 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
                       </Link>
                     </>
                   )}
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="gap-2"
                     onClick={(e) => { e.stopPropagation(); onRerun(item.id) }}
                   >
                     <RotateCw className="h-4 w-4" />
                     Re-run
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="gap-2"
                     onClick={(e) => { e.stopPropagation(); onDownload(item) }}
                   >
                     <Download className="h-4 w-4" />
                     Export
                   </Button>
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    variant="outline"
+                    size="sm"
                     className="gap-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
                     onClick={(e) => { e.stopPropagation(); onDelete(item.id) }}
                     disabled={deleteBusyId === item.id}
@@ -484,7 +477,7 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
   )
 }
 
-// ─── GROUP HEADER ───────────────────────────────────────────
+// â”€â”€â”€ GROUP HEADER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function GroupHeader({ label, count, index }: { label: string; count: number; index: number }) {
   return (
     <motion.div
@@ -507,7 +500,7 @@ function GroupHeader({ label, count, index }: { label: string; count: number; in
   )
 }
 
-// ─── STAT COUNTER ───────────────────────────────────────────
+// â”€â”€â”€ STAT COUNTER â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function StatCounter({ label, value, color }: { label: string; value: number; color?: string }) {
   return (
     <div className="flex flex-col items-center gap-0.5">
@@ -527,19 +520,19 @@ function StatCounter({ label, value, color }: { label: string; value: number; co
   )
 }
 
-// ─── FILTER TAB ─────────────────────────────────────────────
-function FilterTab({ 
-  label, 
-  active, 
-  count, 
-  color, 
-  onClick 
-}: { 
+// â”€â”€â”€ FILTER TAB â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+function FilterTab({
+  label,
+  active,
+  count,
+  color,
+  onClick
+}: {
   label: string
   active: boolean
   count: number
   color?: string
-  onClick: () => void 
+  onClick: () => void
 }) {
   return (
     <motion.button
@@ -548,11 +541,11 @@ function FilterTab({
       whileTap={{ scale: 0.97 }}
       className={cn(
         "flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold font-mono transition-all",
-        active 
-          ? "border-primary/30 bg-primary/10" 
+        active
+          ? "border-primary/30 bg-primary/10"
           : "border-border/50 bg-transparent hover:bg-muted/50"
       )}
-      style={{ 
+      style={{
         borderColor: active && color ? color : undefined,
         color: active ? (color || "hsl(var(--primary))") : "hsl(var(--muted-foreground))"
       }}
@@ -565,7 +558,7 @@ function FilterTab({
   )
 }
 
-// ─── HEARTBEAT ──────────────────────────────────────────────
+// â”€â”€â”€ HEARTBEAT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Heartbeat() {
   return (
     <div className="flex items-center gap-2.5">
@@ -584,7 +577,7 @@ function Heartbeat() {
   )
 }
 
-// ─── MAIN COMPONENT ─────────────────────────────────────────
+// â”€â”€â”€ MAIN COMPONENT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 interface AnalysisTimelineProps {
   period?: string
   onExportAll?: (analyses: DashboardAnalysisItem[]) => void
@@ -643,15 +636,15 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
   // Filter by period
   const periodFiltered = useMemo(() => {
     if (!period) return analyses
-    
+
     const now = new Date()
     return analyses.filter(a => {
       const date = new Date(a.createdAt)
       if (isNaN(date.getTime())) return false
-      
+
       const diffMs = now.getTime() - date.getTime()
       const diffHours = diffMs / (1000 * 60 * 60)
-      
+
       if (period === "24h") return diffHours <= 24
       if (period === "week") return diffHours <= 24 * 7
       if (period === "month") return diffHours <= 24 * 30
@@ -669,7 +662,7 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
   const filtered = useMemo(() => {
     const query = searchQuery.trim().toLowerCase()
     if (!query) return statusFiltered
-    
+
     return statusFiltered.filter(a => {
       return (
         a.repo.toLowerCase().includes(query) ||
@@ -817,32 +810,32 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
         transition={{ delay: 0.25 }}
         className="flex gap-2 flex-wrap"
       >
-        <FilterTab 
-          label="All" 
-          active={filter === "all"} 
-          count={periodFiltered.length} 
-          onClick={() => setFilter("all")} 
+        <FilterTab
+          label="All"
+          active={filter === "all"}
+          count={periodFiltered.length}
+          onClick={() => setFilter("all")}
         />
-        <FilterTab 
-          label="Completed" 
-          active={filter === "COMPLETED"} 
-          count={totalCompleted} 
+        <FilterTab
+          label="Completed"
+          active={filter === "COMPLETED"}
+          count={totalCompleted}
           color="#34d399"
-          onClick={() => setFilter("COMPLETED")} 
+          onClick={() => setFilter("COMPLETED")}
         />
-        <FilterTab 
-          label="Failed" 
-          active={filter === "FAILED"} 
-          count={totalFailed} 
+        <FilterTab
+          label="Failed"
+          active={filter === "FAILED"}
+          count={totalFailed}
           color="#f87171"
-          onClick={() => setFilter("FAILED")} 
+          onClick={() => setFilter("FAILED")}
         />
-        <FilterTab 
-          label="Running" 
-          active={filter === "RUNNING"} 
-          count={totalRunning} 
+        <FilterTab
+          label="Running"
+          active={filter === "RUNNING"}
+          count={totalRunning}
           color="#60a5fa"
-          onClick={() => setFilter("RUNNING")} 
+          onClick={() => setFilter("RUNNING")}
         />
       </motion.div>
 
@@ -859,9 +852,9 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
             {groupOrder.map((gk, gi) => {
               const items = groups[gk]
               if (!items || items.length === 0) return null
-              
+
               const allItems = Object.values(groups).flat()
-              
+
               return (
                 <div key={gk}>
                   <GroupHeader label={groupLabel(gk)} count={items.length} index={gi} />
@@ -884,7 +877,7 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
                 </div>
               )
             })}
-            
+
             {filtered.length === 0 && (
               <div className="text-center py-16 text-muted-foreground">
                 <FileCode className="h-12 w-12 mx-auto mb-4 opacity-50" />

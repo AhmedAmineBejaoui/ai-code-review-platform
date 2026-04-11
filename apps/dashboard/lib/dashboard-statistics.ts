@@ -6,6 +6,8 @@
  */
 
 import { fetchDashboardAnalyses, type DashboardAnalysisItem } from "./dashboard-analyses"
+import { normalizeDashboardRunStatus as normalizeStatus } from "./domain/analysis-status"
+import { createPoller } from "./polling"
 
 // ============================================================================
 // Types
@@ -82,14 +84,6 @@ function getInitials(name: string): string {
     return parts[0].slice(0, 2).toUpperCase()
   }
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
-}
-
-function normalizeStatus(status: string): "completed" | "failed" | "running" {
-  const upper = status.toUpperCase()
-  if (upper === "COMPLETED" || upper === "DONE") return "completed"
-  if (upper === "FAILED") return "failed"
-  if (upper === "RUNNING" || upper === "QUEUED" || upper === "RECEIVED") return "running"
-  return "running"
 }
 
 function inferTags(repo: string, prLabel: string): string[] {
@@ -412,37 +406,16 @@ export function createDashboardStatisticsPoller(
   onUpdate: (stats: DashboardStatistics) => void,
   options?: { intervalMs?: number }
 ) {
-  const interval = options?.intervalMs ?? POLL_INTERVAL_MS
-  let timeoutId: ReturnType<typeof setTimeout> | null = null
-  let isRunning = false
-  
-  const poll = async () => {
-    if (!isRunning) return
-    
-    try {
+  return createPoller(
+    async () => {
       const stats = await fetchDashboardStatistics({ force: true })
       onUpdate(stats)
-    } catch (error) {
-      console.error("[dashboard-statistics-poller] Poll error:", error)
-    }
-    
-    if (isRunning) {
-      timeoutId = setTimeout(poll, interval)
-    }
-  }
-  
-  return {
-    start: () => {
-      if (isRunning) return
-      isRunning = true
-      poll()
     },
-    stop: () => {
-      isRunning = false
-      if (timeoutId) {
-        clearTimeout(timeoutId)
-        timeoutId = null
-      }
+    {
+      intervalMs: options?.intervalMs ?? POLL_INTERVAL_MS,
+      onError: (error) => {
+        console.error("[dashboard-statistics-poller] Poll error:", error)
+      },
     },
-  }
+  )
 }

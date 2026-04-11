@@ -55,11 +55,11 @@ export default function MonacoYEditor({
           setStatus("editor-unavailable")
           return
         }
-n        // Apply initial content if empty
+        // Apply initial content if empty
         if (ytext.length === 0 && initial) {
           ytext.insert(0, initial)
         }
-n        monacoBinding = new MonacoBinding(ytext, editor.getModel(), new Set([editor]), provider.awareness)
+        monacoBinding = new MonacoBinding(ytext, editor.getModel(), new Set([editor]), provider.awareness)
         // mark editor as dirty when local edits occur
         changeDisposable.current = editor.onDidChangeModelContent(() => {
           setDirty(true)
@@ -195,7 +195,7 @@ export default function MonacoYEditor({
       setStatus("missing-repo-info")
       return
     }
-n    const content = editorRef.current.editor.getValue()
+    const content = editorRef.current.editor.getValue()
     setStatus("saving")
     savingRef.current = true
     try {
