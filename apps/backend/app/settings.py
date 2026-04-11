@@ -278,6 +278,12 @@ class Settings(BaseSettings):
     TEAMS_WEBHOOK_URL: str | None = None
     TEAMS_DEFAULT_CHANNEL: str = "Code Reviews"
 
+    # ── Web Push Notifications ────────────────────────────────────────────────
+    PUSH_NOTIFICATIONS_ENABLED: bool = False
+    VAPID_PUBLIC_KEY: str | None = None
+    VAPID_PRIVATE_KEY: str | None = None
+    VAPID_SUBJECT: str | None = None
+
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 
     @property

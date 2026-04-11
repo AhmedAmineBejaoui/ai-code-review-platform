@@ -34,6 +34,8 @@ from app.api.http import (
     webhook_github,
     integrations,
 )
+from app.api.websockets import notifications as notifications_ws
+from app.api.websockets import review_sessions as review_sessions_ws
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
 
@@ -165,6 +167,8 @@ app.include_router(object_storage.router)
 app.include_router(integrations.router)
 app.include_router(project_roles.router)
 app.include_router(role_permissions.router)
+app.include_router(notifications_ws.router)
+app.include_router(review_sessions_ws.router)
 
 
 @app.get("/__routes")
