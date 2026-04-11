@@ -32,6 +32,7 @@ interface CodeEditorProps {
   branch: string
   filePath: string | null
   onSaved?: () => void
+  saveTrigger?: number
 }
 
 type EditorStatus = "idle" | "loading" | "saving" | "saved" | "error" | "conflict"
@@ -94,6 +95,7 @@ export function CodeEditor({
   branch,
   filePath,
   onSaved,
+  saveTrigger,
 }: CodeEditorProps) {
   const [content, setContent] = useState("")
   const [originalContent, setOriginalContent] = useState("")
@@ -102,6 +104,7 @@ export function CodeEditor({
   const [isDirty, setIsDirty] = useState(false)
   const [commitMessage, setCommitMessage] = useState("")
   const editorRef = useRef<unknown>(null)
+  const lastExternalSaveTrigger = useRef<number | undefined>(saveTrigger)
 
   // Load file content when filePath changes
   useEffect(() => {
@@ -231,6 +234,14 @@ export function CodeEditor({
     },
     [handleSave],
   )
+
+  // Allow parent components to trigger a real GitHub commit.
+  useEffect(() => {
+    if (saveTrigger === undefined) return
+    if (saveTrigger === lastExternalSaveTrigger.current) return
+    lastExternalSaveTrigger.current = saveTrigger
+    void handleSave()
+  }, [saveTrigger, handleSave])
 
   // Revert changes
   const handleRevert = useCallback(() => {
