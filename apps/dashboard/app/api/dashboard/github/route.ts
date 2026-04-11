@@ -23,7 +23,7 @@ import {
   listPullRequests,
   mergePullRequest,
   renamePath,
-  resolveGithubTokenForUser,
+  resolveGithubTokensForUser,
 } from "../../../../lib/github-client"
 
 export const dynamic = "force-dynamic"
@@ -133,43 +133,68 @@ function hasRepositoryWritePermission(repository: Awaited<ReturnType<typeof getR
 }
 
 async function ensureRepositoryAccess(params: {
-  token: string | null
+  tokenCandidates: string[]
   owner: string
   repo: string
   scope: ScopeContext
   requireWrite?: boolean
 }) {
-  const { token, owner, repo, scope, requireWrite = false } = params
-  if (!token) {
+  const { tokenCandidates, owner, repo, scope, requireWrite = false } = params
+  if (tokenCandidates.length === 0) {
     throw permissionError(
       "GitHub token not available. Connect your GitHub account in profile settings.",
     )
   }
-
-  const githubUser = await getGithubUser(token)
-  const username = githubUser?.login
-  if (!username) {
-    throw permissionError("GitHub user login could not be resolved.")
-  }
-
-  const allowed = await isUserAllowedInScope(token, username)
-  if (!allowed) {
-    throw permissionError("User is not a member of the allowed GitHub scope.")
-  }
-
   assertOwnerAllowedInScope(owner, scope)
+  let lastError: (Error & { status?: number; body?: unknown }) | null = null
 
-  const repository = await getRepository(owner, repo, token)
-  if (requireWrite && !hasRepositoryWritePermission(repository)) {
-    throw permissionError(
-      `Write access is required on ${owner}/${repo} for this action.`,
-    )
+  for (const token of tokenCandidates) {
+    try {
+      const githubUser = await getGithubUser(token)
+      const username = githubUser?.login
+      if (!username) {
+        continue
+      }
+
+      const allowed = await isUserAllowedInScope(token, username)
+      if (!allowed) {
+        lastError = permissionError(
+          "User is not a member of the allowed GitHub scope.",
+        )
+        continue
+      }
+
+      const repository = await getRepository(owner, repo, token)
+      if (requireWrite && !hasRepositoryWritePermission(repository)) {
+        lastError = permissionError(
+          `Write access is required on ${owner}/${repo} for this action.`,
+        )
+        continue
+      }
+
+      return {
+        repository,
+        username,
+        token,
+      }
+    } catch (error: unknown) {
+      lastError = error as Error & { status?: number; body?: unknown }
+    }
   }
 
-  return {
-    repository,
-    username,
+  if (lastError) {
+    const status = lastError.status ?? 403
+    const message =
+      status === 404
+        ? `Connected GitHub account cannot access ${owner}/${repo}. Reconnect the correct GitHub account in profile settings.`
+        : lastError.message
+    const err: Error & { status?: number; body?: unknown } = new Error(message)
+    err.status = status
+    err.body = lastError.body
+    throw err
   }
+
+  throw permissionError("GitHub authentication failed.")
 }
 
 export async function POST(request: NextRequest) {
@@ -193,7 +218,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 })
     }
 
-    const token = await resolveGithubTokenForUser(userId)
+    const tokenCandidates = await resolveGithubTokensForUser(userId)
     const scope: ScopeContext = {
       orgId: orgId ?? null,
       orgSlug: orgSlug ?? null,
@@ -210,14 +235,14 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
         const ref = str(payload.ref) || repository.default_branch || "main"
-        const tree = await getRepoTree(owner, repo, ref, token)
+        const tree = await getRepoTree(owner, repo, ref, accessToken)
         return NextResponse.json({ ok: true, tree }, { status: 200 })
       }
 
@@ -232,14 +257,14 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
         const ref = str(payload.ref) || repository.default_branch || "main"
-        const result = await fetchFileContent(owner, repo, path, ref, token)
+        const result = await fetchFileContent(owner, repo, path, ref, accessToken)
         return NextResponse.json({ ok: true, ...result }, { status: 200 })
       }
 
@@ -256,8 +281,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -274,7 +299,7 @@ export async function POST(request: NextRequest) {
             content,
             branch,
             message,
-            token,
+            token: accessToken,
           })
           return NextResponse.json({ ok: true, result }, { status: 200 })
         } catch (error: unknown) {
@@ -300,8 +325,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -316,7 +341,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -334,8 +359,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository, username } = await ensureRepositoryAccess({
-          token,
+        const { repository, username, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -351,7 +376,7 @@ export async function POST(request: NextRequest) {
             repo,
             newBranch,
             baseBranch: repository.default_branch || "main",
-            token,
+            token: accessToken,
           })
         } catch (error: unknown) {
           const err = error as { status?: number }
@@ -367,7 +392,7 @@ export async function POST(request: NextRequest) {
           content,
           branch: newBranch,
           message,
-          token,
+          token: accessToken,
         })
 
         return NextResponse.json(
@@ -387,8 +412,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -403,7 +428,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -420,8 +445,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -437,7 +462,7 @@ export async function POST(request: NextRequest) {
           newPath,
           branch,
           message,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -453,8 +478,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -469,7 +494,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -485,8 +510,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -500,7 +525,7 @@ export async function POST(request: NextRequest) {
           repo,
           newBranch,
           baseBranch,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -515,13 +540,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
-        const result = await listBranches(owner, repo, token)
+        const result = await listBranches(owner, repo, accessToken)
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
 
@@ -537,8 +562,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        const { repository } = await ensureRepositoryAccess({
-          token,
+        const { repository, token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -554,7 +579,7 @@ export async function POST(request: NextRequest) {
           head,
           base,
           body: bodyText,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -570,13 +595,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
-        const result = await listPullRequests(owner, repo, state, token)
+        const result = await listPullRequests(owner, repo, state, accessToken)
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
 
@@ -591,13 +616,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
-        const result = await getPullRequest(owner, repo, pullNumber, token)
+        const result = await getPullRequest(owner, repo, pullNumber, accessToken)
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
 
@@ -612,13 +637,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
-        const result = await getPullRequestFiles(owner, repo, pullNumber, token)
+        const result = await getPullRequestFiles(owner, repo, pullNumber, accessToken)
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
 
@@ -638,8 +663,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -651,7 +676,7 @@ export async function POST(request: NextRequest) {
           pullNumber,
           mergeMethod,
           commitTitle,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -669,8 +694,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -681,7 +706,7 @@ export async function POST(request: NextRequest) {
           pullNumber,
           event,
           body: bodyText,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -698,8 +723,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -709,7 +734,7 @@ export async function POST(request: NextRequest) {
           repo,
           issueNumber,
           body: bodyText,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -735,8 +760,8 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
@@ -749,7 +774,7 @@ export async function POST(request: NextRequest) {
           startLine,
           endLine,
           body: bodyText,
-          token,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -765,13 +790,13 @@ export async function POST(request: NextRequest) {
           )
         }
 
-        await ensureRepositoryAccess({
-          token,
+        const { token: accessToken } = await ensureRepositoryAccess({
+          tokenCandidates,
           owner,
           repo,
           scope,
         })
-        const result = await listPRComments(owner, repo, pullNumber, token)
+        const result = await listPRComments(owner, repo, pullNumber, accessToken)
         return NextResponse.json({ ok: true, ...result }, { status: 200 })
       }
 

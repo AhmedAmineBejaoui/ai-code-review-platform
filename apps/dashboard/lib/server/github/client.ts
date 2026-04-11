@@ -55,7 +55,7 @@ export function normalizeGithubError(
   }
 
   if (statusCode === 404) {
-    return `${baseMessage}. The user/organization may not exist or may be inaccessible.`
+    return `${baseMessage}. Resource not found (repository, branch, or file path may be inaccessible).`
   }
 
   return baseMessage

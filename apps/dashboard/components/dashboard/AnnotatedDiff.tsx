@@ -448,14 +448,14 @@ export function AnnotatedDiff() {
         const branches = Array.isArray(listBranchesData?.result)
           ? listBranchesData.result
           : []
-        const branchNames = branches
+        const branchNames = (branches as { name?: unknown }[])
           .map((branch) =>
             typeof branch?.name === "string" ? branch.name.trim() : "",
           )
           .filter((name): name is string => name.length > 0)
         const defaultBranch =
-          branchNames.find((name) => name === "main") ??
-          branchNames.find((name) => name === "master") ??
+          branchNames.find((name: string) => name === "main") ??
+          branchNames.find((name: string) => name === "master") ??
           branchNames[0] ??
           "main"
 
@@ -753,7 +753,7 @@ export function AnnotatedDiff() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[60vh] w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
+      <div className="flex h-full w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
         <Loader2 className="h-6 w-6 animate-spin text-[#7f77dd]" />
         <span className="ml-3 text-[#8b949e] text-sm">Chargement de l'analyse...</span>
       </div>
@@ -762,7 +762,7 @@ export function AnnotatedDiff() {
 
   if (!analysis) {
     return (
-      <div className="flex min-h-[60vh] w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
+      <div className="flex h-full w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
         <span className="text-[#8b949e]">Analyse non trouvée</span>
       </div>
     )
@@ -794,7 +794,7 @@ export function AnnotatedDiff() {
 
   return (
     <div
-      className="relative flex min-h-[calc(100vh-10rem)] w-full flex-col overflow-hidden rounded-xl border"
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border"
       style={{ background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif" }}
     >
 
@@ -1046,6 +1046,7 @@ export function AnnotatedDiff() {
                       filePath={selectedFilePath}
                       onSaved={handleEditorSaved}
                       saveTrigger={editorSaveTrigger}
+                      onBranchResolved={setActiveBranch}
                     />
                   )}
                 </div>

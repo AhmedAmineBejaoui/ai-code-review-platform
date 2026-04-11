@@ -5,7 +5,10 @@
  * handlers â€” NEVER import this from client components.
  */
 
-import { resolveGithubTokenForUser } from "./server/github/auth"
+import {
+  resolveGithubTokenForUser,
+  resolveGithubTokensForUser,
+} from "./server/github/auth"
 import {
   buildGithubHeaders,
   normalizeGithubError,
@@ -95,7 +98,7 @@ function toBlobTreeChange(change: GitTreeChange): Record<string, unknown> {
 
 // â”€â”€ Auth / token resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export { resolveGithubTokenForUser }
+export { resolveGithubTokenForUser, resolveGithubTokensForUser }
 
 // â”€â”€ User / scope checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

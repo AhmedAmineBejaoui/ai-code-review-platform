@@ -1151,6 +1151,7 @@ function MenuSection({
 export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
   const currentUser = useDashboardUser();
   const pathname = usePathname();
+  const isImmersiveDiffPage = pathname.startsWith("/dashboard/diff/");
   const [activeSection, setActiveSection] = useState(() => {
     // Determine initial section based on pathname
     if (pathname.startsWith("/dashboard/admin")) return "admin";
@@ -1291,8 +1292,17 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Main content */}
-        <main className="flex-1 mx-auto w-full max-w-[1200px] p-4 md:p-8">
-          <div className="animate-fade-in-up">{children}</div>
+        <main
+          className={cn(
+            "flex-1 mx-auto w-full",
+            isImmersiveDiffPage
+              ? "max-w-none p-2 md:p-4 min-h-0 overflow-hidden"
+              : "max-w-[1200px] p-4 md:p-8",
+          )}
+        >
+          <div className={cn("animate-fade-in-up", isImmersiveDiffPage && "h-full")}>
+            {children}
+          </div>
         </main>
       </div>
     </div>
