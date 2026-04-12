@@ -19,11 +19,13 @@ type CodeGraphVisualProps = {
 
 const labelPalette = [
   { text: 'auth system', color: '#f783a3' },
-  { text: 'user service', color: '#14b8a6' },
-  { text: 'remote_api_call()', color: '#f97316' },
-  { text: 'resolvePathAlias()', color: '#f59e0b' },
-  { text: 'mergeObjectProps()', color: '#38bdf8' },
-  { text: 'session_token_expiry()', color: '#fb7185' },
+  { text: 'user service', color: '#f783a3' },
+  { text: 'remote_api_call()', color: '#f24e1e' },
+  { text: 'resolvePathAlias()', color: '#f24e1e' },
+  { text: 'mergeObjectProps()', color: '#f24e1e' },
+  { text: 'session_token_expiry()', color: '#f24e1e' },
+  { text: 'client_side_render()', color: '#f24e1e' },
+  { text: 'cloneStateSnapshot()', color: '#f24e1e' },
 ];
 
 export function CodeGraphVisual({
@@ -179,6 +181,15 @@ export function CodeGraphVisual({
     };
 
     container.addEventListener('pointermove', onPointerMove);
+    const onPointerDown = () => {
+      container.style.cursor = 'grabbing';
+    };
+    const onPointerUp = () => {
+      container.style.cursor = 'grab';
+    };
+    container.addEventListener('pointerdown', onPointerDown);
+    container.addEventListener('pointerup', onPointerUp);
+    container.addEventListener('pointerleave', onPointerUp);
 
     const clock = new THREE.Clock();
     let frameId = 0;
@@ -219,6 +230,9 @@ export function CodeGraphVisual({
       window.cancelAnimationFrame(frameId);
       window.removeEventListener('resize', resize);
       container.removeEventListener('pointermove', onPointerMove);
+      container.removeEventListener('pointerdown', onPointerDown);
+      container.removeEventListener('pointerup', onPointerUp);
+      container.removeEventListener('pointerleave', onPointerUp);
       renderer.dispose();
       pointsGeometry.dispose();
       (points.material as THREE.Material).dispose();
@@ -234,14 +248,17 @@ export function CodeGraphVisual({
     <div
       ref={containerRef}
       className={cn(
-        'relative h-[360px] overflow-hidden rounded-[28px] border border-white/10 bg-[#06070b] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]',
-        compact && 'h-[300px]',
+        'relative flex h-[350px] w-full items-center justify-center overflow-x-visible',
+        'lg:h-[450px]',
+        compact && 'h-[300px] lg:h-[360px]',
         className,
       )}
     >
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(45,212,191,0.16),transparent_32%),radial-gradient(circle_at_80%_24%,rgba(244,114,182,0.16),transparent_26%),radial-gradient(circle_at_18%_82%,rgba(249,115,22,0.12),transparent_22%)]" />
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
-      <div className="pointer-events-none absolute inset-0">
+      <div className="absolute h-full min-h-[500px] w-full translate-x-[-50%] translate-y-[-50%] cursor-grab rounded-[28px] border border-white/10 bg-[#06070b] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] [left:50%] [top:50%]">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_40%,rgba(45,212,191,0.16),transparent_32%),radial-gradient(circle_at_80%_24%,rgba(244,114,182,0.16),transparent_26%),radial-gradient(circle_at_18%_82%,rgba(249,115,22,0.12),transparent_22%)]" />
+        <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
+      </div>
+      <div className="pointer-events-none absolute inset-0 h-full min-h-[500px]">
         {labelPalette.map((label, index) => (
           <div
             key={label.text}
@@ -249,13 +266,12 @@ export function CodeGraphVisual({
               labelRefs.current[index] = node;
             }}
             className={cn(
-              'absolute left-0 top-0 whitespace-nowrap rounded-full border border-white/10 px-3 py-1 text-[10px] font-medium tracking-[-0.02em] text-white shadow-[0_12px_30px_rgba(0,0,0,0.35)]',
-              compact ? 'text-[9px]' : 'text-[10px]',
+              'absolute left-0 top-0 whitespace-nowrap rounded-none px-[3px] py-[1px] text-[9px] font-medium tracking-[-0.02em] text-white shadow-[0_0_8px_rgba(0,0,0,0.25)]',
               monoClassName,
             )}
             style={{
-              backgroundColor: `${label.color}cc`,
-              boxShadow: `0 0 24px ${label.color}55`,
+              backgroundColor: label.color,
+              boxShadow: `0 0 8px ${label.color}33`,
               opacity: 0,
             }}
           >
