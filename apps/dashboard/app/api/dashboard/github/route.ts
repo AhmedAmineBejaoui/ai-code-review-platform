@@ -198,6 +198,9 @@ async function ensureRepositoryAccess(params: {
 }
 
 export async function POST(request: NextRequest) {
+  let __debug_action: string | null = null
+  let __debug_payload_summary: Record<string, unknown> | null = null
+
   try {
     const { userId, orgId, orgSlug } = await auth()
     if (!userId) {
@@ -214,6 +217,20 @@ export async function POST(request: NextRequest) {
       string,
       unknown
     >
+    // capture minimal debug info for server-side logs (do not include tokens)
+    __debug_action = action || null
+    __debug_payload_summary = {
+      owner: typeof payload.owner === "string" ? payload.owner : undefined,
+      repo: typeof payload.repo === "string" ? payload.repo : undefined,
+      path: typeof payload.path === "string" ? payload.path : undefined,
+      ref: typeof payload.ref === "string" ? payload.ref : undefined,
+      pullNumber:
+        typeof payload.pullNumber === "number"
+          ? payload.pullNumber
+          : typeof payload.pullNumber === "string" && /^\d+$/.test(String(payload.pullNumber))
+          ? Number(payload.pullNumber)
+          : undefined,
+    }
     if (!action) {
       return NextResponse.json({ error: "Missing action" }, { status: 400 })
     }
@@ -808,7 +825,17 @@ export async function POST(request: NextRequest) {
     }
   } catch (error: unknown) {
     const err = error as { status?: number; message?: string; body?: unknown }
-    console.error("dashboard github route error", err?.message ?? error)
+    // Log the error with a minimal, non-sensitive payload summary to help debugging
+    console.error(
+      "dashboard github route error",
+      err?.message ?? error,
+      {
+        action: __debug_action,
+        payloadSummary: __debug_payload_summary,
+        status: err?.status ?? null,
+      },
+    )
+
     return NextResponse.json(
       {
         error: err?.message ?? "Internal server error",

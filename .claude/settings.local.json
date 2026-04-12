@@ -27,7 +27,12 @@
       "Bash(grep -l \"router = APIRouter\" \"C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\apps\\\\backend\\\\app\\\\api\\\\http\"/*.py)",
       "Bash(xargs -I {} basename {})",
       "Bash(xxd \"C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/components/MonacoEditor.tsx\")",
-      "Bash(npx next:*)"
+      "Bash(npx next:*)",
+      "Bash(gh api:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx uipro-cli:*)",
+      "Bash(claude mcp:*)"
     ]
   }
 }
