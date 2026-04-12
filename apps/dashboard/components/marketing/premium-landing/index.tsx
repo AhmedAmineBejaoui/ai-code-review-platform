@@ -7,6 +7,7 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 
+import { CodeGraphVisual } from './code-graph-visual';
 import { PremiumNavbar } from './premium-navbar';
 
 type PremiumLandingPageProps = {
@@ -58,6 +59,10 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
         <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(73,82,127,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.14)_1px,transparent_1px)] [background-size:18px_18px]" />
         <div className="mx-auto max-w-6xl">
           <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">The leader in AI code reviews</h1>
+
+          <div className="mt-10 border border-white/10 bg-[#050711]/60 px-3 py-2 md:px-5 md:py-4">
+            <CodeGraphVisual monoClassName={monoClassName} />
+          </div>
 
           <div className="mt-12 border border-white/15 bg-[#070912]/75 p-4 md:p-6">
             <div className="grid gap-4 md:grid-cols-3">
