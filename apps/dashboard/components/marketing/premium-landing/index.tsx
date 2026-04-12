@@ -97,12 +97,41 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
 
       <section className="relative px-6 pb-20 pt-36">
         <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(73,82,127,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.14)_1px,transparent_1px)] [background-size:18px_18px]" />
-        <div className="relative mx-auto max-w-6xl text-center">
-          <p className={cn('text-lg text-[#17f0c4]', monoClassName)}>[ SHIP FASTER ]</p>
-          <h1 className="mt-4 text-6xl font-semibold tracking-[-0.04em] md:text-7xl">Your second pair of eyes.</h1>
-          <p className={cn('mx-auto mt-6 max-w-4xl text-2xl text-white/75 md:text-3xl', monoClassName)}>
-            Greptile automatically reviews PRs in GitHub and GitLab with full context of your codebase.
-          </p>
+        <div className="mx-auto max-w-6xl">
+          <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">The leader in AI code reviews</h1>
+
+          <div className="mt-10 border border-white/10 bg-[#050711]/60 px-3 py-2 md:px-5 md:py-4">
+            <CodeGraphVisual monoClassName={monoClassName} />
+          </div>
+
+          <div className="mt-12 border border-white/15 bg-[#070912]/75 p-4 md:p-6">
+            <div className="grid gap-4 md:grid-cols-3">
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-white/[0.03] p-8 text-center">
+                <p className="text-2xl">Most installed AI App</p>
+                <p className={cn('mt-6 text-4xl text-white/80', monoClassName)}>GitHub  GitLab</p>
+              </div>
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-[#04060f]">
+                <p className="text-8xl">3M</p>
+                <p className="text-4xl text-[#ff6a00]">Repositories</p>
+              </div>
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-[#04060f]">
+                <p className="text-8xl">75M</p>
+                <p className="text-4xl text-[#ff6a00]">Defects found</p>
+              </div>
+            </div>
+            <p className={cn('mt-8 text-center text-3xl text-[#17f0c4] underline', monoClassName)}>Why teams prefer CodeRabbit</p>
+          </div>
+
+          <p className={cn('mt-16 text-center text-6xl', monoClassName)}>Trusted by <span className="text-[#17f0c4]">15,000+</span> customers</p>
+          <div className="mt-10 grid grid-cols-2 gap-10 md:grid-cols-4">
+            {customerLogos.map((logo) => (
+              <div key={logo} className="text-center text-6xl font-semibold text-white/90">
+                {logo}
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Button asChild className="h-12 rounded-none border border-[#17f0c4] bg-[#17f0c4]/10 px-6 text-[#17f0c4] hover:bg-[#17f0c4]/20">
