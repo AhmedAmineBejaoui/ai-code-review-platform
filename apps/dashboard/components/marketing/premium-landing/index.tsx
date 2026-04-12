@@ -7,7 +7,9 @@ import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
 
+import { trustLogos } from './data';
 import { CodeGraphVisual } from './code-graph-visual';
+import { NeonHexVisual } from './neon-hex-visual';
 import { PremiumNavbar } from './premium-navbar';
 
 type PremiumLandingPageProps = {
@@ -98,6 +100,9 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       <section className="relative px-6 pb-20 pt-36">
         <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(73,82,127,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.14)_1px,transparent_1px)] [background-size:18px_18px]" />
         <div className="mx-auto max-w-6xl">
+          <div className="flex justify-center mb-10">
+            <NeonHexVisual className="w-44 h-44 md:w-56 md:h-56" />
+          </div>
           <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">The leader in AI code reviews</h1>
 
           <div className="mt-10 border border-white/10 bg-[#050711]/60 px-3 py-2 md:px-5 md:py-4">
@@ -124,14 +129,12 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
 
           <p className={cn('mt-16 text-center text-6xl', monoClassName)}>Trusted by <span className="text-[#17f0c4]">15,000+</span> customers</p>
           <div className="mt-10 grid grid-cols-2 gap-10 md:grid-cols-4">
-            {customerLogos.map((logo) => (
+            {trustLogos.map((logo) => (
               <div key={logo} className="text-center text-6xl font-semibold text-white/90">
                 {logo}
               </div>
             ))}
           </div>
-        </div>
-      </section>
 
           <div className="mt-10 flex flex-wrap items-center justify-center gap-4">
             <Button asChild className="h-12 rounded-none border border-[#17f0c4] bg-[#17f0c4]/10 px-6 text-[#17f0c4] hover:bg-[#17f0c4]/20">
@@ -165,6 +168,16 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             Greptile generates a detailed graph of your codebase and understands how everything fits together.
             Better understanding of your codebase = more bugs caught.
           </p>
+          <div className="mt-8 overflow-hidden border border-white/10 bg-black">
+            <video
+              src="/assets/context-type.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full"
+            />
+          </div>
           <div className="mt-8">
             <Link href="#" className={cn('inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
               Learn more <ArrowRight className="h-5 w-5" />
@@ -180,16 +193,52 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           <p className={cn('mt-4 text-xl text-white/75 md:text-2xl', monoClassName)}>
             Greptile is better when personalized to your team.
           </p>
+          <div className="mt-8 overflow-hidden border border-white/10 bg-black">
+            <video
+              src="/assets/final.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full"
+            />
+          </div>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {[
-              'Write a rule in English or point Greptile to a markdown file with your team\'s best practices.',
-              'Apply rules and context to specific repositories, file paths, or code patterns.',
-              'Analyze whether rules are being used by Greptile and actioned by the team.',
-            ].map((item) => (
-              <div key={item} className="border border-white/15 bg-[#0d0f1a] p-6">
-                <p className={cn('text-lg text-white/80', monoClassName)}>{item}</p>
+            <div className="border border-white/15 bg-[#0d0f1a] p-6">
+              <p className={cn('text-lg text-white/80', monoClassName)}>
+                Write a rule in English or point Greptile to a markdown file with your team&apos;s best practices.
+              </p>
+              <div className="mt-4 overflow-hidden border border-white/10 bg-black">
+                <video
+                  src="/assets/custom-context.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full"
+                />
               </div>
-            ))}
+            </div>
+            <div className="border border-white/15 bg-[#0d0f1a] p-6">
+              <p className={cn('text-lg text-white/80', monoClassName)}>
+                Apply rules and context to specific repositories, file paths, or code patterns.
+              </p>
+              <div className="mt-4 overflow-hidden border border-white/10 bg-black">
+                <video
+                  src="/assets/custom-context.mp4"
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full"
+                />
+              </div>
+            </div>
+            <div className="border border-white/15 bg-[#0d0f1a] p-6">
+              <p className={cn('text-lg text-white/80', monoClassName)}>
+                Analyze whether rules are being used by Greptile and actioned by the team.
+              </p>
+            </div>
           </div>
           <div className="mt-8">
             <Link href="#" className={cn('inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
@@ -262,6 +311,16 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
                 practices.
               </p>
             </article>
+          </div>
+          <div className="mt-6 overflow-hidden border border-white/10 bg-black">
+            <video
+              src="/assets/workflow.webm"
+              autoPlay
+              muted
+              loop
+              playsInline
+              className="w-full"
+            />
           </div>
         </div>
       </section>

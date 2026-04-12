@@ -1,10 +1,11 @@
 'use client';
 
 import { AnimatePresence, motion } from 'framer-motion';
-import { Menu, Sparkles } from 'lucide-react';
+import { Menu, Moon, Sparkles, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
 import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { useTheme } from 'next-themes';
 
 import { Button } from '@/components/ui/button';
 import { cn } from '@/components/ui/utils';
@@ -19,8 +20,11 @@ type PremiumNavbarProps = {
 export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const { theme, setTheme } = useTheme();
 
   useEffect(() => {
+    setMounted(true);
     const onScroll = () => setIsScrolled(window.scrollY > 20);
     onScroll();
     window.addEventListener('scroll', onScroll, { passive: true });
@@ -65,6 +69,16 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
           </div>
 
           <div className="hidden items-center gap-3 lg:flex">
+            {mounted && (
+              <button
+                type="button"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                aria-label="Toggle theme"
+                className="inline-flex h-9 w-9 items-center justify-center border border-white/15 bg-white/[0.04] text-white/75 transition-colors hover:bg-white/[0.10] hover:text-white"
+              >
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+            )}
             <SignedOut>
               <Button
                 asChild
@@ -99,14 +113,26 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
             </SignedIn>
           </div>
 
-          <button
-            type="button"
-            onClick={() => setIsOpen((open) => !open)}
-            className="inline-flex rounded-full border border-white/20 bg-[#101320] px-3 py-2 text-white shadow-sm transition hover:bg-[#171b2c] lg:hidden"
-            aria-label="Toggle navigation"
-          >
-            <Menu className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2 lg:hidden">
+            {mounted && (
+              <button
+                type="button"
+                onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')}
+                aria-label="Toggle theme"
+                className="inline-flex h-9 w-9 items-center justify-center border border-white/15 bg-white/[0.04] text-white/75 transition-colors hover:bg-white/[0.10] hover:text-white"
+              >
+                {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setIsOpen((open) => !open)}
+              className="inline-flex rounded-full border border-white/20 bg-[#101320] px-3 py-2 text-white shadow-sm transition hover:bg-[#171b2c]"
+              aria-label="Toggle navigation"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         <AnimatePresence>

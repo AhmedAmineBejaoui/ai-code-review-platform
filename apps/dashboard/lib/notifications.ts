@@ -145,49 +145,49 @@ function generateMessage(analysis: DashboardAnalysisItem): string {
   const repoName = analysis.repo.split("/").pop() || analysis.repo
 
   if (status === "FAILED") {
-    return `Analyse Ã©chouÃ©e sur ${repoName}`
+    return `Analyse échouée sur ${repoName}`
   }
 
   if (status === "COMPLETED") {
     if (analysis.blockerCount >= 3) {
-      return `${analysis.blockerCount} vulnÃ©rabilitÃ©s critiques sur ${repoName}`
+      return `${analysis.blockerCount} vulnérabilités critiques sur ${repoName}`
     }
     if (analysis.blockerCount > 0) {
-      return `${analysis.blockerCount} bloqueur(s) dÃ©tectÃ©(s) sur ${repoName}`
+      return `${analysis.blockerCount} bloqueur(s) détecté(s) sur ${repoName}`
     }
     if (analysis.warnCount > 5) {
       return `${analysis.warnCount} warnings sur ${analysis.prLabel || repoName}`
     }
-    return `Analyse terminÃ©e sur ${repoName}`
+    return `Analyse terminée sur ${repoName}`
   }
 
   if (status === "RUNNING") {
     return `Analyse en cours sur ${repoName}`
   }
 
-  return `Nouvelle PR dÃ©tectÃ©e: ${analysis.prLabel || repoName}`
+  return `Nouvelle PR détectée: ${analysis.prLabel || repoName}`
 }
 
 function generateTitle(type: NotificationType): string {
   switch (type) {
     case "vulnerability_detected":
-      return "VulnÃ©rabilitÃ© dÃ©tectÃ©e"
+      return "Vulnérabilité détectée"
     case "analysis_failed":
-      return "Analyse Ã©chouÃ©e"
+      return "Analyse échouée"
     case "blocker_found":
-      return "Bloqueur trouvÃ©"
+      return "Bloqueur trouvé"
     case "warning_found":
-      return "Warnings dÃ©tectÃ©s"
+      return "Warnings détectés"
     case "analysis_complete":
-      return "Analyse terminÃ©e"
+      return "Analyse terminée"
     case "review_assigned":
-      return "Review assignÃ©e"
+      return "Review assignée"
     case "review_completed":
-      return "Review complÃ©tÃ©e"
+      return "Review complétée"
     case "ai_review_complete":
-      return "Revue IA complÃ©tÃ©e"
+      return "Revue IA complétée"
     case "auto_approved":
-      return "PR approuvÃ©e automatiquement"
+      return "PR approuvée automatiquement"
     case "pr_detected":
       return "Nouvelle PR"
     default:
@@ -425,7 +425,7 @@ export async function fetchActivityFeed(options?: {
     } catch {
       return {
         ...defaultActivityFeedData,
-        error: "Erreur lors du chargement de l'activitÃ©",
+        error: "Erreur lors du chargement de l'activité",
       }
     }
   }

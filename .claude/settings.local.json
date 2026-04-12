@@ -32,7 +32,25 @@
       "WebFetch(domain:github.com)",
       "WebFetch(domain:raw.githubusercontent.com)",
       "Bash(npx uipro-cli:*)",
-      "Bash(claude mcp:*)"
+      "Bash(claude mcp:*)",
+      "Bash(npm run:*)",
+      "Bash(poetry lock:*)",
+      "Bash(poetry install:*)",
+      "Bash(tasklist)",
+      "Bash(taskkill:*)",
+      "Bash(cmd:*)",
+      "Bash(powershell:*)",
+      "Bash(poetry run:*)",
+      "Bash(grep:*)",
+      "Bash(xargs wc:*)",
+      "Bash(find . -name \"*.tsx\" -type f -exec file {} \\\\;)",
+      "Bash(python3:*)",
+      "Bash(python fix_encoding.py)",
+      "Bash(rm fix_encoding.py)",
+      "Bash(python check_enc.py)",
+      "Bash(rm check_enc.py)",
+      "Bash(python fix_enc.py)",
+      "Bash(rm fix_enc.py)"
     ]
   }
 }

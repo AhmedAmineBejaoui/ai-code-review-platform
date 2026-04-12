@@ -158,7 +158,7 @@ function getPriority(item: DashboardAnalysisItem): "high" | "medium" | "low" {
 }
 
 function formatTimeAgo(dateString: string): string {
-  if (!dateString) return "rÃ©cemment"
+  if (!dateString) return "récemment"
 
   const date = new Date(dateString)
   const now = new Date()
@@ -389,7 +389,7 @@ export async function fetchReviewerDashboardData(options?: {
     } catch {
       return {
         ...defaultReviewerDashboardData,
-        error: "Erreur lors du chargement des donnÃ©es reviewer",
+        error: "Erreur lors du chargement des données reviewer",
       }
     }
   }

@@ -176,22 +176,22 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
   const s = normalizeStatus(analysis.status);
 
   const statusConfig = {
-    COMPLETED: { dot: "bg-emerald-400", label: "ComplÃ©tÃ©", badgeBg: "bg-emerald-500/15 text-emerald-400" },
+    COMPLETED: { dot: "bg-emerald-400", label: "Complété", badgeBg: "bg-emerald-500/15 text-emerald-400" },
     RUNNING:   { dot: "bg-blue-400 animate-pulse", label: "En cours", badgeBg: "bg-blue-500/15 text-blue-400" },
-    FAILED:    { dot: "bg-red-400", label: "Ã‰chouÃ©", badgeBg: "bg-red-500/15 text-red-400" },
+    FAILED:    { dot: "bg-red-400", label: "Ã‰choué", badgeBg: "bg-red-500/15 text-red-400" },
     QUEUED:    { dot: "bg-zinc-500", label: "En attente", badgeBg: "bg-zinc-500/15 text-zinc-400" },
-    RECEIVED:  { dot: "bg-zinc-500", label: "ReÃ§u", badgeBg: "bg-zinc-500/15 text-zinc-400" },
+    RECEIVED:  { dot: "bg-zinc-500", label: "Reçu", badgeBg: "bg-zinc-500/15 text-zinc-400" },
   } as Record<string, { dot: string; label: string; badgeBg: string }>;
 
   const cfg = statusConfig[s] ?? statusConfig["QUEUED"];
 
   // Build mini AI insights list
   const insights: string[] = [];
-  if (analysis.blockerCount > 0) insights.push(`âš ï¸ ${analysis.blockerCount} problÃ¨me(s) bloquant(s) dÃ©tectÃ©(s)`);
-  if (analysis.warnCount > 0)    insights.push(`âš ï¸ ${analysis.warnCount} avertissement(s) Ã  corriger`);
-  if (analysis.infoCount > 0)    insights.push(`ðŸ’¡ ${analysis.infoCount} suggestion(s) d'amÃ©lioration`);
+  if (analysis.blockerCount > 0) insights.push(`âš ï¸ ${analysis.blockerCount} problème(s) bloquant(s) détecté(s)`);
+  if (analysis.warnCount > 0)    insights.push(`âš ï¸ ${analysis.warnCount} avertissement(s) à corriger`);
+  if (analysis.infoCount > 0)    insights.push(`ðŸ’¡ ${analysis.infoCount} suggestion(s) d'amélioration`);
   if (s === "COMPLETED" && analysis.blockerCount === 0 && analysis.warnCount === 0) {
-    insights.push("âœ… Code de qualitÃ© excellente, aucun problÃ¨me critique dÃ©tectÃ©");
+    insights.push("âœ… Code de qualité excellente, aucun problème critique détecté");
   }
   if (aiSummary) insights.unshift(`ðŸ¤– ${aiSummary}`);
 
@@ -382,7 +382,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                   <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
                       <Code2 className="size-4 text-zinc-500" />
-                      <span className="text-xs text-zinc-500 uppercase tracking-wider">RÃ©sultats</span>
+                      <span className="text-xs text-zinc-500 uppercase tracking-wider">Résultats</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <motion.div
@@ -695,11 +695,11 @@ export function DeveloperDashboard() {
           <h1 className="text-2xl font-bold text-white flex items-center gap-2">
             <span className="inline-block size-2 rounded-full bg-emerald-400 animate-pulse" />
             {isReviewer(currentUser.role) || currentUser.role === "admin"
-              ? "Vue d'ensemble de l'Ã©quipe"
-              : "Tableau de bord dÃ©veloppeur"}
+              ? "Vue d'ensemble de l'équipe"
+              : "Tableau de bord développeur"}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Analysez votre code avec l'IA â€” RAG-powered Â· RÃ©sultats en temps rÃ©el
+            Analysez votre code avec l'IA â€” RAG-powered · Résultats en temps réel
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -765,12 +765,12 @@ export function DeveloperDashboard() {
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm text-white">ActivitÃ© semaine</h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">Issues dÃ©tectÃ©s vs rÃ©solus</p>
+                <h3 className="text-sm text-white">Activité semaine</h3>
+                <p className="text-[11px] text-zinc-500 mt-0.5">Issues détectés vs résolus</p>
               </div>
               <div className="flex items-center gap-3 text-[10px]">
                 <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-violet-500" /><span className="text-zinc-500">Issues</span></div>
-                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">RÃ©solus</span></div>
+                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">Résolus</span></div>
               </div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
@@ -800,8 +800,8 @@ export function DeveloperDashboard() {
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.4, duration: 0.4 }}
             className="col-span-1 md:col-span-1 lg:col-span-3 3xl:col-span-3 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
-            <h3 className="text-sm text-white mb-1">SÃ©vÃ©ritÃ©</h3>
-            <p className="text-[11px] text-zinc-500 mb-2">RÃ©partition des issues</p>
+            <h3 className="text-sm text-white mb-1">Sévérité</h3>
+            <p className="text-[11px] text-zinc-500 mb-2">Répartition des issues</p>
             {pieData.length > 0 ? (
               <>
                 <ResponsiveContainer width="100%" height={130}>
@@ -824,7 +824,7 @@ export function DeveloperDashboard() {
               </>
             ) : (
               <div className="flex items-center justify-center h-[130px] text-xs text-zinc-600">
-                Aucune donnÃ©e
+                Aucune donnée
               </div>
             )}
           </motion.div>
@@ -848,7 +848,7 @@ export function DeveloperDashboard() {
               <GitPullRequest className="size-4 text-violet-400" />
               <h3 className="text-sm text-white">
                 {isReviewer(currentUser.role) || currentUser.role === "admin"
-                  ? "Analyses de l'Ã©quipe"
+                  ? "Analyses de l'équipe"
                   : "Vos analyses"}
               </h3>
               <Badge className="bg-zinc-800 text-zinc-400 border-0 text-[10px]">
@@ -859,9 +859,9 @@ export function DeveloperDashboard() {
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList className="bg-zinc-800/50 h-7 flex-shrink-0">
                   <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
-                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ“ ComplÃ©tÃ©s</TabsTrigger>
+                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ“ Complétés</TabsTrigger>
                   <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">â—Œ En cours</TabsTrigger>
-                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ— Ã‰chouÃ©s</TabsTrigger>
+                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ— Ã‰choués</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Link href="/dashboard/analyses">
@@ -878,7 +878,7 @@ export function DeveloperDashboard() {
             <span>Auteur</span>
             <span>Bloquants</span>
             <span>Warnings</span>
-            <span>DurÃ©e</span>
+            <span>Durée</span>
             <span>Score</span>
             <span />
           </div>
@@ -906,7 +906,7 @@ export function DeveloperDashboard() {
 
           {!insightsLoading && filteredRows.length === 0 && (
             <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 text-center text-sm text-zinc-600">
-              Aucune analyse trouvÃ©e pour ce filtre
+              Aucune analyse trouvée pour ce filtre
             </motion.div>
           )}
         </motion.div>
@@ -920,7 +920,7 @@ export function DeveloperDashboard() {
                   <Sparkles className="size-3.5 text-violet-400" />
                 </div>
                 <h3 className="text-sm text-white">
-                  {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs rÃ©centes"}
+                  {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs récentes"}
                 </h3>
               </div>
               <div className="divide-y divide-zinc-800/30">

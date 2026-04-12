@@ -363,13 +363,13 @@ export async function claimReviewAssignment(assignmentId: string): Promise<{ suc
     const data = await response.json().catch(() => ({}))
     return {
       success: false,
-      error: data.error ?? "Erreur lors de la rÃ©clamation de la review"
+      error: data.error ?? "Erreur lors de la réclamation de la review"
     }
   } catch (error) {
     console.error("[review-queue] Claim error:", error)
     return {
       success: false,
-      error: "Erreur rÃ©seau lors de la rÃ©clamation"
+      error: "Erreur réseau lors de la réclamation"
     }
   }
 }
@@ -389,7 +389,7 @@ export async function startReview(assignmentId: string): Promise<{ success: bool
     const data = await response.json().catch(() => ({}))
     return {
       success: false,
-      error: data.error ?? "Erreur lors du dÃ©marrage de la review"
+      error: data.error ?? "Erreur lors du démarrage de la review"
     }
   } catch (error) {
     console.error("[review-queue] Start error:", error)
@@ -419,7 +419,7 @@ export async function declineReviewAssignment(assignmentId: string, reason?: str
     console.error("[review-queue] Decline error:", error)
     return {
       success: false,
-      error: "Erreur rÃ©seau lors du refus"
+      error: "Erreur réseau lors du refus"
     }
   }
 }

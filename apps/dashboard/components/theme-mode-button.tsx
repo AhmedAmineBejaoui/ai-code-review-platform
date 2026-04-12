@@ -3,52 +3,20 @@
 import { AnimatePresence, motion } from "framer-motion"
 import { Moon, Sun } from "lucide-react"
 import { useEffect, useState } from "react"
+import { useTheme } from "next-themes"
 
 import { cn } from "@/lib/utils"
 
-type Theme = "light" | "dark"
-
-const STORAGE_KEY = "dashboard-theme"
-
-function detectInitialTheme(): Theme {
-  if (typeof window === "undefined") {
-    return "light"
-  }
-
-  const stored = window.localStorage.getItem(STORAGE_KEY)
-  if (stored === "dark" || stored === "light") {
-    return stored
-  }
-
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"
-}
-
-function applyTheme(theme: Theme): void {
-  document.documentElement.classList.toggle("dark", theme === "dark")
-}
-
 export function ThemeModeButton({ className }: { className?: string }) {
+  const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
-  const [theme, setTheme] = useState<Theme>("light")
 
   useEffect(() => {
-    const initial = detectInitialTheme()
-    setTheme(initial)
-    applyTheme(initial)
     setMounted(true)
   }, [])
 
-  useEffect(() => {
-    if (!mounted) {
-      return
-    }
-
-    applyTheme(theme)
-    window.localStorage.setItem(STORAGE_KEY, theme)
-  }, [theme, mounted])
-
-  const nextMode = theme === "dark" ? "Light Mode" : "Dark Mode"
   const isDark = theme === "dark"
+  const nextMode = isDark ? "Light Mode" : "Dark Mode"
 
   return (
     <motion.button
@@ -59,12 +27,12 @@ export function ThemeModeButton({ className }: { className?: string }) {
       aria-label={`Switch to ${nextMode}`}
       className={cn(
         "inline-flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-medium shadow-[0_8px_22px_-14px_rgba(2,6,23,0.65)]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400/60",
-        isDark ? "border-slate-700 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-700",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[--ring]/60",
+        "border-border bg-card text-foreground hover:bg-muted transition-colors",
         className
       )}
     >
-      <span className={cn("inline-flex h-6 w-6 items-center justify-center rounded-full", isDark ? "bg-slate-800" : "bg-slate-100")}>
+      <span className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-muted">
         <AnimatePresence mode="wait" initial={false}>
           {mounted && (
             <motion.span
@@ -85,7 +53,7 @@ export function ThemeModeButton({ className }: { className?: string }) {
         animate={{ opacity: 1 }}
         transition={{ duration: 0.25 }}
       >
-        {mounted ? nextMode : "Light Mode"}
+        {mounted ? nextMode : "Dark Mode"}
       </motion.span>
     </motion.button>
   )

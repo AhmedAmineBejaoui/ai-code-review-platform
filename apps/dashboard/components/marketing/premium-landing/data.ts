@@ -146,10 +146,10 @@ export const featureStories: FeatureStory[] = [
     id: 'learning',
     step: '04',
     eyebrow: 'Learning System',
-    label: 'Learns from your team’s feedback',
+    label: "Learns from your team's feedback",
     title: 'Accepted, rejected, and edited comments become signal',
     description:
-      'The reviewer keeps tuning itself to your team’s judgment instead of resetting every sprint.',
+      "The reviewer keeps tuning itself to your team's judgment instead of resetting every sprint.",
     supporting:
       'When seniors reword suggestions or reject noisy findings, Codebase AI adapts the next pass so review quality compounds over time.',
     bullets: [

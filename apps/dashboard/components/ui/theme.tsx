@@ -159,7 +159,7 @@ export function Theme({
   variant = "button",
   size = "md",
   showLabel = false,
-  themes = ["light", "dark", "system"],
+  themes = ["light", "dark"],
   className,
 }: ThemeToggleProps) {
   const { theme, setTheme } = useTheme()
@@ -185,33 +185,25 @@ export function Theme({
   if (!isMounted) return null
 
   if (variant === "button") {
-    function isTheme(value: unknown): value is Theme {
-      return (
-        typeof value === "string" && ["light", "dark", "system"].includes(value)
-      )
-    }
-
-    const safeTheme: Theme =
-      isTheme(theme) && themes.includes(theme) ? theme : "light"
-
-    const nextTheme = themes[(themes.indexOf(safeTheme) + 1) % themes.length]
-    const Icon = themeIcons[safeTheme]
+    const isDark = theme === "dark"
+    const Icon = isDark ? Moon : Sun
 
     return (
       <motion.button
-        onClick={() => setTheme(nextTheme)}
+        onClick={() => setTheme(isDark ? "light" : "dark")}
         className={cn(
           "inline-flex items-center justify-center gap-2 rounded-lg border transition-all duration-200",
           "border-border bg-card text-foreground",
-          "hover:scale-105 hover:bg-muted active:scale-95",
+          "hover:bg-muted active:scale-95",
           sizeClasses[size],
           className
         )}
         whileHover={{ scale: 1.05 }}
         whileTap={{ scale: 0.95 }}
+        title={isDark ? "Switch to Light mode" : "Switch to Dark mode"}
       >
         <motion.div
-          key={safeTheme}
+          key={theme}
           initial={{ rotate: -180, opacity: 0 }}
           animate={{ rotate: 0, opacity: 1 }}
           transition={{ duration: 0.3 }}
@@ -219,7 +211,7 @@ export function Theme({
           <Icon size={iconSizes[size]} />
         </motion.div>
         {showLabel && (
-          <span className="font-medium">{themeConfigs[safeTheme].label}</span>
+          <span className="font-medium">{isDark ? "Dark" : "Light"}</span>
         )}
       </motion.button>
     )
