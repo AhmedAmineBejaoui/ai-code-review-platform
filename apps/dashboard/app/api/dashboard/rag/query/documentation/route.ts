@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}))
     return proxyBackendRequest({
-      path: "/api/rag/query/documentation",
+      path: "/api/v1/rag/query/documentation",
       method: "POST",
       token: authResult.token,
       userId: authResult.userId,

@@ -10,7 +10,13 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.api.deps import get_analysis_service
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal, get_rbac_repo, require_permission
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    enforce_permission,
+    get_current_principal,
+    get_rbac_repo,
+    require_permission,
+)
 from app.core.review_intelligence.schemas import StructuredReviewOutput
 from app.core.services.analysis_service import (
     AnalysisService,
@@ -868,6 +874,13 @@ async def set_analysis_review_decision(
             code="UNAUTHORIZED",
             message="Missing authentication credentials",
         )
+
+    decision_permissions = {
+        "APPROVE": "reviews.approve",
+        "WARN": "reviews.warn",
+        "BLOCK": "reviews.block",
+    }
+    enforce_permission(principal, decision_permissions[payload.decision])
 
     decided_at = datetime.now(tz=timezone.utc).isoformat().replace("+00:00", "Z")
 

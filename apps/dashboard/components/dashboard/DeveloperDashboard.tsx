@@ -50,7 +50,11 @@ import {
   hasActiveDashboardAnalysis,
   type DashboardAnalysisItem,
 } from "@/lib/dashboard-analyses";
+import { computeWeeklyActivity } from "@/lib/dashboard-statistics";
+import { extractApiErrorMessage } from "@/lib/display";
+import { resolveProjectIdForRepo } from "@/lib/project-lookup";
 import { Badge } from "@/components/ui/badge";
+import { BADGE_SUCCESS, BADGE_WARNING, BADGE_ERROR, BADGE_SECONDARY } from "@/lib/design-tokens";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -76,15 +80,6 @@ type LaunchAnalysisResponse = {
   backend_response?: { message?: string; detail?: string };
 };
 
-const chartData = [
-  { day: "Lun", issues: 12, resolved: 8 },
-  { day: "Mar", issues: 18, resolved: 15 },
-  { day: "Mer", issues: 7, resolved: 6 },
-  { day: "Jeu", issues: 24, resolved: 20 },
-  { day: "Ven", issues: 15, resolved: 14 },
-  { day: "Sam", issues: 3, resolved: 3 },
-  { day: "Dim", issues: 9, resolved: 7 },
-];
 
 // â”€â”€ score helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function computeScore(analysis: DashboardAnalysisItem): number {
@@ -121,7 +116,7 @@ function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
         />
       </svg>
       <span className="absolute inset-0 flex items-center justify-center text-xs" style={{ color }}>
-        {score > 0 ? score : "â€”"}
+        {score > 0 ? score : "—"}
       </span>
     </div>
   );
@@ -152,10 +147,10 @@ function TypewriterText({ text, delay = 0 }: { text: string; delay?: number }) {
     <span>
       {displayed}
       {started && displayed.length < text.length && (
-        <motion.span
+          <motion.span
           animate={{ opacity: [1, 0] }}
           transition={{ repeat: Infinity, duration: 0.5 }}
-          className="inline-block w-[2px] h-3.5 bg-violet-400 ml-0.5 align-middle"
+          className="inline-block w-[2px] h-3.5 bg-orange ml-0.5 align-middle"
         />
       )}
     </span>
@@ -176,24 +171,24 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
   const s = normalizeStatus(analysis.status);
 
   const statusConfig = {
-    COMPLETED: { dot: "bg-emerald-400", label: "Complété", badgeBg: "bg-emerald-500/15 text-emerald-400" },
-    RUNNING:   { dot: "bg-blue-400 animate-pulse", label: "En cours", badgeBg: "bg-blue-500/15 text-blue-400" },
-    FAILED:    { dot: "bg-red-400", label: "Ã‰choué", badgeBg: "bg-red-500/15 text-red-400" },
-    QUEUED:    { dot: "bg-zinc-500", label: "En attente", badgeBg: "bg-zinc-500/15 text-zinc-400" },
-    RECEIVED:  { dot: "bg-zinc-500", label: "Reçu", badgeBg: "bg-zinc-500/15 text-zinc-400" },
-  } as Record<string, { dot: string; label: string; badgeBg: string }>;
+    COMPLETED: { dot: "bg-[color:var(--green-status)]", label: "Complété", variant: BADGE_SUCCESS },
+    RUNNING:   { dot: "bg-teal-400 animate-pulse", label: "En cours", variant: BADGE_WARNING },
+    FAILED:    { dot: "bg-destructive", label: "Échoué", variant: BADGE_ERROR },
+    QUEUED:    { dot: "bg-muted-foreground", label: "En attente", variant: BADGE_SECONDARY },
+    RECEIVED:  { dot: "bg-muted-foreground", label: "Reçu", variant: BADGE_SECONDARY },
+  } as Record<string, { dot: string; label: string; variant: string }>;
 
   const cfg = statusConfig[s] ?? statusConfig["QUEUED"];
 
   // Build mini AI insights list
   const insights: string[] = [];
-  if (analysis.blockerCount > 0) insights.push(`âš ï¸ ${analysis.blockerCount} problème(s) bloquant(s) détecté(s)`);
-  if (analysis.warnCount > 0)    insights.push(`âš ï¸ ${analysis.warnCount} avertissement(s) à corriger`);
-  if (analysis.infoCount > 0)    insights.push(`ðŸ’¡ ${analysis.infoCount} suggestion(s) d'amélioration`);
+  if (analysis.blockerCount > 0) insights.push(`⚠️ ${analysis.blockerCount} problème(s) bloquant(s) détecté(s)`);
+  if (analysis.warnCount > 0)    insights.push(`⚠️ ${analysis.warnCount} avertissement(s) à corriger`);
+  if (analysis.infoCount > 0)    insights.push(`💡 ${analysis.infoCount} suggestion(s) d'amélioration`);
   if (s === "COMPLETED" && analysis.blockerCount === 0 && analysis.warnCount === 0) {
-    insights.push("âœ… Code de qualité excellente, aucun problème critique détecté");
+    insights.push("✅ Code de qualité excellente, aucun problème critique détecté");
   }
-  if (aiSummary) insights.unshift(`ðŸ¤– ${aiSummary}`);
+  if (aiSummary) insights.unshift(`🤖 ${aiSummary}`);
 
   return (
     <motion.div
@@ -223,7 +218,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           <div className="flex items-center gap-2.5 min-w-0">
             <div
               className={`size-7 rounded-full flex items-center justify-center text-[10px] shrink-0 ${
-                s === "FAILED" ? "bg-red-500/15 text-red-400" : "bg-violet-500/15 text-violet-300"
+              s === "FAILED" ? "bg-red-500/15 text-destructive" : "bg-orange/15 text-orange"
               }`}
             >
               {(analysis.author?.slice(0, 2) ?? "??").toUpperCase()}
@@ -232,18 +227,18 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <div className="flex items-center gap-2">
                 <span className="text-sm text-white truncate">{analysis.repo}</span>
                 {analysis.prLabel && analysis.prLabel !== "Commit" && (
-                  <Badge className="bg-violet-500/10 text-violet-300 border-0 text-[10px] px-1.5 py-0">
+                <Badge className="bg-orange/10 text-orange border-0 text-[10px] px-1.5 py-0">
                     {analysis.prLabel}
                   </Badge>
                 )}
-                <Badge className={`${cfg.badgeBg} border-0 text-[10px] px-1.5 py-0`}>
+                <Badge variant={cfg.variant as "success" | "warning" | "error" | "secondary"} className="border-0 text-[10px] px-1.5 py-0">
                   {cfg.label}
                 </Badge>
               </div>
               <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
                 <GitPullRequest className="size-3" />
                 <span className="font-mono text-zinc-600 truncate">
-                  {analysis.commitSha ? analysis.commitSha.slice(0, 8) : "â€”"}
+                  {analysis.commitSha ? analysis.commitSha.slice(0, 8) : "—"}
                 </span>
               </div>
             </div>
@@ -258,8 +253,8 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           {/* Blockers */}
           {analysis.blockerCount > 0 ? (
             <div className="flex items-center gap-1 bg-red-500/10 px-2 py-0.5 rounded-full">
-              <ShieldAlert className="size-3 text-red-400" />
-              <span className="text-[11px] text-red-400">{analysis.blockerCount}</span>
+              <ShieldAlert className="size-3 text-destructive" />
+              <span className="text-[11px] text-destructive">{analysis.blockerCount}</span>
             </div>
           ) : null}
           {/* Warnings */}
@@ -272,7 +267,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           {/* Duration */}
           <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
             <Clock className="size-3" />
-            {analysis.durationLabel ?? "â€”"}
+            {analysis.durationLabel ?? "—"}
           </div>
           <ScoreRing score={score} size={36} />
         </div>
@@ -285,11 +280,11 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               animate={{ scale: [1, 1.05, 1] }}
               transition={{ repeat: Infinity, duration: 2 }}
             >
-              <ShieldAlert className="size-3 text-red-400" />
-              <span className="text-[11px] text-red-400">{analysis.blockerCount}</span>
+              <ShieldAlert className="size-3 text-destructive" />
+              <span className="text-[11px] text-destructive">{analysis.blockerCount}</span>
             </motion.div>
           ) : (
-            <span className="text-xs text-zinc-700">â€”</span>
+            <span className="text-xs text-zinc-700">—</span>
           )}
         </div>
 
@@ -301,14 +296,14 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <span className="text-[11px] text-amber-400">{analysis.warnCount}</span>
             </div>
           ) : (
-            <span className="text-xs text-zinc-700">â€”</span>
+            <span className="text-xs text-zinc-700">—</span>
           )}
         </div>
 
         {/* Duration - tablet+ only */}
         <div className="hidden md:flex items-center gap-1.5 text-[11px] text-zinc-500">
           <Clock className="size-3" />
-          {analysis.durationLabel ?? "â€”"}
+          {analysis.durationLabel ?? "—"}
         </div>
 
         {/* Score ring - tablet+ only (mobile shows inline) */}
@@ -341,17 +336,17 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                 <div className="lg:col-span-7">
                   <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
-                      <div className="size-6 rounded-lg bg-violet-500/20 flex items-center justify-center">
-                        <Sparkles className="size-3.5 text-violet-400" />
-                      </div>
-                      <span className="text-xs text-violet-300 uppercase tracking-wider">Analyse IA</span>
+                    <div className="size-6 rounded-lg bg-orange/20 flex items-center justify-center">
+                      <Sparkles className="size-3.5 text-orange" />
+                    </div>
+                      <span className="text-xs text-orange uppercase tracking-wider">Analyse IA</span>
                       <div className="ml-auto flex items-center gap-1">
                         <motion.div
                           animate={{ opacity: [0.5, 1, 0.5] }}
                           transition={{ repeat: Infinity, duration: 1.5 }}
-                          className="size-1.5 rounded-full bg-violet-400"
+                          className="size-1.5 rounded-full bg-orange"
                         />
-                        <span className="text-[10px] text-violet-400/60">RAG</span>
+                        <span className="text-[10px] text-orange/60">RAG</span>
                       </div>
                     </div>
 
@@ -391,7 +386,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                         transition={{ delay: 0.1 }}
                         className="bg-zinc-950/60 rounded-lg p-3 text-center"
                       >
-                        <ShieldAlert className="size-4 text-red-400 mx-auto mb-1" />
+                        <ShieldAlert className="size-4 text-destructive mx-auto mb-1" />
                         <p className="text-lg text-white">{analysis.blockerCount}</p>
                         <p className="text-[9px] text-zinc-600 uppercase">Bloquants</p>
                       </motion.div>
@@ -411,8 +406,8 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                         transition={{ delay: 0.3 }}
                         className="bg-zinc-950/60 rounded-lg p-3 text-center"
                       >
-                        <FileCode className="size-4 text-blue-400 mx-auto mb-1" />
-                        <p className="text-lg text-blue-400">{analysis.infoCount}</p>
+                        <FileCode className="size-4 text-teal-400 mx-auto mb-1" />
+                        <p className="text-lg text-teal-400">{analysis.infoCount}</p>
                         <p className="text-[9px] text-zinc-600 uppercase">Infos</p>
                       </motion.div>
                     </div>
@@ -477,6 +472,7 @@ export function DeveloperDashboard() {
   // Use ref to track analysisRows for polling interval without causing re-renders
   const analysisRowsRef = useRef<DashboardAnalysisItem[]>(analysisRows);
   analysisRowsRef.current = analysisRows;
+  const chartData = useMemo(() => computeWeeklyActivity(analysisRows), [analysisRows]);
 
   // â”€â”€ derived metrics (memoized) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { totalErrors, totalWarnings, completedCount, avgScore, totalInfo, okCount } = useMemo(() => {
@@ -502,7 +498,7 @@ export function DeveloperDashboard() {
     { name: "Bloquant", value: totalErrors, color: "#ef4444" },
     { name: "Warning", value: totalWarnings, color: "#eab308" },
     { name: "Info", value: totalInfo, color: "#22c55e" },
-    { name: "OK", value: okCount, color: "#3b82f6" },
+    { name: "OK", value: okCount, color: "#17f0c4" },
   ].filter((d) => d.value > 0), [totalErrors, totalWarnings, totalInfo, okCount]);
 
   const summaryByAnalysisId = useMemo(() => Object.fromEntries(
@@ -510,8 +506,8 @@ export function DeveloperDashboard() {
   ), [insights.prSummaries]);
 
   const metrics = useMemo(() => [
-    { label: "Score moyen", value: avgScore, suffix: "/100", icon: TrendingUp, color: "text-violet-400", bg: "from-violet-500/10 to-violet-500/5", glow: "shadow-violet-500/5", trend: "+12%", trendUp: true },
-    { label: "Erreurs critiques", value: totalErrors, icon: ShieldAlert, color: "text-red-400", bg: "from-red-500/10 to-red-500/5", glow: "shadow-red-500/5", trend: `-${totalErrors > 0 ? 1 : 0}`, trendUp: true },
+    { label: "Score moyen", value: avgScore, suffix: "/100", icon: TrendingUp, color: "text-orange", bg: "from-orange/10 to-orange/5", glow: "shadow-orange/5", trend: "+12%", trendUp: true },
+    { label: "Erreurs critiques", value: totalErrors, icon: ShieldAlert, color: "text-destructive", bg: "from-red-500/10 to-red-500/5", glow: "shadow-red-500/5", trend: `-${totalErrors > 0 ? 1 : 0}`, trendUp: true },
     { label: "Warnings", value: totalWarnings, icon: AlertTriangle, color: "text-amber-400", bg: "from-amber-500/10 to-amber-500/5", glow: "shadow-amber-500/5", trend: `+${totalWarnings}`, trendUp: false },
     { label: "Analyses OK", value: completedCount, suffix: `/${analysisRows.length}`, icon: CheckCircle2, color: "text-emerald-400", bg: "from-emerald-500/10 to-emerald-500/5", glow: "shadow-emerald-500/5", trend: `${analysisRows.length > 0 ? Math.round((completedCount / analysisRows.length) * 100) : 0}%`, trendUp: true },
   ], [avgScore, totalErrors, totalWarnings, completedCount, analysisRows.length]);
@@ -603,15 +599,18 @@ export function DeveloperDashboard() {
     if (!normalizedDiff && !isGithubRemoteMode) { setFormError("Selectionnez un repository GitHub ou collez un diff avant de lancer l'analyse."); return; }
     setIsSubmittingAnalysis(true);
     try {
+      const resolvedProjectId = await resolveProjectIdForRepo(normalizedRepo);
+      if (!resolvedProjectId) {
+        throw new Error("Projet introuvable: importez ce repository avant de lancer l'analyse.");
+      }
       const response = await fetch("/api/dashboard/analyses", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           repo: normalizedRepo,
-          // project_id matches the convention in /api/v1/repositories/import-full
-          // where project_id = lower(full_name). If the repo hasn't been imported
-          // yet, the backend will return a clear "project not found" error.
-          project_id: normalizedRepo.toLowerCase(),
+          // Resolve the canonical project_profiles.id so the backend can satisfy
+          // the analyses.project_id foreign key.
+          project_id: resolvedProjectId,
           pr_number: parsedPrNumber,
           commit_sha: normalizedCommitSha.length > 0 ? normalizedCommitSha : null,
           diff_text: normalizedDiff.length > 0 ? normalizedDiff : null,
@@ -672,7 +671,9 @@ export function DeveloperDashboard() {
       const payload = await fetchGithubRepos();
       setGithubRepos(payload.items);
       setGithubConnected(payload.connected);
-      if (payload.error) setGithubReposError(payload.error);
+      if (payload.error) {
+        setGithubReposError(extractApiErrorMessage(payload, "Chargement des repositories GitHub impossible."));
+      }
     } catch (error) {
       setGithubRepos([]);
       setGithubConnected(false);
@@ -699,7 +700,7 @@ export function DeveloperDashboard() {
               : "Tableau de bord développeur"}
           </h1>
           <p className="text-sm text-zinc-500 mt-1">
-            Analysez votre code avec l'IA â€” RAG-powered · Résultats en temps réel
+            Analysez votre code avec l'IA — RAG-powered · Résultats en temps réel
           </p>
         </div>
         <div className="flex items-center gap-3">
@@ -708,7 +709,7 @@ export function DeveloperDashboard() {
               size="sm"
               onClick={openLaunchDialog}
               disabled={isSubmittingAnalysis}
-              className="bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white border-0 shadow-lg shadow-violet-500/20 h-8 text-xs"
+              className="bg-orange hover:bg-orange-light text-white border-0 shadow-lg shadow-[0_12px_30px_var(--orange-glow)] h-8 text-xs"
             >
               <Plus className="size-3.5 mr-1.5" />
               Nouvelle analyse
@@ -743,8 +744,8 @@ export function DeveloperDashboard() {
                 <motion.div whileHover={{ rotate: 12 }} transition={{ type: "spring", stiffness: 300 }}>
                   <metric.icon className={`size-5 ${metric.color}`} />
                 </motion.div>
-                <span className={`text-[11px] px-2 py-0.5 rounded-full ${metric.trendUp ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-red-400"}`}>
-                  {metric.trendUp ? "â†—" : "â†˜"} {metric.trend}
+                <span className={`text-[11px] px-2 py-0.5 rounded-full ${metric.trendUp ? "bg-emerald-500/10 text-emerald-400" : "bg-red-500/10 text-destructive"}`}>
+                  {metric.trendUp ? "↗" : "↘"} {metric.trend}
                 </span>
               </div>
               <div className="text-3xl text-white flex items-baseline gap-0.5">
@@ -769,7 +770,7 @@ export function DeveloperDashboard() {
                 <p className="text-[11px] text-zinc-500 mt-0.5">Issues détectés vs résolus</p>
               </div>
               <div className="flex items-center gap-3 text-[10px]">
-                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-violet-500" /><span className="text-zinc-500">Issues</span></div>
+                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-orange" /><span className="text-zinc-500">Issues</span></div>
                 <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">Résolus</span></div>
               </div>
             </div>
@@ -777,8 +778,8 @@ export function DeveloperDashboard() {
               <AreaChart data={chartData}>
                 <defs>
                   <linearGradient id="issuesG" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#e8713a" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#e8713a" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="resolvedG" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22c55e" stopOpacity={0.2} />
@@ -789,7 +790,7 @@ export function DeveloperDashboard() {
                 <XAxis dataKey="day" tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} width={25} />
                 <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "10px", fontSize: "11px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }} labelStyle={{ color: "#a1a1aa" }} />
-                <Area type="monotone" dataKey="issues" stroke="#8b5cf6" fill="url(#issuesG)" strokeWidth={2} />
+                <Area type="monotone" dataKey="issues" stroke="#e8713a" fill="url(#issuesG)" strokeWidth={2} />
                 <Area type="monotone" dataKey="resolved" stroke="#22c55e" fill="url(#resolvedG)" strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
@@ -845,7 +846,7 @@ export function DeveloperDashboard() {
         >
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-zinc-800/60 gap-3 sm:gap-0">
             <div className="flex items-center gap-3">
-              <GitPullRequest className="size-4 text-violet-400" />
+              <GitPullRequest className="size-4 text-orange" />
               <h3 className="text-sm text-white">
                 {isReviewer(currentUser.role) || currentUser.role === "admin"
                   ? "Analyses de l'équipe"
@@ -859,9 +860,9 @@ export function DeveloperDashboard() {
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
                 <TabsList className="bg-zinc-800/50 h-7 flex-shrink-0">
                   <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
-                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ“ Complétés</TabsTrigger>
-                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">â—Œ En cours</TabsTrigger>
-                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">âœ— Ã‰choués</TabsTrigger>
+                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✓ Complétés</TabsTrigger>
+                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">◌ En cours</TabsTrigger>
+                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✗ Échoués</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Link href="/dashboard/analyses">
@@ -916,8 +917,8 @@ export function DeveloperDashboard() {
           <motion.div initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.7, duration: 0.4 }}>
             <div className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden">
               <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-800/60">
-                <div className="size-6 rounded-lg bg-violet-500/20 flex items-center justify-center">
-                  <Sparkles className="size-3.5 text-violet-400" />
+                <div className="size-6 rounded-lg bg-orange/20 flex items-center justify-center">
+                  <Sparkles className="size-3.5 text-orange" />
                 </div>
                 <h3 className="text-sm text-white">
                   {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs récentes"}
@@ -933,12 +934,12 @@ export function DeveloperDashboard() {
                     className="px-5 py-4 hover:bg-zinc-800/20 transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-2">
-                      <Badge className="bg-violet-500/10 text-violet-300 border-0 text-[10px] px-2">{summary.repo}</Badge>
+                      <Badge className="bg-orange/10 text-orange border-0 text-[10px] px-2">{summary.repo}</Badge>
                       <Badge className="bg-zinc-800 text-zinc-400 border-0 text-[10px] px-2">
                         {summary.prNumber ? `PR #${summary.prNumber}` : (summary.commitSha ?? "Commit")}
                       </Badge>
-                      <Badge className={`border-0 text-[10px] px-2 capitalize ${summary.status === "COMPLETED" ? "bg-emerald-500/15 text-emerald-400" : summary.status === "FAILED" ? "bg-red-500/15 text-red-400" : "bg-zinc-700 text-zinc-400"}`}>
-                        {summary.status?.toLowerCase() ?? "â€”"}
+                      <Badge className={`border-0 text-[10px] px-2 capitalize ${summary.status === "COMPLETED" ? "bg-[color:var(--green-status)]/15 text-[color:var(--green-status)]" : summary.status === "FAILED" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
+                        {summary.status?.toLowerCase() ?? "—"}
                       </Badge>
                       {summary.createdAt && (
                         <span className="text-[10px] text-zinc-600 ml-auto">
@@ -960,13 +961,13 @@ export function DeveloperDashboard() {
         <DialogContent className="sm:max-w-3xl bg-zinc-900 border-zinc-800 text-white">
           <DialogHeader>
             <DialogTitle className="text-white">Lancer une nouvelle analyse</DialogTitle>
-            <DialogDescription className="text-zinc-400">
-              Selectionnez un repository GitHub ou collez un diff pour lancer l'analyse.
-            </DialogDescription>
+              <DialogDescription className="text-zinc-400">
+              Sélectionnez un repository GitHub ou collez un diff pour lancer l'analyse.
+              </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="analysis-repo-select" className="text-zinc-300">Repository GitHub (compte connecte)</Label>
+              <Label htmlFor="analysis-repo-select" className="text-zinc-300">Repository GitHub (compte connecté)</Label>
               <Select
                 value={githubRepoSelection}
                 onValueChange={(value) => {
@@ -981,14 +982,14 @@ export function DeveloperDashboard() {
                   <SelectItem value="manual" className="text-zinc-200">Saisie manuelle</SelectItem>
                   {githubRepos.map((repo) => (
                     <SelectItem key={repo.id} value={repo.fullName} className="text-zinc-200">
-                      {repo.fullName}{repo.private ? " (prive)" : ""}
+                      {repo.fullName}{repo.private ? " (privé)" : ""}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
               {githubReposError && <p className="text-xs text-amber-400">{githubReposError}</p>}
               {githubConnected === false && !githubReposError && (
-                <p className="text-xs text-zinc-500">Aucun compte GitHub connecte detecte pour cet utilisateur.</p>
+                <p className="text-xs text-zinc-500">Aucun compte GitHub connecté détecté pour cet utilisateur.</p>
               )}
             </div>
             <div className="grid gap-2">
@@ -1007,7 +1008,7 @@ export function DeveloperDashboard() {
             </div>
             <div className="grid gap-2 md:grid-cols-2 md:gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="analysis-pr" className="text-zinc-300">Numero PR (optionnel)</Label>
+                <Label htmlFor="analysis-pr" className="text-zinc-300">Numéro PR (optionnel)</Label>
                 <Input id="analysis-pr" placeholder="ex: 456" value={prNumberInput} onChange={(e) => setPrNumberInput(e.target.value)} className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600" />
               </div>
               <div className="grid gap-2">
@@ -1021,7 +1022,7 @@ export function DeveloperDashboard() {
                 id="analysis-diff"
                 value={diffInput}
                 onChange={(e) => setDiffInput(e.target.value)}
-                placeholder="Importez un dossier ou collez un diff unifie (.patch/.diff)."
+                placeholder="Importez un dossier ou collez un diff unifié (.patch/.diff)."
                 className="min-h-[200px] font-mono text-xs bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600"
               />
             </div>
@@ -1030,7 +1031,7 @@ export function DeveloperDashboard() {
             <Button variant="outline" onClick={() => setAnalysisDialogOpen(false)} className="border-zinc-700 hover:bg-zinc-800 text-zinc-300">
               Annuler
             </Button>
-            <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis} className="bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 text-white border-0">
+            <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis} className="bg-orange hover:bg-orange-light text-white border-0">
               {isSubmittingAnalysis ? <Loader2 className="size-4 animate-spin mr-1.5" /> : <Play className="size-4 mr-1.5" />}
               {isSubmittingAnalysis ? "Lancement..." : "Lancer une analyse"}
             </Button>

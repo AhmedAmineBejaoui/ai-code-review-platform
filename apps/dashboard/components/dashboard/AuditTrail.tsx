@@ -207,7 +207,7 @@ export function AuditTrail({ resourceType, resourceId, title, className }: Audit
     return (
       <Card className={className}>
         <CardContent className="p-6">
-          <div className="text-center text-red-600">
+          <div className="text-center text-destructive">
             <p>Erreur: {error}</p>
             <Button
               variant="outline"

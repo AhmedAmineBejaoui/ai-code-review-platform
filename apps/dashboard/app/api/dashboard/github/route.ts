@@ -23,6 +23,7 @@ import {
   listPullRequests,
   mergePullRequest,
   renamePath,
+  resolveGithubInstallationToken,
   resolveGithubTokensForUser,
 } from "../../../../lib/github-client"
 
@@ -134,17 +135,28 @@ function hasRepositoryWritePermission(repository: Awaited<ReturnType<typeof getR
 
 async function ensureRepositoryAccess(params: {
   tokenCandidates: string[]
+  installationToken?: string | null
   owner: string
   repo: string
   scope: ScopeContext
   requireWrite?: boolean
 }) {
-  const { tokenCandidates, owner, repo, scope, requireWrite = false } = params
+  const {
+    tokenCandidates,
+    installationToken,
+    owner,
+    repo,
+    scope,
+    requireWrite = false,
+  } = params
   if (tokenCandidates.length === 0) {
-    throw permissionError(
-      "GitHub token not available. Connect your GitHub account in profile settings.",
-    )
+    if (!installationToken) {
+      throw permissionError(
+        "GitHub token not available. Connect your GitHub account in profile settings.",
+      )
+    }
   }
+
   assertOwnerAllowedInScope(owner, scope)
   let lastError: (Error & { status?: number; body?: unknown }) | null = null
 
@@ -176,6 +188,19 @@ async function ensureRepositoryAccess(params: {
         repository,
         username,
         token,
+      }
+    } catch (error: unknown) {
+      lastError = error as Error & { status?: number; body?: unknown }
+    }
+  }
+
+  if (installationToken) {
+    try {
+      const repository = await getRepository(owner, repo, installationToken)
+      return {
+        repository,
+        username: "github-app",
+        token: installationToken,
       }
     } catch (error: unknown) {
       lastError = error as Error & { status?: number; body?: unknown }
@@ -236,6 +261,7 @@ export async function POST(request: NextRequest) {
     }
 
     const tokenCandidates = await resolveGithubTokensForUser(userId)
+    const installationToken = await resolveGithubInstallationToken()
     const scope: ScopeContext = {
       orgId: orgId ?? null,
       orgSlug: orgSlug ?? null,
@@ -254,6 +280,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -276,6 +303,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -300,6 +328,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -316,7 +345,7 @@ export async function POST(request: NextRequest) {
             content,
             branch,
             message,
-            token: accessToken,
+            token: installationToken ?? accessToken,
           })
           return NextResponse.json({ ok: true, result }, { status: 200 })
         } catch (error: unknown) {
@@ -344,6 +373,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -358,7 +388,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -378,6 +408,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, username, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -393,7 +424,7 @@ export async function POST(request: NextRequest) {
             repo,
             newBranch,
             baseBranch: repository.default_branch || "main",
-            token: accessToken,
+            token: installationToken ?? accessToken,
           })
         } catch (error: unknown) {
           const err = error as { status?: number }
@@ -409,7 +440,7 @@ export async function POST(request: NextRequest) {
           content,
           branch: newBranch,
           message,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
 
         return NextResponse.json(
@@ -431,6 +462,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -445,7 +477,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -464,6 +496,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -479,7 +512,7 @@ export async function POST(request: NextRequest) {
           newPath,
           branch,
           message,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -497,6 +530,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -511,7 +545,7 @@ export async function POST(request: NextRequest) {
           path,
           branch,
           message,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -542,7 +576,7 @@ export async function POST(request: NextRequest) {
           repo,
           newBranch,
           baseBranch,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -559,6 +593,7 @@ export async function POST(request: NextRequest) {
 
         const { token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -581,6 +616,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -596,7 +632,7 @@ export async function POST(request: NextRequest) {
           head,
           base,
           body: bodyText,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -614,6 +650,7 @@ export async function POST(request: NextRequest) {
 
         const { token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -635,6 +672,7 @@ export async function POST(request: NextRequest) {
 
         const { token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -693,7 +731,7 @@ export async function POST(request: NextRequest) {
           pullNumber,
           mergeMethod,
           commitTitle,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 200 })
       }
@@ -723,7 +761,7 @@ export async function POST(request: NextRequest) {
           pullNumber,
           event,
           body: bodyText,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -751,7 +789,7 @@ export async function POST(request: NextRequest) {
           repo,
           issueNumber,
           body: bodyText,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }
@@ -791,7 +829,7 @@ export async function POST(request: NextRequest) {
           startLine,
           endLine,
           body: bodyText,
-          token: accessToken,
+          token: installationToken ?? accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }

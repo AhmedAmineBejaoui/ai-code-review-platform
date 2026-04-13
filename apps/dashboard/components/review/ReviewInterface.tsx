@@ -30,9 +30,9 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
       <div className="container mx-auto py-12">
         <Card className="max-w-2xl mx-auto">
           <CardContent className="p-8 text-center">
-            <Shield className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+            <Shield className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h2 className="text-2xl font-bold mb-2">Access Denied</h2>
-            <p className="text-gray-600">
+            <p className="text-muted-foreground">
               You need reviewer permissions to access this page.
             </p>
           </CardContent>
@@ -94,7 +94,7 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
         <CardContent className="p-8 text-center">
           <AlertTriangle className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-2">Unknown Role</h2>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             Your reviewer role is not recognized. Please contact an administrator.
           </p>
         </CardContent>

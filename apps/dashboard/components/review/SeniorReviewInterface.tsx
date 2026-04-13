@@ -145,7 +145,7 @@ export function SeniorReviewInterface({
       <div className="container mx-auto py-6 space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-purple-500" />
-          <span className="ml-3 text-gray-600">Chargement de l'analyse...</span>
+          <span className="ml-3 text-muted-foreground">Chargement de l'analyse...</span>
         </div>
       </div>
     )
@@ -158,11 +158,11 @@ export function SeniorReviewInterface({
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              <p className="text-destructive mb-4">{propError}</p>
               {onRefresh && (
                 <Button onClick={onRefresh} variant="outline" className="gap-2">
                   <RefreshCw className="h-4 w-4" />
@@ -183,11 +183,11 @@ export function SeniorReviewInterface({
         <Card>
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <FileText className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-secondary-foreground mb-2">
                 Aucune analyse disponible
               </h3>
-              <p className="text-gray-500">
+              <p className="text-muted-foreground">
                 L'analyse demandee n'a pas ete trouvee ou n'existe pas.
               </p>
             </div>
@@ -209,13 +209,13 @@ export function SeniorReviewInterface({
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">Revue de Code</h1>
+            <h1 className="card-heading text-foreground">Revue de Code</h1>
             <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">
               <Shield className="h-3 w-3 mr-1" />
               Reviewer Senior
             </Badge>
           </div>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             {propAnalysis.repo} - {propAnalysis.pr_label} par {propAnalysis.author}
           </p>
         </div>
@@ -229,7 +229,7 @@ export function SeniorReviewInterface({
       {/* Critical Issues Alert */}
       {hasCriticalIssues && (
         <Alert className="bg-red-50 border-red-300 dark:bg-red-950/30 dark:border-red-800">
-          <AlertOctagon className="h-5 w-5 text-red-600" />
+          <AlertOctagon className="h-5 w-5 text-destructive" />
           <AlertDescription className="text-red-900 dark:text-red-100">
             <strong>{propAnalysis.summary.critical_issues} Probleme(s) de Securite Critique(s) Detecte(s) !</strong>
             <br />
@@ -266,34 +266,34 @@ export function SeniorReviewInterface({
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <div className="text-2xl font-bold text-foreground">
                     {propAnalysis.summary.total_files}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Fichiers</div>
+                  <div className="text-sm text-muted-foreground">Fichiers</div>
                 </div>
                 <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-[color:var(--green-status)]">
                     +{propAnalysis.summary.additions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Ajouts</div>
+                  <div className="text-sm text-muted-foreground">Ajouts</div>
                 </div>
                 <div className="text-center p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-bold text-destructive">
                     -{propAnalysis.summary.deletions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Suppressions</div>
+                  <div className="text-sm text-muted-foreground">Suppressions</div>
                 </div>
                 <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-yellow-600">
+                  <div className="text-2xl font-bold text-[color:var(--orange)]">
                     {propAnalysis.summary.issues_found}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Problemes</div>
+                  <div className="text-sm text-muted-foreground">Problemes</div>
                 </div>
                 <div className="text-center p-3 bg-red-100 dark:bg-red-950/40 rounded-lg border-2 border-red-300 dark:border-red-800">
-                  <div className="text-2xl font-bold text-red-700 dark:text-red-400">
+                  <div className="text-2xl font-bold text-red-700 dark:text-destructive">
                     {propAnalysis.summary.critical_issues}
                   </div>
-                  <div className="text-sm text-red-700 dark:text-red-400 font-semibold">Critiques</div>
+                  <div className="text-sm text-red-700 dark:text-destructive font-semibold">Critiques</div>
                 </div>
               </div>
             </CardContent>
@@ -326,7 +326,7 @@ export function SeniorReviewInterface({
                         </Badge>
                         {file.path.split("/").pop()}
                         {hasCritical && (
-                          <AlertOctagon className="h-3 w-3 text-red-600 ml-1" />
+                          <AlertOctagon className="h-3 w-3 text-destructive ml-1" />
                         )}
                       </TabsTrigger>
                     )
@@ -338,12 +338,12 @@ export function SeniorReviewInterface({
                     <div className="space-y-4">
                       {/* File Info */}
                       <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                        <div className="font-mono text-sm text-gray-700 dark:text-gray-300">
+                        <div className="font-mono text-sm text-secondary-foreground">
                           {file.path}
                         </div>
                         <div className="flex items-center gap-3 text-sm">
-                          <span className="text-green-600">+{file.additions}</span>
-                          <span className="text-red-600">-{file.deletions}</span>
+                          <span className="text-[color:var(--green-status)]">+{file.additions}</span>
+                          <span className="text-destructive">-{file.deletions}</span>
                         </div>
                       </div>
 
@@ -370,8 +370,8 @@ export function SeniorReviewInterface({
                               }
                             >
                               <div className="flex items-start gap-2">
-                                {suggestion.severity === "critical" && <AlertOctagon className="h-5 w-5 text-red-600 mt-0.5" />}
-                                {suggestion.severity === "error" && <XCircle className="h-5 w-5 text-red-500 mt-0.5" />}
+                                {suggestion.severity === "critical" && <AlertOctagon className="h-5 w-5 text-destructive mt-0.5" />}
+                                {suggestion.severity === "error" && <XCircle className="h-5 w-5 text-destructive mt-0.5" />}
                                 {suggestion.severity === "warning" && <AlertTriangle className="h-5 w-5 text-yellow-500 mt-0.5" />}
                                 {suggestion.severity === "info" && <Info className="h-5 w-5 text-blue-500 mt-0.5" />}
                                 <div className="flex-1">
@@ -419,18 +419,18 @@ export function SeniorReviewInterface({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm">
-                <GitBranch className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Branche :</span>
+                <GitBranch className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Branche :</span>
                 <span className="font-mono font-medium">{propAnalysis.branch}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <User className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Auteur :</span>
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Auteur :</span>
                 <span className="font-medium">{propAnalysis.author}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Cree le :</span>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Cree le :</span>
                 <span className="font-medium">
                   {new Date(propAnalysis.created_at).toLocaleDateString("fr-FR")}
                 </span>
@@ -524,7 +524,7 @@ export function SeniorReviewInterface({
                 Bloquer cette PR
               </Button>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Utilisez le blocage pour les problemes critiques de securite, legaux ou architecturaux
               </p>
             </CardContent>
@@ -536,7 +536,7 @@ export function SeniorReviewInterface({
       <Dialog open={blockDialogOpen} onOpenChange={setBlockDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-red-600">
+            <DialogTitle className="flex items-center gap-2 text-destructive">
               <Ban className="h-5 w-5" />
               Bloquer la Pull Request
             </DialogTitle>
@@ -592,7 +592,7 @@ export function SeniorReviewInterface({
               />
             </div>
             <Alert className="bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800">
-              <AlertOctagon className="h-4 w-4 text-red-600" />
+              <AlertOctagon className="h-4 w-4 text-destructive" />
               <AlertDescription className="text-sm text-red-900 dark:text-red-100">
                 Le developpeur sera notifie immediatement et devra resoudre tous les problemes avant de soumettre a nouveau.
               </AlertDescription>

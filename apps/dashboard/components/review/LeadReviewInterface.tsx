@@ -65,7 +65,7 @@ export function LeadReviewInterface({
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement de l'equipe...</span>
+          <span className="ml-3 text-muted-foreground">Chargement de l'equipe...</span>
         </div>
       </div>
     )
@@ -78,11 +78,11 @@ export function LeadReviewInterface({
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <div className="h-12 w-12 text-red-500 mb-4">⚠️</div>
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <div className="h-12 w-12 text-destructive mb-4">⚠️</div>
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              <p className="text-destructive mb-4">{propError}</p>
               {onRefresh && (
                 <Button onClick={onRefresh} variant="outline" className="gap-2">
                   <RefreshCw className="h-4 w-4" />
@@ -107,7 +107,7 @@ export function LeadReviewInterface({
           <CardHeader>
             <CardTitle className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Crown className="h-6 w-6 text-amber-600" />
+                <Crown className="h-6 w-6 text-[color:var(--orange)]" />
                 <div>
                   <div className="flex items-center gap-2">
                     <span>Outils Reviewer Lead</span>
@@ -115,7 +115,7 @@ export function LeadReviewInterface({
                       Acces Complet
                     </Badge>
                   </div>
-                  <p className="text-sm font-normal text-gray-600 dark:text-gray-400 mt-1">
+                  <p className="text-sm font-normal text-muted-foreground mt-1">
                     Gestion d'equipe, reassignment, et capacites de override
                   </p>
                 </div>
@@ -140,7 +140,7 @@ export function LeadReviewInterface({
                     <Users className="h-4 w-4" />
                     Reassigner cette Review
                   </h4>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
+                  <p className="text-sm text-muted-foreground mb-3">
                     Transferer cette review a un autre membre de l'equipe
                   </p>
                 </div>
@@ -163,12 +163,12 @@ export function LeadReviewInterface({
                         <span className="font-medium">{member.name}</span>
                         <Badge 
                           variant="outline" 
-                          className={member.availability === "available" ? "text-green-600" : "text-yellow-600"}
+                          className={member.availability === "available" ? "text-[color:var(--green-status)]" : "text-[color:var(--orange)]"}
                         >
                           {member.availability === "available" ? "Disponible" : "Occupe"}
                         </Badge>
                       </div>
-                      <div className="text-sm text-gray-600 dark:text-gray-400">
+                      <div className="text-sm text-muted-foreground">
                         {member.role} • {member.current_reviews} reviews actives
                       </div>
                     </div>

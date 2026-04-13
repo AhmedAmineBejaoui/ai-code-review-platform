@@ -99,8 +99,8 @@ export function AdminOverview() {
   return (
     <motion.div className="mx-auto max-w-6xl space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <div>
-        <h1 className="text-3xl font-bold text-gray-900 dark:text-white">Administration</h1>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <h1 className="card-heading text-foreground">Administration</h1>
+        <p className="meta-text text-muted-foreground">
           Vue consolidée des données réelles de la zone admin.
         </p>
       </div>
@@ -115,18 +115,18 @@ export function AdminOverview() {
           { label: "Jobs en attente", value: stats.queuedJobs },
           { label: "Intégrations OK", value: stats.integrationsHealthy },
         ].map((item) => (
-          <Card key={item.label} className="bg-white/60 dark:bg-gray-900/60">
+          <Card key={item.label} variant="default">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm text-gray-600 dark:text-gray-400">{item.label}</CardTitle>
+              <CardTitle className="text-sm text-muted-foreground">{item.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{loading ? "..." : item.value}</p>
+              <p className="text-2xl font-bold text-foreground">{loading ? "..." : item.value}</p>
             </CardContent>
           </Card>
         ))}
       </div>
 
-      <Card className="bg-white/60 dark:bg-gray-900/60">
+      <Card variant="default">
         <CardHeader>
           <CardTitle>Sections</CardTitle>
         </CardHeader>

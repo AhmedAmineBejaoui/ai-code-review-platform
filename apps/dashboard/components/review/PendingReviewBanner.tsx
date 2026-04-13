@@ -36,7 +36,7 @@ export function PendingReviewBanner({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-2">
               <div className="relative">
-                <MessageSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <MessageSquare className="h-5 w-5 text-teal-400" />
                 <Badge
                   variant="default"
                   className="absolute -top-2 -right-2 h-5 w-5 p-0 flex items-center justify-center text-[10px] bg-blue-600"
@@ -44,7 +44,7 @@ export function PendingReviewBanner({
                   {pendingComments.length}
                 </Badge>
               </div>
-              <span className="font-medium text-gray-900 dark:text-gray-100">
+              <span className="font-medium text-foreground dark:text-gray-100">
                 {pendingComments.length} pending {pendingComments.length === 1 ? "comment" : "comments"}
               </span>
             </div>

@@ -29,6 +29,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Separator } from "@/components/ui/separator"
+import { extractApiErrorMessage } from "@/lib/display"
+import { resolveProjectIdForRepo } from "@/lib/project-lookup"
 
 type LaunchAnalysisResponse = {
   analysis_id?: string
@@ -352,15 +354,17 @@ export function GlobalReport() {
     setActionMessage(null)
     setIsRerunning(true)
     try {
+      const resolvedProjectId = await resolveProjectIdForRepo(analysis.repo)
+      if (!resolvedProjectId) {
+        throw new Error("Projet introuvable pour relancer cette analyse. Importez le repository avant de relancer.")
+      }
       const response = await fetch("/api/dashboard/analyses", {
         method: "POST",
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify({
           repo: analysis.repo,
-          // Re-runs reuse the original repo's project_id (derived from the lowered full_name,
-          // matching the import-full convention). Historical analyses may predate project_id
-          // enforcement; the backend will surface a clear error if the project no longer exists.
-          project_id: analysis.repo.toLowerCase(),
+          // Reuse the canonical project_profiles.id so the rerun respects the current backend FK.
+          project_id: resolvedProjectId,
           pr_number: analysis.prNumber,
           commit_sha: analysis.commitSha,
           diff_text: rerunDiffText,
@@ -389,12 +393,7 @@ export function GlobalReport() {
         return
       }
 
-      const message =
-        payload?.backend_response?.message ??
-        payload?.backend_response?.detail ??
-        payload?.error ??
-        "Echec de relance."
-      throw new Error(message)
+      throw new Error(extractApiErrorMessage(payload.backend_response ?? payload, "Echec de relance."))
     } catch (error) {
       const message = error instanceof Error ? error.message : "Echec de relance."
       setActionError(message)
@@ -429,7 +428,9 @@ export function GlobalReport() {
 
       const payload = (await response.json().catch(() => ({}))) as ReviewDecisionApiResponse
       if (!response.ok) {
-        throw new Error(payload.error ?? payload.detail ?? payload.message ?? "Echec d'enregistrement de la decision.")
+        throw new Error(
+          extractApiErrorMessage(payload, "Echec d'enregistrement de la decision."),
+        )
       }
 
       const refreshed = await fetchDashboardAnalysisDetails(analysis.id)
@@ -452,7 +453,7 @@ export function GlobalReport() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-gray-500 dark:text-gray-400">
+      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         Chargement du rapport...
       </div>
@@ -467,13 +468,13 @@ export function GlobalReport() {
     <motion.div className="max-w-5xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-2">
+          <h1 className="card-heading text-foreground mb-2">
             Rapport global
           </h1>
-          <div className="flex items-center gap-2 text-gray-600 dark:text-gray-400">
+          <div className="flex items-center gap-2 text-muted-foreground">
             <span className="font-medium">{analysis.repo}</span>
             <span>•</span>
-            <span className="text-blue-600 dark:text-blue-400">{analysis.prLabel}</span>
+            <span className="text-teal-400">{analysis.prLabel}</span>
             <span>•</span>
             <span className="font-mono text-sm">{analysis.commitSha ?? "-"}</span>
           </div>
@@ -482,7 +483,7 @@ export function GlobalReport() {
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.0 }}>
             <Button
               variant="outline"
-              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              className="gap-2"
               onClick={exportPdf}
               disabled={isExporting !== null || isRerunning}
             >
@@ -493,7 +494,7 @@ export function GlobalReport() {
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>
             <Button
               variant="outline"
-              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              className="gap-2"
               onClick={downloadMarkdown}
               disabled={isExporting !== null || isRerunning}
             >
@@ -504,7 +505,7 @@ export function GlobalReport() {
           <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>
             <Button
               variant="outline"
-              className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-700/50"
+              className="gap-2"
               onClick={rerunAnalysis}
               disabled={isRerunning || isExporting !== null}
             >
@@ -550,7 +551,7 @@ export function GlobalReport() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4 relative z-10">
-            <p className="text-gray-700 dark:text-gray-300">{analysis.summary}</p>
+            <p className="text-secondary-foreground">{analysis.summary}</p>
             <div className="grid md:grid-cols-3 gap-4">
               {[
                 { label: "Fichiers modifies", value: `${files.length}`, gradient: "from-blue-500 to-cyan-500" },
@@ -575,17 +576,17 @@ export function GlobalReport() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Shield className="h-5 w-5 text-orange-500" />
+              <Shield className="h-5 w-5 text-[color:var(--orange)]" />
               Evaluation des risques
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium text-gray-700 dark:text-gray-300">Niveau de risque global</span>
+                <span className="text-sm font-medium text-secondary-foreground">Niveau de risque global</span>
                 <Badge variant={riskScore > 30 ? "destructive" : riskScore > 10 ? "secondary" : "default"}>
                   {riskLevel}
                 </Badge>
@@ -621,8 +622,8 @@ export function GlobalReport() {
                     <category.icon className="h-5 w-5 text-white" />
                   </motion.div>
                   <div>
-                    <div className="font-semibold text-gray-900 dark:text-white">{category.label}</div>
-                    <div className="text-sm text-gray-600 dark:text-gray-400">{category.count} probleme(s) detecte(s)</div>
+                    <div className="font-semibold text-foreground">{category.label}</div>
+                    <div className="text-sm text-muted-foreground">{category.count} probleme(s) detecte(s)</div>
                   </div>
                 </motion.div>
               ))}
@@ -632,7 +633,7 @@ export function GlobalReport() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-purple-500" />
@@ -659,16 +660,16 @@ export function GlobalReport() {
                   </motion.div>
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className="font-semibold text-gray-900 dark:text-white">{finding.ruleId ?? "Finding"}</span>
+                      <span className="font-semibold text-foreground">{finding.ruleId ?? "Finding"}</span>
                       <Badge variant={severityVariant(finding.severity)}>{finding.severity}</Badge>
                       <Badge variant="outline" className="text-xs">
                         {finding.category}
                       </Badge>
                     </div>
-                    <div className="text-xs text-gray-600 dark:text-gray-400 font-mono mb-2">
+                    <div className="text-xs text-muted-foreground font-mono mb-2">
                       {finding.filePath}:{finding.lineStart ?? "-"}
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{finding.message}</p>
+                    <p className="text-sm text-secondary-foreground">{finding.message}</p>
                   </div>
                 </motion.div>
               ))}
@@ -678,7 +679,7 @@ export function GlobalReport() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Recommandations</CardTitle>
           </CardHeader>
@@ -692,7 +693,7 @@ export function GlobalReport() {
                   bg: "from-red-50 to-orange-50 dark:from-red-950/30 dark:to-orange-950/30",
                   border: "border-red-200/50 dark:border-red-800/50",
                   text: "text-red-900 dark:text-red-100",
-                  iconColor: "text-red-600 dark:text-red-400",
+                  iconColor: "text-destructive",
                 },
                 {
                   icon: AlertTriangle,
@@ -710,7 +711,7 @@ export function GlobalReport() {
                   bg: "from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30",
                   border: "border-blue-200/50 dark:border-blue-800/50",
                   text: "text-blue-900 dark:text-blue-100",
-                  iconColor: "text-blue-600 dark:text-blue-400",
+                  iconColor: "text-teal-400",
                 },
               ].map((rec, index) => (
                 <motion.div
@@ -754,7 +755,7 @@ export function GlobalReport() {
                 <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-purple-200/50 bg-purple-50/60 p-2 text-xs dark:border-purple-800/50 dark:bg-purple-950/20">
                   <Badge variant="outline">Decision actuelle: {analysis.reviewDecision.value}</Badge>
                   {analysis.reviewDecision.decidedAt && (
-                    <span className="text-gray-600 dark:text-gray-400">
+                    <span className="text-muted-foreground">
                       {new Date(analysis.reviewDecision.decidedAt).toLocaleString("fr-FR")}
                     </span>
                   )}
@@ -802,7 +803,7 @@ export function GlobalReport() {
                   </motion.div>
                 ))}
               </div>
-              <p className="text-xs text-gray-600 dark:text-gray-400 mt-4 text-center">
+              <p className="text-xs text-muted-foreground mt-4 text-center">
                 Cette decision sera enregistree et notifiee a l'auteur de la PR
               </p>
             </CardContent>

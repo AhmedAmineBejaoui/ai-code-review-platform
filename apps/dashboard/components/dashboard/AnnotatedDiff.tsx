@@ -15,6 +15,7 @@ import {
   GitPullRequest,
   Loader2,
   MessageSquarePlus,
+  PhoneCall,
   Play,
   Save,
   Search,
@@ -28,10 +29,12 @@ import {
   fetchDashboardAnalysisDetails,
   type DashboardAnalysisDetails,
   type DashboardAnalysisDiffFile,
+  type DashboardAnalysisFinding,
 } from "@/lib/dashboard-analysis-details"
 import { InlineCommentForm } from "@/components/review/InlineCommentForm"
 import { CommentThread } from "@/components/review/CommentThread"
 import { PendingReviewBanner } from "@/components/review/PendingReviewBanner"
+import { ClarificationCallDialog } from "@/components/review/ClarificationCallDialog"
 import { ReviewSubmissionDialog } from "@/components/review/ReviewSubmissionDialog"
 import { CodeEditor } from "@/components/editor/CodeEditor"
 import type { PendingComment, ReviewComment, CommentAuthor, ReviewVerdict } from "@/lib/review-types"
@@ -138,11 +141,15 @@ function ExtBadge({ ext, color }: { ext: string; color: string }) {
 function RagComment({
   finding,
   onApply,
+  onComment,
   onDismiss,
+  onRequestCall,
 }: {
-  finding: DashboardAnalysisDetails["findings"][number]
+  finding: DashboardAnalysisFinding
   onApply?: () => void
+  onComment?: () => void
   onDismiss?: () => void
+  onRequestCall?: () => void
 }) {
   const isCritical = finding.severity === "BLOCKER"
   const borderColor = isCritical ? "rgba(127,119,221,0.8)" : "rgba(227,179,65,0.7)"
@@ -195,19 +202,31 @@ function RagComment({
           {finding.suggestion && ` → ${finding.suggestion}`}
         </p>
         {/* Actions */}
-        <div className="flex gap-2 ml-9">
+        <div className="flex flex-wrap gap-2 ml-9">
           <button
-            className="text-[9px] font-semibold text-white px-3 py-1 rounded"
+            className="text-[9px] font-semibold text-white px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: "rgba(127,119,221,0.9)" }}
             onClick={onApply}
+            disabled={!onApply}
           >
             Appliquer correction
           </button>
           <button
-            className="text-[9px] px-3 py-1 rounded"
+            className="text-[9px] px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
             style={{ background: "#21262e", color: "#8b949e" }}
+            onClick={onComment}
+            disabled={!onComment}
           >
             Commenter
+          </button>
+          <button
+            className="text-[9px] px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
+            style={{ background: "rgba(121,192,255,0.12)", color: "#79c0ff", border: "1px solid rgba(121,192,255,0.3)" }}
+            onClick={onRequestCall}
+            disabled={!onRequestCall}
+          >
+            <PhoneCall className="mr-1 h-3 w-3" />
+            Appel
           </button>
           <button
             className="text-[9px] px-3 py-1 rounded"
@@ -229,6 +248,7 @@ function DiffLine({
   dismissedFindings,
   onDismiss,
   onComment,
+  onRequestCall,
   isCommenting,
 }: {
   line: DashboardAnalysisDiffFile["lines"][number]
@@ -237,6 +257,7 @@ function DiffLine({
   dismissedFindings: Set<string>
   onDismiss: (id: string) => void
   onComment: (lineNumber: number) => void
+  onRequestCall: (finding: DashboardAnalysisFinding) => void
   isCommenting: boolean
 }) {
   const lineFindings = findings.filter(
@@ -326,7 +347,13 @@ function DiffLine({
         <RagComment
           key={finding.id}
           finding={finding}
+          onComment={
+            finding.lineStart != null
+              ? () => onComment(finding.lineStart)
+              : undefined
+          }
           onDismiss={() => onDismiss(finding.id)}
+          onRequestCall={() => onRequestCall(finding)}
         />
       ))}
     </>
@@ -354,6 +381,7 @@ export function AnnotatedDiff() {
   // Comments from API
   const [existingComments, setExistingComments] = useState<ReviewComment[]>([])
   const [commentAuthors, setCommentAuthors] = useState<Map<string, CommentAuthor>>(new Map())
+  const [clarificationTarget, setClarificationTarget] = useState<DashboardAnalysisFinding | null>(null)
 
   // Real GitHub editing/review state
   const [viewMode, setViewMode] = useState<"diff" | "edit">("edit")
@@ -647,6 +675,10 @@ export function AnnotatedDiff() {
       console.error("Failed to reply to comment:", error)
     }
   }
+
+  const handleClarificationCommentCreated = useCallback((comment: ReviewComment) => {
+    setExistingComments((prev) => [...prev, comment])
+  }, [])
 
   const handleEditorSaved = useCallback(() => {
     if (!selectedFilePath) return
@@ -1070,6 +1102,7 @@ export function AnnotatedDiff() {
                                 dismissedFindings={dismissedFindings}
                                 onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
                                 onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
+                                onRequestCall={(finding) => setClarificationTarget(finding)}
                                 isCommenting={activeCommentLine === lineNumber}
                               />
                               {commentsByLine.get(lineNumber)?.map((comment) => (
@@ -1412,6 +1445,21 @@ export function AnnotatedDiff() {
           </div>
         )}
       </AnimatePresence>
+
+      <ClarificationCallDialog
+        open={clarificationTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) {
+            setClarificationTarget(null)
+          }
+        }}
+        analysisId={analysis.id}
+        repoName={analysis.repo}
+        authorName={analysis.author}
+        reviewerName={currentUser.name}
+        finding={clarificationTarget}
+        onCommentCreated={handleClarificationCommentCreated}
+      />
 
       <ReviewSubmissionDialog
         open={showSubmitDialog}

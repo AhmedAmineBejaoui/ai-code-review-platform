@@ -98,7 +98,11 @@ function toBlobTreeChange(change: GitTreeChange): Record<string, unknown> {
 
 // â”€â”€ Auth / token resolution â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-export { resolveGithubTokenForUser, resolveGithubTokensForUser }
+export {
+  resolveGithubInstallationToken,
+  resolveGithubTokenForUser,
+  resolveGithubTokensForUser,
+} from "./server/github/auth"
 
 // â”€â”€ User / scope checks â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 

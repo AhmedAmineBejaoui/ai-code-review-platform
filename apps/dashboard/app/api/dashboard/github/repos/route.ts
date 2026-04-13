@@ -1,5 +1,6 @@
-import { auth, clerkClient } from "@clerk/nextjs/server"
+import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+import { getGithubUser } from "@/lib/github-client"
 import { resolveGithubTokenForUser } from "@/lib/server/github/auth"
 import {
   buildGithubHeaders,
@@ -198,6 +199,26 @@ function extractGithubExternalAccountInfo(rawUser: unknown): GithubExternalAccou
   }
 }
 
+async function resolveGithubLogin(
+  githubAccount: GithubExternalAccountInfo,
+  oauthToken: string | null,
+): Promise<string | null> {
+  if (githubAccount.login) {
+    return githubAccount.login
+  }
+
+  if (!oauthToken) {
+    return null
+  }
+
+  try {
+    const githubUser = await getGithubUser(oauthToken)
+    return normalizeGithubLoginCandidate(githubUser.login)
+  } catch {
+    return null
+  }
+}
+
 async function fetchGithubRepos(
   token: string | null,
   endpointBuilder: (page: number) => string,
@@ -248,78 +269,52 @@ async function fetchGithubRepos(
 }
 
 export async function GET(request: Request) {
-  const { userId } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  let userId: string | null = null
+  let githubLogin: string | null = null
+  let tokenAvailable = false
 
-  const { searchParams } = new URL(request.url)
-  const customAccount = asTrimmedString(searchParams.get("account"))
-  const accountType = searchParams.get("type") === "org" ? "org" : "user"
-
-  const client = await clerkClient()
-  const [user, oauthToken] = await Promise.all([
-    client.users.getUser(userId).catch((e) => {
-      console.error("Failed to get user from Clerk:", e)
-      return null
-    }),
-    resolveGithubTokenForUser(userId),
-  ])
-  const githubAccount = user ? extractGithubExternalAccountInfo(user) : { connected: false, login: null }
-
-  if (customAccount) {
-    const endpointBuilder =
-      accountType === "org"
-        ? (page: number) =>
-            `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
-        : (page: number) =>
-            `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
-
-    const reposResult = await fetchGithubRepos(oauthToken, endpointBuilder)
-    if (reposResult.error) {
-      return NextResponse.json(
-        {
-          connected: true,
-          items: [],
-          error: reposResult.error,
-          account: customAccount,
-          accountType,
-        },
-        { status: 200 },
-      )
+  try {
+    const authResult = await auth()
+    userId = authResult.userId
+    if (!userId) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    return NextResponse.json(
-      {
-        connected: true,
-        items: reposResult.items,
-        error: null,
-        account: customAccount,
-        accountType,
-      },
-      { status: 200 },
-    )
-  }
+    const { searchParams } = new URL(request.url)
+    const customAccount = asTrimmedString(searchParams.get("account"))
+    const accountType = searchParams.get("type") === "org" ? "org" : "user"
 
-  // Primary path: use GitHub account detected from Clerk
-  if (githubAccount.connected && githubAccount.login) {
-    const githubLogin = githubAccount.login
-    // Path A: Try with OAuth token first (includes private + org repos)
-    if (oauthToken) {
-      console.log(`âœ“ Getting repos for ${githubLogin} with OAuth token`)
-      const reposResult = await fetchGithubRepos(
-        oauthToken,
-        (page) =>
-          `/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
-      )
+    const [user, oauthToken] = await Promise.all([
+      currentUser().catch((error) => {
+        console.error("Failed to get current Clerk user for GitHub repos:", error)
+        return null
+      }),
+      resolveGithubTokenForUser(userId),
+    ])
+    const githubAccount = user ? extractGithubExternalAccountInfo(user) : { connected: false, login: null }
+    githubLogin = await resolveGithubLogin(githubAccount, oauthToken)
+    tokenAvailable = Boolean(oauthToken)
+    const hasGithubConnection = githubAccount.connected || tokenAvailable || Boolean(githubLogin)
+
+    if (customAccount) {
+      const endpointBuilder =
+        accountType === "org"
+          ? (page: number) =>
+              `/orgs/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+          : (page: number) =>
+              `/users/${encodeURIComponent(customAccount)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=all`
+
+      const reposResult = await fetchGithubRepos(oauthToken, endpointBuilder)
       if (reposResult.error) {
         return NextResponse.json(
           {
             connected: true,
             items: [],
             error: reposResult.error,
+            account: customAccount,
+            accountType,
             login: githubLogin,
-            tokenAvailable: true,
+            tokenAvailable,
           },
           { status: 200 },
         )
@@ -330,56 +325,120 @@ export async function GET(request: Request) {
           connected: true,
           items: reposResult.items,
           error: null,
+          account: customAccount,
+          accountType,
           login: githubLogin,
-          tokenAvailable: true,
+          tokenAvailable,
         },
         { status: 200 },
       )
     }
 
-    // Path B: Fallback to public repos without OAuth token
-    console.log(`â„¹ Getting public repos for ${githubLogin} without OAuth token`)
-    const reposResult = await fetchGithubRepos(
-      null,
-      (page) =>
-        `/users/${encodeURIComponent(githubLogin)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`,
-    )
-    if (reposResult.error) {
+    // Primary path: use the strongest GitHub signal we have for the current user.
+    if (oauthToken || githubLogin) {
+      // Path A: Try with OAuth token first (includes private + org repos)
+      if (oauthToken) {
+        console.log(`Getting repos${githubLogin ? ` for ${githubLogin}` : ""} with OAuth token`)
+        const reposResult = await fetchGithubRepos(
+          oauthToken,
+          (page) =>
+            `/user/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&affiliation=owner,collaborator,organization_member`,
+        )
+        if (reposResult.error) {
+          return NextResponse.json(
+            {
+              connected: true,
+              items: [],
+              error: reposResult.error,
+              login: githubLogin,
+              tokenAvailable: true,
+            },
+            { status: 200 },
+          )
+        }
+
+        return NextResponse.json(
+          {
+            connected: true,
+            items: reposResult.items,
+            error: null,
+            login: githubLogin,
+            tokenAvailable: true,
+          },
+          { status: 200 },
+        )
+      }
+
+      // Path B: Fallback to public repos without OAuth token
+      console.log(`Getting public repos for ${githubLogin} without OAuth token`)
+      const reposResult = await fetchGithubRepos(
+        null,
+        (page) =>
+          `/users/${encodeURIComponent(githubLogin)}/repos?per_page=${PAGE_SIZE}&page=${page}&sort=updated&direction=desc&type=owner`,
+      )
+      if (reposResult.error) {
+        return NextResponse.json(
+          {
+            connected: true,
+            items: [],
+            error: reposResult.error,
+            login: githubLogin,
+            tokenAvailable: false,
+          },
+          { status: 200 },
+        )
+      }
+
+      return NextResponse.json(
+        {
+          connected: true,
+          items: reposResult.items,
+          error: reposResult.items.length === 0
+            ? "No repositories found. Check that your GitHub account is public or try connecting via OAuth."
+            : null,
+          login: githubLogin,
+          tokenAvailable: false,
+          note: "Showing only public repositories. Connect GitHub OAuth in Clerk settings to see private repositories.",
+        },
+        { status: 200 },
+      )
+    }
+
+    if (hasGithubConnection) {
+      console.log("GitHub connection detected, but no usable login could be resolved")
       return NextResponse.json(
         {
           connected: true,
           items: [],
-          error: reposResult.error,
-          login: githubAccount.login,
-          tokenAvailable: false,
+          error: "GitHub account is connected, but the username or OAuth access token could not be resolved. Reconnect GitHub in profile settings.",
+          login: null,
+          tokenAvailable,
         },
         { status: 200 },
       )
     }
 
+    // Fallback: No GitHub account connected
+    console.log("No GitHub account found for user")
     return NextResponse.json(
       {
-        connected: true,
-        items: reposResult.items,
-        error: reposResult.items.length === 0
-          ? "No repositories found. Check that your GitHub account is public or try connecting via OAuth."
-          : null,
-        login: githubAccount.login,
-        tokenAvailable: false,
-        note: "Showing only public repositories. Connect GitHub OAuth in Clerk settings to see private repositories.",
+        connected: false,
+        items: [],
+        error: "GitHub account is not connected. Please connect it in your account settings.",
+      },
+      { status: 200 },
+    )
+  } catch (error) {
+    console.error("Error in github repos GET:", error)
+    return NextResponse.json(
+      {
+        connected: Boolean(userId),
+        items: [],
+        error: "Unable to load GitHub repositories right now. Please try again.",
+        login: githubLogin,
+        tokenAvailable,
       },
       { status: 200 },
     )
   }
-
-  // Fallback: No GitHub account connected
-  console.log("â„¹ No GitHub account found for user")
-  return NextResponse.json(
-    {
-      connected: false,
-      items: [],
-      error: "GitHub account is not connected. Please connect it in your account settings.",
-    },
-    { status: 200 },
-  )
 }

@@ -14,13 +14,8 @@ from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.database import get_engine
 from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
-from app.core.knowledge_base.rag_engines import RagEngine, build_rag_engines
+from app.core.knowledge_base.rag_engines import GraphRagEngine, build_graph_rag_engine
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
-from app.core.review_intelligence.engines import (
-    ReviewGenerationEngine,
-    build_langchain_review_generation_engine,
-    build_legacy_review_generation_engine,
-)
 from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
@@ -57,23 +52,6 @@ _SUMMARY_SERVICE = SummaryService(
         timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
     )
 )
-
-
-def _select_primary_rag_engine(*, vector_store: QdrantClient) -> RagEngine:
-    legacy_engine, langchain_engine = build_rag_engines(vector_store=vector_store)
-    if settings.langchain_primary_stack == "langchain" and langchain_engine is not None:
-        return langchain_engine
-    return legacy_engine
-
-
-def _select_primary_review_engine() -> ReviewGenerationEngine:
-    if settings.langchain_primary_stack == "langchain" and settings.langchain_enabled:
-        engine = build_langchain_review_generation_engine()
-        if engine.available:
-            return engine
-    return build_legacy_review_generation_engine()
-
-
 class RepoOnboardRequest(BaseModel):
     model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
 
@@ -612,22 +590,21 @@ async def onboard_repo(
             force_full=payload.force_full,
         )
         # Auto-bootstrap retrieval for a newly indexed repo.
-        rag_engine = _select_primary_rag_engine(vector_store=vector_store)
+        rag_engine = build_graph_rag_engine(vector_store=vector_store)
         bootstrap_result = await rag_engine.retrieve_for_repo_bootstrap(repo_id=payload.repo_id, limit=16)
         bootstrap_chunks = bootstrap_result.chunks
         profile = bootstrap_result.profile
         if profile:
             overview_context = bootstrap_result.context_text or build_llm_context(bootstrap_chunks)
-            review_engine = _select_primary_review_engine()
             try:
-                generated = review_engine.generate_repo_overview(
+                generated = _SUMMARY_SERVICE.generate_repo_overview(
                     repo_id=payload.repo_id,
                     repo_profile=profile,
                     context_excerpt=overview_context,
                 )
                 llm_summary = generated.summary
                 llm_highlights = generated.highlights
-                llm_source = review_engine.stack_name
+                llm_source = "graph_rag"
                 llm_fallback = False
             except Exception:
                 fallback = SummaryService.fallback_repo_overview(repo_id=payload.repo_id, repo_profile=profile)
@@ -773,7 +750,7 @@ async def get_context_for_query(
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     vector_store: QdrantClient = Depends(get_qdrant_client),
 ) -> ContextResponse:
-    rag_engine = _select_primary_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(vector_store=vector_store)
     try:
         result = await rag_engine.retrieve_for_query(
             repo_id=payload.repo_id,
@@ -797,7 +774,7 @@ async def get_context_for_diff(
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     vector_store: QdrantClient = Depends(get_qdrant_client),
 ) -> ContextResponse:
-    rag_engine = _select_primary_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(vector_store=vector_store)
     try:
         result = await rag_engine.retrieve_for_diff(
             repo_id=payload.repo_id,
@@ -820,7 +797,7 @@ async def get_bootstrap_context_for_repo(
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
     vector_store: QdrantClient = Depends(get_qdrant_client),
 ) -> ContextResponse:
-    rag_engine = _select_primary_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(vector_store=vector_store)
     try:
         result = await rag_engine.retrieve_for_repo_bootstrap(
             repo_id=payload.repo_id,

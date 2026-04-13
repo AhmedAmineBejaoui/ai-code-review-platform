@@ -1,6 +1,5 @@
-import { auth, currentUser } from "@clerk/nextjs/server"
+import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
 
 const BACKEND_API_BASE_URL =
   process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
@@ -10,16 +9,20 @@ type DecisionBody = {
   comment?: unknown
 }
 
-function resolveUserRole(user: Awaited<ReturnType<typeof currentUser>>, claims: unknown): AppRole {
-  const claimsRole = extractRoleFromClaims(claims)
-  if (claimsRole !== "developer") {
-    return claimsRole
+async function refreshDashboardAuth(request: Request): Promise<void> {
+  const syncUrl = new URL("/api/auth/sync", request.url)
+
+  try {
+    await fetch(syncUrl, {
+      method: "POST",
+      headers: {
+        cookie: request.headers.get("cookie") ?? "",
+      },
+      cache: "no-store",
+    })
+  } catch {
+    // Best-effort refresh only. Decision submission should still proceed.
   }
-  const roleCandidate = user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
-  if (typeof roleCandidate === "string" && roleCandidate.trim().length > 0) {
-    return normalizeRole(roleCandidate)
-  }
-  return claimsRole
 }
 
 export async function POST(request: Request, context: { params: { id: string } }) {
@@ -28,19 +31,14 @@ export async function POST(request: Request, context: { params: { id: string } }
     return NextResponse.json({ error: "Invalid analysis id" }, { status: 400 })
   }
 
-  const { userId, getToken, sessionClaims } = await auth()
+  const { userId, getToken } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const [token, user] = await Promise.all([getToken(), currentUser()])
+  const token = await getToken()
   if (!token) {
     return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
-  }
-
-  const role = resolveUserRole(user, sessionClaims)
-  if (role === "developer") {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
   }
 
   let body: DecisionBody
@@ -57,9 +55,8 @@ export async function POST(request: Request, context: { params: { id: string } }
   const comment =
     typeof body.comment === "string" && body.comment.trim().length > 0 ? body.comment.trim().slice(0, 2000) : null
 
-  let backendResponse: Response
-  try {
-    backendResponse = await fetch(`${BACKEND_API_BASE_URL}/v1/analyses/${analysisId}/decision`, {
+  const submitDecision = async (): Promise<Response> => {
+    return fetch(`${BACKEND_API_BASE_URL}/v1/analyses/${analysisId}/decision`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -72,8 +69,22 @@ export async function POST(request: Request, context: { params: { id: string } }
       }),
       cache: "no-store",
     })
+  }
+
+  let backendResponse: Response
+  try {
+    backendResponse = await submitDecision()
   } catch {
     return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
+  }
+
+  if (backendResponse.status === 403) {
+    await refreshDashboardAuth(request)
+    try {
+      backendResponse = await submitDecision()
+    } catch {
+      return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
+    }
   }
 
   const rawBackendBody = await backendResponse.text()

@@ -25,6 +25,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { BADGE_SUCCESS, BADGE_WARNING, BADGE_ERROR, BADGE_DESTRUCTIVE, BADGE_DEFAULT } from "@/lib/design-tokens"
 import { Input } from "@/components/ui/input"
 import {
   Select,
@@ -138,25 +139,25 @@ const statusConfig = {
   completed: {
     label: "Completed",
     icon: CheckCircle2,
-    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+    variant: BADGE_SUCCESS,
   },
   processing: {
     label: "Processing",
     icon: Clock,
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    variant: BADGE_WARNING,
   },
   failed: {
     label: "Failed",
     icon: XCircle,
-    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+    variant: BADGE_ERROR,
   },
 }
 
 const typeConfig = {
-  quality: { label: "Quality", className: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400" },
-  security: { label: "Security", className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400" },
-  performance: { label: "Performance", className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400" },
-  review: { label: "Review", className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400" },
+  quality: { label: "Quality", variant: BADGE_DEFAULT },
+  security: { label: "Security", variant: BADGE_DESTRUCTIVE },
+  performance: { label: "Performance", variant: BADGE_WARNING },
+  review: { label: "Review", variant: BADGE_DEFAULT },
 }
 
 function isWithinPeriod(dateString: string, period: string) {
@@ -198,11 +199,11 @@ function ReportCard({ report }: { report: typeof reportsData[0] }) {
                 <h3 className="font-medium truncate">{report.name}</h3>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className={status.className}>
+                <Badge variant={status.variant}>
                   <StatusIcon className="h-3 w-3 mr-1" />
                   {status.label}
                 </Badge>
-                <Badge variant="secondary" className={type.className}>
+                <Badge variant={type.variant}>
                   {type.label}
                 </Badge>
                 <span className="text-xs text-muted-foreground">
@@ -239,17 +240,17 @@ function ReportCard({ report }: { report: typeof reportsData[0] }) {
           </div>
           {report.status === "completed" && (
             <div className="mt-3 flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1 text-red-600">
+              <span className="flex items-center gap-1 text-destructive">
                 <AlertTriangle className="h-3 w-3" />
                 {report.issues.critical} Critical
               </span>
               <span className="flex items-center gap-1 text-orange-600">
                 {report.issues.high} High
               </span>
-              <span className="flex items-center gap-1 text-yellow-600">
+              <span className="flex items-center gap-1 text-[color:var(--orange)]">
                 {report.issues.medium} Medium
               </span>
-              <span className="flex items-center gap-1 text-gray-600">
+              <span className="flex items-center gap-1 text-muted-foreground">
                 {report.issues.low} Low
               </span>
             </div>
@@ -288,7 +289,7 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Recent Reports</h1>
+          <h1 className="card-heading text-foreground">Recent Reports</h1>
           <p className="text-muted-foreground mt-1">
             {periodParam === "24h" && "Reports from the last 24 hours"}
             {periodParam === "week" && "Reports from this week"}
@@ -316,32 +317,32 @@ export default function ReportsPage() {
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-green-600">
+            <CardTitle className="text-sm font-medium text-[color:var(--green-status)]">
               Completed
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-green-600">{stats.completed}</div>
+            <div className="text-2xl font-bold text-[color:var(--green-status)]">{stats.completed}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-blue-600">
+            <CardTitle className="text-sm font-medium text-teal-400">
               Processing
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-blue-600">{stats.processing}</div>
+            <div className="text-2xl font-bold text-teal-400">{stats.processing}</div>
           </CardContent>
         </Card>
         <Card>
           <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-red-600">
+            <CardTitle className="text-sm font-medium text-destructive">
               Failed
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold text-red-600">{stats.failed}</div>
+            <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
           </CardContent>
         </Card>
       </div>

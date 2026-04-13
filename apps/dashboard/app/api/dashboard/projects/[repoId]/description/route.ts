@@ -14,7 +14,7 @@ export async function POST(
   try {
     const body = await request.json().catch(() => ({}))
     return proxyBackendRequest({
-      path: `/api/projects/${params.repoId}/description`,
+      path: `/api/v1/projects/${params.repoId}/description`,
       method: "POST",
       token: authResult.token,
       userId: authResult.userId,

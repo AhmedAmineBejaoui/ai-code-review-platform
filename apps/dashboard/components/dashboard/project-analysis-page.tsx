@@ -234,7 +234,7 @@ export function ProjectAnalysisPage({ repoId, repoPath }: ProjectAnalysisPagePro
                 <div className="text-muted-foreground">
                   Age: {Math.round(contextStatus.age_hours)} hours
                   {contextStatus.refresh_priority > 50 && (
-                    <span className="ml-2 text-orange-500">• High refresh priority</span>
+                    <span className="ml-2 text-[color:var(--orange)]">• High refresh priority</span>
                   )}
                 </div>
               </div>

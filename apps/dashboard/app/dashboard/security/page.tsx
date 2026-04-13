@@ -16,12 +16,12 @@ export default function SecurityDashboardPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight">Security Dashboard</h1>
+          <h1 className="card-heading text-foreground">Security Dashboard</h1>
           <p className="mt-2 text-muted-foreground">
             Real-time security scanning and vulnerability management across all repositories
           </p>
         </div>
-        <Shield className="h-12 w-12 text-blue-600" />
+        <Shield className="h-12 w-12 text-teal-400" />
       </div>
 
       {/* Summary Cards */}
@@ -45,15 +45,15 @@ export default function SecurityDashboardPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Completed Scans</span>
-                <span className="text-2xl font-bold text-green-600">127</span>
+                <span className="text-2xl font-bold text-[color:var(--green-status)]">127</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">In Progress</span>
-                <span className="text-2xl font-bold text-blue-600">3</span>
+                <span className="text-2xl font-bold text-teal-400">3</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Failed</span>
-                <span className="text-2xl font-bold text-red-600">2</span>
+                <span className="text-2xl font-bold text-destructive">2</span>
               </div>
             </div>
           </CardContent>
@@ -68,15 +68,15 @@ export default function SecurityDashboardPage() {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Critical</span>
-                <span className="text-xl font-bold text-red-600">2.3h</span>
+                <span className="text-xl font-bold text-destructive">2.3h</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">High</span>
-                <span className="text-xl font-bold text-amber-600">8.5h</span>
+                <span className="text-xl font-bold text-[color:var(--orange)]">8.5h</span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Medium</span>
-                <span className="text-xl font-bold text-blue-600">24h</span>
+                <span className="text-xl font-bold text-teal-400">24h</span>
               </div>
             </div>
           </CardContent>

@@ -157,7 +157,7 @@ export function ReviewerDashboard() {
         <Card className="border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30">
           <CardContent className="p-4 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <AlertTriangle className="h-5 w-5 text-red-500" />
+              <AlertTriangle className="h-5 w-5 text-destructive" />
               <span className="text-red-700 dark:text-red-300">{dashboardData.error}</span>
             </div>
             <Button variant="outline" size="sm" onClick={handleRefresh} disabled={isRefreshing}>
@@ -257,7 +257,7 @@ export function ReviewerDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center space-x-2">
-                <AlertCircle className="h-4 w-4 text-orange-500" />
+                <AlertCircle className="h-4 w-4 text-[color:var(--orange)]" />
                 <div>
                   <p className="text-sm font-medium text-muted-foreground">En cours</p>
                   <p className="text-2xl font-bold">{kpis.in_progress_reviews}</p>
@@ -351,7 +351,7 @@ export function ReviewerDashboard() {
           <Card className="border-amber-200 dark:border-amber-800 bg-gradient-to-br from-amber-50/50 to-orange-50/50 dark:from-amber-950/20 dark:to-orange-950/20">
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Crown className="h-5 w-5 text-amber-600" />
+                <Crown className="h-5 w-5 text-[color:var(--orange)]" />
                 Gestion d&apos;équipe
               </CardTitle>
               <CardDescription>
@@ -360,20 +360,20 @@ export function ReviewerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
-                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
-                  <p className="text-2xl font-bold text-amber-600">{teamStats.totalReviewers}</p>
+                <div className="text-center p-4 bg-card-inner rounded-lg">
+                  <p className="text-2xl font-bold text-[color:var(--orange)]">{teamStats.totalReviewers}</p>
                   <p className="text-sm text-muted-foreground">Reviewers</p>
                 </div>
-                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
-                  <p className="text-2xl font-bold text-green-600">{teamStats.activeReviewers}</p>
+                <div className="text-center p-4 bg-card-inner rounded-lg">
+                  <p className="text-2xl font-bold text-[color:var(--green-status)]">{teamStats.activeReviewers}</p>
                   <p className="text-sm text-muted-foreground">Actifs</p>
                 </div>
-                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
-                  <p className="text-2xl font-bold text-blue-600">{teamStats.pendingAssignments}</p>
+                <div className="text-center p-4 bg-card-inner rounded-lg">
+                  <p className="text-2xl font-bold text-teal-400">{teamStats.pendingAssignments}</p>
                   <p className="text-sm text-muted-foreground">A assigner</p>
                 </div>
-                <div className="text-center p-4 bg-white/60 dark:bg-gray-900/40 rounded-lg">
-                  <p className="text-2xl font-bold text-purple-600">{Math.round(teamStats.teamCompletionRate * 100)}%</p>
+                <div className="text-center p-4 bg-card-inner rounded-lg">
+                  <p className="text-2xl font-bold text-foreground">{Math.round(teamStats.teamCompletionRate * 100)}%</p>
                   <p className="text-sm text-muted-foreground">Taux completion</p>
                 </div>
               </div>
@@ -382,7 +382,7 @@ export function ReviewerDashboard() {
               {unassignedReviews.length > 0 && (
                 <div className="mb-4">
                   <h4 className="font-medium mb-2 flex items-center gap-2">
-                    <AlertTriangle className="h-4 w-4 text-amber-500" />
+                    <AlertTriangle className="h-4 w-4 text-[color:var(--orange)]" />
                     Reviews non assignees ({unassignedReviews.length})
                   </h4>
                   <div className="space-y-2">
@@ -435,7 +435,7 @@ export function ReviewerDashboard() {
                       </div>
                       <div className="text-right">
                         <p className="text-sm">
-                          <span className="text-amber-600 font-medium">{member.pendingReviews}</span> en attente
+                          <span className="text-[color:var(--orange)] font-medium">{member.pendingReviews}</span> en attente
                         </p>
                         <p className="text-xs text-muted-foreground">
                           {member.completedThisWeek} cette semaine
@@ -634,7 +634,7 @@ export function ReviewerDashboard() {
                   </>
                 )}
                 {capabilities.canEscalate && (
-                  <Button variant="outline" size="sm" className="w-full justify-start text-amber-600 border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950/30">
+                  <Button variant="outline" size="sm" className="w-full justify-start text-[color:var(--orange)] border-amber-200 hover:bg-amber-50 dark:border-amber-800 dark:hover:bg-amber-950/30">
                     <Zap className="h-4 w-4 mr-2" />
                     Escalader une review
                   </Button>
@@ -652,27 +652,27 @@ export function ReviewerDashboard() {
               </CardHeader>
               <CardContent>
                 <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div className={`flex items-center gap-2 ${capabilities.canApprove ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canApprove ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <CheckCircle className="h-4 w-4" />
                     Approuver
                   </div>
-                  <div className={`flex items-center gap-2 ${capabilities.canBlock ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canBlock ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <Shield className="h-4 w-4" />
                     Bloquer
                   </div>
-                  <div className={`flex items-center gap-2 ${capabilities.canAssign ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canAssign ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <UserPlus className="h-4 w-4" />
                     Assigner
                   </div>
-                  <div className={`flex items-center gap-2 ${capabilities.canDelegate ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canDelegate ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <Users className="h-4 w-4" />
                     Deleguer
                   </div>
-                  <div className={`flex items-center gap-2 ${capabilities.canAccessTeamAnalytics ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canAccessTeamAnalytics ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <BarChart3 className="h-4 w-4" />
                     Analytics equipe
                   </div>
-                  <div className={`flex items-center gap-2 ${capabilities.canCreateTemplates ? "text-green-600" : "text-gray-400"}`}>
+                  <div className={`flex items-center gap-2 ${capabilities.canCreateTemplates ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`}>
                     <Settings className="h-4 w-4" />
                     Creer templates
                   </div>

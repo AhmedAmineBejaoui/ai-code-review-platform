@@ -20,6 +20,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
+import { BANNER_INFO, CARD_GLASS_CLASS, INPUT_STANDARD } from "@/lib/design-tokens"
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights"
 import {
   deleteDashboardAnalysis,
@@ -182,35 +183,35 @@ export function AnalysisList() {
   return (
     <motion.div className="max-w-7xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-2">
+        <h1 className="card-heading text-foreground mb-2">
           Liste des analyses
         </h1>
-        <p className="text-gray-600 dark:text-gray-400">Retrouvez toutes les analyses associees aux PRs et commits</p>
+        <p className="body-text text-muted-foreground">Retrouvez toutes les analyses associees aux PRs et commits</p>
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Descriptions PR generees par Ollama</CardTitle>
           </CardHeader>
           <CardContent>
             {insightsLoading ? (
-              <p className="text-sm text-gray-600 dark:text-gray-400">Chargement...</p>
+              <p className="text-sm text-muted-foreground">Chargement...</p>
             ) : insights.prSummaries.length === 0 ? (
-              <p className="text-sm text-gray-600 dark:text-gray-400">Aucune description PR disponible.</p>
+              <p className="text-sm text-muted-foreground">Aucune description PR disponible.</p>
             ) : (
               <div className="space-y-3">
                 {insights.prSummaries.map((item) => (
                   <div
                     key={item.analysisId}
-                    className="rounded-xl border border-gray-200/60 bg-white/70 p-4 dark:border-gray-700/60 dark:bg-gray-900/60"
+                    className={`rounded-xl p-4 ${CARD_GLASS_CLASS}`}
                   >
                     <div className="mb-2 flex flex-wrap items-center gap-2">
                       <Badge variant="outline">{item.repo}</Badge>
                       <Badge variant="secondary">{item.prNumber ? `PR #${item.prNumber}` : item.commitSha ?? "Commit"}</Badge>
                       <Badge variant="outline">{item.status}</Badge>
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{item.summary}</p>
+                    <p className="text-sm text-secondary-foreground">{item.summary}</p>
                   </div>
                 ))}
               </div>
@@ -220,31 +221,31 @@ export function AnalysisList() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center gap-4">
               <Filter className="h-5 w-5 text-purple-500" />
               <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Rechercher par repo, PR, commit ou auteur..."
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
-                  className="pl-10 bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700"
+                  className={`pl-10 ${INPUT_STANDARD}`}
                 />
               </div>
             </div>
           </CardHeader>
           <CardContent>
             {actionMessage && (
-              <div className="mb-3 rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+              <div className={`mb-3 ${BANNER_INFO}`}>
                 {actionMessage}
               </div>
             )}
             <div className="rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+                  <TableRow className="bg-card-inner hover:bg-card-inner">
                     <TableHead>Repository</TableHead>
                     <TableHead>PR / Commit</TableHead>
                     <TableHead>Auteur</TableHead>
@@ -259,13 +260,13 @@ export function AnalysisList() {
                 <TableBody>
                   {analysesLoading ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                      <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
                         Chargement des analyses...
                       </TableCell>
                     </TableRow>
                   ) : filteredAnalyses.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-sm text-gray-500 dark:text-gray-400 py-8">
+                      <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
                         Aucune analyse a afficher.
                       </TableCell>
                     </TableRow>
@@ -279,21 +280,21 @@ export function AnalysisList() {
                           initial={{ opacity: 0, x: -20 }}
                           animate={{ opacity: 1, x: 0 }}
                           transition={{ delay: index * 0.05 }}
-                          className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors"
+                          className="group hover:bg-card-hover transition-colors"
                         >
-                          <TableCell className="font-medium text-gray-900 dark:text-white">{analysis.repo}</TableCell>
+                          <TableCell className="font-medium text-foreground">{analysis.repo}</TableCell>
                           <TableCell>
                             <div className="flex flex-col gap-1">
-                              <span className="text-blue-600 dark:text-blue-400 font-medium">{analysis.prLabel}</span>
-                              <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{analysis.commitSha ?? "-"}</span>
+                              <span className="text-teal-400 font-medium">{analysis.prLabel}</span>
+                              <span className="text-xs text-muted-foreground font-mono">{analysis.commitSha ?? "-"}</span>
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-700 dark:text-gray-300">{analysis.author}</TableCell>
-                          <TableCell className="text-gray-600 dark:text-gray-400 text-sm">{formatCreatedAt(analysis.createdAt)}</TableCell>
+                          <TableCell className="text-secondary-foreground">{analysis.author}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{formatCreatedAt(analysis.createdAt)}</TableCell>
                           <TableCell>{getStatusBadge(analysis.status)}</TableCell>
-                          <TableCell className="text-gray-600 dark:text-gray-400">{analysis.durationLabel}</TableCell>
+                          <TableCell className="text-muted-foreground">{analysis.durationLabel}</TableCell>
                           <TableCell>
-                            <span className="font-semibold text-gray-900 dark:text-white">{findingsTotal}</span>
+                            <span className="font-semibold text-foreground">{findingsTotal}</span>
                           </TableCell>
                           <TableCell>
                             <div className="flex gap-2">
@@ -304,7 +305,7 @@ export function AnalysisList() {
                                 </Badge>
                               )}
                               {analysis.warnCount > 0 && (
-                                <Badge className="gap-1 bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
+                                <Badge variant="warning" className="gap-1">
                                   <AlertTriangle className="h-3 w-3" />
                                   {analysis.warnCount}
                                 </Badge>
@@ -352,7 +353,7 @@ export function AnalysisList() {
                                   variant="ghost"
                                   size="icon"
                                   title="Supprimer"
-                                  className="text-red-500 hover:text-red-600"
+                                  className="text-destructive hover:text-destructive"
                                   disabled={deleteBusyId === analysis.id}
                                   onClick={() => {
                                     void handleDeleteAnalysis(analysis.id)

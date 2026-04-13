@@ -15,8 +15,6 @@ from analysis.langGraph.pipeline import (
 from analysis.langGraph.raggraph.retriever import RagGraphRetriever
 from analysis.langGraph.raggraph.llm_service import RagGraphLLMService
 from app.core.knowledge_base.retriever import build_llm_context_with_chunks
-from app.core.knowledge_base.rag_engines import build_rag_engines
-from app.integrations.vector_store.qdrant_client import QdrantClient
 
 logger = logging.getLogger(__name__)
 
@@ -82,8 +80,7 @@ class LangGraphRetriever:
         )
 
     async def retrieve_for_repo_bootstrap(self, *, repo_id: str, limit: int = 12):
-        primary, _fallback = build_rag_engines(vector_store=QdrantClient())
-        return await primary.retrieve_for_repo_bootstrap(repo_id=repo_id, limit=limit)
+        return await self._retriever.retrieve_for_repo_bootstrap(repo_id=repo_id, limit=limit)
 
 
 class LangGraphLLMService:

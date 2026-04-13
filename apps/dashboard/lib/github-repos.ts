@@ -44,7 +44,11 @@ export async function fetchGithubRepos(options?: {
   }
 
   return {
-    connected: data.connected !== false,
+    connected:
+      data.connected !== false ||
+      data.tokenAvailable === true ||
+      (Array.isArray(data.items) && data.items.length > 0) ||
+      Boolean(data.login),
     items: Array.isArray(data.items) ? data.items : [],
     error: data.error ?? null,
     login: data.login,

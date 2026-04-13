@@ -138,10 +138,10 @@ export default function ReviewerAnalyticsPage() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
-              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
+              <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
               <div>
                 <h3 className="font-semibold text-lg">Error Loading Metrics</h3>
-                <p className="text-sm text-gray-600 mt-2">{error}</p>
+                <p className="text-sm text-muted-foreground mt-2">{error}</p>
               </div>
               <Button onClick={fetchMetrics} variant="outline">
                 Try Again
@@ -192,10 +192,10 @@ export default function ReviewerAnalyticsPage() {
   const getRoleSpecificInsight = () => {
     if (currentUser.role === "reviewer_junior") {
       return (
-        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800">
+        <Card className="border-teal-500/30 bg-teal-500/10">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
-              <Star className="h-5 w-5 text-blue-600 mt-0.5" />
+              <Star className="h-5 w-5 text-teal-400 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
                   Junior Reviewer Progress
@@ -238,7 +238,7 @@ export default function ReviewerAnalyticsPage() {
         <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
           <CardContent className="pt-6">
             <div className="flex items-start gap-3">
-              <Crown className="h-5 w-5 text-amber-600 mt-0.5" />
+              <Crown className="h-5 w-5 text-[color:var(--orange)] mt-0.5" />
               <div>
                 <h4 className="font-semibold text-amber-900 dark:text-amber-100 mb-1">
                   Leadership Impact
@@ -266,7 +266,7 @@ export default function ReviewerAnalyticsPage() {
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">My Analytics</h1>
+            <h1 className="card-heading text-foreground">My Analytics</h1>
             {getRoleBadge()}
           </div>
           <p className="text-muted-foreground mt-1">
@@ -313,8 +313,8 @@ export default function ReviewerAnalyticsPage() {
                   )}
                 </div>
               </div>
-              <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="h-12 w-12 bg-teal-500/15 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-teal-400" />
               </div>
             </div>
           </CardContent>
@@ -357,8 +357,8 @@ export default function ReviewerAnalyticsPage() {
                   </Badge>
                 </div>
               </div>
-              <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                <Target className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="h-12 w-12 bg-[color:var(--green-status)]/15 rounded-full flex items-center justify-center">
+                <Target className="h-6 w-6 text-[color:var(--green-status)]" />
               </div>
             </div>
           </CardContent>
@@ -394,7 +394,7 @@ export default function ReviewerAnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <TrendingUp className="h-5 w-5 mr-2 text-blue-600" />
+              <TrendingUp className="h-5 w-5 mr-2 text-teal-400" />
               Review Activity Trend
             </CardTitle>
           </CardHeader>
@@ -408,8 +408,8 @@ export default function ReviewerAnalyticsPage() {
                 <Area
                   type="monotone"
                   dataKey="reviews"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
+                  stroke="var(--orange)"
+                  fill="var(--orange)"
                   fillOpacity={0.3}
                 />
               </AreaChart>
@@ -421,7 +421,7 @@ export default function ReviewerAnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Award className="h-5 w-5 mr-2 text-green-600" />
+              <Award className="h-5 w-5 mr-2 text-[color:var(--green-status)]" />
               Review Decisions
             </CardTitle>
           </CardHeader>
@@ -469,7 +469,7 @@ export default function ReviewerAnalyticsPage() {
                 <Line
                   type="monotone"
                   dataKey="avgTime"
-                  stroke="#8b5cf6"
+                  stroke="var(--teal)"
                   strokeWidth={2}
                   dot={{ r: 4 }}
                 />
@@ -482,7 +482,7 @@ export default function ReviewerAnalyticsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Target className="h-5 w-5 mr-2 text-green-600" />
+              <Target className="h-5 w-5 mr-2 text-[color:var(--green-status)]" />
               SLA Compliance Trend
             </CardTitle>
           </CardHeader>
@@ -496,8 +496,8 @@ export default function ReviewerAnalyticsPage() {
                 <Area
                   type="monotone"
                   dataKey="slaCompliance"
-                  stroke="#10b981"
-                  fill="#10b981"
+                  stroke="var(--green-status)"
+                  fill="var(--green-status)"
                   fillOpacity={0.3}
                 />
               </AreaChart>
@@ -517,13 +517,13 @@ export default function ReviewerAnalyticsPage() {
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
             <div className="text-center">
-              <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+              <div className="text-2xl font-bold text-[color:var(--green-status)]">
                 {metrics.current_period.approvals}
               </div>
               <div className="text-sm text-muted-foreground mt-1">Approvals</div>
             </div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-yellow-600 dark:text-yellow-400">
+              <div className="text-2xl font-bold text-[color:var(--orange)] dark:text-yellow-400">
                 {metrics.current_period.warnings}
               </div>
               <div className="text-sm text-muted-foreground mt-1">Warnings</div>
@@ -531,7 +531,7 @@ export default function ReviewerAnalyticsPage() {
             {/* Only show blocks for Senior and Lead reviewers */}
             {(currentUser.role === "reviewer_senior" || currentUser.role === "reviewer_lead") && (
               <div className="text-center">
-                <div className="text-2xl font-bold text-red-600 dark:text-red-400">
+                <div className="text-2xl font-bold text-destructive">
                   {metrics.current_period.blocks}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">Blocks</div>

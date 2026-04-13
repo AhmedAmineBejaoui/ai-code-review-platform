@@ -386,7 +386,7 @@ export function BranchList({ repoId, orgId }: BranchListProps) {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
             <CardTitle className="text-sm font-medium">Hotfixes</CardTitle>
-            <Shield className="h-4 w-4 text-red-500" />
+            <Shield className="h-4 w-4 text-destructive" />
           </CardHeader>
           <CardContent>
             <div className="text-2xl font-bold">{stats.byType.hotfix}</div>
@@ -532,9 +532,9 @@ export function BranchList({ repoId, orgId }: BranchListProps) {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-2 text-sm">
-                        <span className="text-green-600">+{branch.ahead_count}</span>
+                        <span className="text-[color:var(--green-status)]">+{branch.ahead_count}</span>
                         <span className="text-muted-foreground">/</span>
-                        <span className="text-red-600">-{branch.behind_count}</span>
+                        <span className="text-destructive">-{branch.behind_count}</span>
                       </div>
                     </TableCell>
                     <TableCell>

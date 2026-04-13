@@ -17,14 +17,15 @@ import {
   type ActivityEvent,
   type ActivityFeedData,
 } from "@/lib/notifications";
+import { extractApiErrorMessage } from "@/lib/display";
 
 // Map icon types to Lucide icons
 const iconMap = {
   success: { icon: CheckCircle2, color: "text-emerald-400" },
-  error: { icon: ShieldAlert, color: "text-red-400" },
+  error: { icon: ShieldAlert, color: "text-destructive" },
   warning: { icon: AlertTriangle, color: "text-amber-400" },
   ai: { icon: Bot, color: "text-violet-400" },
-  pr: { icon: GitPullRequest, color: "text-blue-400" },
+  pr: { icon: GitPullRequest, color: "text-teal-400" },
   performance: { icon: Zap, color: "text-yellow-400" },
 };
 
@@ -59,7 +60,7 @@ export function LiveActivityFeed() {
     try {
       const data = await fetchActivityFeed({ force: true, limit: 5 });
       if (data.error) {
-        setError(data.error);
+        setError(extractApiErrorMessage(data, "Erreur de chargement"));
       } else {
         setActivities(transformEventsToDisplay(data.events));
         setError(null);
@@ -116,8 +117,8 @@ export function LiveActivityFeed() {
       {/* Error State */}
       {!loading && error && (
         <div className="text-center py-8">
-          <ShieldAlert className="h-6 w-6 mx-auto mb-2 text-red-400" />
-          <p className="text-xs text-red-400">{error}</p>
+          <ShieldAlert className="h-6 w-6 mx-auto mb-2 text-destructive" />
+          <p className="text-xs text-destructive">{error}</p>
         </div>
       )}
 

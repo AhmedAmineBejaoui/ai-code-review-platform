@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
 import {
   GitBranch,
   GitPullRequest,
@@ -67,7 +68,15 @@ import {
   fetchGithubRepos,
   type GithubRepoOption,
 } from "@/lib/github-repos"
+import { extractApiErrorMessage } from "@/lib/display"
 import { formatCompactRelativeTime } from "@/lib/domain/dates"
+import {
+  copyTextToClipboard,
+  getGitHubCloneUrl,
+  getGitHubRepositoryUrl,
+  getRepositoryPath,
+  getRepositorySettingsPath,
+} from "@/lib/repository-links"
 
 // Types for repository data from backend
 interface Repository {
@@ -113,11 +122,25 @@ const languageColors: Record<string, string> = {
 
 const ciStatusConfig = {
   passing: { icon: CheckCircle2, className: "text-green-500" },
-  failing: { icon: AlertCircle, className: "text-red-500" },
-  unknown: { icon: RefreshCw, className: "text-gray-400" },
+  failing: { icon: AlertCircle, className: "text-destructive" },
+  unknown: { icon: RefreshCw, className: "text-muted-foreground" },
 }
 
-function RepositoryRow({ repo }: { repo: Repository }) {
+interface RepositoryRowProps {
+  repo: Repository
+  onViewRepository: (repo: Repository) => void
+  onCopyCloneUrl: (repo: Repository) => Promise<void>
+  onOpenGitHub: (repo: Repository) => void
+  onOpenSettings: (repo: Repository) => void
+}
+
+function RepositoryRow({
+  repo,
+  onViewRepository,
+  onCopyCloneUrl,
+  onOpenGitHub,
+  onOpenSettings,
+}: RepositoryRowProps) {
   const [isStarred, setIsStarred] = useState(false)
   const CiIcon = ciStatusConfig[repo.ci_status]?.icon || ciStatusConfig.unknown.icon
   const ciClassName = ciStatusConfig[repo.ci_status]?.className || ciStatusConfig.unknown.className
@@ -206,20 +229,20 @@ function RepositoryRow({ repo }: { repo: Repository }) {
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onViewRepository(repo)}>
                 <Eye className="h-4 w-4 mr-2" />
                 View Repository
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => { void onCopyCloneUrl(repo) }}>
                 <Copy className="h-4 w-4 mr-2" />
                 Clone URL
               </DropdownMenuItem>
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpenGitHub(repo)}>
                 <ExternalLink className="h-4 w-4 mr-2" />
                 Open in GitHub
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onOpenSettings(repo)}>
                 <Settings className="h-4 w-4 mr-2" />
                 Settings
               </DropdownMenuItem>
@@ -350,7 +373,7 @@ export default function RepositoriesPage() {
   useEffect(() => {
     if (!importDialogOpen || wizardStep !== 1) return
     loadGithubRepos()
-  }, [importDialogOpen])
+  }, [importDialogOpen, wizardStep])
 
   const loadGithubRepos = async () => {
     setIsLoadingGithubRepos(true)
@@ -468,7 +491,10 @@ export default function RepositoriesPage() {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
         const detail = errorData.detail
-        const msg = typeof detail === "string" ? detail : (errorData.error || errorData.message || "Failed to import repository")
+        const msg =
+          typeof detail === "string"
+            ? detail
+            : extractApiErrorMessage(errorData, "Failed to import repository")
         throw new Error(msg)
       }
       setImportSuccess(`Repository "${repoFullName}" imported successfully!`)
@@ -502,9 +528,7 @@ export default function RepositoriesPage() {
       })
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
-        throw new Error(
-          errorData.error ?? errorData.detail ?? "Import failed",
-        )
+        throw new Error(extractApiErrorMessage(errorData, "Import failed"))
       }
       const data = await response.json()
       const invitedCount: number = data.invited_count ?? 0
@@ -546,6 +570,34 @@ export default function RepositoriesPage() {
 
   const filteredRepos = repositories
 
+  const handleViewRepository = (repo: Repository) => {
+    router.push(getRepositoryPath(repo.id))
+  }
+
+  const handleCopyCloneUrl = async (repo: Repository) => {
+    const cloneUrl = getGitHubCloneUrl(repo.full_name)
+
+    try {
+      await copyTextToClipboard(cloneUrl)
+      toast.success("Clone URL copied to clipboard")
+    } catch (error) {
+      console.error("Failed to copy clone URL:", error)
+      toast.error("Unable to copy clone URL")
+    }
+  }
+
+  const handleOpenGitHub = (repo: Repository) => {
+    const githubUrl = getGitHubRepositoryUrl(repo.full_name)
+    const popup = window.open(githubUrl, "_blank", "noopener,noreferrer")
+    if (!popup) {
+      toast.error("Unable to open GitHub in a new tab")
+    }
+  }
+
+  const handleOpenSettings = (repo: Repository) => {
+    router.push(getRepositorySettingsPath(repo.id))
+  }
+
   const stats = {
     total: total,
     private: repositories.filter((r) => r.visibility === "private").length,
@@ -560,7 +612,7 @@ export default function RepositoriesPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Repositories</h1>
+          <h1 className="card-heading text-foreground">Repositories</h1>
           <p className="text-muted-foreground mt-1">
             Browse and manage code repositories
           </p>
@@ -690,7 +742,7 @@ export default function RepositoriesPage() {
                 </div>
               )}
               {importSuccess && (
-                <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm">
+                <div className="flex items-center gap-2 p-3 bg-green-500/10 text-[color:var(--green-status)] rounded-md text-sm">
                   <CheckCircle2 className="h-4 w-4" />
                   {importSuccess}
                 </div>
@@ -771,7 +823,7 @@ export default function RepositoriesPage() {
                 </div>
               )}
               {importSuccess && (
-                <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm">
+                <div className="flex items-center gap-2 p-3 bg-green-500/10 text-[color:var(--green-status)] rounded-md text-sm">
                   <CheckCircle2 className="h-4 w-4" />
                   {importSuccess}
                 </div>
@@ -957,7 +1009,14 @@ export default function RepositoriesPage() {
                 ))
               ) : (
                 filteredRepos.map((repo) => (
-                  <RepositoryRow key={repo.id} repo={repo} />
+                  <RepositoryRow
+                    key={repo.id}
+                    repo={repo}
+                    onViewRepository={handleViewRepository}
+                    onCopyCloneUrl={handleCopyCloneUrl}
+                    onOpenGitHub={handleOpenGitHub}
+                    onOpenSettings={handleOpenSettings}
+                  />
                 ))
               )}
             </TableBody>

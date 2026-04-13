@@ -1,14 +1,21 @@
 import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
-import { Inter } from "next/font/google"
+import { IBM_Plex_Mono, Sora } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"
+import { Toaster } from "@/components/ui/sonner"
 import { getClerkRuntimeConfig } from "@/lib/clerk-runtime"
 import "./globals.css"
 
-const inter = Inter({
+const sora = Sora({
   subsets: ["latin"],
-  variable: "--font-inter",
+  variable: "--font-sora",
+})
+
+const mono = IBM_Plex_Mono({
+  subsets: ["latin"],
+  weight: ["400", "500", "600"],
+  variable: "--font-ibm-plex-mono",
 })
 
 const clerkRuntimeConfig = getClerkRuntimeConfig()
@@ -33,8 +40,11 @@ export default function RootLayout({
       signUpFallbackRedirectUrl="/auth/role-redirect"
     >
       <html lang="en" suppressHydrationWarning>
-        <body className={`${inter.variable} antialiased`}>
-          <ThemeProvider>{children}</ThemeProvider>
+        <body className={`${sora.variable} ${mono.variable} bg-background text-foreground antialiased`}>
+          <ThemeProvider>
+            {children}
+            <Toaster richColors closeButton />
+          </ThemeProvider>
         </body>
       </html>
     </ClerkProvider>

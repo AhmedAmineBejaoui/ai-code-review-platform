@@ -6,25 +6,25 @@ from typing import Any
 
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.document_lifecycle import resync_document_source, run_due_document_maintenance
-from app.core.knowledge_base.rag_engines import build_rag_engines
+from app.core.knowledge_base.rag_engines import build_graph_rag_engine
 from app.core.knowledge_base.retriever import build_llm_context
 from app.core.project_comprehension.service import ProjectComprehensionService
-from app.core.review_intelligence.engines import build_langchain_review_generation_engine, build_legacy_review_generation_engine
 from app.core.summarization import SummaryService
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
 logger = logging.getLogger(__name__)
 
-
-def _select_primary_review_engine():
-    if settings.langchain_primary_stack == "langchain" and settings.langchain_enabled:
-        engine = build_langchain_review_generation_engine()
-        if engine.available:
-            return engine
-    return build_legacy_review_generation_engine()
+_SUMMARY_SERVICE = SummaryService(
+    llm_client=OllamaClient(
+        base_url=settings.OLLAMA_BASE_URL,
+        model=settings.OLLAMA_MODEL,
+        timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+    )
+)
 
 
 @celery_app.task(name="kb.onboard_repo", bind=True)
@@ -82,9 +82,7 @@ def run_document_maintenance(
 async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: str) -> dict[str, Any]:
     qdrant_client = QdrantClient()
     ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    legacy_rag, langchain_rag = build_rag_engines(vector_store=qdrant_client)
-    rag_engine = langchain_rag if settings.langchain_primary_stack == "langchain" and langchain_rag is not None else legacy_rag
-    review_engine = _select_primary_review_engine()
+    rag_engine = build_graph_rag_engine(vector_store=qdrant_client)
 
     index_result = await ingestor.onboard_repo(repo_id=repo_id, repo_path=repo_path, source=source, force_full=True)
 
@@ -115,14 +113,14 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
 
     if profile:
         try:
-            generated = review_engine.generate_repo_overview(
+            generated = _SUMMARY_SERVICE.generate_repo_overview(
                 repo_id=repo_id,
                 repo_profile=profile,
                 context_excerpt=overview_context,
             )
             overview_summary = generated.summary
             overview_highlights = generated.highlights
-            summary_source = review_engine.stack_name
+            summary_source = "graph_rag"
         except Exception:
             fallback = SummaryService.fallback_repo_overview(repo_id=repo_id, repo_profile=profile)
             overview_summary = fallback.summary
@@ -181,8 +179,7 @@ async def _run_repo_diff_processing_async(
 ) -> dict[str, Any]:
     qdrant_client = QdrantClient()
     ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    legacy_rag, langchain_rag = build_rag_engines(vector_store=qdrant_client)
-    rag_engine = langchain_rag if settings.langchain_primary_stack == "langchain" and langchain_rag is not None else legacy_rag
+    rag_engine = build_graph_rag_engine(vector_store=qdrant_client)
 
     update_result = await ingestor.update_repo_incremental(
         repo_id=repo_id,

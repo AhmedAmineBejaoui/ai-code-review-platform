@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
@@ -40,9 +40,14 @@ class TeamResponse(BaseModel):
     name: str
     slug: str | None
     description: str | None = None
+    clerk_org_id: str | None = None
+    github_org_id: str | None = None
+    github_org_login: str | None = None
+    source: str = "platform"
+    sync_status: str = "local_only"
     
     member_count: int
-    members: list[TeamMember] = []
+    members: list[TeamMember] = Field(default_factory=list)
     
     # Team metrics
     total_reviews: int = 0
@@ -63,9 +68,15 @@ class CreateTeamRequest(BaseModel):
     """Request to create a team."""
     model_config = ConfigDict(extra="forbid")
 
+    id: str | None = Field(None, min_length=2, max_length=128)
     name: str = Field(min_length=1, max_length=100)
     slug: str | None = Field(None, max_length=50, pattern=r"^[a-z0-9-]+$")
     description: str | None = Field(None, max_length=500)
+    clerk_org_id: str | None = Field(None, max_length=128)
+    github_org_id: str | None = Field(None, max_length=128)
+    github_org_login: str | None = Field(None, max_length=100)
+    source: Literal["platform", "github_import", "clerk_sync", "legacy"] = "platform"
+    sync_status: Literal["linked", "clerk_only", "github_only", "local_only", "error"] = "local_only"
 
 
 class UpdateTeamRequest(BaseModel):
@@ -73,7 +84,13 @@ class UpdateTeamRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(None, min_length=1, max_length=100)
+    slug: str | None = Field(None, max_length=50, pattern=r"^[a-z0-9-]+$")
     description: str | None = Field(None, max_length=500)
+    clerk_org_id: str | None = Field(None, max_length=128)
+    github_org_id: str | None = Field(None, max_length=128)
+    github_org_login: str | None = Field(None, max_length=100)
+    source: Literal["platform", "github_import", "clerk_sync", "legacy"] | None = None
+    sync_status: Literal["linked", "clerk_only", "github_only", "local_only", "error"] | None = None
 
 
 class AddMemberRequest(BaseModel):
@@ -82,6 +99,90 @@ class AddMemberRequest(BaseModel):
 
     user_id: str
     role: Literal["admin", "member", "viewer"] = "member"
+
+
+def _slugify(value: str) -> str:
+    normalized = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
+    collapsed = "-".join(part for part in normalized.split("-") if part)
+    return collapsed[:50] or f"team-{uuid.uuid4().hex[:8]}"
+
+
+def _serialize_datetime(value: Any) -> str:
+    if isinstance(value, datetime):
+        return value.isoformat()
+    return str(value or "")
+
+
+def _resolve_sync_status(
+    clerk_org_id: str | None,
+    github_org_login: str | None,
+    explicit: str | None = None,
+) -> str:
+    if explicit:
+        return explicit
+    if clerk_org_id and github_org_login:
+        return "linked"
+    if clerk_org_id:
+        return "clerk_only"
+    if github_org_login:
+        return "github_only"
+    return "local_only"
+
+
+def _ensure_user_record(engine, principal: AuthenticatedPrincipal) -> None:
+    from sqlalchemy import text
+
+    email = principal.email.strip() if isinstance(principal.email, str) and principal.email.strip() else None
+    display_name = (
+        principal.display_name.strip()
+        if isinstance(principal.display_name, str) and principal.display_name.strip()
+        else None
+    )
+
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                INSERT INTO users (id, email, display_name, is_active, created_at)
+                VALUES (:id, :email, :display_name, true, :created_at)
+                ON CONFLICT (id) DO UPDATE
+                SET email = COALESCE(EXCLUDED.email, users.email),
+                    display_name = COALESCE(EXCLUDED.display_name, users.display_name),
+                    is_active = true
+                """
+            ),
+            {
+                "id": principal.user_id,
+                "email": email or f"{principal.user_id}@clerk.local",
+                "display_name": display_name,
+                "created_at": datetime.now(timezone.utc),
+            },
+        )
+
+
+def _team_response_from_data(
+    team_data: dict[str, Any],
+    members: list[TeamMember],
+    metrics: dict[str, Any],
+) -> TeamResponse:
+    return TeamResponse(
+        id=team_data["id"],
+        name=team_data["name"],
+        slug=team_data.get("slug"),
+        description=team_data.get("description"),
+        clerk_org_id=team_data.get("clerk_org_id"),
+        github_org_id=team_data.get("github_org_id"),
+        github_org_login=team_data.get("github_org_login"),
+        source=team_data.get("source") or "platform",
+        sync_status=team_data.get("sync_status") or "local_only",
+        member_count=team_data.get("member_count", len(members)),
+        members=members,
+        total_reviews=metrics["total_reviews"],
+        active_reviews=metrics["active_reviews"],
+        avg_review_time_hours=metrics["avg_review_time_hours"],
+        created_at=team_data["created_at"],
+        updated_at=team_data["updated_at"],
+    )
 
 
 def _get_organization_teams(engine, org_id: str | None) -> list[dict[str, Any]]:
@@ -95,13 +196,30 @@ def _get_organization_teams(engine, org_id: str | None) -> list[dict[str, Any]]:
                 o.id,
                 o.name,
                 o.slug,
+                o.description,
+                o.clerk_org_id,
+                o.github_org_id,
+                o.github_org_login,
+                o.source,
+                o.sync_status,
                 o.created_at,
                 o.updated_at,
                 COUNT(DISTINCT om.user_id) as member_count
             FROM organizations o
             LEFT JOIN organization_memberships om ON o.id = om.organization_id
             WHERE o.id = :org_id AND o.is_active = true
-            GROUP BY o.id, o.name, o.slug, o.created_at, o.updated_at
+            GROUP BY 
+                o.id,
+                o.name,
+                o.slug,
+                o.description,
+                o.clerk_org_id,
+                o.github_org_id,
+                o.github_org_login,
+                o.source,
+                o.sync_status,
+                o.created_at,
+                o.updated_at
         """)
         params = {"org_id": org_id}
     else:
@@ -111,13 +229,30 @@ def _get_organization_teams(engine, org_id: str | None) -> list[dict[str, Any]]:
                 o.id,
                 o.name,
                 o.slug,
+                o.description,
+                o.clerk_org_id,
+                o.github_org_id,
+                o.github_org_login,
+                o.source,
+                o.sync_status,
                 o.created_at,
                 o.updated_at,
                 COUNT(DISTINCT om.user_id) as member_count
             FROM organizations o
             LEFT JOIN organization_memberships om ON o.id = om.organization_id
             WHERE o.is_active = true
-            GROUP BY o.id, o.name, o.slug, o.created_at, o.updated_at
+            GROUP BY
+                o.id,
+                o.name,
+                o.slug,
+                o.description,
+                o.clerk_org_id,
+                o.github_org_id,
+                o.github_org_login,
+                o.source,
+                o.sync_status,
+                o.created_at,
+                o.updated_at
             ORDER BY o.name
         """)
         params = {}
@@ -130,8 +265,14 @@ def _get_organization_teams(engine, org_id: str | None) -> list[dict[str, Any]]:
                 "id": row["id"],
                 "name": row["name"],
                 "slug": row.get("slug"),
-                "created_at": row["created_at"].isoformat() if isinstance(row.get("created_at"), datetime) else str(row.get("created_at", "")),
-                "updated_at": row["updated_at"].isoformat() if isinstance(row.get("updated_at"), datetime) else str(row.get("updated_at", "")),
+                "description": row.get("description"),
+                "clerk_org_id": row.get("clerk_org_id"),
+                "github_org_id": row.get("github_org_id"),
+                "github_org_login": row.get("github_org_login"),
+                "source": row.get("source") or "platform",
+                "sync_status": row.get("sync_status") or "local_only",
+                "created_at": _serialize_datetime(row.get("created_at")),
+                "updated_at": _serialize_datetime(row.get("updated_at")),
                 "member_count": row.get("member_count") or 0,
             })
     
@@ -230,20 +371,7 @@ async def list_teams(
     for team_data in teams_data:
         members = _get_team_members(engine, team_data["id"])
         metrics = _get_team_metrics(engine, team_data["id"])
-        
-        items.append(TeamResponse(
-            id=team_data["id"],
-            name=team_data["name"],
-            slug=team_data.get("slug"),
-            description=None,
-            member_count=team_data.get("member_count", len(members)),
-            members=members,
-            total_reviews=metrics["total_reviews"],
-            active_reviews=metrics["active_reviews"],
-            avg_review_time_hours=metrics["avg_review_time_hours"],
-            created_at=team_data["created_at"],
-            updated_at=team_data["updated_at"],
-        ))
+        items.append(_team_response_from_data(team_data, members, metrics))
     
     return TeamListResponse(
         items=items,
@@ -272,19 +400,7 @@ async def get_team(
     members = _get_team_members(engine, team_id)
     metrics = _get_team_metrics(engine, team_id)
     
-    return TeamResponse(
-        id=team_data["id"],
-        name=team_data["name"],
-        slug=team_data.get("slug"),
-        description=None,
-        member_count=team_data.get("member_count", len(members)),
-        members=members,
-        total_reviews=metrics["total_reviews"],
-        active_reviews=metrics["active_reviews"],
-        avg_review_time_hours=metrics["avg_review_time_hours"],
-        created_at=team_data["created_at"],
-        updated_at=team_data["updated_at"],
-    )
+    return _team_response_from_data(team_data, members, metrics)
 
 
 @router.post("", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
@@ -300,14 +416,61 @@ async def create_team(
     engine = get_engine()
     from sqlalchemy import text
     
-    team_id = str(uuid.uuid4())
-    slug = request.slug or request.name.lower().replace(" ", "-")
+    _ensure_user_record(engine, principal)
+
+    team_id = request.id or request.clerk_org_id or str(uuid.uuid4())
+    slug = request.slug or _slugify(request.name)
+    clerk_org_id = request.clerk_org_id or (team_id if team_id.startswith("org_") else None)
+    github_org_id = request.github_org_id.strip() if isinstance(request.github_org_id, str) and request.github_org_id.strip() else None
+    github_org_login = (
+        request.github_org_login.strip()
+        if isinstance(request.github_org_login, str) and request.github_org_login.strip()
+        else None
+    )
+    sync_status = _resolve_sync_status(clerk_org_id, github_org_login, request.sync_status)
     now = datetime.now(timezone.utc)
     
     # Create organization
     insert_query = text("""
-        INSERT INTO organizations (id, name, slug, is_active, created_at, updated_at)
-        VALUES (:id, :name, :slug, true, :created_at, :updated_at)
+        INSERT INTO organizations (
+            id,
+            name,
+            slug,
+            description,
+            clerk_org_id,
+            github_org_id,
+            github_org_login,
+            source,
+            sync_status,
+            is_active,
+            created_at,
+            updated_at
+        )
+        VALUES (
+            :id,
+            :name,
+            :slug,
+            :description,
+            :clerk_org_id,
+            :github_org_id,
+            :github_org_login,
+            :source,
+            :sync_status,
+            true,
+            :created_at,
+            :updated_at
+        )
+        ON CONFLICT (id) DO UPDATE
+        SET name = EXCLUDED.name,
+            slug = EXCLUDED.slug,
+            description = EXCLUDED.description,
+            clerk_org_id = EXCLUDED.clerk_org_id,
+            github_org_id = EXCLUDED.github_org_id,
+            github_org_login = EXCLUDED.github_org_login,
+            source = EXCLUDED.source,
+            sync_status = EXCLUDED.sync_status,
+            is_active = true,
+            updated_at = EXCLUDED.updated_at
         RETURNING *
     """)
     
@@ -316,6 +479,12 @@ async def create_team(
             "id": team_id,
             "name": request.name,
             "slug": slug,
+            "description": request.description,
+            "clerk_org_id": clerk_org_id,
+            "github_org_id": github_org_id,
+            "github_org_login": github_org_login,
+            "source": request.source,
+            "sync_status": sync_status,
             "created_at": now,
             "updated_at": now,
         })
@@ -329,6 +498,8 @@ async def create_team(
         membership_query = text("""
             INSERT INTO organization_memberships (id, organization_id, user_id, role, status, created_at, updated_at)
             VALUES (:id, :org_id, :user_id, 'owner', 'active', :created_at, :updated_at)
+            ON CONFLICT (organization_id, user_id) DO UPDATE
+            SET role = 'owner', status = 'active', updated_at = EXCLUDED.updated_at
         """)
         
         conn.execute(membership_query, {
@@ -344,6 +515,11 @@ async def create_team(
         name=request.name,
         slug=slug,
         description=request.description,
+        clerk_org_id=clerk_org_id,
+        github_org_id=github_org_id,
+        github_org_login=github_org_login,
+        source=request.source,
+        sync_status=sync_status,
         member_count=1,
         members=[],
         total_reviews=0,
@@ -380,6 +556,54 @@ async def update_team(
     if request.name is not None:
         updates.append("name = :name")
         params["name"] = request.name
+
+    if request.slug is not None:
+        updates.append("slug = :slug")
+        params["slug"] = request.slug or None
+
+    if request.description is not None:
+        updates.append("description = :description")
+        params["description"] = request.description
+
+    if request.clerk_org_id is not None:
+        updates.append("clerk_org_id = :clerk_org_id")
+        params["clerk_org_id"] = request.clerk_org_id or None
+
+    if request.github_org_id is not None:
+        updates.append("github_org_id = :github_org_id")
+        params["github_org_id"] = request.github_org_id or None
+
+    if request.github_org_login is not None:
+        updates.append("github_org_login = :github_org_login")
+        params["github_org_login"] = request.github_org_login or None
+
+    if request.source is not None:
+        updates.append("source = :source")
+        params["source"] = request.source
+
+    if request.sync_status is not None:
+        updates.append("sync_status = :sync_status")
+        params["sync_status"] = request.sync_status
+    elif (
+        request.clerk_org_id is not None
+        or request.github_org_login is not None
+        or request.github_org_id is not None
+    ):
+        resolved_clerk_org_id = (
+            request.clerk_org_id
+            if request.clerk_org_id is not None
+            else teams_data[0].get("clerk_org_id")
+        )
+        resolved_github_org_login = (
+            request.github_org_login
+            if request.github_org_login is not None
+            else teams_data[0].get("github_org_login")
+        )
+        updates.append("sync_status = :sync_status")
+        params["sync_status"] = _resolve_sync_status(
+            resolved_clerk_org_id,
+            resolved_github_org_login,
+        )
     
     if not updates:
         # Nothing to update, return current team
@@ -402,6 +626,49 @@ async def update_team(
             raise HTTPException(status_code=500, detail="Failed to update team")
     
     return await get_team(team_id, principal)
+
+
+@router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_team(
+    team_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+) -> Response:
+    """
+    Archive a team by marking the backing organization inactive.
+    """
+    enforce_permission(principal, "admin.write")
+
+    engine = get_engine()
+    from sqlalchemy import text
+
+    teams_data = _get_organization_teams(engine, team_id)
+    if not teams_data:
+        raise HTTPException(status_code=404, detail="Team not found")
+
+    now = datetime.now(timezone.utc)
+    with engine.begin() as conn:
+        conn.execute(
+            text(
+                """
+                UPDATE organizations
+                SET is_active = false, updated_at = :updated_at
+                WHERE id = :team_id
+                """
+            ),
+            {"team_id": team_id, "updated_at": now},
+        )
+        conn.execute(
+            text(
+                """
+                UPDATE organization_memberships
+                SET status = 'revoked', updated_at = :updated_at
+                WHERE organization_id = :team_id
+                """
+            ),
+            {"team_id": team_id, "updated_at": now},
+        )
+
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @router.post("/{team_id}/members", response_model=TeamMember, status_code=status.HTTP_201_CREATED)

@@ -159,7 +159,7 @@ export default function TemplatesPage() {
               <Shield className="h-12 w-12 text-yellow-500 mx-auto" />
               <div>
                 <h3 className="font-semibold text-lg">Access Restricted</h3>
-                <p className="text-sm text-gray-600 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Template management is only available to Lead Reviewers.
                 </p>
               </div>
@@ -307,8 +307,8 @@ export default function TemplatesPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Review Templates</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="card-heading text-foreground">Review Templates</h1>
+          <p className="text-muted-foreground mt-1">
             Create and manage reusable review checklists and guidelines
           </p>
         </div>
@@ -324,7 +324,7 @@ export default function TemplatesPage() {
           <div className="flex flex-col sm:flex-row gap-4">
             <div className="flex-1">
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search templates..."
                   value={searchTerm}
@@ -361,47 +361,47 @@ export default function TemplatesPage() {
               <CardHeader className="pb-3">
                 <div className="flex items-start justify-between">
                   <div className="flex items-center space-x-2">
-                    <CategoryIcon className="h-5 w-5 text-blue-600" />
+                    <CategoryIcon className="h-5 w-5 text-teal-400" />
                     <Badge variant={template.is_default ? "default" : "secondary"}>
                       {TEMPLATE_CATEGORIES.find(cat => cat.value === template.category)?.label}
                     </Badge>
                   </div>
                   <div className="flex items-center space-x-1">
                     {template.is_public ? (
-                      <Globe className="h-4 w-4 text-green-600" aria-label="Public" />
+                      <Globe className="h-4 w-4 text-[color:var(--green-status)]" aria-label="Public" />
                     ) : (
-                      <Lock className="h-4 w-4 text-gray-400" aria-label="Private" />
+                      <Lock className="h-4 w-4 text-muted-foreground" aria-label="Private" />
                     )}
                   </div>
                 </div>
                 <div>
                   <CardTitle className="text-lg">{template.name}</CardTitle>
-                  <p className="text-sm text-gray-600 mt-1">{template.description}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{template.description}</p>
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-4">
                 <div className="text-sm">
-                  <div className="flex items-center text-gray-600 mb-2">
+                  <div className="flex items-center text-muted-foreground mb-2">
                     <List className="h-4 w-4 mr-1" />
                     {template.checklist_items.length} checklist items
                   </div>
                   <div className="space-y-1">
                     {template.checklist_items.slice(0, 3).map(item => (
-                      <div key={item.id} className="flex items-center text-xs text-gray-500">
+                      <div key={item.id} className="flex items-center text-xs text-muted-foreground">
                         <CheckCircle className="h-3 w-3 mr-2" />
                         {item.label}
                       </div>
                     ))}
                     {template.checklist_items.length > 3 && (
-                      <div className="text-xs text-gray-400 pl-5">
+                      <div className="text-xs text-muted-foreground pl-5">
                         +{template.checklist_items.length - 3} more items
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-sm text-gray-500">
+                <div className="flex items-center justify-between text-sm text-muted-foreground">
                   <span>Used {template.usage_count} times</span>
                   <span>by {template.created_by_name || "Unknown"}</span>
                 </div>
@@ -435,7 +435,7 @@ export default function TemplatesPage() {
                             size="sm"
                             onClick={() => handleDeleteTemplate(template.id)}
                             title="Delete"
-                            className="text-red-600 hover:text-red-700"
+                            className="text-destructive hover:text-red-700"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -455,8 +455,8 @@ export default function TemplatesPage() {
           <CardContent className="py-12">
             <div className="text-center">
               <FileText className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 mb-2">No templates found</h3>
-              <p className="text-gray-500">
+              <h3 className="text-lg font-medium text-foreground mb-2">No templates found</h3>
+              <p className="text-muted-foreground">
                 {searchTerm || selectedCategory !== "all"
                   ? "Try adjusting your search or filter criteria"
                   : "Create your first template to get started"
@@ -561,7 +561,7 @@ export default function TemplatesPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => removeChecklistItem(item.id)}
-                        className="text-red-600 hover:text-red-700"
+                        className="text-destructive hover:text-red-700"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>

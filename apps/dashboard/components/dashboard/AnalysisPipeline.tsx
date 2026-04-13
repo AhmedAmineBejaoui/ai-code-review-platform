@@ -132,9 +132,9 @@ function StepPill({
 
   const textClasses = {
     pending: "text-muted-foreground",
-    active: "text-green-600 dark:text-green-400 font-medium",
-    completed: "text-green-600 dark:text-green-400",
-    failed: "text-red-600 dark:text-red-400",
+    active: "text-[color:var(--green-status)] font-medium",
+    completed: "text-[color:var(--green-status)]",
+    failed: "text-destructive",
   }
 
   return (

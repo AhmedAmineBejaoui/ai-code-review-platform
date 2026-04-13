@@ -21,7 +21,6 @@ from app.core.knowledge_base.document_ingestion import (
     utc_iso_now,
 )
 from app.core.knowledge_base.embeddings import hash_embed_text
-from app.core.knowledge_base.langchain_shadow import LangChainShadowIndexingService
 from app.core.knowledge_base.qdrant_ids import build_document_chunk_point_id
 from app.data.database import get_engine
 from app.data.repos.kb_repo import KBDocumentChunkRow
@@ -436,40 +435,8 @@ async def _replace_document_vectors(
                         "chunk_id": f"{doc_id}:{index}",
                     },
                 )
-            )
-        await vector_store.upsert_points(collection_name=collection_name, points=points)
-
-    if settings.langchain_enabled:
-        shadow_index = LangChainShadowIndexingService(vector_store=vector_store)
-        if shadow_index.available:
-            await shadow_index.upsert_kb_document_rows(
-                repo_id=repo_id,
-                rows=[
-                    KBDocumentChunkRow(
-                        doc_id=doc_id,
-                        title=title,
-                        source_type=source_type,
-                        path_or_url=path_or_url,
-                        repo_id=repo_id,
-                        doc_version=ingestion_result.version or str(doc_version),
-                        chunk_index=index,
-                        content=chunk.content,
-                        token_count=max(1, len(chunk.content) // 4),
-                        tags=list(tags),
-                        metadata=chunk_metadata_for_storage(
-                            {
-                                **dict(chunk.metadata),
-                                "source_uri": ingestion_result.source_uri,
-                                "content_hash": ingestion_result.content_hash,
-                                "version": ingestion_result.version or str(doc_version),
-                                "document_version": ingestion_result.version or str(doc_version),
-                                "domain": ingestion_result.domain,
-                            }
-                        ),
-                    )
-                    for index, chunk in enumerate(ingestion_result.chunks)
-                ],
-            )
+    )
+    await vector_store.upsert_points(collection_name=collection_name, points=points)
 
 
 def _fetch_document_source_material(source: DocumentSourceRecord) -> dict[str, Any]:

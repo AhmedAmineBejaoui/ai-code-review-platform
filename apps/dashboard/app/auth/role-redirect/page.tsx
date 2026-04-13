@@ -59,21 +59,21 @@ export default function RoleRedirectPage() {
   }, [isLoaded, router, userId])
 
   return (
-    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-black px-4">
-      {/* Subtle glow effects */}
-      <div className="pointer-events-none absolute -left-24 top-8 h-56 w-56 rounded-full bg-cyan-500/10 blur-3xl" />
-      <div className="pointer-events-none absolute -right-20 bottom-6 h-64 w-64 rounded-full bg-blue-500/10 blur-3xl" />
+    <main className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden bg-background px-4 text-foreground">
+      <div className="pointer-events-none absolute -left-24 top-8 h-56 w-56 rounded-full bg-orange/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-20 bottom-6 h-64 w-64 rounded-full bg-teal/10 blur-3xl" />
+      <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(73,82,127,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
 
-      {/* Circuit Loader */}
-      <section className="relative w-full max-w-4xl">
-        <CircuitLoader text="Synchronisation..." />
+      <section className="relative w-full max-w-5xl rounded-[28px] border border-border bg-card/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:p-6">
+        <div className="rounded-[24px] border border-border bg-background/60 p-5 sm:p-6">
+          <CircuitLoader text="Synchronisation GitHub..." />
+        </div>
       </section>
 
-      {/* Text below loader */}
       <div className="relative z-10 mt-8 text-center">
-        <p className="text-lg font-semibold text-white">Synchronisation du compte...</p>
-        <p className="mt-2 text-sm text-gray-400">
-          Nous appliquons vos permissions et preparons votre interface.
+        <p className="text-lg font-semibold text-foreground">Synchronisation du compte...</p>
+        <p className="mt-2 text-sm text-muted-foreground">
+          Nous appliquons vos permissions et préparons votre interface.
         </p>
       </div>
     </main>

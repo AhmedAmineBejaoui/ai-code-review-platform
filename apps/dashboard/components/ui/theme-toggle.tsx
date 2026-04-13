@@ -70,7 +70,7 @@ function ThemeToggleTabs({
   if (!mounted) {
     return (
       <div className={cn(
-        'flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10',
+        'flex items-center gap-1 p-1 rounded-xl bg-card/80 border border-border',
         className
       )}>
         {themeOptions.map((option) => (
@@ -94,7 +94,7 @@ function ThemeToggleTabs({
   return (
     <div
       className={cn(
-        'relative flex items-center gap-1 p-1 rounded-xl bg-white/5 border border-white/10',
+        'relative flex items-center gap-1 p-1 rounded-xl bg-card/80 border border-border backdrop-blur-xl',
         className
       )}
     >
@@ -112,13 +112,13 @@ function ThemeToggleTabs({
               size === 'lg' && 'px-4 py-2.5 text-base',
               isActive
                 ? 'text-white'
-                : 'text-gray-400 hover:text-gray-300'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {isActive && (
               <motion.div
                 layoutId="theme-tab-indicator"
-                className="absolute inset-0 bg-white/10 rounded-lg"
+                className="absolute inset-0 bg-card-hover rounded-lg border border-border"
                 transition={{ type: 'spring', bounce: 0.2, duration: 0.4 }}
               />
             )}
@@ -150,7 +150,7 @@ function ThemeToggleSegmented({
   if (!mounted) {
     return (
       <div className={cn(
-        'inline-flex rounded-full p-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 border border-white/10',
+        'inline-flex rounded-full p-1 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-teal-500/10 border border-border',
         className
       )}>
         <div className="h-8 w-24 bg-white/10 rounded-full animate-pulse" />
@@ -161,7 +161,7 @@ function ThemeToggleSegmented({
   return (
     <div
       className={cn(
-        'inline-flex rounded-full p-1 bg-gradient-to-r from-blue-500/10 via-purple-500/10 to-pink-500/10 border border-white/10',
+        'inline-flex rounded-full p-1 bg-gradient-to-r from-orange-500/10 via-orange-500/5 to-teal-500/10 border border-border',
         className
       )}
     >
@@ -178,8 +178,8 @@ function ThemeToggleSegmented({
               size === 'md' && 'px-4 py-1.5 text-sm',
               size === 'lg' && 'px-5 py-2 text-base',
               isActive
-                ? 'bg-white text-gray-900 shadow-lg'
-                : 'text-gray-400 hover:text-white'
+                ? 'bg-card text-foreground shadow-lg border border-border'
+                : 'text-muted-foreground hover:text-foreground'
             )}
           >
             {option.icon}
@@ -216,7 +216,7 @@ function ThemeToggleIcons({
     return (
       <button
         className={cn(
-          'p-2 rounded-lg bg-white/5 border border-white/10',
+          'p-2 rounded-lg bg-card/80 border border-border backdrop-blur-xl',
           size === 'sm' && 'p-1.5',
           size === 'lg' && 'p-3',
           className
@@ -238,7 +238,7 @@ function ThemeToggleIcons({
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
       className={cn(
-        'relative p-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors',
+        'relative p-2 rounded-lg bg-card/80 border border-border hover:bg-card-hover transition-colors backdrop-blur-xl',
         size === 'sm' && 'p-1.5',
         size === 'lg' && 'p-3',
         className
@@ -250,8 +250,8 @@ function ThemeToggleIcons({
         initial={{ rotate: -90, opacity: 0 }}
         animate={{ rotate: 0, opacity: 1 }}
         exit={{ rotate: 90, opacity: 0 }}
-        transition={{ duration: 0.2 }}
-        className="text-gray-300"
+      transition={{ duration: 0.2 }}
+      className="text-foreground"
       >
         {displayIcon}
       </motion.div>
@@ -279,7 +279,7 @@ function ThemeToggleDropdown({
     return (
       <button
         className={cn(
-          'flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 border border-white/10',
+          'flex items-center gap-2 px-3 py-2 rounded-lg bg-card/80 border border-border backdrop-blur-xl',
           className
         )}
       >
@@ -296,19 +296,19 @@ function ThemeToggleDropdown({
       <button
         onClick={() => setIsOpen(!isOpen)}
         className={cn(
-          'flex items-center gap-2 rounded-lg bg-white/5 border border-white/10 hover:bg-white/10 transition-colors',
+          'flex items-center gap-2 rounded-lg bg-card/80 border border-border hover:bg-card-hover transition-colors backdrop-blur-xl',
           size === 'sm' && 'px-2 py-1 text-xs',
           size === 'md' && 'px-3 py-2 text-sm',
           size === 'lg' && 'px-4 py-2.5 text-base',
         )}
       >
-        <Palette className="h-4 w-4 text-gray-400" />
-        <span className="text-gray-300 font-medium">{currentOption.label}</span>
+        <Palette className="h-4 w-4 text-muted-foreground" />
+        <span className="text-foreground font-medium">{currentOption.label}</span>
         <motion.div
           animate={{ rotate: isOpen ? 180 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          <svg className="h-4 w-4 text-gray-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <svg className="h-4 w-4 text-muted-foreground" fill="none" viewBox="0 0 24 24" stroke="currentColor">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
           </svg>
         </motion.div>
@@ -321,7 +321,7 @@ function ThemeToggleDropdown({
             initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 8, scale: 0.96 }}
-            className="absolute top-full right-0 mt-2 w-48 bg-gray-900/95 backdrop-blur-xl border border-white/10 rounded-xl shadow-2xl overflow-hidden z-50"
+            className="absolute top-full right-0 mt-2 w-48 bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-2xl overflow-hidden z-50"
           >
             <div className="p-1">
               {themeOptions.map((option) => {
@@ -337,15 +337,15 @@ function ThemeToggleDropdown({
                     className={cn(
                       'w-full flex items-center gap-3 px-3 py-2 rounded-lg transition-colors',
                       isActive
-                        ? 'bg-blue-500/20 text-blue-400'
-                        : 'text-gray-400 hover:bg-white/5 hover:text-white'
+                        ? 'bg-primary/15 text-primary'
+                        : 'text-muted-foreground hover:bg-card-hover hover:text-foreground'
                     )}
                   >
                     {option.icon}
                     <div className="flex-1 text-left">
                       <div className="font-medium">{option.label}</div>
                       {option.description && (
-                        <div className="text-xs text-gray-500">{option.description}</div>
+                        <div className="text-xs text-muted-foreground">{option.description}</div>
                       )}
                     </div>
                     {isActive && (

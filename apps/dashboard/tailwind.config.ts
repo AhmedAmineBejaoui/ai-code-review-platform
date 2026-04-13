@@ -1,5 +1,33 @@
 import type { Config } from "tailwindcss"
 
+const orangeScale = {
+  50: "#fff5ed",
+  100: "#ffe7d8",
+  200: "#ffd0b3",
+  300: "#ffb27d",
+  400: "#f78c4f",
+  500: "#e8713a",
+  600: "#cf612d",
+  700: "#a64d23",
+  800: "#823c1b",
+  900: "#5d2b13",
+  950: "#32160a",
+}
+
+const tealScale = {
+  50: "#edfef9",
+  100: "#d4fef3",
+  200: "#a7f7e8",
+  300: "#6eead6",
+  400: "#2fe0c7",
+  500: "#17f0c4",
+  600: "#13c1a0",
+  700: "#0f8f79",
+  800: "#0b6152",
+  900: "#073d34",
+  950: "#041e1a",
+}
+
 const config: Config = {
   darkMode: ["class"],
   content: [
@@ -59,6 +87,15 @@ const config: Config = {
           DEFAULT: "var(--card)",
           foreground: "var(--card-foreground)",
         },
+        blue: orangeScale,
+        cyan: tealScale,
+        indigo: tealScale,
+        purple: tealScale,
+        violet: orangeScale,
+        pink: orangeScale,
+        rose: orangeScale,
+        orange: orangeScale,
+        teal: tealScale,
         sidebar: {
           DEFAULT: "var(--sidebar)",
           foreground: "var(--sidebar-foreground)",

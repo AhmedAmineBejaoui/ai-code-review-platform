@@ -131,6 +131,8 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
   const [githubRepos, setGithubRepos] = useState<GithubRepoOption[]>([])
   const [isLoadingRepos, setIsLoadingRepos] = useState(false)
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [githubTokenAvailable, setGithubTokenAvailable] = useState<boolean | null>(null)
+  const [githubNote, setGithubNote] = useState<string | null>(null)
   const [githubError, setGithubError] = useState<string | null>(null)
   const [selectedGithubRepo, setSelectedGithubRepo] = useState("")
   const [inputMode, setInputMode] = useState<"github" | "manual">("github")
@@ -190,10 +192,14 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
         accountType,
       })
       setGithubConnected(data.connected)
+      setGithubTokenAvailable(data.tokenAvailable ?? null)
+      setGithubNote(data.note ?? null)
       setGithubRepos(data.items)
-      setGithubError(data.error)
+      setGithubError(data.error && data.error.trim().length > 0 ? data.error : null)
     } catch {
       setGithubConnected(false)
+      setGithubTokenAvailable(null)
+      setGithubNote(null)
       setGithubError("Network error while fetching repositories")
     } finally {
       setIsLoadingRepos(false)
@@ -462,7 +468,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
           <Icon className="h-6 w-6 text-primary" />
         </div>
         <div>
-          <h1 className="text-3xl font-bold">{title}</h1>
+          <h1 className="card-heading text-foreground">{title}</h1>
           <p className="text-muted-foreground">{description}</p>
         </div>
       </div>
@@ -661,6 +667,26 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
                           </div>
                         </div>
                       )}
+                      {githubConnected === true && githubTokenAvailable === false && !githubError && (
+                        <div className="flex items-start gap-2 rounded-md border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100">
+                          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
+                          <div className="space-y-1">
+                            <p className="font-medium text-orange-200">GitHub OAuth manquant</p>
+                            <p className="text-orange-100/80">
+                              {githubNote ||
+                                "Connexion détectée, mais aucun token OAuth n'est disponible. Seuls les repos publics sont chargés et GitHub peut limiter les requêtes."}
+                            </p>
+                            <Button
+                              variant="link"
+                              size="sm"
+                              className="h-auto p-0 text-orange-200 underline"
+                              onClick={handleGithubConnect}
+                            >
+                              Connect GitHub OAuth
+                            </Button>
+                          </div>
+                        </div>
+                      )}
                       
                       <div className="space-y-2">
                         <Label htmlFor="pr-number">PR Number (Optional)</Label>
@@ -754,7 +780,7 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
               )}
               {submitSuccess && (
                 <div className="space-y-4">
-                  <div className="flex items-center gap-2 p-3 bg-green-500/10 text-green-600 dark:text-green-400 rounded-md text-sm">
+                  <div className="flex items-center gap-2 p-3 bg-green-500/10 text-[color:var(--green-status)] rounded-md text-sm">
                     <CheckCircle2 className="h-4 w-4" />
                     {submitSuccess}
                   </div>

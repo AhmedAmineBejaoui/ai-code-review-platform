@@ -5,7 +5,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-all duration-300 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -22,13 +22,13 @@ const buttonVariants = cva(
         link: "text-primary underline-offset-4 hover:underline",
         // Professional variants
         gradient:
-          "bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
+          "bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
         gradientAccent:
-          "bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
+          "bg-gradient-to-br from-orange-500 to-teal-500 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
         glass:
-          "glass-pro text-primary hover:bg-white/10 dark:hover:bg-white/5 border border-primary/20 hover:border-primary/40",
+          "glass-pro text-primary hover:bg-card-hover dark:hover:bg-card-hover border border-border hover:border-border/80",
         shine:
-          "relative overflow-hidden bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-pro-md hover:shadow-glow before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/20 before:to-transparent before:-translate-x-full hover:before:translate-x-full before:transition-transform before:duration-700 hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
+          "relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-pro-md hover:shadow-glow before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/15 before:to-transparent before:-translate-x-full hover:before:translate-x-full before:transition-transform before:duration-700 hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
       },
       size: {
         default: "h-11 px-5 py-2.5 has-[>svg]:px-4",

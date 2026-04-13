@@ -64,16 +64,16 @@ function StatCard({
 }) {
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: delay ?? 0 }}>
-      <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+      <Card variant="glass">
         <CardContent className="pt-4">
           <div className="flex items-start gap-3">
             <div className={`p-2.5 rounded-xl ${color}`}>
               <Icon className="h-5 w-5 text-white" />
             </div>
             <div>
-              <p className="text-xs text-gray-500 dark:text-gray-400">{title}</p>
-              <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
-              {sub && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{sub}</p>}
+              <p className="text-xs text-muted-foreground">{title}</p>
+              <p className="text-2xl font-bold text-foreground">{value}</p>
+              {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
             </div>
           </div>
         </CardContent>
@@ -137,10 +137,10 @@ export default function EvaluationPage() {
     <div className="max-w-5xl mx-auto space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-1">
+        <h1 className="card-heading text-foreground mb-1">
           Évaluation RAG
         </h1>
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className="text-muted-foreground">
           Comparaison de la qualité des reviews avec et sans le système RAG (Retrieval-Augmented Generation).
         </p>
       </motion.div>
@@ -157,7 +157,7 @@ export default function EvaluationPage() {
           animate={{ opacity: 1 }}
           className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
         >
-          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <AlertCircle className="h-5 w-5 text-destructive" />
           <div>
             <p className="font-medium text-red-900 dark:text-red-100">Impossible de charger les métriques</p>
             <p className="text-sm text-red-700 dark:text-red-300">{error}</p>
@@ -207,7 +207,7 @@ export default function EvaluationPage() {
 
           {/* Bar chart */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-            <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card variant="glass">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-blue-500" />
@@ -229,8 +229,8 @@ export default function EvaluationPage() {
                       }}
                     />
                     <Legend />
-                    <Bar dataKey="Avec RAG" fill="#3b82f6" radius={[4, 4, 0, 0]} />
-                    <Bar dataKey="Sans RAG" fill="#9ca3af" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Avec RAG" fill="var(--orange)" radius={[4, 4, 0, 0]} />
+                    <Bar dataKey="Sans RAG" fill="var(--text-subtle)" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
               </CardContent>
@@ -239,7 +239,7 @@ export default function EvaluationPage() {
 
           {/* Detail table */}
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-            <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card variant="glass">
               <CardHeader>
                 <CardTitle className="text-base">Tableau récapitulatif</CardTitle>
               </CardHeader>
@@ -247,11 +247,11 @@ export default function EvaluationPage() {
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
-                      <tr className="border-b border-gray-200 dark:border-gray-700">
-                        <th className="text-left py-2 pr-4 font-medium text-gray-500 dark:text-gray-400">Métrique</th>
-                        <th className="text-right py-2 px-4 font-medium text-blue-600 dark:text-blue-400">Avec RAG</th>
-                        <th className="text-right py-2 px-4 font-medium text-gray-500 dark:text-gray-400">Sans RAG</th>
-                        <th className="text-right py-2 pl-4 font-medium text-gray-700 dark:text-gray-300">Delta</th>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-2 pr-4 font-medium text-muted-foreground">Métrique</th>
+                        <th className="text-right py-2 px-4 font-medium text-teal-400">Avec RAG</th>
+                        <th className="text-right py-2 px-4 font-medium text-muted-foreground">Sans RAG</th>
+                        <th className="text-right py-2 pl-4 font-medium text-secondary-foreground">Delta</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -265,9 +265,9 @@ export default function EvaluationPage() {
                         const delta = round2(row.with - row.without)
                         return (
                           <tr key={row.label}>
-                            <td className="py-2.5 pr-4 text-gray-700 dark:text-gray-300">{row.label}</td>
-                            <td className="py-2.5 px-4 text-right font-mono text-blue-700 dark:text-blue-300">{row.with}</td>
-                            <td className="py-2.5 px-4 text-right font-mono text-gray-500 dark:text-gray-400">{row.without}</td>
+                            <td className="py-2.5 pr-4 text-secondary-foreground">{row.label}</td>
+                            <td className="py-2.5 px-4 text-right font-mono text-teal-400">{row.with}</td>
+                            <td className="py-2.5 px-4 text-right font-mono text-muted-foreground">{row.without}</td>
                             <td className="py-2.5 pl-4 text-right">
                               <Badge
                                 variant="outline"
@@ -289,7 +289,7 @@ export default function EvaluationPage() {
                   </table>
                 </div>
 
-                <p className="text-xs text-gray-400 dark:text-gray-500 mt-4">
+                <p className="text-xs text-muted-foreground mt-4">
                   Basé sur les {data.total_analyses} dernières analyses complétées.
                   Un delta positif indique que le RAG génère plus de findings contextualisés.
                 </p>

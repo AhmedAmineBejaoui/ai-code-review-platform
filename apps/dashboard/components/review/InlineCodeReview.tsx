@@ -70,7 +70,7 @@ export function InlineCodeReview({
             {codeLines.length > 0 ? (
               codeLines.map((line, idx) => (
                 <div key={idx} className="mb-2 flex gap-3 font-mono text-sm">
-                  <span className="w-8 text-right text-gray-400">{idx + 1}</span>
+                  <span className="w-8 text-right text-muted-foreground">{idx + 1}</span>
                   <span className="text-gray-700">{line}</span>
                 </div>
               ))
@@ -85,10 +85,10 @@ export function InlineCodeReview({
         <Card>
           <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
             <div className="flex items-center gap-2">
-              <CheckCircle className="h-5 w-5 text-green-600" />
-              <h3 className="font-semibold text-gray-900">Aucun probleme</h3>
+              <CheckCircle className="h-5 w-5 text-[color:var(--green-status)]" />
+              <h3 className="font-semibold text-foreground">Aucun probleme</h3>
             </div>
-            <p className="mt-1 text-sm text-gray-600">Le code ne presente aucun probleme detecte</p>
+            <p className="mt-1 text-sm text-muted-foreground">Le code ne presente aucun probleme detecte</p>
           </div>
         </Card>
       </div>
@@ -124,11 +124,11 @@ export function InlineCodeReview({
               
               return (
                 <div key={idx} className={`mb-2 flex gap-3 rounded ${bgClass}`}>
-                  <span className="w-8 text-right text-gray-400">{lineNumber}</span>
+                  <span className="w-8 text-right text-muted-foreground">{lineNumber}</span>
                   <span className="flex-1 text-gray-700">{line}</span>
                   {suggestion && (
-                    suggestion.severity === "error" ? <AlertTriangle className="h-4 w-4 text-red-500" />
-                    : suggestion.severity === "warning" ? <Info className="h-4 w-4 text-amber-500" />
+                    suggestion.severity === "error" ? <AlertTriangle className="h-4 w-4 text-destructive" />
+                    : suggestion.severity === "warning" ? <Info className="h-4 w-4 text-[color:var(--orange)]" />
                     : <Info className="h-4 w-4 text-blue-500" />
                   )}
                 </div>
@@ -146,10 +146,10 @@ export function InlineCodeReview({
       <Card>
         <div className="border-b border-gray-200 bg-gray-50 px-6 py-4">
           <div className="flex items-center gap-2">
-            <CheckCircle className="h-5 w-5 text-blue-600" />
-            <h3 className="font-semibold text-gray-900">Revue terminee</h3>
+            <CheckCircle className="h-5 w-5 text-teal-400" />
+            <h3 className="font-semibold text-foreground">Revue terminee</h3>
           </div>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-sm text-muted-foreground">
             {issueCount} probleme{issueCount > 1 ? "s" : ""} detecte{issueCount > 1 ? "s" : ""}
             {duration && ` · ${duration}s`}
           </p>
@@ -164,9 +164,9 @@ export function InlineCodeReview({
               : isWarning ? "border-amber-200 bg-amber-50" 
               : "border-blue-200 bg-blue-50"
             
-            const iconClass = isError ? "text-red-600" 
-              : isWarning ? "text-amber-600" 
-              : "text-blue-600"
+            const iconClass = isError ? "text-destructive" 
+              : isWarning ? "text-[color:var(--orange)]" 
+              : "text-teal-400"
             
             const textClass = isError ? "text-red-900" 
               : isWarning ? "text-amber-900" 

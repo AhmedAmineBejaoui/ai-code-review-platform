@@ -289,7 +289,7 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
                 {state.is_analysis_allowed ? (
                   <Power className="h-5 w-5 text-green-500" />
                 ) : (
-                  <PowerOff className="h-5 w-5 text-red-500" />
+                  <PowerOff className="h-5 w-5 text-destructive" />
                 )}
                 Automatic Code Analysis
               </CardTitle>
@@ -335,7 +335,7 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
           {state.effective_state === "temporarily_disabled" && remainingSeconds !== null && (
             <div className="flex items-center justify-between rounded-lg border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-950">
               <div className="flex items-center gap-3">
-                <Clock className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />
+                <Clock className="h-5 w-5 text-[color:var(--orange)] dark:text-yellow-400" />
                 <div>
                   <p className="font-medium text-yellow-800 dark:text-yellow-200">
                     Temporarily Paused

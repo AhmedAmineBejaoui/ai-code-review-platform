@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { formatDate } from "@/lib/domain/dates"
+import { extractApiErrorMessage } from "@/lib/display"
 
 interface GitHubOrg {
   login: string
@@ -74,7 +75,7 @@ export function GitHubOrganizationData() {
         const data: OrganizationResponse = await res.json()
 
         if (!data.connected) {
-          setError(data.error || "GitHub not connected")
+          setError(extractApiErrorMessage(data, "GitHub not connected"))
           setOrgs([])
           return
         }
@@ -106,7 +107,7 @@ export function GitHubOrganizationData() {
         const data: OrgDetailsResponse = await res.json()
 
         if (!data.connected) {
-          setError(data.error || "Failed to fetch organization details")
+          setError(extractApiErrorMessage(data, "Failed to fetch organization details"))
           setOrgDetails(null)
           return
         }

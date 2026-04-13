@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
+from copy import deepcopy
 from datetime import datetime
-from typing import List
+from typing import Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from pydantic import BaseModel, ConfigDict, Field
@@ -49,6 +51,9 @@ class MarkReadRequest(BaseModel):
 class MarkReadResponse(BaseModel):
     success: bool
     updated_count: int
+
+
+NotificationPreferenceSection = dict[str, Any] | bool | None
 
 
 @router.get("", response_model=NotificationsListResponse)
@@ -307,12 +312,12 @@ class NotificationPreferencesRequest(BaseModel):
     """Request model for updating notification preferences."""
     model_config = ConfigDict(extra="forbid")
 
-    email: dict | None = Field(None, description="Email notification settings")
-    push: dict | None = Field(None, description="Push notification settings")
-    inApp: dict | None = Field(None, description="In-app notification settings")
-    schedule: dict | None = Field(None, description="Notification schedule settings")
-    slack: dict | None = Field(None, description="Slack integration settings")
-    teams: dict | None = Field(None, description="Teams integration settings")
+    email: NotificationPreferenceSection = Field(None, description="Email notification settings")
+    push: NotificationPreferenceSection = Field(None, description="Push notification settings")
+    inApp: NotificationPreferenceSection = Field(None, description="In-app notification settings")
+    schedule: NotificationPreferenceSection = Field(None, description="Notification schedule settings")
+    slack: NotificationPreferenceSection = Field(None, description="Slack integration settings")
+    teams: NotificationPreferenceSection = Field(None, description="Teams integration settings")
 
 
 class NotificationPreferencesResponse(BaseModel):
@@ -360,6 +365,69 @@ DEFAULT_NOTIFICATION_PREFERENCES = {
     "teams": None,
 }
 
+_NOTIFICATION_SECTION_KEYS: dict[str, tuple[str, ...]] = {
+    "email": ("email",),
+    "push": ("push",),
+    "inApp": ("inApp", "in_app"),
+    "schedule": ("schedule",),
+    "slack": ("slack",),
+    "teams": ("teams",),
+}
+
+_NOTIFICATION_BOOL_KEYS: dict[str, str] = {
+    "email": "enabled",
+    "push": "enabled",
+    "inApp": "enabled",
+    "schedule": "quiet_hours_enabled",
+}
+
+
+def _clone_default_notification_preferences() -> dict[str, Any]:
+    return deepcopy(DEFAULT_NOTIFICATION_PREFERENCES)
+
+
+def _normalize_notification_section(section: str, value: Any) -> dict[str, Any] | None:
+    default_value = DEFAULT_NOTIFICATION_PREFERENCES.get(section)
+
+    if isinstance(default_value, dict):
+        normalized = deepcopy(default_value)
+        if isinstance(value, dict):
+            normalized.update(value)
+        elif isinstance(value, bool):
+            bool_key = _NOTIFICATION_BOOL_KEYS.get(section)
+            if bool_key:
+                normalized[bool_key] = value
+        return normalized
+
+    if value is None:
+        return None
+
+    if isinstance(value, dict):
+        return deepcopy(value)
+
+    if isinstance(value, bool):
+        return {"enabled": value}
+
+    return None
+
+
+def _load_notification_preferences(raw_preferences: Any) -> dict[str, Any]:
+    if isinstance(raw_preferences, str):
+        try:
+            raw_preferences = json.loads(raw_preferences)
+        except json.JSONDecodeError:
+            raw_preferences = {}
+
+    if not isinstance(raw_preferences, dict):
+        return _clone_default_notification_preferences()
+
+    merged = _clone_default_notification_preferences()
+    for canonical_key, aliases in _NOTIFICATION_SECTION_KEYS.items():
+        raw_value = next((raw_preferences.get(alias) for alias in aliases if alias in raw_preferences), None)
+        normalized_value = _normalize_notification_section(canonical_key, raw_value)
+        merged[canonical_key] = normalized_value
+    return merged
+
 
 @router.get("/preferences", response_model=NotificationPreferencesResponse)
 async def get_notification_preferences(
@@ -385,22 +453,11 @@ async def get_notification_preferences(
         )
         row = result.mappings().first()
 
-    if row and row.get("notification_preferences"):
-        prefs = row["notification_preferences"]
-        # Handle if stored as string
-        if isinstance(prefs, str):
-            prefs = json.loads(prefs)
-        # Merge with defaults to ensure all fields exist
-        merged = {**DEFAULT_NOTIFICATION_PREFERENCES}
-        for key in ["email", "push", "inApp", "schedule", "slack", "teams"]:
-            if key in prefs and prefs[key] is not None:
-                if isinstance(merged.get(key), dict) and isinstance(prefs[key], dict):
-                    merged[key] = {**merged.get(key, {}), **prefs[key]}
-                else:
-                    merged[key] = prefs[key]
-        return NotificationPreferencesResponse(**merged)
+    if row:
+        prefs = _load_notification_preferences(row.get("notification_preferences"))
+        return NotificationPreferencesResponse(**prefs)
 
-    return NotificationPreferencesResponse(**DEFAULT_NOTIFICATION_PREFERENCES)
+    return NotificationPreferencesResponse(**_clone_default_notification_preferences())
 
 
 @router.put("/preferences")
@@ -444,17 +501,23 @@ async def update_notification_preferences(
         )
         row = result.mappings().first()
 
-        current_prefs = json.loads(json.dumps(DEFAULT_NOTIFICATION_PREFERENCES))
-        if row and row.get("notification_preferences"):
-            stored = row["notification_preferences"]
-            if isinstance(stored, str):
-                stored = json.loads(stored)
-            current_prefs = {**current_prefs, **stored}
+        current_prefs = _load_notification_preferences(row.get("notification_preferences") if row else None)
 
         # Merge with new preferences
         for key, value in prefs.items():
-            if isinstance(current_prefs.get(key), dict) and isinstance(value, dict):
-                current_prefs[key] = {**current_prefs.get(key, {}), **value}
+            current_section = current_prefs.get(key)
+            if isinstance(current_section, dict):
+                merged_section = deepcopy(current_section)
+                if isinstance(value, dict):
+                    merged_section.update(value)
+                elif isinstance(value, bool):
+                    bool_key = _NOTIFICATION_BOOL_KEYS.get(key, "enabled")
+                    merged_section[bool_key] = value
+                current_prefs[key] = merged_section
+            elif isinstance(value, dict):
+                current_prefs[key] = deepcopy(value)
+            elif isinstance(value, bool):
+                current_prefs[key] = {"enabled": value}
             else:
                 current_prefs[key] = value
 
@@ -512,11 +575,11 @@ async def reset_notification_preferences(
             ),
             {
                 "user_id": principal.user_id,
-                "prefs": json.dumps(DEFAULT_NOTIFICATION_PREFERENCES),
+                "prefs": json.dumps(_clone_default_notification_preferences()),
             },
         )
 
-    return {"success": True, "preferences": DEFAULT_NOTIFICATION_PREFERENCES}
+    return {"success": True, "preferences": _clone_default_notification_preferences()}
 
 
 class PushSubscriptionKeys(BaseModel):

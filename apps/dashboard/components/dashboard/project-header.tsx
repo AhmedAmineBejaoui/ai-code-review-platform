@@ -60,8 +60,8 @@ interface ProjectHeaderProps {
 function getHealthScoreColor(score: number): string {
   if (score >= 90) return "text-green-500"
   if (score >= 70) return "text-yellow-500"
-  if (score >= 50) return "text-orange-500"
-  return "text-red-500"
+  if (score >= 50) return "text-[color:var(--orange)]"
+  return "text-destructive"
 }
 
 function getHealthScoreBgColor(score: number): string {
@@ -325,11 +325,11 @@ export function ProjectHeader({
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-yellow-600">
+              <DropdownMenuItem className="text-[color:var(--orange)]">
                 <Archive className="h-4 w-4 mr-2" />
                 Archive Project
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-red-600">
+              <DropdownMenuItem className="text-destructive">
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Project
               </DropdownMenuItem>

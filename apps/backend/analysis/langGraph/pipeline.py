@@ -15,7 +15,7 @@ from analysis.langGraph.models import (
     LLMOutput,
     RetrievalResult,
 )
-from analysis.langGraph.raggraph.hybrid_retriever import HybridRetriever
+from analysis.langGraph.raggraph.hybrid_retriever import GraphRagRetriever
 from analysis.langGraph.raggraph.llm_orchestrator import LLMOrchestrator
 from analysis.langGraph.raggraph.redis_cache import RedisCache
 from app.settings import settings
@@ -41,13 +41,13 @@ class LangGraphPipeline:
         *,
         context_manager: RepoContextManager | None = None,
         chunker: DiffChunker | None = None,
-        retriever: HybridRetriever | None = None,
+        retriever: GraphRagRetriever | None = None,
         llm_orchestrator: LLMOrchestrator | None = None,
         cache: RedisCache | None = None,
     ) -> None:
         self._context_manager = context_manager or RepoContextManager()
         self._chunker = chunker or DiffChunker()
-        self._retriever = retriever or HybridRetriever()
+        self._retriever = retriever or GraphRagRetriever()
         self._llm_orchestrator = llm_orchestrator or LLMOrchestrator()
         self._cache = cache or RedisCache()
         self._runner = self._build_runner()
@@ -383,4 +383,3 @@ def run_langgraph_analysis_sync(
     pipeline: LangGraphPipeline | None = None,
 ) -> LangGraphAnalysisResult:
     return asyncio.run(run_langgraph_analysis(request=request, pipeline=pipeline))
-

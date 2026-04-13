@@ -60,8 +60,8 @@ function Spinner({
             x2="100%"
             y2="100%"
           >
-            <stop offset="0%" stopColor="#2563eb" />
-            <stop offset="100%" stopColor="#0ea5e9" />
+            <stop offset="0%" stopColor="#e8713a" />
+            <stop offset="100%" stopColor="#17f0c4" />
           </linearGradient>
         </defs>
         <circle

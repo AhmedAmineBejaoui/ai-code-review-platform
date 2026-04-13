@@ -166,7 +166,7 @@ export function RagCitations() {
 
   if (loading) {
     return (
-      <div className="flex min-h-[40vh] items-center justify-center text-gray-500 dark:text-gray-400">
+      <div className="flex min-h-[40vh] items-center justify-center text-muted-foreground">
         <Loader2 className="mr-2 h-5 w-5 animate-spin" />
         Chargement des citations RAG...
       </div>
@@ -185,13 +185,13 @@ export function RagCitations() {
         animate={{ opacity: 1, y: 0 }}
       >
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-cyan-900 dark:from-white dark:via-blue-100 dark:to-cyan-100 bg-clip-text text-transparent mb-2">
+          <h1 className="card-heading text-foreground mb-2">
             Citations RAG
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="text-muted-foreground">
             Sources reelles utilisees par l&apos;IA pour contextualiser cette analyse.
           </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
             <Badge variant="outline">{analysis.repo}</Badge>
             <Badge variant="outline">{analysis.prLabel}</Badge>
             <Badge variant="outline">{references.length} reference(s)</Badge>
@@ -199,7 +199,7 @@ export function RagCitations() {
         </div>
 
         <Link href={`/dashboard/diff/${analysis.id}`}>
-          <Button variant="outline" className="gap-2 bg-white/60 dark:bg-gray-900/60">
+          <Button variant="outline" className="gap-2">
             <ArrowLeft className="h-4 w-4" />
             Retour au diff
           </Button>
@@ -211,7 +211,7 @@ export function RagCitations() {
           <div className="absolute top-0 right-0 w-64 h-64 bg-gradient-to-br from-blue-500/20 to-cyan-500/20 rounded-full blur-3xl" />
           <CardContent className="pt-6 relative z-10">
             <div className="flex items-start gap-3">
-              <BookOpen className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <BookOpen className="h-6 w-6 text-teal-400" />
               <div>
                 <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-2 flex items-center gap-2">
                   <Sparkles className="h-4 w-4" />
@@ -228,12 +228,12 @@ export function RagCitations() {
       </motion.div>
 
       {topReferences.length === 0 ? (
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardContent className="py-10">
             <div className="flex flex-col items-center justify-center text-center gap-3">
-              <AlertCircle className="h-10 w-10 text-amber-500" />
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Aucune citation RAG disponible</h2>
-              <p className="max-w-2xl text-sm text-gray-600 dark:text-gray-400">
+              <AlertCircle className="h-10 w-10 text-[color:var(--orange)]" />
+              <h2 className="text-lg font-semibold text-foreground">Aucune citation RAG disponible</h2>
+              <p className="max-w-2xl text-sm text-muted-foreground">
                 Cette analyse n&apos;a pas expose de `context_references`. Soit le fallback `rule_engine` a ete utilise,
                 soit le retrieval grounded n&apos;a retourne aucun contexte exploitable.
               </p>
@@ -259,18 +259,18 @@ export function RagCitations() {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.15 + index * 0.05 }}
               >
-                <Card className="group bg-white/60 dark:bg-gray-900/60 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50 hover:border-blue-300 dark:hover:border-blue-700 transition-all overflow-hidden">
+                <Card variant="glass" className="group hover:border-teal-500/40 transition-all overflow-hidden">
                   <CardHeader>
                     <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
                       <div className="flex-1 min-w-0">
-                        <CardTitle className="text-lg flex items-start gap-3 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-                          <FileText className="h-5 w-5 mt-0.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                        <CardTitle className="text-lg flex items-start gap-3 group-hover:text-teal-400 dark:group-hover:text-teal-400 transition-colors">
+                          <FileText className="h-5 w-5 mt-0.5 text-teal-400 shrink-0" />
                           <span className="break-all">{title}</span>
                         </CardTitle>
                         {subtitle ? (
-                          <div className="mt-2 text-xs font-mono text-gray-500 dark:text-gray-400 break-all">{subtitle}</div>
+                          <div className="mt-2 text-xs font-mono text-muted-foreground break-all">{subtitle}</div>
                         ) : null}
-                        <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-gray-600 dark:text-gray-400">
+                        <div className="flex flex-wrap items-center gap-2 mt-3 text-sm text-muted-foreground">
                           <Badge variant="outline" className="text-xs">
                             {formatSourceLabel(reference.source)}
                           </Badge>
@@ -300,7 +300,7 @@ export function RagCitations() {
                       <div className="flex flex-col items-start gap-3 md:items-end">
                         <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-gradient-to-r from-yellow-100 to-orange-100 dark:from-yellow-900/30 dark:to-orange-900/30">
                           <Star className="h-4 w-4 fill-yellow-500 text-yellow-500" />
-                          <span className="text-sm font-bold text-gray-900 dark:text-white">{score}%</span>
+                          <span className="text-sm font-bold text-foreground">{score}%</span>
                         </div>
                         <div className="w-32">
                           <Progress value={score} className="h-2" />
@@ -314,14 +314,14 @@ export function RagCitations() {
                       <div className="text-xs font-semibold uppercase tracking-wide text-blue-900 dark:text-blue-300 mb-2">
                         Reference
                       </div>
-                      <div className="text-sm font-mono leading-relaxed text-gray-700 dark:text-gray-300 break-all">
+                      <div className="text-sm font-mono leading-relaxed text-secondary-foreground break-all">
                         {sourceTarget}
                       </div>
-                      {location ? <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">{location}</div> : null}
-                      {entity ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{entity}</div> : null}
-                      {headingPath ? <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{headingPath}</div> : null}
+                      {location ? <div className="mt-2 text-xs text-muted-foreground">{location}</div> : null}
+                      {entity ? <div className="mt-1 text-xs text-muted-foreground">{entity}</div> : null}
+                      {headingPath ? <div className="mt-1 text-xs text-muted-foreground">{headingPath}</div> : null}
                       {reference.crawlTimestamp ? (
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{reference.crawlTimestamp}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{reference.crawlTimestamp}</div>
                       ) : null}
                     </div>
 
@@ -365,7 +365,7 @@ export function RagCitations() {
 
       {secondaryReferences.length > 0 ? (
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-          <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+          <Card variant="glass">
             <CardHeader>
               <CardTitle className="text-base">Autres references consultees</CardTitle>
             </CardHeader>
@@ -377,12 +377,12 @@ export function RagCitations() {
                     className="flex flex-col gap-2 rounded-lg border border-gray-200/50 dark:border-gray-800/50 p-3 md:flex-row md:items-center md:justify-between"
                   >
                     <div className="min-w-0">
-                      <div className="text-gray-900 dark:text-white break-all">
+                      <div className="text-foreground break-all">
                         {reference.title?.trim() || reference.path}
                       </div>
-                      <div className="text-xs text-gray-500 dark:text-gray-400 break-all">{reference.path}</div>
+                      <div className="text-xs text-muted-foreground break-all">{reference.path}</div>
                       {formatReferenceLocation(reference) ? (
-                        <div className="mt-1 text-xs text-gray-500 dark:text-gray-400">{formatReferenceLocation(reference)}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{formatReferenceLocation(reference)}</div>
                       ) : null}
                     </div>
                     <div className="flex items-center gap-2">

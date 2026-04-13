@@ -249,7 +249,7 @@ export function ReviewQueue() {
           className="bg-red-500/10 border border-red-500/30 rounded-lg p-4 flex items-center justify-between"
         >
           <div className="flex items-center gap-3">
-            <AlertCircle className="h-5 w-5 text-red-400" />
+            <AlertCircle className="h-5 w-5 text-destructive" />
             <span className="text-red-200">{queueData.error}</span>
           </div>
           <Button variant="outline" size="sm" onClick={loadData}>
@@ -278,7 +278,7 @@ export function ReviewQueue() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <Play className="h-4 w-4 text-orange-500" />
+              <Play className="h-4 w-4 text-[color:var(--orange)]" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">En cours</p>
                 <p className="text-2xl font-bold">
@@ -292,7 +292,7 @@ export function ReviewQueue() {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center space-x-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <AlertTriangle className="h-4 w-4 text-destructive" />
               <div>
                 <p className="text-sm font-medium text-muted-foreground">En retard</p>
                 <p className="text-2xl font-bold">
@@ -459,12 +459,12 @@ export function ReviewQueue() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <span className={item.wait_time_hours > 6 ? "text-red-600 font-medium" : ""}>
+                        <span className={item.wait_time_hours > 6 ? "text-destructive font-medium" : ""}>
                           {item.wait_time_hours}h
                         </span>
                       </TableCell>
                       <TableCell>
-                        <div className={item.is_overdue ? "text-red-600 font-medium" : ""}>
+                        <div className={item.is_overdue ? "text-destructive font-medium" : ""}>
                           {formatTimeUntilDue(item.due_at)}
                         </div>
                       </TableCell>
@@ -498,7 +498,7 @@ export function ReviewQueue() {
                               <DropdownMenuItem>Réassigner</DropdownMenuItem>
                               <DropdownMenuItem>Changer la priorité</DropdownMenuItem>
                               <DropdownMenuItem 
-                                className="text-red-600"
+                                className="text-destructive"
                                 onClick={() => handleDeclineReview(item.id)}
                               >
                                 Refuser

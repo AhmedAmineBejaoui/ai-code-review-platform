@@ -707,15 +707,15 @@ export function KnowledgeBase() {
     <motion.div className="max-w-6xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-emerald-900 to-teal-900 dark:from-white dark:via-emerald-100 dark:to-teal-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+          <h1 className="card-heading text-foreground mb-2 flex items-center gap-3">
             <Database className="h-10 w-10 text-emerald-500" />
             Base de Connaissance
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Gestion des sources indexees pour le RAG</p>
+          <p className="text-muted-foreground">Gestion des sources indexees pour le RAG</p>
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button type="button" variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => openSourceForm("pdf")} disabled={busyAction !== null}>
+            <Button type="button" variant="outline" className="gap-2" onClick={() => openSourceForm("pdf")} disabled={busyAction !== null}>
               <Upload className="h-4 w-4" />
               Importer
             </Button>
@@ -737,14 +737,14 @@ export function KnowledgeBase() {
 
       {showSourceForm && (
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <Card className="bg-white/60 dark:bg-gray-900/60 border-emerald-400/40">
+          <Card variant="glass" className="border-[color:var(--green-status)]/40">
             <CardHeader>
               <CardTitle>Zone d'insertion des sources KB</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid gap-3 md:grid-cols-2">
                 <div>
-                  <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Type de source</label>
+                  <label className="mb-2 block text-sm text-muted-foreground dark:text-gray-300">Type de source</label>
                   <Select value={sourceType} onValueChange={(value: SourceType) => setSourceType(value)}>
                     <SelectTrigger className="bg-white dark:bg-gray-800">
                       <SelectValue placeholder="Selectionner un type" />
@@ -757,12 +757,12 @@ export function KnowledgeBase() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  <p className="mt-1 text-xs text-muted-foreground">
                     {SOURCE_TYPES.find((item) => item.value === sourceType)?.hint}
                   </p>
                 </div>
                 <div>
-                  <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Identifiant source</label>
+                  <label className="mb-2 block text-sm text-muted-foreground dark:text-gray-300">Identifiant source</label>
                   <Input
                     value={sourceName}
                     onChange={(event) => setSourceName(event.target.value)}
@@ -773,7 +773,7 @@ export function KnowledgeBase() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">{selectedSourceDetails.pathLabel}</label>
+                <label className="mb-2 block text-sm text-muted-foreground dark:text-gray-300">{selectedSourceDetails.pathLabel}</label>
                 <Input
                   value={sourceLocation}
                   onChange={(event) => setSourceLocation(event.target.value)}
@@ -782,16 +782,16 @@ export function KnowledgeBase() {
                 />
               </div>
 
-              <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm text-gray-600 dark:text-gray-300">
+              <div className="rounded-xl border border-emerald-400/30 bg-emerald-500/5 p-4 text-sm text-muted-foreground dark:text-gray-300">
                 <div className="font-medium text-emerald-700 dark:text-emerald-300">{selectedSourceDetails.label}</div>
-                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">{selectedSourceDetails.hint}</p>
+                <p className="mt-1 text-xs text-muted-foreground">{selectedSourceDetails.hint}</p>
                 <div className="mt-3 grid gap-2 md:grid-cols-2">
                   <div className="rounded-lg border border-emerald-400/20 bg-white/60 p-3 dark:bg-gray-900/40">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Attendu</div>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Attendu</div>
                     <div className="mt-1">{selectedSourceDetails.pathLabel}</div>
                   </div>
                   <div className="rounded-lg border border-emerald-400/20 bg-white/60 p-3 dark:bg-gray-900/40">
-                    <div className="text-[11px] uppercase tracking-wide text-gray-500 dark:text-gray-400">Action</div>
+                    <div className="text-[11px] uppercase tracking-wide text-muted-foreground">Action</div>
                     <div className="mt-1">{selectedSourceDetails.submitLabel}</div>
                   </div>
                 </div>
@@ -809,7 +809,7 @@ export function KnowledgeBase() {
                   <Upload className="h-4 w-4" />
                   Drag & drop des fichiers
                 </div>
-                <p className="text-xs text-gray-400">Sources possibles : PDF, pages web, documentation markdown, code source, base SQL.</p>
+                <p className="text-xs text-muted-foreground">Sources possibles : PDF, pages web, documentation markdown, code source, base SQL.</p>
                 <Input
                   className="mt-3 bg-white dark:bg-gray-800"
                   type="file"
@@ -828,7 +828,7 @@ export function KnowledgeBase() {
               </div>
 
               <div>
-                <label className="mb-2 block text-sm text-gray-600 dark:text-gray-300">Notes / contexte</label>
+                <label className="mb-2 block text-sm text-muted-foreground dark:text-gray-300">Notes / contexte</label>
                 <Textarea
                   value={sourceNotes}
                   onChange={(event) => setSourceNotes(event.target.value)}
@@ -861,13 +861,13 @@ export function KnowledgeBase() {
       <div className="grid md:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
           <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + index * 0.05 }} whileHover={{ y: -4, scale: 1.02 }}>
-            <Card className="relative overflow-hidden bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card variant="glass" className="relative overflow-hidden">
               <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${stat.gradient} opacity-20 rounded-full blur-2xl`} />
               <CardContent className="pt-6 relative z-10">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+                    <p className="text-sm text-muted-foreground mb-1">{stat.label}</p>
+                    <p className="text-3xl font-bold text-foreground">{stat.value}</p>
                   </div>
                   <motion.div className={`p-3 rounded-xl bg-gradient-to-br ${stat.gradient}`} whileHover={{ scale: 1.1, rotate: 360 }} transition={{ duration: 0.5 }}>
                     <stat.icon className="h-6 w-6 text-white" />
@@ -902,15 +902,15 @@ export function KnowledgeBase() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Apercu initial des repos (Ollama)</CardTitle>
           </CardHeader>
           <CardContent>
             {insightsLoading ? (
-              <p className="text-sm text-gray-600 dark:text-gray-400">Chargement des apercus...</p>
+              <p className="text-sm text-muted-foreground">Chargement des apercus...</p>
             ) : repoOverviews.length === 0 ? (
-              <p className="text-sm text-gray-600 dark:text-gray-400">Aucun apercu de repo disponible.</p>
+              <p className="text-sm text-muted-foreground">Aucun apercu de repo disponible.</p>
             ) : (
               <div className="space-y-3">
                 {repoOverviews.slice(0, 8).map((overview) => (
@@ -919,7 +919,7 @@ export function KnowledgeBase() {
                       <Badge variant="outline">{overview.repoId}</Badge>
                       <Badge variant={overview.fallbackUsed ? "secondary" : "default"}>{overview.source}</Badge>
                     </div>
-                    <p className="text-sm text-gray-700 dark:text-gray-300">{overview.summary}</p>
+                    <p className="text-sm text-secondary-foreground">{overview.summary}</p>
                   </div>
                 ))}
               </div>
@@ -929,12 +929,12 @@ export function KnowledgeBase() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center gap-4">
               <CardTitle className="flex-1">Sources indexees</CardTitle>
               <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input placeholder="Rechercher une source..." value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} className="pl-10 bg-white dark:bg-gray-800" />
               </div>
             </div>
@@ -955,13 +955,13 @@ export function KnowledgeBase() {
                 <TableBody>
                   {loadingRepos ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         Chargement des sources...
                       </TableCell>
                     </TableRow>
                   ) : filteredRepos.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={6} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={6} className="text-center py-8 text-muted-foreground">
                         Aucune source indexee.
                       </TableCell>
                     </TableRow>
@@ -971,9 +971,9 @@ export function KnowledgeBase() {
                       const rowBusy = busyAction === `reindex:${item.repo_id}` || busyAction === `delete:${item.repo_id}`
                       return (
                         <motion.tr key={item.repo_id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + index * 0.03 }} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                          <TableCell className="font-medium text-gray-900 dark:text-white">{item.repo_id}</TableCell>
-                          <TableCell className="text-gray-700 dark:text-gray-300">{displaySource(item)}</TableCell>
-                          <TableCell className="text-gray-600 dark:text-gray-400 text-sm">{item.updated_at ? new Date(item.updated_at).toLocaleDateString("fr-FR") : "-"}</TableCell>
+                          <TableCell className="font-medium text-foreground">{item.repo_id}</TableCell>
+                          <TableCell className="text-secondary-foreground">{displaySource(item)}</TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{item.updated_at ? new Date(item.updated_at).toLocaleDateString("fr-FR") : "-"}</TableCell>
                           <TableCell>
                             <Badge variant="outline">{filesIndexed(item)}</Badge>
                           </TableCell>
@@ -984,7 +984,7 @@ export function KnowledgeBase() {
                             <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
                                 <Button type="button" variant="ghost" size="icon" onClick={() => void editSource(item)} disabled={rowBusy}>
-                                  <Edit className="h-4 w-4 text-blue-600" />
+                                  <Edit className="h-4 w-4 text-teal-400" />
                                 </Button>
                               </motion.div>
                               <motion.div whileHover={{ scale: 1.2, rotate: 180 }} whileTap={{ scale: 0.9 }}>
@@ -999,7 +999,7 @@ export function KnowledgeBase() {
                               </motion.div>
                               <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
                                 <Button type="button" variant="ghost" size="icon" onClick={() => void deleteRepo(item.repo_id)} disabled={rowBusy}>
-                                  <Trash2 className="h-4 w-4 text-red-600" />
+                                  <Trash2 className="h-4 w-4 text-destructive" />
                                 </Button>
                               </motion.div>
                             </div>
@@ -1016,14 +1016,14 @@ export function KnowledgeBase() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Tester le retrieval</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             <div className="grid md:grid-cols-2 gap-3">
               <div>
-                <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">Source</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Source</label>
                 <Select value={selectedRepoId} onValueChange={setSelectedRepoId}>
                   <SelectTrigger className="bg-white dark:bg-gray-800">
                     <SelectValue placeholder="Selectionner un repo indexe" />
@@ -1038,13 +1038,13 @@ export function KnowledgeBase() {
                 </Select>
               </div>
               <div>
-                <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">Requete</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Requete</label>
                 <Input placeholder="Ex: SQL injection prevention" value={retrievalQuery} onChange={(event) => setRetrievalQuery(event.target.value)} className="bg-white dark:bg-gray-800" />
               </div>
             </div>
             <div className="grid md:grid-cols-2 gap-3">
               <div>
-                <label className="text-sm text-gray-600 dark:text-gray-400 mb-2 block">Canal de retrieval</label>
+                <label className="text-sm text-muted-foreground mb-2 block">Canal de retrieval</label>
                 <Select value={retrievalSource} onValueChange={(value: RetrievalSource) => setRetrievalSource(value)}>
                   <SelectTrigger className="bg-white dark:bg-gray-800">
                     <SelectValue placeholder="Selectionner un mode" />
@@ -1079,7 +1079,7 @@ export function KnowledgeBase() {
                 {queryResults.slice(0, 6).map((chunk, index) => (
                   <div key={`${chunk.path ?? "chunk"}-${index}`} className="rounded-lg border border-gray-200/50 p-3 dark:border-gray-700/50">
                     {chunk.title ? (
-                      <div className="mb-1 text-xs font-medium text-gray-800 dark:text-gray-200">{chunk.title}</div>
+                      <div className="mb-1 text-xs font-medium text-foreground dark:text-gray-200">{chunk.title}</div>
                     ) : null}
                     <div className="mb-1 flex items-center gap-2 text-xs">
                       <Badge variant="outline">{chunk.path ?? chunk.title ?? "unknown"}</Badge>
@@ -1096,18 +1096,18 @@ export function KnowledgeBase() {
                       <Badge variant="secondary">score {(chunk.score ?? 0).toFixed(2)}</Badge>
                     </div>
                     {formatSourceMeta(chunk) ? (
-                      <div className="mb-2 text-[11px] text-gray-500 dark:text-gray-400">{formatSourceMeta(chunk)}</div>
+                      <div className="mb-2 text-[11px] text-muted-foreground">{formatSourceMeta(chunk)}</div>
                     ) : null}
                     {chunk.section_title ? (
-                      <div className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">{chunk.section_title}</div>
+                      <div className="mb-1 text-xs font-medium text-secondary-foreground">{chunk.section_title}</div>
                     ) : null}
                     {formatHeadingPath(chunk.heading_path) ? (
-                      <div className="mb-1 text-[11px] text-gray-500 dark:text-gray-400">{formatHeadingPath(chunk.heading_path)}</div>
+                      <div className="mb-1 text-[11px] text-muted-foreground">{formatHeadingPath(chunk.heading_path)}</div>
                     ) : null}
                     {chunk.source_uri ? (
-                      <div className="mb-2 text-[11px] font-mono break-all text-gray-500 dark:text-gray-400">{chunk.source_uri}</div>
+                      <div className="mb-2 text-[11px] font-mono break-all text-muted-foreground">{chunk.source_uri}</div>
                     ) : null}
-                    <p className="text-xs text-gray-600 dark:text-gray-300 line-clamp-3">{chunk.content ?? ""}</p>
+                    <p className="text-xs text-muted-foreground dark:text-gray-300 line-clamp-3">{chunk.content ?? ""}</p>
                   </div>
                 ))}
               </div>

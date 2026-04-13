@@ -8,9 +8,9 @@ export const metadata: Metadata = {
 
 export default function ReviewQueuePage() {
   return (
-    <div className="container mx-auto py-6">
+    <div className="space-y-6">
       <div className="mb-6">
-        <h1 className="text-3xl font-bold">Review Queue</h1>
+        <h1 className="card-heading text-foreground">Review Queue</h1>
         <p className="text-muted-foreground mt-2">
           Manage your assigned reviews and claim new ones from the available pool.
         </p>

@@ -13,7 +13,7 @@ export async function GET(
 
   try {
     return proxyBackendRequest({
-      path: `/api/projects/${params.repoId}/profile`,
+      path: `/api/v1/projects/${params.repoId}/profile`,
       method: "GET",
       token: authResult.token,
       userId: authResult.userId,

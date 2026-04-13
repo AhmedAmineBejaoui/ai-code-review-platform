@@ -1,33 +1,11 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from app.core.knowledge_base.embeddings import hash_embed_text
 from app.core.knowledge_base.retrieval_models import RetrievalCandidate, RetrievedContextChunk
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
-
-logger = logging.getLogger(__name__)
-
-# Lazy singleton for LangChain embedding service
-_langchain_embeddings: Any = None
-
-
-def _get_langchain_embeddings() -> Any:
-    """Return a LangChainEmbeddingService singleton, or *None* when unavailable."""
-    global _langchain_embeddings
-    if _langchain_embeddings is not None:
-        return _langchain_embeddings
-    try:
-        from app.core.langchain_runtime.embeddings import LangChainEmbeddingService
-        svc = LangChainEmbeddingService()
-        if svc.available:
-            _langchain_embeddings = svc
-            return svc
-    except Exception:
-        pass
-    return None
 
 
 class SemanticRetriever:
@@ -113,26 +91,10 @@ class SemanticRetriever:
         if not self._vector_store.enabled:
             return []
 
-        # Prefer LangChain model-based embeddings (1024d) over hash-based (256d)
-        lc_embeddings = _get_langchain_embeddings() if settings.langchain_enabled else None
-        if lc_embeddings is not None:
-            try:
-                query_vector = lc_embeddings.embed_query(query_text)
-                vector_size = len(query_vector)
-                collection = settings.langchain_qdrant_physical_collection
-            except Exception:
-                logger.debug("LangChain embedding failed, falling back to hash-based", exc_info=True)
-                query_vector = hash_embed_text(query_text, vector_size=self._vector_size)
-                vector_size = self._vector_size
-                collection = self._collection
-        else:
-            query_vector = hash_embed_text(query_text, vector_size=self._vector_size)
-            vector_size = self._vector_size
-            collection = self._collection
-
-        await self._vector_store.ensure_collection(collection_name=collection, vector_size=vector_size)
+        query_vector = hash_embed_text(query_text, vector_size=self._vector_size)
+        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
         return await self._vector_store.search(
-            collection_name=collection,
+            collection_name=self._collection,
             query_vector=query_vector,
             filter_payload=filter_payload,
             limit=limit,

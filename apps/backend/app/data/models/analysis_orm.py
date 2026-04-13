@@ -331,11 +331,19 @@ class OrganizationORM(Base):
         UniqueConstraint("slug", name="uq_organizations_slug"),
         Index("idx_organizations_slug", "slug"),
         Index("idx_organizations_is_active", "is_active"),
+        Index("idx_organizations_clerk_org_id", "clerk_org_id"),
+        Index("idx_organizations_github_org_login", "github_org_login"),
     )
 
     id: Mapped[str] = mapped_column(Text, primary_key=True)
     slug: Mapped[str | None] = mapped_column(Text, nullable=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    clerk_org_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    github_org_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    github_org_login: Mapped[str | None] = mapped_column(Text, nullable=True)
+    source: Mapped[str] = mapped_column(Text, nullable=False, server_default="platform")
+    sync_status: Mapped[str] = mapped_column(Text, nullable=False, server_default="local_only")
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="true")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())

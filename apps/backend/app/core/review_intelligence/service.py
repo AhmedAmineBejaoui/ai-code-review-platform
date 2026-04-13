@@ -16,10 +16,10 @@ from app.data.models.finding import Finding
 from app.settings import settings
 
 
-class HybridRAGRequiredError(RuntimeError):
+class GraphRAGRequiredError(RuntimeError):
     def __init__(self, message: str) -> None:
         super().__init__(message)
-        self.code = "HYBRID_RAG_REQUIRED"
+        self.code = "GRAPH_RAG_REQUIRED"
 
 
 class ReviewIntelligenceService:
@@ -55,7 +55,7 @@ class ReviewIntelligenceService:
         kb_retrieval_error: str | None,
         allow_non_qdrant_grounding: bool = False,
     ) -> StructuredReviewOutput:
-        self.require_hybrid_rag(
+        self.require_graph_rag(
             qdrant_enabled=qdrant_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
@@ -150,7 +150,7 @@ class ReviewIntelligenceService:
             context_references=[],
         )
 
-    def can_use_hybrid_rag(
+    def can_use_graph_rag(
         self,
         *,
         qdrant_enabled: bool,
@@ -162,7 +162,7 @@ class ReviewIntelligenceService:
         allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]:
         try:
-            self.require_hybrid_rag(
+            self.require_graph_rag(
                 qdrant_enabled=qdrant_enabled,
                 kb_retrieval_mode=kb_retrieval_mode,
                 kb_context_chunks_count=kb_context_chunks_count,
@@ -171,11 +171,11 @@ class ReviewIntelligenceService:
                 context_references=context_references,
                 allow_non_qdrant_grounding=allow_non_qdrant_grounding,
             )
-        except HybridRAGRequiredError as exc:
+        except GraphRAGRequiredError as exc:
             return False, str(exc)
         return True, None
 
-    def require_hybrid_rag(
+    def require_graph_rag(
         self,
         *,
         qdrant_enabled: bool,
@@ -188,17 +188,33 @@ class ReviewIntelligenceService:
     ) -> None:
         if not settings.REVIEW_INTELLIGENCE_ENABLED:
             return
-        if not settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT:
+        if not settings.GRAPH_RAG_REQUIRED:
             return
         if not qdrant_enabled and not allow_non_qdrant_grounding:
-            raise HybridRAGRequiredError("Qdrant is required for the hybrid RAG review pipeline.")
+            raise GraphRAGRequiredError("Qdrant is required for the GraphRAG review pipeline.")
         if kb_retrieval_mode == "failed":
             detail = f" Retrieval error: {kb_retrieval_error}" if kb_retrieval_error else ""
-            raise HybridRAGRequiredError(f"Hybrid RAG retrieval failed.{detail}")
+            raise GraphRAGRequiredError(f"GraphRAG retrieval failed.{detail}")
         if kb_context_chunks_count <= 0 or not isinstance(knowledge_base_context, str) or not knowledge_base_context.strip():
-            raise HybridRAGRequiredError("Hybrid RAG retrieval returned no usable grounded context.")
+            raise GraphRAGRequiredError("GraphRAG retrieval returned no usable grounded context.")
         if not _validated_context_references(context_references or []):
-            raise HybridRAGRequiredError("Hybrid RAG retrieval returned no valid grounded citations.")
+            raise GraphRAGRequiredError("GraphRAG retrieval returned no valid grounded citations.")
+
+
+    def can_use_hybrid_rag(self, **kwargs: Any) -> tuple[bool, str | None]:
+        enabled, reason = self.can_use_graph_rag(**kwargs)
+        if reason:
+            reason = reason.replace("GraphRAG", "Hybrid RAG")
+        return enabled, reason
+
+    def require_hybrid_rag(self, **kwargs: Any) -> None:
+        try:
+            self.require_graph_rag(**kwargs)
+        except GraphRAGRequiredError as exc:
+            raise HybridRAGRequiredError(str(exc).replace("GraphRAG", "Hybrid RAG")) from exc
+
+
+HybridRAGRequiredError = GraphRAGRequiredError
 
 
 def _validated_context_references(context_references: list[dict[str, Any]]) -> list[ReviewContextReference]:

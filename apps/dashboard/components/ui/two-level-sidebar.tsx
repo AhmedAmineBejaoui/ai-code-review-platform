@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Search as SearchIcon,
   Dashboard,
@@ -212,6 +212,26 @@ function filterSidebarContent(content: SidebarContent, searchQuery: string): Sid
     .filter((section) => section.items.length > 0);
   
   return { ...content, sections: filteredSections };
+}
+
+function collectSidebarRoutes(content: SidebarContent): string[] {
+  const routes = new Set<string>();
+
+  content.sections.forEach((section) => {
+    section.items.forEach((item) => {
+      if (item.href) {
+        routes.add(item.href);
+      }
+
+      item.children?.forEach((child) => {
+        if (child.href) {
+          routes.add(child.href);
+        }
+      });
+    });
+  });
+
+  return Array.from(routes);
 }
 
 /* --------------------------- Types / Content Map -------------------------- */
@@ -840,24 +860,41 @@ function DetailSidebar({
   };
   isMobile?: boolean;
   onBack?: () => void;
-}) {
-  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [isCollapsed, setIsCollapsed] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const pathname = usePathname();
-  
-  const rawContent = getSidebarContent(
-    activeSection,
-    pathname,
-    isAdmin,
-    isReviewerRole,
-    isReviewerLeadRole,
-    pendingReviewsCount,
-    overdueCount
-  );
-  
-  // Apply search filter
-  const content = filterSidebarContent(rawContent, searchQuery);
+  }) {
+    const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
+    const [isCollapsed, setIsCollapsed] = useState(false);
+    const [searchQuery, setSearchQuery] = useState("");
+    const pathname = usePathname();
+    const router = useRouter();
+    
+    const rawContent = React.useMemo(
+      () =>
+        getSidebarContent(
+          activeSection,
+          pathname,
+          isAdmin,
+          isReviewerRole,
+          isReviewerLeadRole,
+          pendingReviewsCount,
+          overdueCount,
+        ),
+      [
+        activeSection,
+        pathname,
+        isAdmin,
+        isReviewerRole,
+        isReviewerLeadRole,
+        pendingReviewsCount,
+        overdueCount,
+      ],
+    );
+    
+    // Apply search filter
+    const content = React.useMemo(
+      () => filterSidebarContent(rawContent, searchQuery),
+      [rawContent, searchQuery],
+    );
+    const prefetchRoutes = React.useMemo(() => collectSidebarRoutes(content), [content]);
 
   const toggleExpanded = (itemKey: string) => {
     setExpandedItems((prev) => {
@@ -866,12 +903,26 @@ function DetailSidebar({
       else next.add(itemKey);
       return next;
     });
-  };
+    };
 
-  const toggleCollapse = () => setIsCollapsed((s) => !s);
-  
-  // Auto-expand items when searching
-  React.useEffect(() => {
+    const toggleCollapse = () => setIsCollapsed((s) => !s);
+
+    React.useEffect(() => {
+      if (searchQuery.trim()) {
+        return;
+      }
+
+      const timer = window.setTimeout(() => {
+        prefetchRoutes.forEach((href) => {
+          void router.prefetch(href);
+        });
+      }, 150);
+
+      return () => window.clearTimeout(timer);
+    }, [prefetchRoutes, router, searchQuery]);
+    
+    // Auto-expand items when searching
+    React.useEffect(() => {
     if (searchQuery.trim()) {
       const newExpanded = new Set<string>();
       content.sections.forEach((section, sectionIndex) => {
@@ -1062,7 +1113,7 @@ function MenuItem({
 
   if (item.href && !item.hasDropdown) {
     return (
-      <Link href={item.href} className="w-full">
+      <Link href={item.href} prefetch={true} className="w-full">
         {content}
       </Link>
     );
@@ -1085,7 +1136,7 @@ function SubMenuItem({ item }: { item: MenuItemT }) {
 
   if (item.href) {
     return (
-      <Link href={item.href} className="w-full pl-9 pr-1 py-[1px]">
+      <Link href={item.href} prefetch={true} className="w-full pl-9 pr-1 py-[1px]">
         {content}
       </Link>
     );
@@ -1258,7 +1309,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
       </div>
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-w-0">
+      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Mobile Header */}
         <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-4 shadow-pro-sm md:hidden">
           <button
@@ -1294,7 +1345,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         {/* Main content */}
         <main
           className={cn(
-            "flex-1 mx-auto w-full",
+            "flex-1 overflow-y-auto mx-auto w-full",
             isImmersiveDiffPage
               ? "max-w-none p-2 md:p-4 min-h-0 overflow-hidden"
               : "max-w-[1200px] p-4 md:p-8",

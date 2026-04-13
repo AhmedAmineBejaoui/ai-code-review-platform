@@ -3,7 +3,15 @@
 import type { ReactNode } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import { CheckCircle2, FileCode2, ScanSearch, ShieldAlert, ShieldCheck } from "lucide-react"
+import {
+  CheckCircle2,
+  FileCode2,
+  GitPullRequest,
+  ShieldCheck,
+  Sparkles,
+} from "lucide-react"
+
+import { BrandMark } from "@/components/marketing/premium-landing/brand-mark"
 
 type AuthMode = "sign-in" | "sign-up"
 
@@ -12,170 +20,228 @@ type AuthShellProps = {
   mode: AuthMode
 }
 
-const modeCopy: Record<AuthMode, { title: string; subtitle: string }> = {
+type AuthCopy = {
+  eyebrow: string
+  title: string
+  subtitle: string
+}
+
+const modeCopy: Record<AuthMode, AuthCopy> = {
   "sign-in": {
+    eyebrow: "[ REAL GITHUB SYNC ]",
     title: "Welcome back",
-    subtitle: "Sign in to continue your secure review workflow.",
+    subtitle:
+      "Sign in to continue a dashboard-grade review workflow with every action tied to GitHub.",
   },
   "sign-up": {
+    eyebrow: "[ TEAM WORKSPACE ]",
     title: "Create your account",
-    subtitle: "Get started with AI-powered code review in minutes.",
+    subtitle:
+      "Set up a connected review workspace in minutes and keep file edits, PRs, and rules in sync.",
   },
 }
+
+const featureCards = [
+  {
+    icon: GitPullRequest,
+    title: "GitHub sync",
+    text: "Every file change, PR note, and review action stays attached to the connected repository.",
+  },
+  {
+    icon: FileCode2,
+    title: "Editor-grade flow",
+    text: "File, folder, and branch operations feel like a real code editor, not a simulated workspace.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Team context",
+    text: "Roles, policies, and permissions remain scoped to the current team and repo boundaries.",
+  },
+] as const
 
 export function AuthShell({ children, mode }: AuthShellProps) {
   const copy = modeCopy[mode]
 
   return (
-    <main className="min-h-screen bg-[#f4f7fc] px-4 py-4 sm:px-6 md:py-6">
-      <div className="mx-auto grid w-full max-w-[1240px] gap-5 lg:min-h-[calc(100vh-2rem)] lg:grid-cols-[460px_1fr]">
+    <main className="relative min-h-screen overflow-hidden bg-background px-4 py-4 text-foreground sm:px-6 lg:px-8">
+      <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(73,82,127,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
+      <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 rounded-full bg-orange/10 blur-3xl" />
+      <div className="pointer-events-none absolute -right-16 bottom-0 h-80 w-80 rounded-full bg-teal/10 blur-3xl" />
+
+      <div className="relative mx-auto grid w-full max-w-[1440px] gap-6 lg:min-h-[calc(100vh-2rem)] lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
         <motion.section
-          initial={{ opacity: 0, x: -32, y: 8 }}
+          initial={{ opacity: 0, x: -24, y: 8 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
-          className="rounded-[24px] border border-slate-200 bg-white p-6 shadow-[0_14px_34px_-24px_rgba(15,23,42,0.35)] sm:p-8"
+          className="relative overflow-hidden rounded-[28px] border border-border bg-card/80 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:p-8 lg:p-10"
         >
-          <div className="mb-7 flex items-center">
-            <Link href="/" className="inline-flex items-center gap-2.5">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-xl bg-slate-900 text-white">
-                <ShieldCheck className="h-4 w-4" />
-              </span>
-              <span className="text-[1.75rem] font-semibold tracking-tight text-slate-900">
-                TrustReview
-              </span>
-            </Link>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(232,113,58,0.08),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(23,240,196,0.08),transparent_28%)]" />
+
+          <div className="relative z-10 flex h-full flex-col gap-10">
+            <div className="flex items-center justify-between gap-6">
+              <Link href="/" className="inline-flex items-center gap-3">
+                <BrandMark className="size-11" tone="dark" />
+                <div>
+                  <p className="text-[1.7rem] font-semibold tracking-[-0.04em]">
+                    Codebase AI
+                  </p>
+                  <p className="font-mono text-[10px] uppercase tracking-[0.28em] text-muted-foreground">
+                    GitHub-connected review workspace
+                  </p>
+                </div>
+              </Link>
+
+              <div className="hidden items-center gap-2 rounded-full border border-border bg-background/60 px-3 py-2 text-xs font-medium text-muted-foreground sm:flex">
+                <Sparkles className="h-3.5 w-3.5 text-orange" />
+                Real-time sync
+              </div>
+            </div>
+
+            <div className="max-w-2xl">
+              <p className="font-mono text-sm uppercase tracking-[0.3em] text-orange">
+                {copy.eyebrow}
+              </p>
+              <h1 className="mt-4 text-balance text-4xl font-semibold tracking-[-0.05em] sm:text-5xl lg:text-6xl">
+                {copy.title}
+              </h1>
+              <p className="mt-5 max-w-xl text-base leading-7 text-muted-foreground sm:text-lg">
+                {copy.subtitle}
+              </p>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              {featureCards.map((card, index) => {
+                const Icon = card.icon
+
+                return (
+                  <motion.div
+                    key={card.title}
+                    initial={{ opacity: 0, y: 12 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.12 + index * 0.08, duration: 0.35 }}
+                    className="rounded-[20px] border border-border bg-background/60 p-4"
+                  >
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange/10 text-orange">
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <p className="text-sm font-medium text-foreground">
+                        {card.title}
+                      </p>
+                    </div>
+                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                      {card.text}
+                    </p>
+                  </motion.div>
+                )
+              })}
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
+              <div className="rounded-[24px] border border-border bg-[#111114] p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]">
+                <div className="flex items-center justify-between border-b border-white/5 pb-4">
+                  <div>
+                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-teal">
+                      Connected workflow
+                    </p>
+                    <p className="mt-1 text-sm text-foreground/90">
+                      Every correction creates a real commit.
+                    </p>
+                  </div>
+                  <CheckCircle2 className="h-5 w-5 text-teal" />
+                </div>
+
+                <div className="mt-4 space-y-3 font-mono text-sm leading-6 text-zinc-300">
+                  <p>&gt; review new file changes</p>
+                  <p className="text-orange">
+                    commit created • branch updated • PR comment synced
+                  </p>
+                  <p className="text-zinc-500">git status --short</p>
+                </div>
+              </div>
+
+              <div className="grid gap-3">
+                <div className="rounded-[20px] border border-border bg-background/60 p-4">
+                  <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                    100%
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    GitHub-backed actions
+                  </p>
+                </div>
+                <div className="rounded-[20px] border border-border bg-background/60 p-4">
+                  <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">
+                    Real
+                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    No mock workflows
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <p className="font-mono text-xs uppercase tracking-[0.26em] text-muted-foreground">
+              No local-only state. No fake review flow.
+            </p>
           </div>
-
-          <div className="mb-5 space-y-1.5">
-            <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{copy.title}</h1>
-            <p className="text-sm leading-6 text-slate-500">{copy.subtitle}</p>
-          </div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.12, duration: 0.5, ease: "easeOut" }}
-            className="relative overflow-hidden rounded-[18px] border border-slate-200 bg-white shadow-[0_14px_30px_-22px_rgba(15,23,42,0.32)]"
-          >
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-[3px] bg-gradient-to-r from-sky-400 via-indigo-400 to-cyan-300" />
-            <div className="w-full p-1">{children}</div>
-          </motion.div>
-
-          <p className="mt-8 text-center text-xs text-slate-400">
-            Copyright {new Date().getFullYear()} TrustReview Corporation
-          </p>
         </motion.section>
 
         <motion.section
-          initial={{ opacity: 0, x: 32, y: 8 }}
+          initial={{ opacity: 0, x: 24, y: 8 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           transition={{ duration: 0.58, ease: "easeOut", delay: 0.08 }}
-          className="relative hidden overflow-hidden rounded-[28px] border border-sky-100/80 bg-white lg:flex lg:flex-col lg:items-center lg:justify-center"
+          className="relative overflow-hidden rounded-[28px] border border-border bg-card/90 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.4)] sm:p-5 lg:min-h-full lg:p-6"
         >
-          <div className="pointer-events-none absolute -right-28 top-24 h-80 w-80 rounded-full border border-sky-200/70" />
-          <div className="pointer-events-none absolute -left-16 bottom-6 h-44 w-44 rounded-full border border-indigo-100/80" />
-          <div className="pointer-events-none absolute left-16 top-24 grid grid-cols-6 gap-2 opacity-60">
-            {Array.from({ length: 30 }).map((_, idx) => (
-              <span key={`dot-${idx}`} className="h-1.5 w-1.5 rounded-full bg-sky-200" />
-            ))}
-          </div>
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(232,113,58,0.08),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(23,240,196,0.08),transparent_30%)]" />
 
-          <div className="relative z-10 w-full max-w-[640px] px-6 lg:px-10 text-center">
-            <motion.p
-              initial={{ opacity: 0, y: 18 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.15, duration: 0.52 }}
-              className="text-balance text-3xl lg:text-4xl xl:text-[56px] font-semibold leading-[1.08] tracking-tight text-slate-800"
-            >
-              Review Code Faster And Ship Safer With{" "}
-              <span className="text-[#2f80ed]">TrustReview!</span>
-            </motion.p>
+          <div className="relative z-10 flex h-full flex-col">
+            <div className="flex items-center justify-between rounded-[18px] border border-border bg-background/60 px-4 py-3">
+              <div>
+                <p className="font-mono text-xs uppercase tracking-[0.24em] text-orange">
+                  Authentication
+                </p>
+                <p className="text-sm text-muted-foreground">
+                  {mode === "sign-in" ? "Secure sign-in" : "Secure sign-up"}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 text-sm text-teal">
+                <CheckCircle2 className="h-4 w-4" />
+                GitHub verified
+              </div>
+            </div>
 
-            <div className="relative mx-auto mt-8 lg:mt-12 h-[280px] sm:h-[320px] lg:h-[360px] w-full max-w-[560px]">
-              <div className="pointer-events-none absolute inset-x-16 bottom-5 h-10 rounded-full bg-slate-900/10 blur-2xl" />
-
+            <div className="mt-5 flex flex-1 items-center justify-center">
               <motion.div
-                initial={{ opacity: 0, y: 20, rotateX: 10 }}
-                animate={{ opacity: 1, y: 0, rotateX: 0 }}
-                transition={{ delay: 0.22, duration: 0.6, ease: "easeOut" }}
-                className="absolute inset-x-8 top-10 overflow-hidden rounded-[24px] border border-slate-200 bg-white text-left shadow-[0_20px_38px_-24px_rgba(30,41,59,0.5)]"
+                initial={{ opacity: 0, scale: 0.98, y: 8 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                transition={{ duration: 0.45, delay: 0.14 }}
+                className="w-full max-w-[560px] rounded-[24px] border border-border bg-background/80 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.28)]"
               >
-                <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <span className="h-2 w-2 rounded-full bg-rose-400" />
-                    <span className="h-2 w-2 rounded-full bg-amber-400" />
-                    <span className="h-2 w-2 rounded-full bg-emerald-400" />
-                    <span className="ml-2 text-xs font-medium text-slate-500">analysis.ts</span>
-                  </div>
-                  <span className="inline-flex items-center gap-1 rounded-full bg-sky-50 px-2.5 py-1 text-[11px] font-semibold text-sky-600">
-                    <ScanSearch className="h-3.5 w-3.5" />
-                    Scanning
-                  </span>
-                </div>
-
-                <div className="grid grid-cols-[1fr_auto] gap-3 p-4">
-                  <div className="space-y-2.5">
-                    <div className="h-2.5 w-11/12 rounded-full bg-slate-100" />
-                    <div className="h-2.5 w-8/12 rounded-full bg-slate-100" />
-                    <div className="h-2.5 w-10/12 rounded-full bg-slate-100" />
-                    <div className="h-2.5 w-6/12 rounded-full bg-slate-100" />
-                  </div>
-                  <div className="space-y-2">
-                    <span className="block rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-600">
-                      Quality A
-                    </span>
-                    <span className="block rounded-full bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-600">
-                      2 Warnings
-                    </span>
-                    <span className="block rounded-full bg-rose-50 px-3 py-1 text-xs font-semibold text-rose-600">
-                      Security
-                    </span>
-                  </div>
-                </div>
-
-                <div className="px-4 pb-4">
-                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-slate-100">
-                    <motion.div
-                      animate={{ x: ["-25%", "260%", "-25%"] }}
-                      transition={{ duration: 2.6, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-                      className="h-full w-24 rounded-full bg-gradient-to-r from-sky-400 via-indigo-500 to-cyan-400"
-                    />
-                  </div>
+                <div className="overflow-hidden rounded-[20px] border border-border bg-card/90 p-1">
+                  {children}
                 </div>
               </motion.div>
+            </div>
 
-              <motion.div
-                animate={{ y: [0, -8, 0] }}
-                transition={{ duration: 3.2, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-                className="absolute left-3 top-3 rounded-xl border border-rose-100 bg-white px-3 py-2 shadow-sm"
-              >
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-rose-600">
-                  <ShieldAlert className="h-4 w-4" />
-                  SQL Injection blocked
-                </span>
-              </motion.div>
-
-              <motion.div
-                animate={{ y: [0, 7, 0] }}
-                transition={{ duration: 2.8, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut", delay: 0.2 }}
-                className="absolute bottom-2 right-8 rounded-xl border border-emerald-100 bg-white px-3 py-2 shadow-sm"
-              >
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Policy PASS
-                </span>
-              </motion.div>
-
-              <motion.div
-                animate={{ rotate: [0, 4, 0, -4, 0] }}
-                transition={{ duration: 5.5, repeat: Number.POSITIVE_INFINITY, ease: "easeInOut" }}
-                className="absolute -right-1 bottom-24 rounded-xl border border-indigo-100 bg-white px-3 py-2 shadow-sm"
-              >
-                <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-600">
-                  <FileCode2 className="h-4 w-4" />
-                  Diff + Docs synced
-                </span>
-              </motion.div>
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[18px] border border-border bg-background/60 p-4">
+                <p className="text-sm font-medium text-foreground">Editor-grade</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  File, folder, and branch actions stay in sync.
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-border bg-background/60 p-4">
+                <p className="text-sm font-medium text-foreground">Real PRs</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Reviews are posted to the connected repository.
+                </p>
+              </div>
+              <div className="rounded-[18px] border border-border bg-background/60 p-4">
+                <p className="text-sm font-medium text-foreground">Team scoped</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Access stays inside the authenticated team.
+                </p>
+              </div>
             </div>
           </div>
         </motion.section>

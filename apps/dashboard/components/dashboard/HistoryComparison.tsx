@@ -35,14 +35,14 @@ export function HistoryComparison() {
 
   const getTrendIcon = (prev: number, current: number) => {
     if (current < prev) return <TrendingDown className="h-5 w-5 text-green-500" />;
-    if (current > prev) return <TrendingUp className="h-5 w-5 text-red-500" />;
-    return <Minus className="h-5 w-5 text-gray-400" />;
+    if (current > prev) return <TrendingUp className="h-5 w-5 text-destructive" />;
+    return <Minus className="h-5 w-5 text-muted-foreground" />;
   };
 
   const getTrendColor = (prev: number, current: number) => {
-    if (current < prev) return 'text-green-600 dark:text-green-400';
-    if (current > prev) return 'text-red-600 dark:text-red-400';
-    return 'text-gray-600 dark:text-gray-400';
+    if (current < prev) return 'text-[color:var(--green-status)]';
+    if (current > prev) return 'text-destructive';
+    return 'text-muted-foreground';
   };
 
   // Loading state
@@ -55,7 +55,7 @@ export function HistoryComparison() {
       >
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600 dark:text-gray-400">Chargement de la comparaison...</span>
+          <span className="ml-3 text-muted-foreground">Chargement de la comparaison...</span>
         </div>
       </motion.div>
     );
@@ -72,11 +72,11 @@ export function HistoryComparison() {
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">
+              <p className="text-destructive mb-4">
                 {error || "Impossible de charger les données de comparaison"}
               </p>
               <Button onClick={refetch} variant="outline" className="gap-2">
@@ -104,17 +104,17 @@ export function HistoryComparison() {
         animate={{ opacity: 1, y: 0 }}
       >
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+          <h1 className="card-heading text-foreground mb-2 flex items-center gap-3">
             <GitCompare className="h-10 w-10 text-purple-500" />
             Historique & Comparaison
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">
+          <p className="body-text text-muted-foreground">
             Analyse de l&apos;évolution entre deux runs
           </p>
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={refetch}>
+            <Button variant="outline" className="gap-2" onClick={refetch}>
               <RotateCw className="h-4 w-4" />
               Re-run
             </Button>
@@ -135,10 +135,10 @@ export function HistoryComparison() {
           animate={{ opacity: 1, x: 0 }}
           transition={{ delay: 0.1 }}
         >
-          <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+          <Card variant="glass">
             <CardHeader>
               <CardTitle className="text-base">Run précédent</CardTitle>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {new Date(comparison.previousRun.date).toLocaleString('fr-FR')}
               </p>
             </CardHeader>
@@ -156,15 +156,15 @@ export function HistoryComparison() {
                     transition={{ delay: 0.2 + index * 0.1 }}
                     className="flex justify-between items-center p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
                   >
-                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    <span className="text-sm font-medium text-secondary-foreground">
                       {item.label}
                     </span>
                     <Badge variant={item.color as any}>{item.value}</Badge>
                   </motion.div>
                 ))}
                 <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-gray-700 font-semibold">
-                  <span className="text-sm text-gray-900 dark:text-white">Total</span>
-                  <span className="text-gray-900 dark:text-white">
+                  <span className="text-sm text-foreground">Total</span>
+                  <span className="text-foreground">
                     {comparison.previousRun.blockers +
                       comparison.previousRun.warnings +
                       comparison.previousRun.info}
@@ -183,7 +183,7 @@ export function HistoryComparison() {
           <Card className="bg-gradient-to-br from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 backdrop-blur-xl border-blue-200/50 dark:border-blue-800/50">
             <CardHeader>
               <CardTitle className="text-base">Run actuel</CardTitle>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <p className="text-sm text-muted-foreground">
                 {new Date(comparison.currentRun.date).toLocaleString('fr-FR')}
               </p>
             </CardHeader>
@@ -201,7 +201,7 @@ export function HistoryComparison() {
                     transition={{ delay: 0.2 + index * 0.1 }}
                     className="flex justify-between items-center p-2 rounded-lg hover:bg-blue-100/50 dark:hover:bg-blue-900/20 transition-colors"
                   >
-                    <span className="text-sm font-medium flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                    <span className="text-sm font-medium flex items-center gap-2 text-secondary-foreground">
                       {item.label}
                       <motion.div
                         initial={{ scale: 0 }}
@@ -220,8 +220,8 @@ export function HistoryComparison() {
                   </motion.div>
                 ))}
                 <div className="flex justify-between items-center pt-3 border-t border-blue-200 dark:border-blue-800 font-semibold">
-                  <span className="text-sm text-gray-900 dark:text-white">Total</span>
-                  <span className="text-gray-900 dark:text-white">
+                  <span className="text-sm text-foreground">Total</span>
+                  <span className="text-foreground">
                     {comparison.currentRun.blockers +
                       comparison.currentRun.warnings +
                       comparison.currentRun.info}
@@ -246,14 +246,14 @@ export function HistoryComparison() {
                 whileHover={{ scale: 1.2, rotate: 360 }}
                 transition={{ duration: 0.5 }}
               >
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <CheckCircle2 className="h-5 w-5 text-[color:var(--green-status)]" />
               </motion.div>
               Findings résolus ({resolvedIssues.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             {resolvedIssues.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-center py-8 text-muted-foreground">
                 Aucun problème résolu trouvé
               </div>
             ) : (
@@ -282,7 +282,7 @@ export function HistoryComparison() {
                       <TableCell>
                         <Badge variant="outline">{issue.category}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                      <TableCell className="text-sm text-muted-foreground font-mono">
                         {issue.file}
                       </TableCell>
                     </motion.tr>
@@ -307,14 +307,14 @@ export function HistoryComparison() {
                 whileHover={{ scale: 1.2 }}
                 transition={{ duration: 0.3 }}
               >
-                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <XCircle className="h-5 w-5 text-destructive" />
               </motion.div>
               Nouveaux problèmes ({newIssues.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
             {newIssues.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-center py-8 text-muted-foreground">
                 Aucun nouveau problème trouvé
               </div>
             ) : (
@@ -343,7 +343,7 @@ export function HistoryComparison() {
                       <TableCell>
                         <Badge variant="outline">{issue.category}</Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                      <TableCell className="text-sm text-muted-foreground font-mono">
                         {issue.file}
                       </TableCell>
                     </motion.tr>
@@ -375,7 +375,7 @@ export function HistoryComparison() {
           </CardHeader>
           <CardContent>
             {severityChanges.length === 0 ? (
-              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+              <div className="text-center py-8 text-muted-foreground">
                 Aucun changement de sévérité trouvé
               </div>
             ) : (
@@ -406,7 +406,7 @@ export function HistoryComparison() {
                           {change.newSeverity}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-sm text-gray-600 dark:text-gray-400 font-mono">
+                      <TableCell className="text-sm text-muted-foreground font-mono">
                         {change.file}
                       </TableCell>
                     </motion.tr>

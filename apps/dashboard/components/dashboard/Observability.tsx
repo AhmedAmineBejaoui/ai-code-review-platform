@@ -18,6 +18,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { extractApiErrorMessage, formatDisplayValue } from "@/lib/display"
 
 type ObservabilityLog = {
   id: string
@@ -107,7 +108,7 @@ export function Observability() {
       })
       const data = (await response.json().catch(() => ({}))) as ObservabilityPayload
       if (!response.ok) {
-        throw new Error(data.error ?? "Impossible de charger l'observabilite.")
+        throw new Error(extractApiErrorMessage(data, "Impossible de charger l'observabilite."))
       }
       setPayload(data)
     } catch (error) {
@@ -168,7 +169,9 @@ export function Observability() {
     ] as const
     const text = sections
       .map(([title, logs]) => {
-        const lines = logs.map((log) => `[${formatTimestamp(log.timestamp)}] [${log.level}] ${log.message} | ${log.details}`)
+        const lines = logs.map(
+          (log) => `[${formatTimestamp(log.timestamp)}] [${formatDisplayValue(log.level)}] ${formatDisplayValue(log.message)} | ${formatDisplayValue(log.details)}`,
+        )
         return [`## ${title}`, ...lines].join("\n")
       })
       .join("\n\n")
@@ -185,7 +188,7 @@ export function Observability() {
       })
       const data = (await response.json().catch(() => ({}))) as { taskId?: string; error?: string }
       if (!response.ok) {
-        throw new Error(data.error ?? "Relance job impossible.")
+        throw new Error(extractApiErrorMessage(data, "Relance job impossible."))
       }
       setMessage(`Job ${analysisId} relance (task: ${data.taskId ?? "n/a"}).`)
       await loadObservability(true)
@@ -197,10 +200,10 @@ export function Observability() {
   }
 
   const renderLogTable = (logs: ObservabilityLog[]) => (
-    <div className="rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
+    <div className="overflow-hidden rounded-xl border border-gray-200/50 dark:border-gray-700/50">
       <Table>
         <TableHeader>
-          <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
+          <TableRow className="bg-gray-50/50 hover:bg-gray-50/50 dark:bg-gray-800/50 dark:hover:bg-gray-800/50">
             <TableHead>Timestamp</TableHead>
             <TableHead>Level</TableHead>
             <TableHead>Message</TableHead>
@@ -210,23 +213,35 @@ export function Observability() {
         <TableBody>
           {logs.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={4} className="text-center py-8 text-gray-500">
+              <TableCell colSpan={4} className="py-8 text-center text-muted-foreground">
                 Aucun log disponible.
               </TableCell>
             </TableRow>
           ) : (
             logs.map((log, index) => (
-              <motion.tr key={`${log.id}-${index}`} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: index * 0.03 }} className="hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                <TableCell className="font-mono text-xs text-gray-600 dark:text-gray-400">
+              <motion.tr
+                key={`${log.id}-${index}`}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.03 }}
+                className="transition-colors hover:bg-gray-50/50 dark:hover:bg-gray-800/50"
+              >
+                <TableCell className="font-mono text-xs text-muted-foreground">
                   {formatTimestamp(log.timestamp)}
                 </TableCell>
                 <TableCell>
-                  <Badge variant={log.level === "error" ? "destructive" : log.level === "warn" ? "secondary" : "default"}>
-                    {log.level}
+                  <Badge
+                    variant={log.level === "error" ? "destructive" : log.level === "warn" ? "secondary" : "default"}
+                  >
+                    {formatDisplayValue(log.level)}
                   </Badge>
                 </TableCell>
-                <TableCell className="font-medium text-gray-900 dark:text-white">{log.message}</TableCell>
-                <TableCell className="text-sm text-gray-600 dark:text-gray-400">{log.details}</TableCell>
+                <TableCell className="font-medium text-foreground">
+                  {formatDisplayValue(log.message)}
+                </TableCell>
+                <TableCell className="text-sm text-muted-foreground">
+                  {formatDisplayValue(log.details)}
+                </TableCell>
               </motion.tr>
             ))
           )}
@@ -239,21 +254,21 @@ export function Observability() {
     <motion.div className="max-w-6xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-pink-900 to-rose-900 dark:from-white dark:via-pink-100 dark:to-rose-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+          <h1 className="card-heading text-foreground mb-2 flex items-center gap-3">
             <Activity className="h-10 w-10 text-pink-500" />
             Observabilite & Logs
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Supervision reelle de la plateforme</p>
+          <p className="text-muted-foreground">Supervision reelle de la plateforme</p>
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={exportLogs} disabled={loading}>
+            <Button variant="outline" className="gap-2" onClick={exportLogs} disabled={loading}>
               <Download className="h-4 w-4" />
               Telecharger logs
             </Button>
           </motion.div>
           <motion.div whileHover={{ scale: 1.02, rotate: 180 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => void loadObservability(true)} disabled={refreshing}>
+            <Button variant="outline" className="gap-2" onClick={() => void loadObservability(true)} disabled={refreshing}>
               <RotateCw className="h-4 w-4" />
               Actualiser
             </Button>
@@ -262,21 +277,21 @@ export function Observability() {
       </motion.div>
 
       {message && (
-        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
-          {message}
+        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200 whitespace-pre-wrap break-words">
+          {formatDisplayValue(message)}
         </div>
       )}
 
       <div className="grid md:grid-cols-4 gap-4">
         {metricsCards.map((metric, index) => (
           <motion.div key={metric.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + index * 0.05 }} whileHover={{ y: -4, scale: 1.02 }}>
-            <Card className="relative overflow-hidden bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card variant="glass" className="relative overflow-hidden">
               <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${metric.gradient} opacity-20 rounded-full blur-2xl`} />
               <CardContent className="pt-6 relative z-10">
                 <div className="flex items-center justify-between mb-3">
                   <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{metric.label}</p>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">
+                    <p className="text-sm text-muted-foreground mb-1">{metric.label}</p>
+                    <p className="text-3xl font-bold text-foreground">
                       {metric.value}
                       {metric.unit}
                     </p>
@@ -304,7 +319,7 @@ export function Observability() {
           </CardHeader>
           <CardContent>
             {loading ? (
-              <p className="text-sm text-gray-500">Chargement...</p>
+              <p className="text-sm text-muted-foreground">Chargement...</p>
             ) : issues.length === 0 ? (
               <p className="text-sm text-emerald-300">Aucun probleme actif detecte.</p>
             ) : (
@@ -313,8 +328,8 @@ export function Observability() {
                   <motion.div key={issue.id} className="flex items-start gap-3 p-4 rounded-xl bg-white dark:bg-gray-900/50 border border-orange-300 dark:border-orange-700" whileHover={{ x: 4 }}>
                     <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
                     <div className="flex-1">
-                      <div className="font-semibold text-orange-900 dark:text-orange-100 mb-1">{issue.title}</div>
-                      <div className="text-sm text-orange-800 dark:text-orange-200">{issue.detail}</div>
+                      <div className="font-semibold text-orange-900 dark:text-orange-100 mb-1">{formatDisplayValue(issue.title)}</div>
+                      <div className="text-sm text-orange-800 dark:text-orange-200">{formatDisplayValue(issue.detail)}</div>
                     </div>
                     <Button variant="outline" size="sm" className="bg-white dark:bg-gray-800" onClick={() => setActiveTab("workers")}>
                       Investiguer
@@ -328,7 +343,7 @@ export function Observability() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
@@ -357,30 +372,30 @@ export function Observability() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.5 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>File d'attente des jobs</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {queueJobs.length === 0 ? (
-                <p className="text-sm text-gray-500">Aucun job en attente.</p>
+                <p className="text-sm text-muted-foreground">Aucun job en attente.</p>
               ) : (
                 queueJobs.map((job) => (
                   <motion.div key={job.analysisId} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 dark:from-blue-950/30 dark:to-purple-950/30 border border-blue-200/50 dark:border-blue-800/50" whileHover={{ x: 4 }}>
                     <div>
-                      <span className="font-semibold text-gray-900 dark:text-white">{job.analysisId}</span>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                        {job.repo}
-                        {job.prNumber ? ` PR #${job.prNumber}` : ""}
+                      <span className="font-semibold text-foreground">{formatDisplayValue(job.analysisId)}</span>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {formatDisplayValue(job.repo)}
+                        {job.prNumber ? ` PR #${formatDisplayValue(job.prNumber)}` : ""}
                         {" • "}
-                        {job.status}
+                        {formatDisplayValue(job.status)}
                         {" • "}
                         {formatTimestamp(job.createdAt)}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge>{job.status.toLowerCase()}</Badge>
+                      <Badge>{formatDisplayValue(job.status).toLowerCase()}</Badge>
                       <motion.div whileHover={{ scale: 1.05, rotate: 180 }} whileTap={{ scale: 0.95 }}>
                         <Button variant="outline" size="sm" className="gap-2" onClick={() => void retryJob(job.analysisId)} disabled={retryingJobId === job.analysisId}>
                           <RotateCw className="h-3 w-3" />

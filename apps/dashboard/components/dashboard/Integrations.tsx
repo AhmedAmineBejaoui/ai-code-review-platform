@@ -12,6 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import { extractApiErrorMessage, formatDisplayValue } from "@/lib/display"
+import { BANNER_INFO, INPUT_STANDARD } from "@/lib/design-tokens"
 
 type GithubReposPayload = {
   connected?: boolean
@@ -21,6 +23,9 @@ type GithubReposPayload = {
     private: boolean
   }>
   error?: string | null
+  login?: string | null
+  tokenAvailable?: boolean
+  note?: string | null
 }
 
 type IntegrationsPayload = {
@@ -95,7 +100,7 @@ export function Integrations() {
       const githubPayload = (await githubResponse.json().catch(() => ({}))) as GithubReposPayload
 
       if (!integrationsResponse.ok) {
-        throw new Error(integrationsPayload.error ?? "Impossible de charger les integrations.")
+        throw new Error(extractApiErrorMessage(integrationsPayload, "Impossible de charger les integrations."))
       }
 
       setIntegrationData(integrationsPayload)
@@ -122,8 +127,16 @@ export function Integrations() {
   }
   const storageEnabled = Boolean(storage.enabled)
 
-  const githubConnected = Boolean(githubData?.connected)
-  const githubRepoCount = Array.isArray(githubData?.items) ? githubData!.items!.length : 0
+  const githubConnectionStatus: "loading" | "connected" | "disconnected" =
+    loading
+      ? "loading"
+      : githubData?.connected !== false ||
+          githubData?.tokenAvailable === true ||
+          (githubData?.items?.length ?? 0) > 0 ||
+          Boolean(githubData?.login)
+        ? "connected"
+        : "disconnected"
+  const githubRepoCount = githubData?.items?.length ?? 0
 
   const saveConfig = async (updates: { ciEnabled?: boolean; failOnBlocker?: boolean }) => {
     setSaving(true)
@@ -136,7 +149,7 @@ export function Integrations() {
       })
       const payload = (await response.json().catch(() => ({}))) as IntegrationsPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Mise a jour integration impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Mise a jour integration impossible."))
       }
       setIntegrationData((previous) => ({
         ...(previous ?? {}),
@@ -167,7 +180,7 @@ export function Integrations() {
       }
       const rotatedToken = payload.token
       if (!response.ok || typeof rotatedToken !== "string") {
-        throw new Error(payload.error ?? "Rotation token impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Rotation token impossible."))
       }
       setLastRotatedToken(rotatedToken)
       setIntegrationData((previous) => ({
@@ -197,7 +210,7 @@ export function Integrations() {
       })
       const payload = (await response.json().catch(() => ({}))) as { error?: string }
       if (!response.ok) {
-        throw new Error(payload.error ?? "Revocation token impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Revocation token impossible."))
       }
       setLastRotatedToken(null)
       setIntegrationData((previous) => ({
@@ -244,14 +257,14 @@ export function Integrations() {
         error?: string
       }
       if (!response.ok) {
-        throw new Error(payload.error ?? "Test stockage impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Test stockage impossible."))
       }
       setStorageProbe({
         ok: Boolean(payload.ok),
-        message: payload.message ?? (payload.ok ? "OK" : "KO"),
+        message: formatDisplayValue(payload.message) || (payload.ok ? "OK" : "KO"),
         checkedAt: payload.checkedAt ?? new Date().toISOString(),
       })
-      setMessage(payload.message ?? "Test stockage termine.")
+      setMessage(formatDisplayValue(payload.message) || "Test stockage termine.")
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Test stockage impossible.")
     } finally {
@@ -263,22 +276,22 @@ export function Integrations() {
     <motion.div className="max-w-4xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-cyan-900 to-blue-900 dark:from-white dark:via-cyan-100 dark:to-blue-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
+          <h1 className="card-heading text-foreground mb-2 flex items-center gap-3">
             <Plug className="h-10 w-10 text-cyan-500" />
             Integrations
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Configuration Git, CI et stockage reelle</p>
+          <p className="text-muted-foreground">Configuration Git, CI et stockage reelle</p>
         </div>
       </motion.div>
 
       {message && (
-        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">
+        <div className={BANNER_INFO}>
           {message}
         </div>
       )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Git Providers</CardTitle>
           </CardHeader>
@@ -286,17 +299,22 @@ export function Integrations() {
             <motion.div className="flex items-start justify-between p-6 rounded-xl bg-gradient-to-br from-gray-50 to-gray-100 dark:from-gray-800/50 dark:to-gray-900/50 border border-gray-200/50 dark:border-gray-700/50 group hover:border-gray-300 dark:hover:border-gray-600 transition-all" whileHover={{ x: 4 }}>
               <div className="flex items-start gap-4">
                 <motion.div className="w-14 h-14 bg-gray-900 dark:bg-white rounded-xl flex items-center justify-center shadow-lg" whileHover={{ scale: 1.1, rotate: 5 }}>
-                  <svg className="w-8 h-8 text-white dark:text-gray-900" fill="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-8 h-8 text-white dark:text-foreground" fill="currentColor" viewBox="0 0 24 24">
                     <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z" />
                   </svg>
                 </motion.div>
                 <div>
                   <div className="flex items-center gap-3 mb-2">
-                    <span className="font-semibold text-xl text-gray-900 dark:text-white">GitHub</span>
-                    {githubConnected ? (
+                    <span className="font-semibold text-xl text-foreground">GitHub</span>
+                    {githubConnectionStatus === "connected" ? (
                       <Badge className="gap-1 bg-gradient-to-r from-green-500 to-emerald-500 text-white">
                         <CheckCircle2 className="h-3 w-3" />
                         Connecte
+                      </Badge>
+                    ) : githubConnectionStatus === "loading" ? (
+                      <Badge variant="outline" className="gap-1">
+                        <RotateCw className="h-3 w-3 animate-spin" />
+                        Chargement
                       </Badge>
                     ) : (
                       <Badge variant="outline" className="gap-1">
@@ -305,7 +323,7 @@ export function Integrations() {
                       </Badge>
                     )}
                   </div>
-                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-2">
+                  <p className="text-sm text-muted-foreground mb-2">
                     {githubRepoCount} repository(s) visible(s) via integration utilisateur.
                   </p>
                   <Badge variant="outline" className="text-xs">
@@ -339,7 +357,7 @@ export function Integrations() {
             <motion.div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-gray-900/50 border border-blue-200/50 dark:border-blue-800/50" whileHover={{ x: 4 }}>
               <div className="space-y-1">
                 <Label className="text-base">Integration CI active</Label>
-                <p className="text-sm text-gray-600 dark:text-gray-400">Analyser automatiquement les PRs via CI/CD</p>
+                <p className="text-sm text-muted-foreground">Analyser automatiquement les PRs via CI/CD</p>
               </div>
               <motion.div whileTap={{ scale: 0.9 }}>
                 <Switch
@@ -370,7 +388,7 @@ export function Integrations() {
                       : "Aucun token actif"
                   }
                   readOnly
-                  className="font-mono text-sm bg-white dark:bg-gray-800"
+                  className={`font-mono text-sm ${INPUT_STANDARD}`}
                 />
                 <Button variant="outline" size="sm" className="gap-2" onClick={() => void rotateToken()} disabled={saving}>
                   <Key className="h-3 w-3" />
@@ -381,7 +399,7 @@ export function Integrations() {
                 </Button>
               </div>
               {ciToken.createdAt && (
-                <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Derniere rotation: {formatTimestamp(ciToken.createdAt)}
                 </p>
               )}
@@ -395,7 +413,7 @@ export function Integrations() {
             <motion.div className="flex items-center justify-between p-4 rounded-xl bg-white dark:bg-gray-900/50 border border-blue-200/50 dark:border-blue-800/50" whileHover={{ x: 4 }}>
               <div className="space-y-1">
                 <Label className="text-base">Fail on BLOCKER</Label>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   Faire echouer le build CI si des BLOCKER sont detectes
                 </p>
               </div>
@@ -421,7 +439,7 @@ export function Integrations() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Stockage</CardTitle>
           </CardHeader>
@@ -440,16 +458,16 @@ export function Integrations() {
                   {storageEnabled ? "Active" : "Desactive"}
                 </Badge>
               </div>
-              <Input value={storage.provider ?? "S3 Compatible (MinIO)"} readOnly className="mt-2 bg-white dark:bg-gray-800" />
+              <Input value={storage.provider ?? "S3 Compatible (MinIO)"} readOnly className={`mt-2 ${INPUT_STANDARD}`} />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <Label>Endpoint</Label>
-                <Input value={storage.endpoint ?? "-"} readOnly className="mt-2 bg-white dark:bg-gray-800" />
+                <Input value={storage.endpoint ?? "-"} readOnly className={`mt-2 ${INPUT_STANDARD}`} />
               </div>
               <div>
                 <Label>Bucket</Label>
-                <Input value={storage.bucket ?? "-"} readOnly className="mt-2 bg-white dark:bg-gray-800" />
+                <Input value={storage.bucket ?? "-"} readOnly className={`mt-2 ${INPUT_STANDARD}`} />
               </div>
             </div>
             {!storageEnabled && (
@@ -475,9 +493,9 @@ export function Integrations() {
             {storageProbe && (
               <motion.div className={`p-4 rounded-xl border flex items-start gap-3 ${storageProbe.ok ? "bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/30 dark:to-emerald-950/30 border-green-200/50 dark:border-green-800/50" : "bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/30 dark:to-orange-950/30 border-amber-200/50 dark:border-amber-800/50"}`} initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }}>
                 {storageProbe.ok ? (
-                  <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 mt-0.5 flex-shrink-0" />
+                  <CheckCircle2 className="h-5 w-5 text-[color:var(--green-status)] mt-0.5 flex-shrink-0" />
                 ) : (
-                  <XCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <XCircle className="h-5 w-5 text-[color:var(--orange)] dark:text-amber-400 mt-0.5 flex-shrink-0" />
                 )}
                 <div className="text-sm">
                   <div>{storageProbe.message}</div>
@@ -490,24 +508,24 @@ export function Integrations() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Statut des webhooks</CardTitle>
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
               {(integrationData?.webhooks ?? []).length === 0 ? (
-                <p className="text-sm text-gray-500">Aucun webhook recent.</p>
+                <p className="text-sm text-muted-foreground">Aucun webhook recent.</p>
               ) : (
                 (integrationData?.webhooks ?? []).map((webhook, index) => (
                   <motion.div key={`${webhook.repo}-${index}`} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 + index * 0.1 }} whileHover={{ x: 4 }} className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent border border-gray-200/50 dark:border-gray-700/50">
                     <div className="flex items-center gap-3">
                       <motion.div animate={{ scale: [1, 1.2, 1] }} transition={{ repeat: Infinity, duration: 2, delay: index * 0.5 }}>
-                        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+                        <CheckCircle2 className="h-5 w-5 text-[color:var(--green-status)]" />
                       </motion.div>
                       <div>
-                        <span className="font-medium text-gray-900 dark:text-white">{webhook.repo}</span>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                        <span className="font-medium text-foreground">{webhook.repo}</span>
+                        <p className="text-sm text-muted-foreground mt-1">
                           Dernier evenement: {webhook.event} • {formatTimestamp(webhook.timestamp)}
                         </p>
                       </div>

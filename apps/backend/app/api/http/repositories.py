@@ -480,6 +480,108 @@ async def import_repository_full(
     repo_name = parts[-1] if parts else repo_id
     project_name = request.project_name or repo_name
 
+    # Resolve a canonical local organization when the repository belongs to a GitHub organization.
+    org_id: str | None = None
+    if request.org_github_login:
+        try:
+            from sqlalchemy import text as _text
+
+            with engine.begin() as conn:
+                existing_org = conn.execute(
+                    _text(
+                        """
+                        SELECT id, clerk_org_id, github_org_login
+                        FROM organizations
+                        WHERE github_org_login = :github_login
+                           OR slug = :github_login
+                           OR id = :github_login
+                        ORDER BY CASE WHEN clerk_org_id IS NOT NULL THEN 0 ELSE 1 END, created_at ASC
+                        LIMIT 1
+                        """
+                    ),
+                    {"github_login": request.org_github_login},
+                ).mappings().first()
+
+                if existing_org:
+                    org_id = str(existing_org["id"])
+                    conn.execute(
+                        _text(
+                            """
+                            UPDATE organizations
+                            SET name = COALESCE(:name, name),
+                                slug = COALESCE(slug, :slug),
+                                description = COALESCE(:description, description),
+                                github_org_login = COALESCE(:github_org_login, github_org_login),
+                                sync_status = CASE
+                                    WHEN clerk_org_id IS NOT NULL AND COALESCE(:github_org_login, github_org_login) IS NOT NULL THEN 'linked'
+                                    WHEN clerk_org_id IS NOT NULL THEN 'clerk_only'
+                                    WHEN COALESCE(:github_org_login, github_org_login) IS NOT NULL THEN 'github_only'
+                                    ELSE sync_status
+                                END,
+                                is_active = TRUE,
+                                updated_at = :updated_at
+                            WHERE id = :id
+                            """
+                        ),
+                        {
+                            "id": org_id,
+                            "name": request.org_name or request.org_github_login,
+                            "slug": request.org_github_login,
+                            "description": request.description,
+                            "github_org_login": request.org_github_login,
+                            "updated_at": now,
+                        },
+                    )
+                else:
+                    org_id = request.org_github_login
+                    conn.execute(
+                        _text(
+                            """
+                            INSERT INTO organizations (
+                                id,
+                                slug,
+                                name,
+                                description,
+                                github_org_login,
+                                source,
+                                sync_status,
+                                is_active,
+                                created_at,
+                                updated_at
+                            )
+                            VALUES (
+                                :id,
+                                :slug,
+                                :name,
+                                :description,
+                                :github_org_login,
+                                'legacy',
+                                'github_only',
+                                TRUE,
+                                :created_at,
+                                :updated_at
+                            )
+                            ON CONFLICT (id) DO UPDATE SET
+                                name = COALESCE(EXCLUDED.name, organizations.name),
+                                description = COALESCE(EXCLUDED.description, organizations.description),
+                                github_org_login = COALESCE(EXCLUDED.github_org_login, organizations.github_org_login),
+                                is_active = TRUE,
+                                updated_at = EXCLUDED.updated_at
+                            """
+                        ),
+                        {
+                            "id": org_id,
+                            "slug": request.org_github_login,
+                            "name": request.org_name or request.org_github_login,
+                            "description": request.description,
+                            "github_org_login": request.org_github_login,
+                            "created_at": now,
+                            "updated_at": now,
+                        },
+                    )
+        except Exception:
+            org_id = request.org_github_login
+
     # 0. Ensure a canonical project_profiles row (UUID id) exists.
     #    This is the identifier required by AnalyzeRequest.project_id (FK to
     #    project_profiles.id). Without this row, /v1/analyze would 404 later.
@@ -487,7 +589,7 @@ async def import_repository_full(
     project_id = _ensure_project_profile(
         engine,
         repo_id=repo_id,
-        org_id=request.org_github_login,
+        org_id=org_id,
         display_name=project_name,
         description=request.description,
         primary_language=request.language,
@@ -511,27 +613,7 @@ async def import_repository_full(
         },
     )
 
-    # 2. Upsert organization if applicable
-    org_id: str | None = None
-    if request.org_github_login:
-        org_id = request.org_github_login
-        try:
-            from sqlalchemy import text as _text
-            with engine.begin() as conn:
-                conn.execute(
-                    _text("""
-                        INSERT INTO organizations (id, slug, name, is_active)
-                        VALUES (:id, :slug, :name, TRUE)
-                        ON CONFLICT (id) DO UPDATE SET
-                            name = COALESCE(EXCLUDED.name, organizations.name),
-                            is_active = TRUE
-                    """),
-                    {"id": org_id, "slug": request.org_github_login, "name": request.org_name or request.org_github_login},
-                )
-        except Exception:
-            pass  # Table might differ in schema
-
-    # 3. Store branches
+    # 2. Store branches
     branches_imported = 0
     branch_id_map: dict[str, str] = {}  # branch_name → branch_id
     for b in request.branches:

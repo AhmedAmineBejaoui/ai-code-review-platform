@@ -170,10 +170,10 @@ export default function SecuritySettingsPage() {
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
       >
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent">
+        <h1 className="card-heading text-foreground">
           Security Settings
         </h1>
-        <p className="text-gray-500 dark:text-gray-400 mt-1">
+        <p className="text-muted-foreground mt-1">
           Manage your account security and authentication settings
         </p>
       </motion.div>
@@ -185,7 +185,7 @@ export default function SecuritySettingsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-3 p-4 rounded-xl bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800"
         >
-          <CheckCircle className="h-5 w-5 text-green-600 dark:text-green-400" />
+          <CheckCircle className="h-5 w-5 text-[color:var(--green-status)]" />
           <p className="text-green-700 dark:text-green-300">{success}</p>
         </motion.div>
       )}
@@ -196,7 +196,7 @@ export default function SecuritySettingsPage() {
           animate={{ opacity: 1, y: 0 }}
           className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
         >
-          <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <AlertTriangle className="h-5 w-5 text-destructive" />
           <p className="text-red-700 dark:text-red-300">{error}</p>
         </motion.div>
       )}
@@ -207,7 +207,7 @@ export default function SecuritySettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Key className="h-5 w-5 text-blue-500" />
@@ -231,7 +231,7 @@ export default function SecuritySettingsPage() {
                 <button
                   type="button"
                   onClick={() => setShowCurrentPassword(!showCurrentPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
                 >
                   {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -252,7 +252,7 @@ export default function SecuritySettingsPage() {
                   <button
                     type="button"
                     onClick={() => setShowNewPassword(!showNewPassword)}
-                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-muted-foreground"
                   >
                     {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                   </button>
@@ -272,7 +272,7 @@ export default function SecuritySettingsPage() {
             </div>
 
             <div className="flex items-center justify-between pt-4">
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Password must be at least 8 characters with uppercase, lowercase, and numbers
               </p>
               <Button onClick={handleChangePassword} disabled={changingPassword}>
@@ -294,7 +294,7 @@ export default function SecuritySettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Fingerprint className="h-5 w-5 text-purple-500" />
@@ -305,16 +305,16 @@ export default function SecuritySettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-card-inner rounded-lg">
               <div className="flex items-center gap-4">
-                <div className={`p-3 rounded-full ${settings.two_factor_enabled ? "bg-green-100 dark:bg-green-900/30" : "bg-gray-200 dark:bg-gray-700"}`}>
-                  <Shield className={`h-6 w-6 ${settings.two_factor_enabled ? "text-green-600 dark:text-green-400" : "text-gray-500"}`} />
+                <div className={`p-3 rounded-full ${settings.two_factor_enabled ? "bg-[color:var(--green-status)]/15" : "bg-gray-200 dark:bg-gray-700"}`}>
+                  <Shield className={`h-6 w-6 ${settings.two_factor_enabled ? "text-[color:var(--green-status)]" : "text-muted-foreground"}`} />
                 </div>
                 <div>
-                  <h4 className="font-medium text-gray-900 dark:text-white">
+                  <h4 className="font-medium text-foreground">
                     Two-Factor Authentication
                   </h4>
-                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                  <p className="text-sm text-muted-foreground">
                     {settings.two_factor_enabled
                       ? `Enabled via ${settings.two_factor_method === "app" ? "Authenticator App" : "SMS"}`
                       : "Not enabled"}
@@ -324,7 +324,7 @@ export default function SecuritySettingsPage() {
               <div className="flex items-center gap-2">
                 {settings.two_factor_enabled ? (
                   <>
-                    <Badge variant="outline" className="text-green-600 border-green-300">
+                    <Badge variant="outline" className="text-[color:var(--green-status)] border-green-300">
                       <CheckCircle className="h-3 w-3 mr-1" />
                       Enabled
                     </Badge>
@@ -362,7 +362,7 @@ export default function SecuritySettingsPage() {
             {!settings.two_factor_enabled && (
               <div className="mt-4 p-4 border border-yellow-200 dark:border-yellow-800 bg-yellow-50 dark:bg-yellow-950/30 rounded-lg">
                 <div className="flex items-start gap-3">
-                  <AlertTriangle className="h-5 w-5 text-yellow-600 dark:text-yellow-400 mt-0.5" />
+                  <AlertTriangle className="h-5 w-5 text-[color:var(--orange)] dark:text-yellow-400 mt-0.5" />
                   <div>
                     <h4 className="font-medium text-yellow-800 dark:text-yellow-200">
                       Recommended: Enable 2FA
@@ -384,10 +384,10 @@ export default function SecuritySettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              <AlertTriangle className="h-5 w-5 text-[color:var(--orange)]" />
               Security Alerts
             </CardTitle>
             <CardDescription>
@@ -395,10 +395,10 @@ export default function SecuritySettingsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-card-inner rounded-lg">
               <div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Login Alerts</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h4 className="font-medium text-foreground">Login Alerts</h4>
+                <p className="text-sm text-muted-foreground">
                   Get notified when someone logs into your account
                 </p>
               </div>
@@ -408,10 +408,10 @@ export default function SecuritySettingsPage() {
               />
             </div>
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-card-inner rounded-lg">
               <div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Suspicious Activity Alerts</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h4 className="font-medium text-foreground">Suspicious Activity Alerts</h4>
+                <p className="text-sm text-muted-foreground">
                   Get notified about unusual activity on your account
                 </p>
               </div>
@@ -430,7 +430,7 @@ export default function SecuritySettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader className="flex flex-row items-center justify-between">
             <div>
               <CardTitle className="flex items-center gap-2">
@@ -453,21 +453,21 @@ export default function SecuritySettingsPage() {
                   key={session.id}
                   className={`flex items-center justify-between p-4 rounded-lg ${
                     session.current
-                      ? "bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800"
-                      : "bg-gray-50 dark:bg-gray-800/50"
+                      ? "bg-teal-500/10 border border-teal-500/30"
+                      : "bg-card-inner"
                   }`}
                 >
                   <div className="flex items-center gap-4">
-                    <div className="p-2 bg-white dark:bg-gray-800 rounded-lg shadow-sm">
+                    <div className="p-2 bg-card-inner rounded-lg shadow-sm">
                       {session.device.includes("iPhone") || session.device.includes("Phone") ? (
-                        <Smartphone className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                        <Smartphone className="h-5 w-5 text-muted-foreground" />
                       ) : (
-                        <Monitor className="h-5 w-5 text-gray-600 dark:text-gray-400" />
+                        <Monitor className="h-5 w-5 text-muted-foreground" />
                       )}
                     </div>
                     <div>
                       <div className="flex items-center gap-2">
-                        <h4 className="font-medium text-gray-900 dark:text-white">
+                        <h4 className="font-medium text-foreground">
                           {session.device}
                         </h4>
                         {session.current && (
@@ -476,10 +476,10 @@ export default function SecuritySettingsPage() {
                           </Badge>
                         )}
                       </div>
-                      <p className="text-sm text-gray-500 dark:text-gray-400">
+                      <p className="text-sm text-muted-foreground">
                         {session.browser}
                       </p>
-                      <div className="flex items-center gap-4 mt-1 text-xs text-gray-400">
+                      <div className="flex items-center gap-4 mt-1 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <MapPin className="h-3 w-3" />
                           {session.location}
@@ -495,7 +495,7 @@ export default function SecuritySettingsPage() {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      className="text-destructive hover:text-red-700 hover:bg-red-50"
                       onClick={() => handleRevokeSession(session.id)}
                     >
                       <LogOut className="h-4 w-4" />
@@ -514,9 +514,9 @@ export default function SecuritySettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.5 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-red-200 dark:border-red-800">
+        <Card variant="glass" className="border-destructive/40">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-red-600 dark:text-red-400">
+            <CardTitle className="flex items-center gap-2 text-destructive">
               <AlertTriangle className="h-5 w-5" />
               Danger Zone
             </CardTitle>
@@ -528,7 +528,7 @@ export default function SecuritySettingsPage() {
             <div className="flex items-center justify-between p-4 border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 rounded-lg">
               <div>
                 <h4 className="font-medium text-red-800 dark:text-red-200">Delete Account</h4>
-                <p className="text-sm text-red-600 dark:text-red-400">
+                <p className="text-sm text-destructive">
                   Permanently delete your account and all associated data
                 </p>
               </div>

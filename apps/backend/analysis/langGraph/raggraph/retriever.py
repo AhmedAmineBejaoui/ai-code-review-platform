@@ -7,6 +7,7 @@ from typing import Any
 from analysis.langGraph.context.repo_context_manager import RepoContextManager
 from analysis.langGraph.models import RetrievalFilters, RetrievalResult, RetrievedContextReference
 from app.core.knowledge_base.re_ranker import ReRanker
+from app.core.knowledge_base.query_router import QueryRouter
 from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievalCandidate, RetrievedContextChunk
 from app.core.knowledge_base.retriever import (
     RepoContextRetriever,
@@ -52,6 +53,7 @@ class RagGraphRetriever:
         self._context_manager = context_manager or RepoContextManager()
         self._chunks_repo = chunks_repo or RepoContextChunksRepo()
         self._reranker = reranker or ReRanker()
+        self._router = QueryRouter()
 
     async def retrieve_for_diff(
         self,
@@ -112,6 +114,64 @@ class RagGraphRetriever:
             retrieval_trace=trace.to_dict(),
         )
 
+    async def retrieve_for_query(
+        self,
+        *,
+        repo_id: str,
+        query: str,
+        changed_files: list[str] | None = None,
+        filters: RetrievalFilters | None = None,
+        limit: int = 8,
+        route_hint: str = "auto",
+    ) -> RetrievalResult:
+        retrieval_filters = filters or RetrievalFilters()
+        base_chunks, _profile = await self._repo_context_retriever.retrieve_for_query(
+            repo_id=repo_id,
+            query=query,
+            changed_files=changed_files,
+            limit=max(limit, 8),
+            route_hint=route_hint,
+        )
+        route = self._router.route_query(query=query, route_hint=route_hint)
+        graph_paths = [item.path for item in base_chunks[: max(limit, 4)] if item.path.strip()]
+        graph_chunks = self._collect_graph_chunks(repo_id=repo_id, changed_files=graph_paths or (changed_files or []), limit=limit)
+        hyde_chunks = await self._collect_hyde_chunks(repo_id=repo_id, diff_text=query, limit=limit)
+        return self._build_result(
+            repo_id=repo_id,
+            query_text=query,
+            route=route,
+            primary_chunks=base_chunks,
+            graph_chunks=graph_chunks,
+            hyde_chunks=hyde_chunks,
+            filters=retrieval_filters,
+            limit=limit,
+            retrieval_mode="graph_rag_query",
+        )
+
+    async def retrieve_for_repo_bootstrap(
+        self,
+        *,
+        repo_id: str,
+        limit: int = 16,
+    ) -> RetrievalResult:
+        base_chunks, _profile = await self._repo_context_retriever.retrieve_for_repo_bootstrap(
+            repo_id=repo_id,
+            limit=max(limit, 8),
+        )
+        graph_paths = [item.path for item in base_chunks[: max(limit, 4)] if item.path.strip()]
+        graph_chunks = self._collect_graph_chunks(repo_id=repo_id, changed_files=graph_paths, limit=limit)
+        return self._build_result(
+            repo_id=repo_id,
+            query_text="repository bootstrap context",
+            route=QueryRoute.REPO_QUERY,
+            primary_chunks=base_chunks,
+            graph_chunks=graph_chunks,
+            hyde_chunks=[],
+            filters=RetrievalFilters(),
+            limit=limit,
+            retrieval_mode="graph_rag_bootstrap",
+        )
+
     def _collect_graph_chunks(self, *, repo_id: str, changed_files: list[str], limit: int) -> list[RetrievedContextChunk]:
         neighbors: list[str] = []
         for changed_file in changed_files:
@@ -140,16 +200,11 @@ class RagGraphRetriever:
     async def _collect_hyde_chunks(self, *, repo_id: str, diff_text: str, limit: int) -> list[RetrievedContextChunk]:
         try:
             from app.core.knowledge_base.hyde import build_hyde_expander
-            from app.core.langchain_runtime.embeddings import LangChainEmbeddingService
         except Exception:
             return []
 
         expander = build_hyde_expander()
         if not expander.available:
-            return []
-
-        embedding_service = LangChainEmbeddingService()
-        if not embedding_service.available:
             return []
 
         vector = expander.expand_query(diff_text[:1800], query_type="code")
@@ -166,6 +221,57 @@ class RagGraphRetriever:
             filter_payload={"repo_id": repo_id, "type": "chunk"},
         )
         return _hits_to_chunks(hits, source="hyde")
+
+    def _build_result(
+        self,
+        *,
+        repo_id: str,
+        query_text: str,
+        route: QueryRoute,
+        primary_chunks: list[RetrievedContextChunk],
+        graph_chunks: list[RetrievedContextChunk],
+        hyde_chunks: list[RetrievedContextChunk],
+        filters: RetrievalFilters,
+        limit: int,
+        retrieval_mode: str,
+    ) -> RetrievalResult:
+        candidates: list[RetrievalCandidate] = []
+        candidates.extend(_to_candidates(primary_chunks, channel="semantic_code"))
+        candidates.extend(_to_candidates(graph_chunks, channel="graph_connected"))
+        candidates.extend(_to_candidates(hyde_chunks, channel="semantic_code"))
+
+        filtered_candidates = self._apply_filters(candidates=candidates, filters=filters)
+        ranked = self._reranker.rank(
+            query=query_text[:3000],
+            candidates=filtered_candidates,
+            route=route,
+            limit=max(limit * 2, 16),
+        )
+        selected_chunks = [item.chunk for item in ranked[:limit]]
+        context_text, used_chunks = build_llm_context_with_chunks(selected_chunks, max_chars=8000)
+        if context_text == "[NO_CONTEXT_AVAILABLE]":
+            context_text = None
+
+        trace = RetrieverTrace(
+            vector_hits=len(primary_chunks),
+            graph_hits=len(graph_chunks),
+            hyde_hits=len(hyde_chunks),
+            reranked_count=len(ranked),
+        )
+
+        return RetrievalResult(
+            context_text=context_text,
+            references=[_to_reference(chunk) for chunk in used_chunks],
+            vector_hits=trace.vector_hits,
+            graph_hits=trace.graph_hits,
+            hyde_hits=trace.hyde_hits,
+            reranked_count=trace.reranked_count,
+            retrieval_mode=retrieval_mode,
+            retrieval_trace={
+                **trace.to_dict(),
+                "repo_id": repo_id,
+            },
+        )
 
     @staticmethod
     def _apply_filters(

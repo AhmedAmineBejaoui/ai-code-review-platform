@@ -106,10 +106,10 @@ export default function ProfileSettingsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent">
+          <h1 className="card-heading text-foreground">
             Profile Settings
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="mt-2 text-muted-foreground">
             Manage your personal information and public profile
           </p>
         </div>
@@ -118,7 +118,7 @@ export default function ProfileSettingsPage() {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center text-green-600 dark:text-green-400 text-sm"
+              className="flex items-center text-green-status text-sm"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Profile saved successfully
@@ -139,9 +139,9 @@ export default function ProfileSettingsPage() {
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
-          className="flex items-center gap-3 p-4 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800"
+          className="flex items-center gap-3 rounded-xl border border-red-500/20 bg-red-500/10 p-4"
         >
-          <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+          <AlertCircle className="h-5 w-5 text-destructive" />
           <p className="text-red-700 dark:text-red-300">{error}</p>
         </motion.div>
       )}
@@ -152,10 +152,10 @@ export default function ProfileSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <User className="h-5 w-5 text-blue-500" />
+              <User className="h-5 w-5 text-orange" />
               Basic Information
             </CardTitle>
             <CardDescription>
@@ -166,26 +166,26 @@ export default function ProfileSettingsPage() {
             {/* Avatar Section */}
             <div className="flex items-center gap-6">
               <div className="relative">
-                <Avatar className="h-24 w-24 border-4 border-white dark:border-gray-800 shadow-lg">
+                <Avatar className="h-24 w-24 border border-border shadow-lg">
                   <AvatarImage src={profile.avatar_url || undefined} />
-                  <AvatarFallback className="text-2xl bg-gradient-to-br from-blue-500 to-purple-600 text-white">
+                  <AvatarFallback className="text-2xl bg-gradient-to-br from-orange to-teal text-white">
                     {getInitials(profile.display_name || "U")}
                   </AvatarFallback>
                 </Avatar>
-                <button className="absolute bottom-0 right-0 p-2 bg-blue-500 rounded-full text-white hover:bg-blue-600 transition-colors shadow-lg">
+                <button className="absolute bottom-0 right-0 rounded-full bg-orange p-2 text-white shadow-lg transition-colors hover:bg-orange-hover">
                   <Camera className="h-4 w-4" />
                 </button>
               </div>
               <div className="space-y-1">
-                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                <h3 className="text-lg font-semibold text-foreground">
                   {profile.display_name || "Your Name"}
                 </h3>
-                <p className="text-sm text-gray-500 dark:text-gray-400">{profile.email}</p>
+                <p className="text-sm text-muted-foreground">{profile.email}</p>
                 <div className="flex items-center gap-2 mt-2">
                   <Badge variant="secondary" className="capitalize">
                     {currentUser.role || "Member"}
                   </Badge>
-                  <Badge variant="outline" className="text-green-600 border-green-300">
+                  <Badge variant="outline" className="border-green-status/30 text-green-status">
                     Active
                   </Badge>
                 </div>
@@ -215,7 +215,7 @@ export default function ProfileSettingsPage() {
                   placeholder="your@email.com"
                   disabled
                 />
-                <p className="text-xs text-gray-500">Email cannot be changed</p>
+                <p className="text-xs text-muted-foreground">Email cannot be changed</p>
               </div>
             </div>
 
@@ -229,7 +229,7 @@ export default function ProfileSettingsPage() {
                 placeholder="Tell us a bit about yourself..."
                 rows={3}
               />
-              <p className="text-xs text-gray-500">
+              <p className="text-xs text-muted-foreground">
                 Brief description for your profile. Maximum 200 characters.
               </p>
             </div>
@@ -243,10 +243,10 @@ export default function ProfileSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Briefcase className="h-5 w-5 text-purple-500" />
+              <Briefcase className="h-5 w-5 text-teal" />
               Work Information
             </CardTitle>
             <CardDescription>
@@ -276,7 +276,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="location">Location</Label>
                 <div className="relative">
-                  <MapPin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <MapPin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="location"
                     value={profile.location}
@@ -307,10 +307,10 @@ export default function ProfileSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LinkIcon className="h-5 w-5 text-green-500" />
+              <LinkIcon className="h-5 w-5 text-orange" />
               Social Links
             </CardTitle>
             <CardDescription>
@@ -322,7 +322,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="website">Website</Label>
                 <div className="relative">
-                  <LinkIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <LinkIcon className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="website"
                     value={profile.website}
@@ -335,7 +335,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="github">GitHub</Label>
                 <div className="relative">
-                  <Github className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Github className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="github"
                     value={profile.github_username}
@@ -348,7 +348,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="linkedin">LinkedIn</Label>
                 <div className="relative">
-                  <Linkedin className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Linkedin className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="linkedin"
                     value={profile.linkedin_url}
@@ -361,7 +361,7 @@ export default function ProfileSettingsPage() {
               <div className="space-y-2">
                 <Label htmlFor="twitter">Twitter</Label>
                 <div className="relative">
-                  <Twitter className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                  <Twitter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                   <Input
                     id="twitter"
                     value={profile.twitter_handle}
@@ -382,10 +382,10 @@ export default function ProfileSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-orange-500" />
+              <Calendar className="h-5 w-5 text-orange" />
               Account Information
             </CardTitle>
             <CardDescription>
@@ -394,21 +394,21 @@ export default function ProfileSettingsPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                <p className="text-sm text-gray-500 dark:text-gray-400">User ID</p>
-                <p className="font-mono text-sm mt-1 text-gray-900 dark:text-white">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <p className="text-sm text-muted-foreground">User ID</p>
+                <p className="font-mono text-sm mt-1 text-foreground">
                   {currentUser.id?.slice(0, 8)}...
                 </p>
               </div>
-              <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Member Since</p>
-                <p className="text-sm mt-1 text-gray-900 dark:text-white">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <p className="text-sm text-muted-foreground">Member Since</p>
+                <p className="text-sm mt-1 text-foreground">
                   {new Date(profile.joined_at).toLocaleDateString()}
                 </p>
               </div>
-              <div className="p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                <p className="text-sm text-gray-500 dark:text-gray-400">Timezone</p>
-                <p className="text-sm mt-1 text-gray-900 dark:text-white">
+              <div className="rounded-lg border border-border bg-background/60 p-4">
+                <p className="text-sm text-muted-foreground">Timezone</p>
+                <p className="text-sm mt-1 text-foreground">
                   {profile.timezone}
                 </p>
               </div>

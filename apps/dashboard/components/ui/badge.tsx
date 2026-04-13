@@ -19,9 +19,9 @@ const badgeVariants = cva(
           "text-foreground border-border [a&]:hover:bg-accent [a&]:hover:text-accent-foreground",
         // Professional variants
         gradient:
-          "border-transparent bg-gradient-to-br from-blue-600 to-blue-800 text-white shadow-glow",
+          "border-transparent bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-glow",
         gradientAccent:
-          "border-transparent bg-gradient-to-br from-blue-500 to-cyan-500 text-white shadow-glow",
+          "border-transparent bg-gradient-to-br from-orange-500 to-teal-500 text-white shadow-glow",
         success:
           "border-transparent bg-gradient-to-br from-green-500 to-green-600 text-white shadow-pro-sm",
         warning:
@@ -29,9 +29,9 @@ const badgeVariants = cva(
         error:
           "border-transparent bg-gradient-to-br from-red-500 to-red-600 text-white shadow-pro-sm",
         pulse:
-          "border-transparent bg-gradient-to-br from-blue-600 to-blue-800 text-white animate-pulse-glow shadow-glow",
+          "border-transparent bg-gradient-to-br from-orange-500 to-orange-700 text-white animate-pulse-glow shadow-glow",
         glass:
-          "glass-pro border-primary/20 text-primary backdrop-blur-md",
+          "glass-pro border-border text-primary backdrop-blur-md",
         outlinePrimary:
           "border-2 border-primary/50 text-primary bg-primary/5 [a&]:hover:bg-primary/10",
       },

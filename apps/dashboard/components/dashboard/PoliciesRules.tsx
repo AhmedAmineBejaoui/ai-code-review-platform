@@ -19,6 +19,7 @@ import {
 import { Slider } from "@/components/ui/slider"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import { extractApiErrorMessage } from "@/lib/display"
 
 type SeverityProfile = "strict" | "moderate" | "relaxed"
 
@@ -103,7 +104,7 @@ export function PoliciesRules() {
       })
       const payload = (await response.json().catch(() => ({}))) as PoliciesPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Impossible de charger les policies.")
+        throw new Error(extractApiErrorMessage(payload, "Impossible de charger les policies."))
       }
       setConfig(payload.config ?? DEFAULT_POLICY)
       setVersion(typeof payload.version === "number" ? payload.version : 0)
@@ -143,7 +144,7 @@ export function PoliciesRules() {
       })
       const payload = (await response.json().catch(() => ({}))) as PoliciesPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Sauvegarde des policies impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Sauvegarde des policies impossible."))
       }
       setVersion(typeof payload.version === "number" ? payload.version : version)
       setUpdatedAt(typeof payload.updatedAt === "string" ? payload.updatedAt : updatedAt)
@@ -203,7 +204,7 @@ export function PoliciesRules() {
       })
       const payload = (await response.json().catch(() => ({}))) as PolicyTestPayload
       if (!response.ok) {
-        throw new Error(payload.error ?? "Test policy impossible.")
+        throw new Error(extractApiErrorMessage(payload, "Test policy impossible."))
       }
       setTestResult(payload)
       setMessage("Test policy termine.")
@@ -218,15 +219,15 @@ export function PoliciesRules() {
     <motion.div className="max-w-4xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
       <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
         <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-orange-900 to-red-900 dark:from-white dark:via-orange-100 dark:to-red-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
-            <Shield className="h-10 w-10 text-orange-500" />
+          <h1 className="card-heading text-foreground mb-2 flex items-center gap-3">
+            <Shield className="h-10 w-10 text-[color:var(--orange)]" />
             Policies & Rules
           </h1>
-          <p className="text-gray-600 dark:text-gray-400">Configuration reelle des regles d'analyse</p>
+          <p className="text-muted-foreground">Configuration reelle des regles d'analyse</p>
         </div>
         <div className="flex gap-3">
           <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-            <Button variant="outline" className="gap-2 bg-white/50 dark:bg-gray-800/50 backdrop-blur-xl" onClick={() => setShowHistory((previous) => !previous)}>
+            <Button variant="outline" className="gap-2" onClick={() => setShowHistory((previous) => !previous)}>
               <History className="h-4 w-4" />
               Historique
             </Button>
@@ -254,7 +255,7 @@ export function PoliciesRules() {
       )}
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5 text-purple-500" />
@@ -265,7 +266,7 @@ export function PoliciesRules() {
             <motion.div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent border border-gray-200/50 dark:border-gray-700/50" whileHover={{ x: 4 }}>
               <div className="space-y-1">
                 <Label className="text-base">Fail CI sur BLOCKER</Label>
-                <p className="text-sm text-gray-600 dark:text-gray-400">
+                <p className="text-sm text-muted-foreground">
                   Bloquer la PR si des problemes BLOCKER sont detectes
                 </p>
               </div>
@@ -288,7 +289,7 @@ export function PoliciesRules() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Categories actives</CardTitle>
           </CardHeader>
@@ -306,7 +307,7 @@ export function PoliciesRules() {
                   </div>
                   <div className="space-y-1">
                     <Label className="text-base">{category.label}</Label>
-                    <p className="text-sm text-gray-600 dark:text-gray-400">{category.desc}</p>
+                    <p className="text-sm text-muted-foreground">{category.desc}</p>
                   </div>
                 </div>
                 <motion.div whileTap={{ scale: 0.9 }}>
@@ -319,7 +320,7 @@ export function PoliciesRules() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle>Filtres de fichiers</CardTitle>
           </CardHeader>
@@ -401,7 +402,7 @@ export function PoliciesRules() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <TestTube className="h-5 w-5 text-emerald-500" />
@@ -426,7 +427,7 @@ export function PoliciesRules() {
                   <span
                     className={
                       testResult.decision === "BLOCK"
-                        ? "text-red-400"
+                        ? "text-destructive"
                         : testResult.decision === "WARN"
                           ? "text-amber-400"
                           : "text-emerald-400"

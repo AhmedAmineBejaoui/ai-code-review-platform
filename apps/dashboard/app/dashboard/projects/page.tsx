@@ -25,6 +25,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { BADGE_SUCCESS, BADGE_WARNING, BADGE_SECONDARY } from "@/lib/design-tokens"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import {
@@ -71,9 +72,9 @@ const languageColors: Record<string, string> = {
 }
 
 const statusConfig = {
-  active: { label: "Actif", className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400" },
-  maintenance: { label: "Maintenance", className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400" },
-  archived: { label: "Archive", className: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400" },
+  active: { label: "Actif", variant: BADGE_SUCCESS },
+  maintenance: { label: "Maintenance", variant: BADGE_WARNING },
+  archived: { label: "Archive", variant: BADGE_SECONDARY },
 }
 
 interface ProjectCardProps {
@@ -128,7 +129,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
                   <AlertTriangle className="h-4 w-4" />
                   {project.openIssues}
                 </span>
-                <Badge variant="secondary" className={status.className}>
+                <Badge variant={status.variant}>
                   {status.label}
                 </Badge>
               </div>
@@ -234,8 +235,8 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
             <span className="text-muted-foreground">Score Sante</span>
             <span className={cn(
               "font-medium",
-              project.healthScore >= 90 ? "text-green-600" :
-              project.healthScore >= 70 ? "text-yellow-600" : "text-red-600"
+              project.healthScore >= 90 ? "text-[color:var(--green-status)]" :
+              project.healthScore >= 70 ? "text-[color:var(--orange)]" : "text-destructive"
             )}>
               {project.healthScore}%
             </span>
@@ -244,8 +245,8 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
             value={project.healthScore}
             className={cn(
               "h-2",
-              project.healthScore >= 90 ? "[&>div]:bg-green-500" :
-              project.healthScore >= 70 ? "[&>div]:bg-yellow-500" : "[&>div]:bg-red-500"
+              project.healthScore >= 90 ? "[&>div]:bg-[color:var(--green-status)]" :
+              project.healthScore >= 70 ? "[&>div]:bg-[color:var(--orange)]" : "[&>div]:bg-destructive"
             )}
           />
 
@@ -295,10 +296,8 @@ export default function ProjectsPage() {
       setLoading(true)
       setError(null)
       
-      // Try to fetch from API with cache-busting timestamp
-      const timestamp = Date.now()
       const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-      const response = await fetch(`${backendUrl}/api/v1/projects?_t=${timestamp}`, {
+      const response = await fetch(`${backendUrl}/api/v1/projects`, {
         cache: 'no-store' // Disable browser caching
       })
       if (response.ok) {
@@ -361,7 +360,7 @@ export default function ProjectsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement des projets...</span>
+          <span className="ml-3 text-muted-foreground">Chargement des projets...</span>
         </div>
       </div>
     )
@@ -374,11 +373,11 @@ export default function ProjectsPage() {
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">{error}</p>
+              <p className="text-destructive mb-4">{error}</p>
               <Button onClick={fetchProjects} variant="outline" className="gap-2">
                 <RefreshCw className="h-4 w-4" />
                 Reessayer
@@ -394,7 +393,7 @@ export default function ProjectsPage() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Projets</h1>
+          <h1 className="card-heading text-foreground">Projets</h1>
           <p className="text-muted-foreground mt-1">
             Gerer et surveiller tous vos projets
           </p>
@@ -501,7 +500,7 @@ export default function ProjectsPage() {
             <Folder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
             <h3 className="text-lg font-medium">Aucun projet trouve</h3>
             <p className="text-muted-foreground mt-1">
-              Essayez d'ajuster vos filtres ou creez un nouveau projet
+              Essayez d&apos;ajuster vos filtres ou creez un nouveau projet
             </p>
           </CardContent>
         </Card>

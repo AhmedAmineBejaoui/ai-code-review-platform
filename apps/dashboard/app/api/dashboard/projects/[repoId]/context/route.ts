@@ -13,7 +13,7 @@ export async function GET(
 
   try {
     return proxyBackendRequest({
-      path: `/api/projects/${params.repoId}/context/status`,
+      path: `/api/v1/projects/${params.repoId}/context/status`,
       method: "GET",
       token: authResult.token,
       userId: authResult.userId,
@@ -39,7 +39,7 @@ export async function POST(
 
   try {
     return proxyBackendRequest({
-      path: `/api/projects/${params.repoId}/context/refresh`,
+      path: `/api/v1/projects/${params.repoId}/context/refresh`,
       method: "POST",
       token: authResult.token,
       userId: authResult.userId,

@@ -18,6 +18,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
+import { BADGE_SUCCESS, BADGE_WARNING, BADGE_ERROR, BADGE_SECONDARY } from "@/lib/design-tokens"
 import {
   Select,
   SelectContent,
@@ -51,40 +52,16 @@ interface Review {
 }
 
 const statusConfig = {
-  completed: {
-    label: "Terminee",
-    icon: Check,
-    className: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
-  },
-  in_progress: {
-    label: "En Cours",
-    icon: Clock,
-    className: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-  },
-  pending: {
-    label: "En Attente",
-    icon: Clock,
-    className: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400",
-  },
+  completed: { label: "Terminee", icon: Check, variant: BADGE_SUCCESS },
+  in_progress: { label: "En Cours", icon: Clock, variant: BADGE_WARNING },
+  pending: { label: "En Attente", icon: Clock, variant: BADGE_SECONDARY },
 }
 
 const priorityConfig = {
-  critical: {
-    label: "Critique",
-    className: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
-  },
-  high: {
-    label: "Haute",
-    className: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-  },
-  medium: {
-    label: "Moyenne",
-    className: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400",
-  },
-  low: {
-    label: "Basse",
-    className: "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400",
-  },
+  critical: { label: "Critique", variant: BADGE_ERROR },
+  high: { label: "Haute", variant: BADGE_WARNING },
+  medium: { label: "Moyenne", variant: BADGE_SECONDARY },
+  low: { label: "Basse", variant: BADGE_SECONDARY },
 }
 
 export default function MyReviewsPage() {
@@ -148,7 +125,7 @@ export default function MyReviewsPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement des reviews...</span>
+          <span className="ml-3 text-muted-foreground">Chargement des reviews...</span>
         </div>
       </div>
     )
@@ -161,11 +138,11 @@ export default function MyReviewsPage() {
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
               <div className="flex flex-col items-center text-center">
-                <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-                <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+                <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+                <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                   Erreur de chargement
                 </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">{error}</p>
+              <p className="text-destructive mb-4">{error}</p>
               <Button onClick={fetchReviews} variant="outline" className="gap-2">
                 <RefreshCw className="h-4 w-4" />
                 Reessayer
@@ -182,7 +159,7 @@ export default function MyReviewsPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Mes Reviews</h1>
+          <h1 className="card-heading text-foreground">Mes Reviews</h1>
           <p className="text-muted-foreground mt-1">
             Suivre et gerer toutes vos assignments de revue de code
           </p>
@@ -219,7 +196,7 @@ export default function MyReviewsPage() {
         >
           <Card className="bg-gradient-to-br from-green-50 to-emerald-50 dark:from-green-900/20 dark:to-emerald-900/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-green-600 dark:text-green-400">
+              <CardTitle className="text-sm font-medium text-[color:var(--green-status)]">
                 Terminees
               </CardTitle>
             </CardHeader>
@@ -238,12 +215,12 @@ export default function MyReviewsPage() {
         >
           <Card className="bg-gradient-to-br from-blue-50 to-indigo-50 dark:from-blue-900/20 dark:to-indigo-900/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-blue-600 dark:text-blue-400">
+              <CardTitle className="text-sm font-medium text-teal-400">
                 En Cours
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold text-blue-700 dark:text-blue-300">
+              <div className="text-2xl font-bold text-teal-400">
                 {stats.inProgress}
               </div>
             </CardContent>
@@ -257,7 +234,7 @@ export default function MyReviewsPage() {
         >
           <Card className="bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-900/20 dark:to-orange-900/20">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-amber-600 dark:text-amber-400">
+              <CardTitle className="text-sm font-medium text-[color:var(--orange)] dark:text-amber-400">
                 En Attente
               </CardTitle>
             </CardHeader>
@@ -364,13 +341,13 @@ export default function MyReviewsPage() {
                         </div>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={status.className}>
+                        <Badge variant={status.variant as "success" | "warning" | "secondary"}>
                           <StatusIcon className="h-3 w-3 mr-1" />
                           {status.label}
                         </Badge>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className={priority.className}>
+                        <Badge variant={priority.variant as "error" | "warning" | "secondary"}>
                           {priority.label}
                         </Badge>
                       </TableCell>

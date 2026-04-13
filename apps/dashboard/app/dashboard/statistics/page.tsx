@@ -144,9 +144,9 @@ function StatCard({
             {isPositive ? (
               <ArrowUpRight className="h-3 w-3 text-green-500" />
             ) : (
-              <ArrowDownRight className="h-3 w-3 text-red-500" />
+              <ArrowDownRight className="h-3 w-3 text-destructive" />
             )}
-            <span className={isPositive ? "text-green-500" : "text-red-500"}>
+            <span className={isPositive ? "text-green-500" : "text-destructive"}>
               {Math.abs(change)}%
             </span>
             <span className="text-muted-foreground">from last period</span>
@@ -470,7 +470,7 @@ function TeamPerformance({ data }: { data: TeamMetrics | null }) {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-500" />
+              <AlertTriangle className="h-5 w-5 text-[color:var(--orange)]" />
               Bottlenecks
             </CardTitle>
             <CardDescription>
@@ -540,7 +540,7 @@ function StatisticsPageInner() {
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement des statistiques...</span>
+          <span className="ml-3 text-muted-foreground">Chargement des statistiques...</span>
         </div>
       </div>
     )
@@ -553,11 +553,11 @@ function StatisticsPageInner() {
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">
+              <p className="text-destructive mb-4">
                 {error || "Impossible de charger les statistiques"}
               </p>
               <Button onClick={fetchStatistics} variant="outline" className="gap-2">
@@ -575,7 +575,7 @@ function StatisticsPageInner() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Statistiques</h1>
+          <h1 className="card-heading text-foreground">Statistiques</h1>
           <p className="text-muted-foreground mt-1">
             Analyses completes et metriques de performance
           </p>

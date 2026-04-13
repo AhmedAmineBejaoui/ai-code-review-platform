@@ -118,7 +118,7 @@ export function JuniorReviewInterface({
       <div className="container mx-auto py-6 space-y-6">
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement de l'analyse...</span>
+          <span className="ml-3 text-muted-foreground">Chargement de l'analyse...</span>
         </div>
       </div>
     )
@@ -131,11 +131,11 @@ export function JuniorReviewInterface({
         <Card className="border-red-200 bg-red-50 dark:bg-red-950/20">
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mb-4" />
-              <h3 className="text-lg font-semibold text-red-700 dark:text-red-400 mb-2">
+              <AlertTriangle className="h-12 w-12 text-destructive mb-4" />
+              <h3 className="text-lg font-semibold text-red-700 dark:text-destructive mb-2">
                 Erreur de chargement
               </h3>
-              <p className="text-red-600 dark:text-red-300 mb-4">{propError}</p>
+              <p className="text-destructive mb-4">{propError}</p>
               {onRefresh && (
                 <Button onClick={onRefresh} variant="outline" className="gap-2">
                   <RefreshCw className="h-4 w-4" />
@@ -156,11 +156,11 @@ export function JuniorReviewInterface({
         <Card>
           <CardContent className="p-6">
             <div className="flex flex-col items-center text-center">
-              <FileText className="h-12 w-12 text-gray-400 mb-4" />
-              <h3 className="text-lg font-semibold text-gray-700 dark:text-gray-300 mb-2">
+              <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold text-secondary-foreground mb-2">
                 Aucune analyse disponible
               </h3>
-              <p className="text-gray-500">
+              <p className="text-muted-foreground">
                 L'analyse demandee n'a pas ete trouvee ou n'existe pas.
               </p>
             </div>
@@ -180,13 +180,13 @@ export function JuniorReviewInterface({
       >
         <div>
           <div className="flex items-center gap-3 mb-2">
-            <h1 className="text-3xl font-bold">Revue de Code</h1>
+            <h1 className="card-heading text-foreground">Revue de Code</h1>
             <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">
               <Star className="h-3 w-3 mr-1" />
               Reviewer Junior
             </Badge>
           </div>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             {propAnalysis.repo} - {propAnalysis.pr_label} par {propAnalysis.author}
           </p>
         </div>
@@ -199,7 +199,7 @@ export function JuniorReviewInterface({
 
       {/* Junior Reviewer Info Alert */}
       <Alert className="bg-blue-50 border-blue-200 dark:bg-blue-950/20 dark:border-blue-800">
-        <Info className="h-4 w-4 text-blue-600" />
+        <Info className="h-4 w-4 text-teal-400" />
         <AlertDescription className="text-blue-900 dark:text-blue-100">
           <strong>Mode Reviewer Junior :</strong> Vous pouvez approuver les modifications et suggerer des ameliorations. 
           Si vous trouvez des problemes critiques, utilisez le bouton &quot;Escalader vers Senior&quot;.
@@ -220,28 +220,28 @@ export function JuniorReviewInterface({
             <CardContent>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 <div className="text-center p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  <div className="text-2xl font-bold text-gray-900 dark:text-white">
+                  <div className="text-2xl font-bold text-foreground">
                     {propAnalysis.summary.total_files}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Fichiers Modifies</div>
+                  <div className="text-sm text-muted-foreground">Fichiers Modifies</div>
                 </div>
                 <div className="text-center p-3 bg-green-50 dark:bg-green-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-green-600">
+                  <div className="text-2xl font-bold text-[color:var(--green-status)]">
                     +{propAnalysis.summary.additions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Ajouts</div>
+                  <div className="text-sm text-muted-foreground">Ajouts</div>
                 </div>
                 <div className="text-center p-3 bg-red-50 dark:bg-red-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-red-600">
+                  <div className="text-2xl font-bold text-destructive">
                     -{propAnalysis.summary.deletions}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Suppressions</div>
+                  <div className="text-sm text-muted-foreground">Suppressions</div>
                 </div>
                 <div className="text-center p-3 bg-yellow-50 dark:bg-yellow-950/20 rounded-lg">
-                  <div className="text-2xl font-bold text-yellow-600">
+                  <div className="text-2xl font-bold text-[color:var(--orange)]">
                     {propAnalysis.summary.issues_found}
                   </div>
-                  <div className="text-sm text-gray-600 dark:text-gray-400">Problemes Trouves</div>
+                  <div className="text-sm text-muted-foreground">Problemes Trouves</div>
                 </div>
               </div>
             </CardContent>
@@ -280,12 +280,12 @@ export function JuniorReviewInterface({
                     <div className="space-y-4">
                       {/* File Info */}
                       <div className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                        <div className="font-mono text-sm text-gray-700 dark:text-gray-300">
+                        <div className="font-mono text-sm text-secondary-foreground">
                           {file.path}
                         </div>
                         <div className="flex items-center gap-3 text-sm">
-                          <span className="text-green-600">+{file.additions}</span>
-                          <span className="text-red-600">-{file.deletions}</span>
+                          <span className="text-[color:var(--green-status)]">+{file.additions}</span>
+                          <span className="text-destructive">-{file.deletions}</span>
                         </div>
                       </div>
 
@@ -339,18 +339,18 @@ export function JuniorReviewInterface({
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex items-center gap-2 text-sm">
-                <GitBranch className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Branche :</span>
+                <GitBranch className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Branche :</span>
                 <span className="font-mono font-medium">{propAnalysis.branch}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <User className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Auteur :</span>
+                <User className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Auteur :</span>
                 <span className="font-medium">{propAnalysis.author}</span>
               </div>
               <div className="flex items-center gap-2 text-sm">
-                <Clock className="h-4 w-4 text-gray-500" />
-                <span className="text-gray-600 dark:text-gray-400">Cree le :</span>
+                <Clock className="h-4 w-4 text-muted-foreground" />
+                <span className="text-muted-foreground">Cree le :</span>
                 <span className="font-medium">
                   {new Date(propAnalysis.created_at).toLocaleDateString("fr-FR")}
                 </span>
@@ -435,14 +435,14 @@ export function JuniorReviewInterface({
               <Button
                 onClick={handleEscalate}
                 variant="outline"
-                className="w-full text-amber-600 border-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/20"
+                className="w-full text-[color:var(--orange)] border-amber-200 hover:bg-amber-50 dark:hover:bg-amber-950/20"
                 disabled={submitting}
               >
                 <ArrowUp className="h-4 w-4 mr-2" />
                 Escalader vers Senior
               </Button>
 
-              <p className="text-xs text-gray-500 text-center">
+              <p className="text-xs text-muted-foreground text-center">
                 Escaladez si vous trouvez des problemes critiques de securite ou d'architecture
               </p>
             </CardContent>

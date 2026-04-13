@@ -145,11 +145,9 @@ class ReRanker:
     ) -> list[RetrievalCandidate]:
         """Use the LLM to score relevance of top candidates."""
         try:
-            from app.core.langchain_runtime.clients import LangChainOllamaClient
+            from app.integrations.llm_providers.ollama_client import OllamaClient
 
-            client = LangChainOllamaClient()
-            if not client.available:
-                return candidates[:limit]
+            client = OllamaClient()
 
             scored: list[tuple[float, RetrievalCandidate]] = []
             for candidate in candidates:

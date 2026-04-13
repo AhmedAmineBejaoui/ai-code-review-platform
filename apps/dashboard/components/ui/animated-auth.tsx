@@ -65,7 +65,7 @@ function AnimatedBackground() {
           scale: [1, 1.1, 1],
         }}
         transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
-        className="absolute -top-40 -right-40 w-80 h-80 bg-blue-500/20 rounded-full blur-[100px]"
+        className="absolute -top-40 -right-40 w-80 h-80 bg-orange-500/20 rounded-full blur-[100px]"
       />
       <motion.div
         animate={{
@@ -74,7 +74,7 @@ function AnimatedBackground() {
           scale: [1, 1.15, 1],
         }}
         transition={{ duration: 10, repeat: Infinity, ease: 'easeInOut', delay: 1 }}
-        className="absolute -bottom-40 -left-40 w-80 h-80 bg-purple-500/20 rounded-full blur-[100px]"
+        className="absolute -bottom-40 -left-40 w-80 h-80 bg-teal-500/20 rounded-full blur-[100px]"
       />
       <motion.div
         animate={{
@@ -82,7 +82,7 @@ function AnimatedBackground() {
           y: [0, 15, 0],
         }}
         transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut', delay: 2 }}
-        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-pink-500/10 rounded-full blur-[80px]"
+        className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-60 h-60 bg-orange-500/10 rounded-full blur-[80px]"
       />
       
       {/* Grid pattern */}
@@ -111,14 +111,14 @@ function FeatureCard({
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay, duration: 0.5 }}
-      className="flex items-start gap-3 p-4 rounded-xl bg-white/5 border border-white/10"
+      className="flex items-start gap-3 p-4 rounded-xl bg-card/80 border border-border backdrop-blur-xl"
     >
-      <div className="p-2 rounded-lg bg-gradient-to-br from-blue-500/20 to-purple-500/20 text-blue-400">
+      <div className="p-2 rounded-lg bg-gradient-to-br from-orange-500/20 to-teal-500/20 text-primary">
         {icon}
       </div>
       <div>
-        <h4 className="font-medium text-white text-sm">{title}</h4>
-        <p className="text-xs text-gray-500 mt-0.5">{description}</p>
+        <h4 className="font-medium text-foreground text-sm">{title}</h4>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
       </div>
     </motion.div>
   );
@@ -145,7 +145,7 @@ function SocialButton({
       variant="outline"
       onClick={onClick}
       disabled={loading}
-      className="flex-1 gap-2 bg-white/5 border-white/10 hover:bg-white/10 hover:border-white/20 text-gray-300"
+      className="flex-1 gap-2 bg-card/80 border-border hover:bg-card-hover hover:border-border/80 text-foreground backdrop-blur-xl"
     >
       {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : icon}
       {label}
@@ -202,7 +202,7 @@ export function AnimatedAuth({
   return (
     <div className={cn('min-h-screen flex', className)}>
       {/* Left panel - Branding & Features */}
-      <div className="hidden lg:flex lg:w-1/2 relative bg-black overflow-hidden">
+      <div className="hidden lg:flex lg:w-1/2 relative bg-background overflow-hidden">
         <AnimatedBackground />
         
         <div className="relative z-10 flex flex-col justify-center px-12 xl:px-20">
@@ -215,10 +215,10 @@ export function AnimatedAuth({
             {brandLogo || (
               <div className="flex items-center gap-3">
                 <div className="relative">
-                  <Zap className="h-10 w-10 text-blue-400" />
-                  <div className="absolute inset-0 bg-blue-400 blur-xl opacity-50" />
+                  <Zap className="h-10 w-10 text-primary" />
+                  <div className="absolute inset-0 bg-primary blur-xl opacity-35" />
                 </div>
-                <span className="text-3xl font-bold text-white">{brandName}</span>
+                <span className="text-3xl font-bold text-foreground">{brandName}</span>
               </div>
             )}
           </motion.div>
@@ -228,11 +228,11 @@ export function AnimatedAuth({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
-            className="text-4xl xl:text-5xl font-bold text-white leading-tight mb-4"
+            className="text-4xl xl:text-5xl font-bold text-foreground leading-tight mb-4"
           >
             {isSignUp ? 'Start your journey' : 'Welcome back'}
             <br />
-            <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 text-transparent bg-clip-text">
+            <span className="bg-gradient-to-r from-orange-400 via-orange-500 to-teal-400 text-transparent bg-clip-text">
               {isSignUp ? 'with AI-powered code review' : 'to smarter code review'}
             </span>
           </motion.h1>
@@ -241,7 +241,7 @@ export function AnimatedAuth({
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
-            className="text-gray-400 text-lg mb-10 max-w-md"
+            className="text-muted-foreground text-lg mb-10 max-w-md"
           >
             {isSignUp
               ? 'Join thousands of developers shipping better code faster.'
@@ -273,7 +273,7 @@ export function AnimatedAuth({
       </div>
 
       {/* Right panel - Auth Form */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-gray-950">
+      <div className="flex-1 flex items-center justify-center p-6 bg-background">
         <motion.div
           initial={{ opacity: 0, scale: 0.95 }}
           animate={{ opacity: 1, scale: 1 }}
@@ -283,24 +283,24 @@ export function AnimatedAuth({
           <div className="lg:hidden text-center mb-8">
             {brandLogo || (
               <div className="flex items-center justify-center gap-2 mb-4">
-                <Zap className="h-8 w-8 text-blue-400" />
-                <span className="text-2xl font-bold text-white">{brandName}</span>
+                <Zap className="h-8 w-8 text-primary" />
+                <span className="text-2xl font-bold text-foreground">{brandName}</span>
               </div>
             )}
           </div>
 
           {/* Form header */}
           <div className="text-center mb-8">
-            <h2 className="text-2xl font-bold text-white mb-2">
+            <h2 className="text-2xl font-bold text-foreground mb-2">
               {isSignUp ? 'Create your account' : 'Sign in to your account'}
             </h2>
-            <p className="text-gray-400">
+            <p className="text-muted-foreground">
               {isSignUp ? (
                 <>
                   Already have an account?{' '}
                   <button
                     onClick={() => setCurrentMode('sign-in')}
-                    className="text-blue-400 hover:text-blue-300 font-medium"
+                    className="text-primary hover:text-orange-hover font-medium"
                   >
                     Sign in
                   </button>
@@ -310,7 +310,7 @@ export function AnimatedAuth({
                   Don&apos;t have an account?{' '}
                   <button
                     onClick={() => setCurrentMode('sign-up')}
-                    className="text-blue-400 hover:text-blue-300 font-medium"
+                    className="text-primary hover:text-orange-hover font-medium"
                   >
                     Sign up
                   </button>
@@ -337,10 +337,10 @@ export function AnimatedAuth({
 
               <div className="relative mb-6">
                 <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-white/10" />
+                  <div className="w-full border-t border-border" />
                 </div>
                 <div className="relative flex justify-center text-xs">
-                  <span className="px-2 bg-gray-950 text-gray-500">or continue with email</span>
+                  <span className="px-2 bg-background text-muted-foreground">or continue with email</span>
                 </div>
               </div>
             </>
@@ -361,14 +361,14 @@ export function AnimatedAuth({
                     Full Name
                   </Label>
                   <div className="relative mt-1.5">
-                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                    <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="name"
                       type="text"
                       placeholder="John Doe"
                       value={formData.name}
                       onChange={(e) => updateField('name', e.target.value)}
-                      className="pl-10 bg-white/5 border-white/10 focus:border-blue-500/50 text-white placeholder:text-gray-500"
+                      className="pl-10 bg-card/80 border-border focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
                     />
                   </div>
                 </motion.div>
@@ -376,18 +376,18 @@ export function AnimatedAuth({
             </AnimatePresence>
 
             <div>
-              <Label htmlFor="email" className="text-gray-300">
+              <Label htmlFor="email" className="text-foreground">
                 Email Address
               </Label>
               <div className="relative mt-1.5">
-                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="email"
                   type="email"
                   placeholder="you@example.com"
                   value={formData.email}
                   onChange={(e) => updateField('email', e.target.value)}
-                  className="pl-10 bg-white/5 border-white/10 focus:border-blue-500/50 text-white placeholder:text-gray-500"
+                  className="pl-10 bg-card/80 border-border focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
                   required
                 />
               </div>
@@ -395,33 +395,33 @@ export function AnimatedAuth({
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <Label htmlFor="password" className="text-gray-300">
+                <Label htmlFor="password" className="text-foreground">
                   Password
                 </Label>
                 {!isSignUp && (
                   <button
                     type="button"
-                    className="text-xs text-blue-400 hover:text-blue-300"
+                    className="text-xs text-primary hover:text-orange-hover"
                   >
                     Forgot password?
                   </button>
                 )}
               </div>
               <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                 <Input
                   id="password"
                   type={showPassword ? 'text' : 'password'}
                   placeholder="Enter your password"
                   value={formData.password}
                   onChange={(e) => updateField('password', e.target.value)}
-                  className="pl-10 pr-10 bg-white/5 border-white/10 focus:border-blue-500/50 text-white placeholder:text-gray-500"
+                  className="pl-10 pr-10 bg-card/80 border-border focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
                   required
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-400"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -437,23 +437,23 @@ export function AnimatedAuth({
                   exit={{ opacity: 0, height: 0 }}
                   transition={{ duration: 0.2 }}
                 >
-                  <Label htmlFor="confirmPassword" className="text-gray-300">
+                  <Label htmlFor="confirmPassword" className="text-foreground">
                     Confirm Password
                   </Label>
                   <div className="relative mt-1.5">
-                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-500" />
+                    <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                     <Input
                       id="confirmPassword"
                       type={showConfirmPassword ? 'text' : 'password'}
                       placeholder="Confirm your password"
                       value={formData.confirmPassword}
                       onChange={(e) => updateField('confirmPassword', e.target.value)}
-                      className="pl-10 pr-10 bg-white/5 border-white/10 focus:border-blue-500/50 text-white placeholder:text-gray-500"
+                      className="pl-10 pr-10 bg-card/80 border-border focus:border-primary/50 text-foreground placeholder:text-muted-foreground"
                     />
                     <button
                       type="button"
                       onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-400"
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
                     >
                       {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
@@ -467,9 +467,9 @@ export function AnimatedAuth({
                 id="rememberMe"
                 checked={formData.rememberMe}
                 onCheckedChange={(checked) => updateField('rememberMe', checked as boolean)}
-                className="border-white/20 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
+                className="border-border data-[state=checked]:bg-primary data-[state=checked]:border-primary"
               />
-              <Label htmlFor="rememberMe" className="text-sm text-gray-400 cursor-pointer">
+              <Label htmlFor="rememberMe" className="text-sm text-muted-foreground cursor-pointer">
                 {isSignUp ? 'I agree to the Terms of Service and Privacy Policy' : 'Remember me for 30 days'}
               </Label>
             </div>
@@ -477,7 +477,7 @@ export function AnimatedAuth({
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 text-white border-0 h-11"
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-700 hover:from-orange-400 hover:to-orange-600 text-white border-0 h-11"
             >
               {loading ? (
                 <Loader2 className="h-5 w-5 animate-spin" />
@@ -491,13 +491,13 @@ export function AnimatedAuth({
           </form>
 
           {/* Footer */}
-          <p className="mt-8 text-center text-xs text-gray-500">
+          <p className="mt-8 text-center text-xs text-muted-foreground">
             By continuing, you agree to our{' '}
-            <a href="/terms" className="text-gray-400 hover:text-white">
+            <a href="/terms" className="text-foreground hover:text-primary">
               Terms of Service
             </a>{' '}
             and{' '}
-            <a href="/privacy" className="text-gray-400 hover:text-white">
+            <a href="/privacy" className="text-foreground hover:text-primary">
               Privacy Policy
             </a>
           </p>

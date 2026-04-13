@@ -41,10 +41,10 @@ interface CommentThreadProps {
 
 function severityIcon(severity: string | null | undefined) {
   if (severity === "blocker") {
-    return <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+    return <AlertCircle className="h-3.5 w-3.5 text-destructive" />
   }
   if (severity === "warn") {
-    return <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+    return <AlertTriangle className="h-3.5 w-3.5 text-[color:var(--orange)]" />
   }
   if (severity === "info") {
     return <Info className="h-3.5 w-3.5 text-blue-500" />
@@ -92,7 +92,7 @@ function CommentItem({
         <div className="flex-1 min-w-0">
           {/* Header */}
           <div className="flex items-center gap-2 mb-1">
-            <span className="font-medium text-sm text-gray-900 dark:text-gray-100">
+            <span className="font-medium text-sm text-foreground dark:text-gray-100">
               {authorName}
             </span>
             <span className="text-xs text-muted-foreground">
@@ -105,7 +105,7 @@ function CommentItem({
               </Badge>
             )}
             {isResolved && (
-              <Badge variant="outline" className="text-[10px] px-1.5 py-0 text-green-600 border-green-300">
+              <Badge variant="success" className="text-[10px] px-1.5 py-0">
                 <Check className="h-2.5 w-2.5 mr-0.5" />
                 Resolved
               </Badge>
@@ -150,7 +150,7 @@ function CommentItem({
 
           {/* Content */}
           <p className={cn(
-            "text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap",
+            "text-sm text-secondary-foreground whitespace-pre-wrap",
             isResolved && "line-through"
           )}>
             {comment.content}
@@ -158,8 +158,8 @@ function CommentItem({
 
           {/* Code snippet */}
           {comment.code_snippet && (
-            <div className="mt-2 p-2 bg-gray-50 dark:bg-gray-800 rounded border border-gray-200 dark:border-gray-700">
-              <pre className="text-xs font-mono text-gray-600 dark:text-gray-400 overflow-x-auto">
+            <div className="mt-2 p-2 bg-card-inner rounded border border-border">
+              <pre className="text-xs font-mono text-muted-foreground overflow-x-auto">
                 {comment.code_snippet}
               </pre>
             </div>
@@ -214,8 +214,8 @@ export function CommentThread({
         className={cn(
           "px-4 py-2 border-b flex items-center justify-between cursor-pointer",
           isResolved
-            ? "bg-green-50 dark:bg-green-950/20 border-green-200 dark:border-green-800/50"
-            : "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-700"
+            ? "bg-[color:var(--green-status)]/10 border-[color:var(--green-status)]/20"
+            : "bg-card-inner border-border"
         )}
         onClick={() => setIsExpanded(!isExpanded)}
       >

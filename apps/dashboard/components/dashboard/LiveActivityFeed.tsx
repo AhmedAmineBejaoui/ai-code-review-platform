@@ -36,16 +36,16 @@ interface RawNotification {
 
 function iconForType(type: NotificationType): { icon: typeof CheckCircle2; color: string } {
   switch (type) {
-    case "vulnerability_detected": return { icon: ShieldAlert, color: "text-red-400" };
-    case "analysis_failed":        return { icon: AlertTriangle, color: "text-red-400" };
+    case "vulnerability_detected": return { icon: ShieldAlert, color: "text-destructive" };
+    case "analysis_failed":        return { icon: AlertTriangle, color: "text-destructive" };
     case "blocker_found":          return { icon: ShieldAlert, color: "text-orange-400" };
     case "warning_found":          return { icon: AlertTriangle, color: "text-amber-400" };
     case "analysis_complete":      return { icon: CheckCircle2,  color: "text-emerald-400" };
-    case "review_assigned":        return { icon: GitPullRequest, color: "text-blue-400" };
+    case "review_assigned":        return { icon: GitPullRequest, color: "text-teal-400" };
     case "review_completed":       return { icon: CheckCircle2,  color: "text-emerald-400" };
     case "ai_review_complete":     return { icon: Bot,           color: "text-violet-400" };
     case "auto_approved":          return { icon: Zap,           color: "text-yellow-400" };
-    case "pr_detected":            return { icon: GitPullRequest, color: "text-blue-400" };
+    case "pr_detected":            return { icon: GitPullRequest, color: "text-teal-400" };
     default:                       return { icon: Clock,         color: "text-zinc-400" };
   }
 }

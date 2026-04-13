@@ -1,9 +1,10 @@
 import "server-only"
 
 import { auth, currentUser } from "@clerk/nextjs/server"
+import { cache } from "react"
 
 import type { DashboardAuthUser } from "@/lib/dashboard-user"
-import { extractRoleFromClaims, normalizeRole } from "@/lib/roles"
+import { extractRoleFromClaims } from "@/lib/roles"
 
 function parseAdminEmails(rawValue: string | undefined): Set<string> {
   if (!rawValue || rawValue.trim().length === 0) {
@@ -47,46 +48,52 @@ function initials(name: string, email: string): string {
   return email.slice(0, 2).toUpperCase() || "US"
 }
 
-export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser | null> {
+export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAuthUser | null> => {
   const { userId, sessionClaims, orgId, orgRole, orgSlug } = await auth()
   if (!userId) {
     return null
   }
 
-  const user = await currentUser()
-  
-  // IMPORTANT: Prioritize publicMetadata.role over sessionClaims
-  // sessionClaims are cached in JWT and may be stale after role updates
-  // publicMetadata is fetched fresh from Clerk and reflects the latest role
-  const userRoleCandidate =
-    user?.publicMetadata?.role ?? user?.unsafeMetadata?.role ?? user?.privateMetadata?.role
+  const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
+  const baseRole = extractRoleFromClaims(claims)
+  const claimName =
+    firstString(
+      claims.name,
+      claims.full_name,
+      claims.fullName,
+      [claims.first_name, claims.last_name].filter(Boolean).join(" "),
+      [claims.firstName, claims.lastName].filter(Boolean).join(" "),
+      claims.username,
+    ) ?? undefined
+  const claimEmail =
+    firstString(
+      claims.email,
+      claims.email_address,
+      claims.emailAddress,
+      claims.primary_email_address,
+      claims.primaryEmailAddress,
+    ) ?? undefined
 
-  const metadataRole = typeof userRoleCandidate === "string" ? normalizeRole(userRoleCandidate) : "developer"
-  
-  // Only fall back to sessionClaims if publicMetadata doesn't have a role
-  const claimsRole = metadataRole === "developer" ? extractRoleFromClaims(sessionClaims) : "developer"
-  const baseRole = metadataRole !== "developer" ? metadataRole : claimsRole
-  const primaryEmailAddressId = user?.primaryEmailAddressId
-  const primaryEmail =
-    user?.emailAddresses?.find((address) => address.id === primaryEmailAddressId)?.emailAddress ??
-    user?.emailAddresses?.[0]?.emailAddress
+  let user: Awaited<ReturnType<typeof currentUser>> | null = null
+  if (!claimName || !claimEmail) {
+    user = await currentUser()
+  }
 
   const name =
     firstString(
+      claimName,
       [user?.firstName, user?.lastName].filter(Boolean).join(" "),
       user?.username,
-      (sessionClaims as Record<string, unknown> | null | undefined)?.name,
     ) ?? "Utilisateur"
 
   const email =
     firstString(
-      primaryEmail,
-      (sessionClaims as Record<string, unknown> | null | undefined)?.email,
-      (sessionClaims as Record<string, unknown> | null | undefined)?.email_address,
+      claimEmail,
+      user?.emailAddresses?.find((address) => address.id === user?.primaryEmailAddressId)?.emailAddress,
+      user?.emailAddresses?.[0]?.emailAddress,
     ) ?? "unknown@example.local"
   const role = ADMIN_EMAIL_OVERRIDES.has(email.trim().toLowerCase()) ? "admin" : baseRole
 
-  const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
   const orgNameCandidate =
     (typeof claims.org_name === "string" ? claims.org_name : undefined) ??
     (typeof claims.organization_name === "string" ? claims.organization_name : undefined)
@@ -116,4 +123,4 @@ export async function getAuthenticatedDashboardUser(): Promise<DashboardAuthUser
     avatar: initials(name, email),
     organization,
   }
-}
+})

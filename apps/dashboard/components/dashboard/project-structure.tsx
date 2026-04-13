@@ -179,7 +179,7 @@ export function ProjectStructure({
               <div>
                 <div className="flex items-center justify-between text-sm mb-1">
                   <span className="flex items-center gap-2">
-                    <Settings className="h-3 w-3 text-orange-500" />
+                    <Settings className="h-3 w-3 text-[color:var(--orange)]" />
                     Config Files
                   </span>
                   <span className="font-medium">{structure.config_files_count}</span>
@@ -414,8 +414,8 @@ export function ProjectStructure({
                 <div className={cn(
                   "text-2xl font-bold",
                   dependencies.security_vulnerabilities_count > 0
-                    ? "text-red-600 dark:text-red-400"
-                    : "text-green-600 dark:text-green-400"
+                    ? "text-destructive"
+                    : "text-[color:var(--green-status)]"
                 )}>
                   {dependencies.security_vulnerabilities_count}
                 </div>

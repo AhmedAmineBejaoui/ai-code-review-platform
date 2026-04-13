@@ -158,8 +158,7 @@ export default function GeneralSettingsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-slate-100 dark:from-slate-950 dark:via-slate-900 dark:to-slate-950">
-      <div className="container mx-auto max-w-4xl px-6 py-8">
+    <div className="max-w-4xl mx-auto space-y-6">
         {/* Header */}
         <motion.div
           initial={{ opacity: 0, y: -20 }}
@@ -167,17 +166,16 @@ export default function GeneralSettingsPage() {
           className="mb-8 flex items-center justify-between"
         >
           <div>
-            <h1 className="text-3xl font-bold bg-gradient-to-r from-slate-900 via-slate-700 to-slate-900 dark:from-white dark:via-slate-200 dark:to-white bg-clip-text text-transparent">
+            <h1 className="card-heading text-foreground">
               General Settings
             </h1>
-            <p className="mt-2 text-slate-600 dark:text-slate-400">
+            <p className="mt-2 text-muted-foreground">
               Customize your display preferences, language, and regional settings
             </p>
           </div>
           <Button
             onClick={handleSave}
             disabled={saving}
-            className="bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white shadow-lg"
           >
             {saving ? (
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -197,10 +195,10 @@ export default function GeneralSettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.1 }}
           >
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+            <Card className="border-border bg-card/80 shadow-xl backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500 to-pink-500 shadow-lg">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange to-teal shadow-lg">
                     <Palette className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -224,28 +222,28 @@ export default function GeneralSettingsPage() {
                           onClick={() => setTheme(themeOption)}
                           className={`relative flex flex-col items-center gap-3 rounded-xl border-2 p-4 transition-all ${
                             isSelected
-                              ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                              : "border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600"
+                              ? "border-orange-accent bg-orange/10"
+                              : "border-border hover:border-orange-accent/70"
                           }`}
                           whileHover={{ scale: 1.02 }}
                           whileTap={{ scale: 0.98 }}
                         >
                           <div className={`flex h-12 w-12 items-center justify-center rounded-xl ${
                             isSelected
-                              ? "bg-blue-500 text-white"
-                              : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
+                            ? "bg-orange text-white"
+                            : "bg-background text-muted-foreground"
                           }`}>
                             <Icon className="h-6 w-6" />
                           </div>
                           <span className={`text-sm font-medium capitalize ${
-                            isSelected ? "text-blue-600 dark:text-blue-400" : "text-slate-700 dark:text-slate-300"
+                            isSelected ? "text-orange" : "text-muted-foreground"
                           }`}>
                             {themeOption}
                           </span>
                           {isSelected && (
                             <motion.div
                               layoutId="theme-indicator"
-                              className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-blue-500 flex items-center justify-center"
+                              className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-orange"
                             >
                               <CheckCircle className="h-3 w-3 text-white" />
                             </motion.div>
@@ -259,12 +257,12 @@ export default function GeneralSettingsPage() {
                 <Separator />
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <div className="flex items-center justify-between rounded-lg border border-border p-4">
                     <div className="flex items-center gap-3">
-                      <Eye className="h-5 w-5 text-slate-500" />
+                      <Eye className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-medium">Reduce Motion</p>
-                        <p className="text-xs text-slate-500">Minimize animations</p>
+                        <p className="text-xs text-muted-foreground">Minimize animations</p>
                       </div>
                     </div>
                     <Switch
@@ -273,12 +271,12 @@ export default function GeneralSettingsPage() {
                     />
                   </div>
 
-                  <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                  <div className="flex items-center justify-between rounded-lg border border-border p-4">
                     <div className="flex items-center gap-3">
-                      <Layout className="h-5 w-5 text-slate-500" />
+                      <Layout className="h-5 w-5 text-muted-foreground" />
                       <div>
                         <p className="text-sm font-medium">Compact Mode</p>
-                        <p className="text-xs text-slate-500">Denser UI layout</p>
+                        <p className="text-xs text-muted-foreground">Denser UI layout</p>
                       </div>
                     </div>
                     <Switch
@@ -315,10 +313,10 @@ export default function GeneralSettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.2 }}
           >
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+            <Card className="border-border bg-card/80 shadow-xl backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-green-500 to-emerald-500 shadow-lg">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal to-orange shadow-lg">
                     <Languages className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -341,15 +339,15 @@ export default function GeneralSettingsPage() {
                       {languages.map((lang) => (
                         <SelectItem key={lang.code} value={lang.code}>
                           <div className="flex items-center gap-2">
-                            <Globe className="h-4 w-4 text-slate-400" />
+                            <Globe className="h-4 w-4 text-muted-foreground" />
                             <span>{lang.name}</span>
-                            <span className="text-slate-400">({lang.nativeName})</span>
+                            <span className="text-muted-foreground">({lang.nativeName})</span>
                           </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-muted-foreground">
                     This will change the language used throughout the application
                   </p>
                 </div>
@@ -363,10 +361,10 @@ export default function GeneralSettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
           >
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+            <Card className="border-border bg-card/80 shadow-xl backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange-500 to-amber-500 shadow-lg">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-orange to-teal shadow-lg">
                     <Clock className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -389,7 +387,7 @@ export default function GeneralSettingsPage() {
                       {timezones.map((tz) => (
                         <SelectItem key={tz.value} value={tz.value}>
                           <div className="flex items-center gap-2">
-                            <span className="text-xs font-mono text-slate-400 w-16">
+                            <span className="w-16 font-mono text-xs text-muted-foreground">
                               {tz.offset}
                             </span>
                             <span>{tz.label}</span>
@@ -398,9 +396,9 @@ export default function GeneralSettingsPage() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <div className="flex items-center gap-2 mt-2 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                    <Clock className="h-4 w-4 text-slate-500" />
-                    <span className="text-sm text-slate-600 dark:text-slate-400">
+                  <div className="mt-2 flex items-center gap-2 rounded-lg border border-border bg-background/60 p-3">
+                    <Clock className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">
                       Current time in selected timezone: <span className="font-medium">{getCurrentTime()}</span>
                     </span>
                   </div>
@@ -423,7 +421,7 @@ export default function GeneralSettingsPage() {
                           <SelectItem key={format.value} value={format.value}>
                             <div className="flex items-center justify-between gap-4">
                               <span>{format.label}</span>
-                              <span className="text-xs text-slate-400">{format.example}</span>
+                            <span className="text-xs text-muted-foreground">{format.example}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -445,7 +443,7 @@ export default function GeneralSettingsPage() {
                           <SelectItem key={format.value} value={format.value}>
                             <div className="flex items-center justify-between gap-4">
                               <span>{format.label}</span>
-                              <span className="text-xs text-slate-400">{format.example}</span>
+                            <span className="text-xs text-muted-foreground">{format.example}</span>
                             </div>
                           </SelectItem>
                         ))}
@@ -480,10 +478,10 @@ export default function GeneralSettingsPage() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
           >
-            <Card className="border-slate-200 dark:border-slate-800 shadow-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm">
+            <Card className="border-border bg-card/80 shadow-xl backdrop-blur-sm">
               <CardHeader>
                 <div className="flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-cyan-500 to-blue-500 shadow-lg">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-teal to-orange shadow-lg">
                     <Type className="h-5 w-5 text-white" />
                   </div>
                   <div>
@@ -493,12 +491,12 @@ export default function GeneralSettingsPage() {
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="flex items-center justify-between rounded-lg border border-slate-200 dark:border-slate-700 p-4">
+                <div className="flex items-center justify-between rounded-lg border border-border p-4">
                   <div className="flex items-center gap-3">
-                    <Type className="h-5 w-5 text-slate-500" />
+                    <Type className="h-5 w-5 text-muted-foreground" />
                     <div>
                       <p className="text-sm font-medium">Show Line Numbers</p>
-                      <p className="text-xs text-slate-500">Display line numbers in code blocks</p>
+                      <p className="text-xs text-muted-foreground">Display line numbers in code blocks</p>
                     </div>
                   </div>
                   <Switch
@@ -532,7 +530,6 @@ export default function GeneralSettingsPage() {
             </Card>
           </motion.div>
         </div>
-      </div>
     </div>
   )
 }

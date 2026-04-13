@@ -10,8 +10,8 @@ const progressVariants = cva("h-full w-full flex-1 transition-all duration-500",
   variants: {
     variant: {
       default: "bg-primary",
-      gradient: "bg-gradient-to-r from-blue-600 to-blue-800",
-      gradientAccent: "bg-gradient-to-r from-blue-500 to-cyan-500",
+      gradient: "bg-gradient-to-r from-orange-500 to-orange-700",
+      gradientAccent: "bg-gradient-to-r from-orange-500 to-teal-500",
       success: "bg-gradient-to-r from-green-500 to-green-600",
       warning: "bg-gradient-to-r from-amber-500 to-amber-600",
       error: "bg-gradient-to-r from-red-500 to-red-600",
@@ -95,8 +95,9 @@ function CircularProgress({
   const gradientId = `progress-gradient-${React.useId()}`;
 
   const variantColors = {
-    default: { start: "#2563eb", end: "#1e40af" },
-    gradient: { start: "#3b82f6", end: "#0ea5e9" },
+    default: { start: "#f09456", end: "#e8713a" },
+    gradient: { start: "#e8713a", end: "#cf612d" },
+    gradientAccent: { start: "#e8713a", end: "#17f0c4" },
     success: { start: "#10b981", end: "#059669" },
     warning: { start: "#f59e0b", end: "#d97706" },
     error: { start: "#ef4444", end: "#dc2626" },
@@ -139,7 +140,7 @@ function CircularProgress({
           strokeDashoffset={offset}
           strokeLinecap="round"
           className="transition-all duration-500 ease-out"
-          style={{ filter: "drop-shadow(0 0 8px rgba(37, 99, 235, 0.3))" }}
+          style={{ filter: "drop-shadow(0 0 8px rgba(232, 113, 58, 0.3))" }}
         />
       </svg>
       {showLabel && (

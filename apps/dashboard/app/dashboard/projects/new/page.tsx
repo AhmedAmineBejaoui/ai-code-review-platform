@@ -110,6 +110,8 @@ export default function NewProjectPage() {
   const [selectedGithubRepo, setSelectedGithubRepo] = useState<string>("manual")
   const [loadingGithubRepos, setLoadingGithubRepos] = useState(false)
   const [githubConnected, setGithubConnected] = useState<boolean | null>(null)
+  const [githubTokenAvailable, setGithubTokenAvailable] = useState<boolean | null>(null)
+  const [githubNote, setGithubNote] = useState<string | null>(null)
   const [githubError, setGithubError] = useState<string | null>(null)
   
   // Teams
@@ -156,7 +158,9 @@ export default function NewProjectPage() {
     try {
       const data = await fetchGithubRepos()
       setGithubConnected(data.connected)
-      setGithubError(data.error)
+      setGithubTokenAvailable(data.tokenAvailable ?? null)
+      setGithubNote(data.note ?? null)
+      setGithubError(data.error && data.error.trim().length > 0 ? data.error : null)
       const items: GithubRepo[] = data.items.map((r) => ({
         id: String(r.id ?? ""),
         fullName: r.fullName ?? "",
@@ -169,6 +173,8 @@ export default function NewProjectPage() {
       setGithubRepos(items)
     } catch (err) {
       setGithubConnected(null)
+      setGithubTokenAvailable(null)
+      setGithubNote(null)
       setGithubError(err instanceof Error ? err.message : "Erreur reseau")
       setGithubRepos([])
     } finally {
@@ -341,7 +347,7 @@ export default function NewProjectPage() {
           <ArrowLeft className="h-5 w-5" />
         </Button>
         <div>
-          <h1 className="text-3xl font-bold">Nouveau Projet</h1>
+          <h1 className="card-heading text-foreground">Nouveau Projet</h1>
           <p className="text-muted-foreground">
             Configurez votre projet avec toutes les options avancees
           </p>
@@ -352,7 +358,7 @@ export default function NewProjectPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <FolderGit className="h-5 w-5 text-blue-500" />
+            <FolderGit className="h-5 w-5 text-orange" />
             Importer depuis GitHub
           </CardTitle>
           <CardDescription>
@@ -362,7 +368,7 @@ export default function NewProjectPage() {
         <CardContent className="space-y-3">
           {githubConnected === false && (
             <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[color:var(--orange)]" />
               <div className="flex-1 space-y-2">
                 <p className="font-medium text-amber-900 dark:text-amber-200">
                   Compte GitHub non connecte
@@ -383,7 +389,7 @@ export default function NewProjectPage() {
           )}
           {githubConnected === true && githubError && (
             <div className="flex items-start gap-3 rounded-md border border-amber-300 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
-              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600" />
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-[color:var(--orange)]" />
               <div className="flex-1">
                 <p className="text-amber-800 dark:text-amber-300">{githubError}</p>
                 <Button
@@ -394,6 +400,18 @@ export default function NewProjectPage() {
                 >
                   Reessayer
                 </Button>
+              </div>
+            </div>
+          )}
+          {githubConnected === true && githubTokenAvailable === false && !githubError && (
+            <div className="flex items-start gap-3 rounded-md border border-orange-500/30 bg-orange-500/10 p-3 text-sm text-orange-100">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-orange-400" />
+              <div className="flex-1 space-y-1">
+                <p className="font-medium text-orange-200">GitHub OAuth manquant</p>
+                <p className="text-orange-100/80">
+                  {githubNote ||
+                    "Connexion détectée, mais aucun token OAuth n'est disponible. Seuls les repos publics sont chargés et GitHub peut appliquer un rate limit."}
+                </p>
               </div>
             </div>
           )}
@@ -525,7 +543,7 @@ export default function NewProjectPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Users className="h-5 w-5 text-purple-500" />
+            <Users className="h-5 w-5 text-teal" />
             Equipe
           </CardTitle>
           <CardDescription>
@@ -600,7 +618,7 @@ export default function NewProjectPage() {
                         size="icon"
                         onClick={() => removeMember(member.email)}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -691,7 +709,7 @@ export default function NewProjectPage() {
                         size="icon"
                         onClick={() => removeBranch(branch.name)}
                       >
-                        <Trash2 className="h-4 w-4 text-red-500" />
+                        <Trash2 className="h-4 w-4 text-destructive" />
                       </Button>
                     )}
                   </TableCell>
@@ -706,7 +724,7 @@ export default function NewProjectPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <Settings className="h-5 w-5 text-gray-500" />
+            <Settings className="h-5 w-5 text-muted-foreground" />
             Parametres d&apos;analyse
           </CardTitle>
         </CardHeader>
@@ -733,8 +751,8 @@ export default function NewProjectPage() {
           animate={{ opacity: 1, y: 0 }}
           className="rounded-lg bg-red-50 dark:bg-red-950/20 p-4 flex items-center gap-3"
         >
-          <AlertCircle className="h-5 w-5 text-red-500" />
-          <p className="text-red-600 dark:text-red-400">{error}</p>
+          <AlertCircle className="h-5 w-5 text-destructive" />
+          <p className="text-destructive">{error}</p>
         </motion.div>
       )}
 

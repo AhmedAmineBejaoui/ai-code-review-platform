@@ -210,10 +210,10 @@ export default function IntegrationsSettingsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent">
+          <h1 className="card-heading text-foreground">
             Integrations
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="mt-2 text-muted-foreground">
             Configure external notification channels
           </p>
         </div>
@@ -259,12 +259,12 @@ export default function IntegrationsSettingsPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card className="border-border bg-card/80 backdrop-blur-xl">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#4A154B]/10 dark:bg-[#4A154B]/20 rounded-lg">
-                      <Slack className="h-5 w-5 text-[#4A154B]" />
+                    <div className="rounded-lg bg-orange/10 p-2">
+                      <Slack className="h-5 w-5 text-orange" />
                     </div>
                     <div>
                       <CardTitle>Slack Integration</CardTitle>
@@ -273,7 +273,7 @@ export default function IntegrationsSettingsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {slackConfig.enabled && slackConfig.webhookUrl && (
-                      <Badge variant="secondary" className="bg-green-100 text-green-700">
+                      <Badge variant="secondary" className="bg-teal/10 text-teal">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Connected
                       </Badge>
@@ -295,7 +295,7 @@ export default function IntegrationsSettingsPage() {
                     <AlertTitle>How to set up Slack Webhook</AlertTitle>
                     <AlertDescription className="mt-2">
                       <ol className="list-decimal list-inside space-y-1 text-sm">
-                        <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline inline-flex items-center gap-1">Slack API Apps <ExternalLink className="h-3 w-3" /></a></li>
+                        <li>Go to <a href="https://api.slack.com/apps" target="_blank" rel="noopener noreferrer" className="text-teal hover:underline inline-flex items-center gap-1">Slack API Apps <ExternalLink className="h-3 w-3" /></a></li>
                         <li>Create a new app or select an existing one</li>
                         <li>Go to "Incoming Webhooks" and enable it</li>
                         <li>Click "Add New Webhook to Workspace"</li>
@@ -367,7 +367,7 @@ export default function IntegrationsSettingsPage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium">New Review Assignments</p>
-                            <p className="text-xs text-gray-500">When a new review is assigned</p>
+                            <p className="text-xs text-muted-foreground">When a new review is assigned</p>
                           </div>
                           <Switch
                             checked={slackConfig.notifyNewReviews}
@@ -379,7 +379,7 @@ export default function IntegrationsSettingsPage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium">Overdue Reviews</p>
-                            <p className="text-xs text-gray-500">When a review becomes overdue</p>
+                            <p className="text-xs text-muted-foreground">When a review becomes overdue</p>
                           </div>
                           <Switch
                             checked={slackConfig.notifyOverdue}
@@ -391,7 +391,7 @@ export default function IntegrationsSettingsPage() {
                         <div className="flex items-center justify-between">
                           <div>
                             <p className="text-sm font-medium">Changes Requested</p>
-                            <p className="text-xs text-gray-500">When changes are requested on your code</p>
+                            <p className="text-xs text-muted-foreground">When changes are requested on your code</p>
                           </div>
                           <Switch
                             checked={slackConfig.notifyChangesRequested}
@@ -415,12 +415,12 @@ export default function IntegrationsSettingsPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card className="border-border bg-card/80 backdrop-blur-xl">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-[#6264A7]/10 dark:bg-[#6264A7]/20 rounded-lg">
-                      <MessageSquare className="h-5 w-5 text-[#6264A7]" />
+                    <div className="rounded-lg bg-teal/10 p-2">
+                      <MessageSquare className="h-5 w-5 text-teal" />
                     </div>
                     <div>
                       <CardTitle>Microsoft Teams Integration</CardTitle>
@@ -429,7 +429,7 @@ export default function IntegrationsSettingsPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     {teamsConfig.enabled && teamsConfig.webhookUrl && (
-                      <Badge variant="secondary" className="bg-green-100 text-green-700">
+                      <Badge variant="secondary" className="bg-teal/10 text-teal">
                         <CheckCircle className="h-3 w-3 mr-1" />
                         Connected
                       </Badge>
@@ -525,19 +525,19 @@ export default function IntegrationsSettingsPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
           >
-            <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+            <Card className="border-border bg-card/80 backdrop-blur-xl">
               <CardHeader>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                      <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    <div className="rounded-lg bg-teal/10 p-2">
+                      <Mail className="h-5 w-5 text-teal" />
                     </div>
                     <div>
                       <CardTitle>Email Configuration</CardTitle>
                       <CardDescription>Server-side email provider settings</CardDescription>
                     </div>
                   </div>
-                  <Badge variant="outline" className="text-amber-600 border-amber-300">
+                  <Badge variant="outline" className="text-[color:var(--orange)] border-amber-300">
                     <Settings className="h-3 w-3 mr-1" />
                     Admin Only
                   </Badge>
@@ -545,7 +545,7 @@ export default function IntegrationsSettingsPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <Alert variant="default" className="border-amber-200 bg-amber-50 dark:bg-amber-950/20">
-                  <AlertCircle className="h-4 w-4 text-amber-600" />
+                  <AlertCircle className="h-4 w-4 text-[color:var(--orange)]" />
                   <AlertTitle className="text-amber-800 dark:text-amber-200">Administrator Configuration</AlertTitle>
                   <AlertDescription className="text-amber-700 dark:text-amber-300">
                     Email settings are configured through environment variables on the server.
@@ -556,9 +556,9 @@ export default function IntegrationsSettingsPage() {
                 <div className="space-y-4 opacity-60">
                   <h4 className="text-sm font-medium">Required Environment Variables</h4>
                   
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 font-mono text-sm space-y-2">
+                  <div className="rounded-lg border border-border bg-background/60 p-4 font-mono text-sm space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600 dark:text-gray-400"># SendGrid Configuration</span>
+                      <span className="text-muted-foreground"># SendGrid Configuration</span>
                       <Button variant="ghost" size="sm" onClick={() => {
                         navigator.clipboard.writeText("EMAIL_ENABLED=true\nEMAIL_PROVIDER=sendgrid\nSENDGRID_API_KEY=your_api_key\nSENDGRID_FROM_EMAIL=noreply@example.com")
                         toast.success("Copied to clipboard")
@@ -574,9 +574,9 @@ export default function IntegrationsSettingsPage() {
 
                   <Separator />
 
-                  <div className="bg-gray-100 dark:bg-gray-800 rounded-lg p-4 font-mono text-sm space-y-2">
+                  <div className="rounded-lg border border-border bg-background/60 p-4 font-mono text-sm space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="text-gray-600 dark:text-gray-400"># SMTP Configuration</span>
+                      <span className="text-muted-foreground"># SMTP Configuration</span>
                       <Button variant="ghost" size="sm" onClick={() => {
                         navigator.clipboard.writeText("EMAIL_ENABLED=true\nEMAIL_PROVIDER=smtp\nSMTP_HOST=smtp.gmail.com\nSMTP_PORT=587\nSMTP_USERNAME=your_email\nSMTP_PASSWORD=your_password")
                         toast.success("Copied to clipboard")
@@ -593,7 +593,7 @@ export default function IntegrationsSettingsPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2 text-sm text-gray-500">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <ExternalLink className="h-4 w-4" />
                   <a
                     href="https://sendgrid.com/docs/for-developers/sending-email/api-getting-started/"

@@ -201,11 +201,11 @@ class CommentResponse(BaseModel):
     severity: str | None
     status: str
     resolved_by: str | None
-    resolved_at: str | None
+    resolved_at: datetime | None
     is_blocking: bool
     reactions_json: dict[str, Any]
-    created_at: str
-    updated_at: str
+    created_at: datetime
+    updated_at: datetime
 
 
 # Change Request Models
@@ -1003,7 +1003,8 @@ class SubmitReviewRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     analysis_id: str = Field(min_length=1)
-    decision: Literal["approve", "request_changes", "comment"]
+    decision: Literal["approve", "request_changes", "comment"] | None = None
+    verdict: Literal["approve", "request_changes", "comment_only"] | None = None
     summary: str | None = Field(None, max_length=2000)
     comments: list[dict[str, Any]] = Field(default_factory=list)
 
@@ -1019,14 +1020,34 @@ class SubmitReviewResponse(BaseModel):
 @router.post("/submit", response_model=SubmitReviewResponse)
 async def submit_review(
     request: SubmitReviewRequest,
-    principal: AuthenticatedPrincipal = Depends(require_permission("reviews.submit")),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ) -> SubmitReviewResponse:
     """
     Submit a review decision.
-    
+
     Marks the assignment as completed and records the decision.
     """
-    
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Missing authentication credentials")
+
+    decision = request.decision
+    if request.verdict is not None:
+        verdict_decision = "comment" if request.verdict == "comment_only" else request.verdict
+        if decision is None:
+            decision = verdict_decision
+        elif decision != verdict_decision:
+            raise HTTPException(status_code=400, detail="decision and verdict must match")
+
+    if decision is None:
+        raise HTTPException(status_code=400, detail="decision is required")
+
+    permission_by_decision = {
+        "approve": "reviews.approve",
+        "request_changes": "reviews.request_changes",
+        "comment": "comments.create",
+    }
+    enforce_permission(principal, permission_by_decision[decision])
+
     assignments_repo = ReviewAssignmentsRepo()
     comments_repo = ReviewCommentsRepo()
     
@@ -1089,7 +1110,7 @@ async def submit_review(
         await notification_service.send_review_completed_notification(
             analysis_id=request.analysis_id,
             reviewer_id=principal.user_id,
-            decision=request.decision,
+            decision=decision,
             summary=request.summary,
             recipient_ids=recipient_ids,
             project_id=(analysis or {}).get("project_id"),
@@ -1099,5 +1120,5 @@ async def submit_review(
         success=True,
         assignment_id=assignment["id"],
         comments_created=comments_created,
-        decision=request.decision,
+        decision=decision,
     )

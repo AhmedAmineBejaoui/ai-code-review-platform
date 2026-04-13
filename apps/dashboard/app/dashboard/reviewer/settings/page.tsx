@@ -248,8 +248,8 @@ export default function ReviewerSettingsPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-center h-64">
-          <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
-          <span className="ml-3 text-gray-600">Chargement des parametres...</span>
+          <Loader2 className="h-8 w-8 animate-spin text-orange" />
+          <span className="ml-3 text-muted-foreground">Chargement des parametres...</span>
         </div>
       </div>
     )
@@ -264,14 +264,14 @@ export default function ReviewerSettingsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Parametres</h1>
-          <p className="text-gray-600 mt-1">
+          <h1 className="text-4xl font-semibold tracking-[-0.05em] text-foreground">Parametres</h1>
+          <p className="mt-2 text-muted-foreground">
             Configurez vos preferences de reviewer et notifications
           </p>
         </div>
         <div className="flex items-center space-x-3">
           {success && (
-            <div className="flex items-center text-green-600 text-sm">
+            <div className="flex items-center text-green-status text-sm">
               <CheckCircle className="h-4 w-4 mr-2" />
               Parametres enregistres avec succes
             </div>
@@ -284,9 +284,9 @@ export default function ReviewerSettingsPage() {
       </div>
 
       {error && (
-        <Card className="border-red-200 bg-red-50">
+        <Card className="border-red-500/20 bg-red-500/10">
           <CardContent className="p-4">
-            <div className="flex items-center text-red-700">
+            <div className="flex items-center text-destructive">
               <AlertCircle className="h-4 w-4 mr-2" />
               {error}
             </div>
@@ -299,7 +299,7 @@ export default function ReviewerSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <User className="h-5 w-5 mr-2 text-blue-600" />
+              <User className="h-5 w-5 mr-2 text-orange" />
               Profil & Capacite
             </CardTitle>
           </CardHeader>
@@ -310,7 +310,7 @@ export default function ReviewerSettingsPage() {
                 <Badge variant="secondary" className="capitalize">
                   {settings.reviewer_level.replace('reviewer_', '')}
                 </Badge>
-                <p className="text-xs text-gray-500 mt-1">Lecture seule: Contactez l'admin pour changer de niveau</p>
+                <p className="mt-1 text-xs text-muted-foreground">Lecture seule: Contactez l'admin pour changer de niveau</p>
               </div>
             </div>
 
@@ -338,8 +338,8 @@ export default function ReviewerSettingsPage() {
                     onClick={() => toggleSpecialty(specialty)}
                     className={`p-2 rounded-lg border cursor-pointer transition-colors ${
                       settings.reviewer_specialties.includes(specialty)
-                        ? "bg-blue-50 border-blue-200 text-blue-800"
-                        : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                        ? "bg-orange/10 border-orange-accent text-orange"
+                        : "bg-background/60 border-border text-muted-foreground hover:bg-card-hover"
                     }`}
                   >
                     <span className="text-sm font-medium">{specialty}</span>
@@ -379,7 +379,7 @@ export default function ReviewerSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Zap className="h-5 w-5 mr-2 text-yellow-600" />
+              <Zap className="h-5 w-5 mr-2 text-teal" />
               Attribution Automatique
             </CardTitle>
           </CardHeader>
@@ -387,7 +387,7 @@ export default function ReviewerSettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm font-medium">Activer l'Attribution Automatique</Label>
-                <p className="text-xs text-gray-500 mt-1">Recevoir automatiquement de nouvelles reviews</p>
+                <p className="mt-1 text-xs text-muted-foreground">Recevoir automatiquement de nouvelles reviews</p>
               </div>
               <Switch
                 checked={settings.auto_assign_enabled}
@@ -406,8 +406,8 @@ export default function ReviewerSettingsPage() {
                         onClick={() => togglePriorityLevel(level.value)}
                         className={`p-2 rounded-lg border cursor-pointer transition-colors ${
                           settings.priority_levels.includes(level.value)
-                            ? "bg-green-50 border-green-200 text-green-800"
-                            : "bg-gray-50 border-gray-200 text-gray-600 hover:bg-gray-100"
+                              ? "bg-teal/10 border-teal/30 text-teal"
+                              : "bg-background/60 border-border text-muted-foreground hover:bg-card-hover"
                         }`}
                       >
                         <span className="text-sm font-medium">{level.label}</span>
@@ -419,7 +419,7 @@ export default function ReviewerSettingsPage() {
                 <div className="flex items-center justify-between">
                   <div>
                     <Label className="text-sm font-medium">Correspondance Specialites Uniquement</Label>
-                    <p className="text-xs text-gray-500 mt-1">Recevoir uniquement les reviews correspondant a vos specialites</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Recevoir uniquement les reviews correspondant a vos specialites</p>
                   </div>
                   <Switch
                     checked={settings.match_specialties_only}
@@ -435,20 +435,20 @@ export default function ReviewerSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Bell className="h-5 w-5 mr-2 text-green-600" />
+              <Bell className="h-5 w-5 mr-2 text-green-status" />
               Notifications
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-6">
             <div>
               <div className="flex items-center mb-3">
-                <Mail className="h-4 w-4 mr-2 text-blue-600" />
+                <Mail className="h-4 w-4 mr-2 text-orange" />
                 <Label className="text-sm font-medium">Notifications Email</Label>
               </div>
               <div className="space-y-3">
                 {Object.entries(settings.notification_preferences.email).map(([key, enabled]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm capitalize">
+                    <span className="text-sm capitalize text-foreground">
                       {key === 'new_assignment' ? 'Nouvelle assignation' :
                        key === 'overdue_reminder' ? 'Rappel de retard' :
                        key === 'comment_replies' ? 'Reponses aux commentaires' :
@@ -468,13 +468,13 @@ export default function ReviewerSettingsPage() {
 
             <div>
               <div className="flex items-center mb-3">
-                <Smartphone className="h-4 w-4 mr-2 text-purple-600" />
+                <Smartphone className="h-4 w-4 mr-2 text-teal" />
                 <Label className="text-sm font-medium">Notifications Push</Label>
               </div>
               <div className="space-y-3">
                 {Object.entries(settings.notification_preferences.push).map(([key, enabled]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <span className="text-sm capitalize">
+                    <span className="text-sm capitalize text-foreground">
                       {key === 'realtime_comments' ? 'Commentaires en temps reel' :
                        key === 'session_invites' ? 'Invitations de session' :
                        key === 'metrics_updates' ? 'Mises a jour des metriques' :
@@ -494,7 +494,7 @@ export default function ReviewerSettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm font-medium">Toutes les Notifications In-App</Label>
-                <p className="text-xs text-gray-500 mt-1">Afficher toutes les notifications dans l'application</p>
+                <p className="mt-1 text-xs text-muted-foreground">Afficher toutes les notifications dans l'application</p>
               </div>
               <Switch
                 checked={settings.notification_preferences.in_app.all_notifications}
@@ -508,7 +508,7 @@ export default function ReviewerSettingsPage() {
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Code className="h-5 w-5 mr-2 text-indigo-600" />
+              <Code className="h-5 w-5 mr-2 text-teal" />
               Parametres par Defaut des Reviews
             </CardTitle>
           </CardHeader>
@@ -550,7 +550,7 @@ export default function ReviewerSettingsPage() {
             <div className="flex items-center justify-between">
               <div>
                 <Label className="text-sm font-medium">Demarrer le Timer Automatiquement</Label>
-                <p className="text-xs text-gray-500 mt-1">Demarrer le timer a l'ouverture d'une review</p>
+                <p className="mt-1 text-xs text-muted-foreground">Demarrer le timer a l'ouverture d'une review</p>
               </div>
               <Switch
                 checked={settings.auto_start_timer}
@@ -583,20 +583,20 @@ export default function ReviewerSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
-            <Shield className="h-5 w-5 mr-2 text-gray-600" />
+              <Shield className="h-5 w-5 mr-2 text-muted-foreground" />
             Integrations
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background/60 p-4">
               <div className="flex items-center">
-                <div className="w-10 h-10 bg-purple-100 rounded-lg flex items-center justify-center mr-3">
-                  <Mail className="h-5 w-5 text-purple-600" />
+                <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-lg bg-orange/10">
+                  <Mail className="h-5 w-5 text-orange" />
                 </div>
                 <div>
                   <h4 className="font-medium">Slack</h4>
-                  <p className="text-sm text-gray-500">Recevoir des notifications sur Slack</p>
+                  <p className="text-sm text-muted-foreground">Recevoir des notifications sur Slack</p>
                 </div>
               </div>
               <Button variant="outline" size="sm">
@@ -604,14 +604,14 @@ export default function ReviewerSettingsPage() {
               </Button>
             </div>
 
-            <div className="flex items-center justify-between p-4 border border-gray-200 rounded-lg">
+            <div className="flex items-center justify-between rounded-lg border border-border bg-background/60 p-4">
               <div className="flex items-center">
-                <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center mr-3">
-                  <Code className="h-5 w-5 text-blue-600" />
+                <div className="mr-3 flex h-10 w-10 items-center justify-center rounded-lg bg-teal/10">
+                  <Code className="h-5 w-5 text-teal" />
                 </div>
                 <div>
                   <h4 className="font-medium">VS Code</h4>
-                  <p className="text-sm text-gray-500">Liens directs vers les reviews</p>
+                  <p className="text-sm text-muted-foreground">Liens directs vers les reviews</p>
                 </div>
               </div>
               <Button variant="outline" size="sm">
@@ -626,7 +626,7 @@ export default function ReviewerSettingsPage() {
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
-            <Palette className="h-5 w-5 mr-2 text-pink-600" />
+              <Palette className="h-5 w-5 mr-2 text-orange" />
             Parametres du Theme
           </CardTitle>
         </CardHeader>
@@ -635,15 +635,15 @@ export default function ReviewerSettingsPage() {
             <Label className="text-sm font-medium mb-3 block">Choisissez Votre Theme</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">Basculement Rapide</h4>
+                <h4 className="text-sm font-medium text-foreground">Basculement Rapide</h4>
                 <Theme variant="button" size="md" showLabel />
               </div>
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">Style Interrupteur</h4>
+                <h4 className="text-sm font-medium text-foreground">Style Interrupteur</h4>
                 <Theme variant="switch" size="md" showLabel />
               </div>
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">Menu Deroulant</h4>
+                <h4 className="text-sm font-medium text-foreground">Menu Deroulant</h4>
                 <Theme variant="dropdown" size="md" showLabel />
               </div>
             </div>
@@ -653,11 +653,11 @@ export default function ReviewerSettingsPage() {
             <Label className="text-sm font-medium mb-3 block">Options de Theme Avancees</Label>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">Style Onglets</h4>
+                <h4 className="text-sm font-medium text-foreground">Style Onglets</h4>
                 <Theme variant="tabs" size="md" showLabel />
               </div>
               <div className="space-y-3">
-                <h4 className="text-sm font-medium text-gray-700">Disposition Grille</h4>
+                <h4 className="text-sm font-medium text-foreground">Disposition Grille</h4>
                 <Theme variant="grid" size="sm" />
               </div>
             </div>

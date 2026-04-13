@@ -86,39 +86,15 @@ class Settings(BaseSettings):
     OLLAMA_TIMEOUT_SECONDS: int = 120
     OLLAMA_TEMPERATURE: float = 0.1
     OLLAMA_NUM_PREDICT: int = 2048
-    LANGCHAIN_ENABLED: bool = False
-    LANGCHAIN_SHADOW_MODE: bool = True
-    LANGCHAIN_PRIMARY_STACK: str = "legacy"
-    LANGCHAIN_ALLOW_LEGACY_FALLBACK: bool = True
-    LANGCHAIN_OLLAMA_BASE_URL: str | None = None
-    LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY: str = "deepseek-coder"
-    LANGCHAIN_OLLAMA_CHAT_MODEL_FALLBACK: str | None = None
-    LANGCHAIN_OLLAMA_EMBEDDINGS_MODEL: str = "mxbai-embed-large"
-    LANGCHAIN_QDRANT_COLLECTION_ALIAS_ACTIVE: str = "repo_context_langchain_active"
-    LANGCHAIN_QDRANT_COLLECTION_ALIAS_SHADOW: str = "repo_context_langchain_shadow"
-    LANGCHAIN_RAG_TIMEOUT_SECONDS: int = 45
-    LANGCHAIN_COMPARE_OUTPUTS_ENABLED: bool = True
-    LANGCHAIN_MAX_CONCURRENT_GENERATIONS: int = 1
-    LANGCHAIN_MAX_CONCURRENT_EMBEDDINGS: int = 2
-    LANGCHAIN_DISTRIBUTED_LIMITER_ENABLED: bool = True
-    LANGCHAIN_DISTRIBUTED_LIMITER_LEASE_SECONDS: int = 120
-    LANGCHAIN_DISTRIBUTED_LIMITER_POLL_SECONDS: float = 0.1
-    LANGCHAIN_PARITY_PYDANTIC_VALIDITY_MIN: float = 0.99
-    LANGCHAIN_PARITY_CONTEXT_REFERENCES_PRESENCE_MIN: float = 0.95
-    LANGCHAIN_PARITY_CITATION_OVERLAP_MIN: float = 0.70
-    LANGCHAIN_PARITY_CRITICAL_DIVERGENCE_MAX: float = 0.05
-    LANGCHAIN_PARITY_MIN_SAMPLE_SIZE: int = 25
-    LANGCHAIN_PARITY_RETRIEVAL_P95_MAX_MS: int = 5000
-    LANGCHAIN_PARITY_REVIEW_GENERATION_P95_MAX_MS: int = 45000
-    LANGCHAIN_PARITY_GENERATION_P95_REGRESSION_RATIO_MAX: float = 1.35
     LLM_REVIEW_FINDINGS_ENABLED: bool = True
     LLM_REVIEW_MAX_FINDINGS: int = 4
     REVIEW_INTELLIGENCE_ENABLED: bool = True
     REVIEW_INTELLIGENCE_REQUIRE_QDRANT: bool = True
+    GRAPH_RAG_REQUIRED: bool = True
 
     # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
-    QDRANT_ENABLED: bool = False
-    QDRANT_MODE: str = "http"  # "http" for remote server, "local" for embedded in-process
+    QDRANT_ENABLED: bool = True
+    QDRANT_MODE: str = "local"  # "http" for remote server, "local" for embedded in-process
     QDRANT_URL: str = "http://localhost:6333"  # Used when QDRANT_MODE=http
     QDRANT_LOCAL_PATH: str = "./qdrant_storage"  # Used when QDRANT_MODE=local
     QDRANT_COLLECTION: str = "code_review_rules"
@@ -348,30 +324,6 @@ class Settings(BaseSettings):
         if raw is None or not raw.strip():
             return set()
         return {item.strip().lower() for item in raw.split(",") if item.strip()}
-
-    @property
-    def langchain_enabled(self) -> bool:
-        return self.LANGCHAIN_ENABLED
-
-    @property
-    def langchain_primary_stack(self) -> str:
-        normalized = self.LANGCHAIN_PRIMARY_STACK.strip().lower()
-        if normalized not in {"legacy", "langchain"}:
-            return "legacy"
-        return normalized
-
-    @property
-    def langchain_ollama_base_url(self) -> str:
-        raw = self.LANGCHAIN_OLLAMA_BASE_URL
-        if isinstance(raw, str) and raw.strip():
-            return raw.strip()
-        return self.OLLAMA_BASE_URL
-
-    @property
-    def langchain_qdrant_physical_collection(self) -> str:
-        model_name = self.LANGCHAIN_OLLAMA_EMBEDDINGS_MODEL.strip().lower() or "default"
-        sanitized = "".join(char if char.isalnum() else "_" for char in model_name).strip("_") or "default"
-        return f"repo_context_lc_v1_{sanitized}"
 
     @property
     def hyde_routes(self) -> list[str]:

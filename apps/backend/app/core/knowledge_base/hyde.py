@@ -1,20 +1,16 @@
-"""HyDE (Hypothetical Document Embeddings) expander.
+"""HyDE (Hypothetical Document Embeddings) expander for GraphRAG.
 
-Generates a hypothetical code snippet or document section for a query,
-then embeds that hypothetical answer instead of the raw query.  This bridges
-the semantic gap between short natural-language queries and the code / docs
-stored in the vector database.
-
-References:
-    Gao et al., "Precise Zero-Shot Dense Retrieval without Relevance Labels" (2022)
+The expander generates a hypothetical answer with the local Ollama client and
+then hashes that text into the repository vector space.
 """
 from __future__ import annotations
 
 import hashlib
-import json
 import logging
 from typing import Any
 
+from app.core.knowledge_base.embeddings import hash_embed_text
+from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -48,17 +44,14 @@ class HyDEExpander:
         self,
         *,
         llm_client: Any | None = None,
-        embedding_service: Any | None = None,
     ) -> None:
         self._llm_client = llm_client
-        self._embedding_service = embedding_service
 
     @property
     def available(self) -> bool:
         return (
             settings.HYDE_ENABLED
             and self._llm_client is not None
-            and self._embedding_service is not None
         )
 
     def expand_query(self, query: str, *, query_type: str = "code") -> list[float] | None:
@@ -75,7 +68,7 @@ class HyDEExpander:
             hypothetical_doc = response.text.strip()
             if not hypothetical_doc:
                 return None
-            return self._embedding_service.embed_query(hypothetical_doc)
+            return hash_embed_text(hypothetical_doc, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE)
         except Exception:
             logger.debug("HyDE expansion failed for query_type=%s", query_type, exc_info=True)
             return None
@@ -119,27 +112,13 @@ class HyDEExpander:
 
 
 def build_hyde_expander() -> HyDEExpander:
-    """Factory that wires the HyDE expander to the configured LLM and embeddings."""
+    """Factory that wires the HyDE expander to the configured LLM."""
     if not settings.HYDE_ENABLED:
         return HyDEExpander()
 
-    llm_client = None
-    embedding_service = None
-
     try:
-        from app.core.langchain_runtime.clients import LangChainOllamaClient
-        llm_client = LangChainOllamaClient()
-        if not llm_client.available:
-            llm_client = None
+        llm_client = OllamaClient()
     except Exception:
-        pass
+        llm_client = None
 
-    try:
-        from app.core.langchain_runtime.embeddings import LangChainEmbeddingService
-        svc = LangChainEmbeddingService()
-        if svc.available:
-            embedding_service = svc
-    except Exception:
-        pass
-
-    return HyDEExpander(llm_client=llm_client, embedding_service=embedding_service)
+    return HyDEExpander(llm_client=llm_client)

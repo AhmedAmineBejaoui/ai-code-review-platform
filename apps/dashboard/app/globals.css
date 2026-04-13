@@ -45,8 +45,8 @@
   --border-accent: rgba(232, 113, 58, 0.35);
 
   /* Typography */
-  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  --font-mono: 'SF Mono', 'JetBrains Mono', monospace;
+  --font-sans: var(--font-sora), 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-mono: var(--font-ibm-plex-mono), 'SF Mono', 'JetBrains Mono', monospace;
 
   /* Radius */
   --r-sm: 6px;
@@ -195,6 +195,51 @@
     overflow-x: hidden;
     font-family: var(--font-sans);
     transition: background-color 250ms ease, color 250ms ease;
+  }
+}
+
+@layer utilities {
+  .dark [class*="bg-white"] {
+    background-color: rgba(20, 20, 22, 0.82) !important;
+  }
+
+  .dark [class*="bg-gray-50"],
+  .dark [class*="bg-gray-100"],
+  .dark [class*="bg-gray-200"],
+  .dark [class*="bg-gray-300"] {
+    background-color: #1a1a1e !important;
+  }
+
+  .dark [class*="border-white"],
+  .dark [class*="border-gray-100"],
+  .dark [class*="border-gray-200"],
+  .dark [class*="border-gray-300"] {
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+
+  .dark [class*="text-gray-500"] {
+    color: var(--text-muted) !important;
+  }
+
+  .dark [class*="text-gray-600"] {
+    color: var(--text-muted) !important;
+  }
+
+  .dark [class*="text-gray-300"] {
+    color: var(--text-secondary) !important;
+  }
+
+  .dark [class*="text-gray-400"] {
+    color: var(--text-muted) !important;
+  }
+
+  .dark [class*="text-gray-700"] {
+    color: var(--text-secondary) !important;
+  }
+
+  .dark [class*="text-gray-800"],
+  .dark [class*="text-gray-900"] {
+    color: var(--text-primary) !important;
   }
 }
 
@@ -370,8 +415,10 @@
   /* Brand colors */
   .text-orange        { color: var(--orange); }
   .text-orange-light  { color: var(--orange-light); }
+  .text-orange-hover  { color: var(--orange-hover); }
   .bg-orange          { background-color: var(--orange); }
   .bg-orange-light    { background-color: var(--orange-light); }
+  .bg-orange-hover    { background-color: var(--orange-hover); }
   .text-teal          { color: var(--teal); }
   .text-green-status  { color: var(--green-status); }
   .text-purple        { color: var(--purple-accent); }

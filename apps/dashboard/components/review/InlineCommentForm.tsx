@@ -37,8 +37,8 @@ const commentTypes = [
 
 const severityOptions = [
   { value: "info", label: "Info", icon: Info, color: "text-blue-500" },
-  { value: "warn", label: "Warning", icon: AlertTriangle, color: "text-orange-500" },
-  { value: "blocker", label: "Blocker", icon: AlertCircle, color: "text-red-500" },
+  { value: "warn", label: "Warning", icon: AlertTriangle, color: "text-[color:var(--orange)]" },
+  { value: "blocker", label: "Blocker", icon: AlertCircle, color: "text-destructive" },
 ] as const
 
 export function InlineCommentForm({
@@ -90,7 +90,7 @@ export function InlineCommentForm({
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-2 bg-blue-50 dark:bg-blue-950/30 border-b border-blue-200 dark:border-blue-800">
         <div className="flex items-center gap-2">
-          <MessageSquare className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <MessageSquare className="h-4 w-4 text-teal-400" />
           <span className="text-sm font-medium text-blue-900 dark:text-blue-100">
             Add comment
           </span>
@@ -111,7 +111,7 @@ export function InlineCommentForm({
       {/* Code snippet preview */}
       {codeSnippet && (
         <div className="px-4 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-700">
-          <pre className="text-xs font-mono text-gray-600 dark:text-gray-400 truncate">
+          <pre className="text-xs font-mono text-muted-foreground truncate">
             {codeSnippet}
           </pre>
         </div>

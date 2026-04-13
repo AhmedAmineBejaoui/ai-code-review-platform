@@ -307,7 +307,7 @@ function TeamsPageInner() {
     <div className="space-y-6">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
-          <h1 className="text-3xl font-bold">{currentTeam.name}</h1>
+          <h1 className="card-heading text-foreground">{currentTeam.name}</h1>
           <p className="text-muted-foreground mt-1">
             {currentTeam.description || `${currentTeam.member_count} member${currentTeam.member_count === 1 ? "" : "s"}`}
           </p>

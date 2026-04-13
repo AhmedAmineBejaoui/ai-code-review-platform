@@ -4,8 +4,8 @@ from analysis.langGraph.models import RetrievalFilters, RetrievalResult
 from analysis.langGraph.raggraph.retriever import RagGraphRetriever
 
 
-class HybridRetriever:
-    """Compatibility wrapper used by the pipeline."""
+class GraphRagRetriever:
+    """Canonical GraphRAG wrapper used by the pipeline."""
 
     def __init__(self, retriever: RagGraphRetriever | None = None) -> None:
         self._retriever = retriever or RagGraphRetriever()
@@ -26,3 +26,7 @@ class HybridRetriever:
             filters=filters,
             limit=limit,
         )
+
+
+# Backward-compatible alias kept for imports that still reference the old name.
+HybridRetriever = GraphRagRetriever

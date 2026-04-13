@@ -285,7 +285,7 @@ export default function MonacoYEditor({
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
           <strong>Status:</strong>
           <span>{status ?? "idle"}</span>
-          {peers.length ? <span style={{ marginLeft: 8, color: "#2563EB" }}> • {peers.length} online: {peers.map(p => p.name || 'anon').join(', ')}</span> : null}
+          {peers.length ? <span style={{ marginLeft: 8, color: "var(--teal)" }}> • {peers.length} online: {peers.map(p => p.name || 'anon').join(', ')}</span> : null}
           {dirty ? <span style={{ color: "#b91c1c" }}>• unsaved</span> : null}
           {lastSavedAt ? <span style={{ color: "#065f46" }}> • saved {new Date(lastSavedAt).toLocaleTimeString()}</span> : null}
         </div>

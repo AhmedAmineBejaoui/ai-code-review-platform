@@ -106,11 +106,11 @@ export function ProjectOverview({ profile, loading = false, onRefresh, className
       case "completed":
         return <CheckCircle className="h-4 w-4 text-green-500" />
       case "failed":
-        return <AlertCircle className="h-4 w-4 text-red-500" />
+        return <AlertCircle className="h-4 w-4 text-destructive" />
       case "analyzing":
         return <RefreshCw className="h-4 w-4 text-blue-500 animate-spin" />
       default:
-        return <AlertCircle className="h-4 w-4 text-gray-500" />
+        return <AlertCircle className="h-4 w-4 text-muted-foreground" />
     }
   }
 
@@ -431,7 +431,7 @@ export function ProjectOverview({ profile, loading = false, onRefresh, className
                   <span className={cn(
                     "ml-2 font-medium",
                     profile.dependencies.security_vulnerabilities_count > 0
-                      ? "text-red-500"
+                      ? "text-destructive"
                       : "text-green-500"
                   )}>
                     {profile.dependencies.security_vulnerabilities_count}

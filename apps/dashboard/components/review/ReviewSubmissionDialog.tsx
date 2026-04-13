@@ -44,7 +44,7 @@ const verdictOptions = [
     label: "Approve",
     description: "Submit feedback and approve the changes",
     icon: CheckCircle2,
-    color: "text-green-600 dark:text-green-400",
+    color: "text-[color:var(--green-status)]",
     bgColor: "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800",
   },
   {
@@ -60,17 +60,17 @@ const verdictOptions = [
     label: "Comment",
     description: "Submit feedback without explicit approval",
     icon: MessageSquare,
-    color: "text-blue-600 dark:text-blue-400",
+    color: "text-teal-400",
     bgColor: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800",
   },
 ]
 
 function severityIcon(severity: string | undefined) {
   if (severity === "blocker") {
-    return <AlertCircle className="h-3.5 w-3.5 text-red-500" />
+    return <AlertCircle className="h-3.5 w-3.5 text-destructive" />
   }
   if (severity === "warn") {
-    return <AlertTriangle className="h-3.5 w-3.5 text-orange-500" />
+    return <AlertTriangle className="h-3.5 w-3.5 text-[color:var(--orange)]" />
   }
   if (severity === "info") {
     return <Info className="h-3.5 w-3.5 text-blue-500" />
@@ -158,7 +158,7 @@ export function ReviewSubmissionDialog({
                 className="mt-3 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800"
               >
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                  <AlertTriangle className="h-5 w-5 text-[color:var(--orange)] dark:text-amber-400 flex-shrink-0 mt-0.5" />
                   <div className="text-sm">
                     <p className="font-medium text-amber-800 dark:text-amber-200">
                       You have {blockingCount} blocking {blockingCount === 1 ? "comment" : "comments"}
@@ -214,7 +214,7 @@ export function ReviewSubmissionDialog({
                             {comment.comment_type.replace("_", " ")}
                           </Badge>
                         </div>
-                        <p className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">
+                        <p className="text-sm text-secondary-foreground line-clamp-2">
                           {comment.content}
                         </p>
                       </div>

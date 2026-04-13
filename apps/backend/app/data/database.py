@@ -311,6 +311,12 @@ def init_db() -> None:
                     id TEXT PRIMARY KEY,
                     slug TEXT NULL UNIQUE,
                     name TEXT NOT NULL,
+                    description TEXT NULL,
+                    clerk_org_id TEXT NULL,
+                    github_org_id TEXT NULL,
+                    github_org_login TEXT NULL,
+                    source TEXT NOT NULL DEFAULT 'platform',
+                    sync_status TEXT NOT NULL DEFAULT 'local_only',
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -318,8 +324,22 @@ def init_db() -> None:
                 """
             )
         )
+        conn.execute(text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS description TEXT NULL"))
+        conn.execute(text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS clerk_org_id TEXT NULL"))
+        conn.execute(text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS github_org_id TEXT NULL"))
+        conn.execute(text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS github_org_login TEXT NULL"))
+        conn.execute(
+            text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'platform'")
+        )
+        conn.execute(
+            text("ALTER TABLE organizations ADD COLUMN IF NOT EXISTS sync_status TEXT NOT NULL DEFAULT 'local_only'")
+        )
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_organizations_slug ON organizations(slug)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS idx_organizations_is_active ON organizations(is_active)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS idx_organizations_clerk_org_id ON organizations(clerk_org_id)"))
+        conn.execute(
+            text("CREATE INDEX IF NOT EXISTS idx_organizations_github_org_login ON organizations(github_org_login)")
+        )
 
         conn.execute(
             text(

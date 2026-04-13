@@ -39,6 +39,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { extractApiErrorMessage } from "@/lib/display"
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -149,7 +150,7 @@ export default function PullRequestsPage() {
         body: JSON.stringify({ action, payload }),
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data.error || `Action ${action} failed`)
+      if (!res.ok) throw new Error(extractApiErrorMessage(data, `Action ${action} failed`))
       return data
     },
     [],
@@ -456,13 +457,13 @@ export default function PullRequestsPage() {
               </Badge>
               <Badge
                 variant="outline"
-                className="gap-1 text-green-600 border-green-200"
+                className="gap-1 text-[color:var(--green-status)] border-green-200"
               >
                 +{selectedPR.additions ?? 0}
               </Badge>
               <Badge
                 variant="outline"
-                className="gap-1 text-red-600 border-red-200"
+                className="gap-1 text-destructive border-red-200"
               >
                 -{selectedPR.deletions ?? 0}
               </Badge>
@@ -524,10 +525,10 @@ export default function PullRequestsPage() {
                           variant="outline"
                           className={`mr-2 text-[10px] ${
                             file.status === "added"
-                              ? "text-green-600 border-green-200"
+                              ? "text-[color:var(--green-status)] border-green-200"
                               : file.status === "removed"
-                                ? "text-red-600 border-red-200"
-                                : "text-yellow-600 border-yellow-200"
+                                ? "text-destructive border-red-200"
+                                : "text-[color:var(--orange)] border-yellow-200"
                           }`}
                         >
                           {file.status}
@@ -536,8 +537,8 @@ export default function PullRequestsPage() {
                           {file.filename}
                         </span>
                         <span className="text-xs text-muted-foreground ml-2 shrink-0">
-                          <span className="text-green-600">+{file.additions}</span>{" "}
-                          <span className="text-red-600">-{file.deletions}</span>
+                          <span className="text-[color:var(--green-status)]">+{file.additions}</span>{" "}
+                          <span className="text-destructive">-{file.deletions}</span>
                         </span>
                         <Button
                           variant="ghost"
@@ -562,9 +563,9 @@ export default function PullRequestsPage() {
                                   line.startsWith("+")
                                     ? "bg-green-500/10 text-green-700 dark:text-green-400"
                                     : line.startsWith("-")
-                                      ? "bg-red-500/10 text-red-700 dark:text-red-400"
+                                      ? "bg-red-500/10 text-red-700 dark:text-destructive"
                                       : line.startsWith("@@")
-                                        ? "text-blue-600 dark:text-blue-400"
+                                        ? "text-teal-400"
                                         : ""
                                 }`}
                               >
@@ -862,9 +863,9 @@ export default function PullRequestsPage() {
               >
                 <div className="mt-0.5">
                   {pr.state === "open" ? (
-                    <GitPullRequest className="h-5 w-5 text-green-600" />
+                    <GitPullRequest className="h-5 w-5 text-[color:var(--green-status)]" />
                   ) : pr.state === "closed" ? (
-                    <XCircle className="h-5 w-5 text-red-500" />
+                    <XCircle className="h-5 w-5 text-destructive" />
                   ) : (
                     <GitMerge className="h-5 w-5 text-purple-600" />
                   )}

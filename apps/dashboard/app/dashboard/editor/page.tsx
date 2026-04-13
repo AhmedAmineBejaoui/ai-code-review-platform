@@ -27,6 +27,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { FileTree, type TreeEntry } from "@/components/editor/FileTree"
 import { CodeEditor } from "@/components/editor/CodeEditor"
+import { extractApiErrorMessage } from "@/lib/display"
 
 interface BranchInfo {
   name: string
@@ -41,15 +42,44 @@ interface GitHubActionResult {
   tree?: TreeEntry[]
 }
 
-function parseRepoInput(value: string): { owner: string; repo: string } | null {
-  const parts = value.trim().split("/")
-  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+function parseRepoParts(owner: string | undefined, repo: string | undefined): { owner: string; repo: string } | null {
+  const cleanOwner = owner?.trim()
+  const cleanRepo = repo?.trim().replace(/\.git$/i, "")
+  if (!cleanOwner || !cleanRepo || cleanOwner.includes(" ") || cleanRepo.includes(" ")) {
     return null
   }
+
   return {
-    owner: parts[0],
-    repo: parts[1],
+    owner: cleanOwner,
+    repo: cleanRepo,
   }
+}
+
+function parseRepoInput(value: string): { owner: string; repo: string } | null {
+  const trimmed = value.trim()
+  if (!trimmed) return null
+
+  const sshMatch = trimmed.match(/^git@github\.com:([^/\s]+)\/([^/\s?#]+?)(?:\.git)?(?:[?#].*)?$/i)
+  if (sshMatch) {
+    return parseRepoParts(sshMatch[1], sshMatch[2])
+  }
+
+  try {
+    const url = new URL(trimmed)
+    const host = url.hostname.toLowerCase().replace(/^www\./, "")
+    if (host === "github.com") {
+      const [owner, repo] = url.pathname.split("/").filter(Boolean)
+      return parseRepoParts(owner, repo)
+    }
+  } catch {
+    // Plain "owner/repo" input is handled below.
+  }
+
+  const normalized = trimmed
+    .replace(/^https?:\/\/(?:www\.)?github\.com\//i, "")
+    .replace(/^(?:www\.)?github\.com\//i, "")
+  const [owner, repo] = normalized.split("/").filter(Boolean)
+  return parseRepoParts(owner, repo)
 }
 
 export default function EditorPage() {
@@ -82,7 +112,7 @@ export default function EditorPage() {
       })
       const data = (await response.json().catch(() => ({}))) as GitHubActionResult
       if (!response.ok) {
-        throw new Error(data.error || `GitHub action failed: ${action}`)
+        throw new Error(extractApiErrorMessage(data, `GitHub action failed: ${action}`))
       }
       return data
     },
@@ -169,7 +199,13 @@ export default function EditorPage() {
 
   const handleConnect = useCallback(async () => {
     const parsed = parseRepoInput(repoInput)
-    if (!parsed) return
+    if (!parsed) {
+      setActionMessage("")
+      setActionError(
+        "Enter a valid GitHub repository, for example owner/repo or https://github.com/owner/repo.",
+      )
+      return
+    }
     await connectToRepository(parsed.owner, parsed.repo)
   }, [connectToRepository, repoInput])
 
@@ -401,19 +437,24 @@ export default function EditorPage() {
             </div>
             <div className="flex gap-2">
               <Input
-                placeholder="owner/repo"
+                placeholder="owner/repo or GitHub URL"
                 value={repoInput}
-                onChange={(event) => setRepoInput(event.target.value)}
-                onKeyDown={(event) => event.key === "Enter" && handleConnect()}
+                onChange={(event) => {
+                  setRepoInput(event.target.value)
+                  if (actionError) setActionError("")
+                }}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") void handleConnect()
+                }}
                 className="flex-1"
               />
-              <Button onClick={() => void handleConnect()} disabled={!repoInput.includes("/")}>
+              <Button onClick={() => void handleConnect()} disabled={!repoInput.trim()}>
                 Open
               </Button>
             </div>
             <div className="mt-3 flex items-center justify-center gap-2 text-xs text-muted-foreground">
               <Badge variant="outline">{orgBadgeLabel}</Badge>
-              <span>Example: `openai/openai-python`</span>
+              <span>Example: openai/openai-python or https://github.com/openai/openai-python</span>
             </div>
             {actionError ? (
               <div className="mt-4 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">

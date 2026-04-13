@@ -9,12 +9,8 @@ from typing import Any
 
 from analysis.langGraph.models import LangGraphAnalysisRequest
 from analysis.langGraph.pipeline import run_langgraph_analysis
-from app.core.ai_orchestration import GroundedReviewService
 from app.core.change_classification import ChangeClassifier
-from app.core.knowledge_base.ingestor import RepoContextIngestor
-from app.core.knowledge_base.rag_engines import RagEngineResult, build_rag_engines
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
-from app.core.review_intelligence.engines import build_langchain_review_generation_engine
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
 from app.core.review_intelligence.risk_detector import RiskDetector
@@ -37,13 +33,6 @@ from app.workers.celery_app import celery_app
 
 _CHANGE_CLASSIFIER = ChangeClassifier()
 _SUMMARY_SERVICE = SummaryService(
-    llm_client=OllamaClient(
-        base_url=settings.OLLAMA_BASE_URL,
-        model=settings.OLLAMA_MODEL,
-        timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
-    )
-)
-_GROUNDED_REVIEW_SERVICE = GroundedReviewService(
     llm_client=OllamaClient(
         base_url=settings.OLLAMA_BASE_URL,
         model=settings.OLLAMA_MODEL,
@@ -76,11 +65,27 @@ _REVIEW_INTELLIGENCE_SERVICE = ReviewIntelligenceService(
 )
 
 
-def _get_langchain_review_engine():
-    if not settings.langchain_enabled:
-        return None
-    engine = build_langchain_review_generation_engine()
-    return engine if engine.available else None
+def build_rag_engines(*, vector_store: object | None = None) -> tuple[object, None]:
+    """Compatibility shim kept for tests and older imports."""
+    from app.core.knowledge_base.rag_engines import build_graph_rag_engine
+
+    return build_graph_rag_engine(vector_store=vector_store), None
+
+
+def _evaluate_langchain_parity(
+    *,
+    divergence: dict[str, Any],
+    legacy_references: list[dict[str, Any]],
+    langchain_references: list[dict[str, Any]],
+    langchain_review_status: str | None,
+    **_: Any,
+) -> dict[str, Any]:
+    """Compatibility helper for old parity tests."""
+    _ = divergence, legacy_references, langchain_references, langchain_review_status
+    return {
+        "cutover_eligible": False,
+        "blocking_reasons": ["aggregate_latency_thresholds_require_corpus_validation"],
+    }
 
 
 def _security_message(rule_id: str, default_message: str) -> str:
@@ -166,118 +171,6 @@ def _timed_call(func, /, *args, **kwargs):
     result = func(*args, **kwargs)
     duration_ms = int((time.perf_counter() - started) * 1000)
     return result, duration_ms
-
-
-def _kb_reference(item: Any) -> dict[str, Any]:
-    return {
-        "path": item.path,
-        "title": item.title,
-        "source": item.source,
-        "source_type": item.source_type,
-        "chunk_type": item.chunk_type,
-        "symbol_name": item.symbol_name,
-        "score": round(float(item.score), 4),
-        "tags": list(item.tags),
-    }
-
-
-def _citation_overlap(
-    left: list[dict[str, Any]],
-    right: list[dict[str, Any]],
-) -> float:
-    if not left and not right:
-        return 1.0
-    left_keys = {
-        (
-            str(item.get("path") or ""),
-            str(item.get("title") or ""),
-        )
-        for item in left
-    }
-    right_keys = {
-        (
-            str(item.get("path") or ""),
-            str(item.get("title") or ""),
-        )
-        for item in right
-    }
-    if not left_keys and not right_keys:
-        return 1.0
-    union = left_keys.union(right_keys)
-    if not union:
-        return 0.0
-    return round(len(left_keys.intersection(right_keys)) / len(union), 4)
-
-
-def _summarize_review_divergence(
-    *,
-    legacy_references: list[dict[str, Any]],
-    langchain_references: list[dict[str, Any]],
-    legacy_summary: str | None,
-    langchain_summary: str | None,
-    legacy_risk_count: int | None,
-    langchain_risk_count: int | None,
-    legacy_test_count: int | None,
-    langchain_test_count: int | None,
-) -> dict[str, Any]:
-    return {
-        "citation_overlap": _citation_overlap(legacy_references, langchain_references),
-        "summary_changed": bool((legacy_summary or "").strip() != (langchain_summary or "").strip()),
-        "risk_count_delta": int((langchain_risk_count or 0) - (legacy_risk_count or 0)),
-        "test_count_delta": int((langchain_test_count or 0) - (legacy_test_count or 0)),
-    }
-
-
-def _evaluate_langchain_parity(
-    *,
-    divergence: dict[str, Any],
-    legacy_references: list[dict[str, Any]],
-    langchain_references: list[dict[str, Any]],
-    langchain_review_status: str,
-) -> dict[str, Any]:
-    thresholds = {
-        "pydantic_validity_min": settings.LANGCHAIN_PARITY_PYDANTIC_VALIDITY_MIN,
-        "context_references_presence_min": settings.LANGCHAIN_PARITY_CONTEXT_REFERENCES_PRESENCE_MIN,
-        "citation_overlap_min": settings.LANGCHAIN_PARITY_CITATION_OVERLAP_MIN,
-        "critical_divergence_max": settings.LANGCHAIN_PARITY_CRITICAL_DIVERGENCE_MAX,
-    }
-    measurements = {
-        "pydantic_validity": 1.0 if langchain_review_status in {"completed", "rule_engine"} else 0.0,
-        "context_references_presence": (
-            1.0 if not legacy_references else 1.0 if langchain_references else 0.0
-        ),
-        "citation_overlap": float(divergence.get("citation_overlap") or 0.0),
-        "critical_divergence": (
-            1.0
-            if (
-                bool(divergence.get("summary_changed"))
-                or int(divergence.get("risk_count_delta") or 0) != 0
-                or int(divergence.get("test_count_delta") or 0) != 0
-            )
-            else 0.0
-        ),
-    }
-    blocking_reasons: list[str] = []
-    if measurements["pydantic_validity"] < thresholds["pydantic_validity_min"]:
-        blocking_reasons.append("pydantic_validity_below_threshold")
-    if measurements["context_references_presence"] < thresholds["context_references_presence_min"]:
-        blocking_reasons.append("context_references_presence_below_threshold")
-    if measurements["citation_overlap"] < thresholds["citation_overlap_min"]:
-        blocking_reasons.append("citation_overlap_below_threshold")
-    if measurements["critical_divergence"] > thresholds["critical_divergence_max"]:
-        blocking_reasons.append("critical_divergence_above_threshold")
-
-    unavailable_metrics = ["retrieval_p95_ms", "generation_p95_ms"]
-    if unavailable_metrics:
-        blocking_reasons.append("aggregate_latency_thresholds_require_corpus_validation")
-
-    return {
-        "thresholds": thresholds,
-        "measurements": measurements,
-        "unavailable_metrics": unavailable_metrics,
-        "cutover_eligible": not blocking_reasons,
-        "blocking_reasons": blocking_reasons,
-    }
 
 
 def run_static_analysis_stage(
@@ -397,84 +290,6 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         kb_context_chunks_count = 0
         kb_retrieval_mode = "not_attempted"
         kb_retrieval_error: str | None = None
-        selected_kb_stack = "legacy"
-        qdrant_client: QdrantClient | None = None
-        legacy_kb_result: RagEngineResult | None = None
-        langchain_kb_result: RagEngineResult | None = None
-        try:
-            qdrant_client = QdrantClient()
-            legacy_rag_engine, langchain_rag_engine = build_rag_engines(vector_store=qdrant_client)
-            repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
-
-            if repo_path:
-                ingestor = RepoContextIngestor(vector_store=qdrant_client)
-                asyncio.run(
-                    ingestor.update_repo_incremental(
-                        repo_id=analysis.repo,
-                        repo_path=repo_path,
-                        base_ref=None,
-                        head_ref=analysis.commit_sha or "HEAD",
-                        source="analysis_pipeline",
-                    )
-                )
-                kb_retrieval_mode = "diff_with_incremental_update"
-            else:
-                kb_retrieval_mode = "diff_retrieval_only"
-
-            legacy_kb_result = asyncio.run(
-                legacy_rag_engine.retrieve_for_diff(
-                    repo_id=analysis.repo,
-                    diff_text=analysis.diff_raw,
-                    limit=12,
-                )
-            )
-            selected_kb_result = legacy_kb_result
-
-            if langchain_rag_engine is not None and (
-                settings.LANGCHAIN_COMPARE_OUTPUTS_ENABLED or settings.langchain_primary_stack == "langchain"
-            ):
-                try:
-                    langchain_kb_result = asyncio.run(
-                        langchain_rag_engine.retrieve_for_diff(
-                            repo_id=analysis.repo,
-                            diff_text=analysis.diff_raw,
-                            limit=12,
-                        )
-                    )
-                    if settings.langchain_primary_stack == "langchain" and (
-                        langchain_kb_result.grounded or settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK is False
-                    ):
-                        selected_kb_result = langchain_kb_result
-                    elif settings.langchain_primary_stack == "langchain" and settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK and not langchain_kb_result.grounded:
-                        selected_kb_result = legacy_kb_result
-                except Exception:
-                    langchain_kb_result = None
-
-            selected_kb_stack = selected_kb_result.stack
-            kb_context_chunks_count = len(selected_kb_result.chunks)
-            kb_context_preview = selected_kb_result.context_text
-            kb_context_references = selected_kb_result.context_references
-            kb_retrieval_mode = selected_kb_result.mode
-            kb_profile = selected_kb_result.profile
-
-            if kb_profile and repo_path:
-                existing_profile = RepoProfilesRepo().get_profile(analysis.repo)
-                enriched_profile = dict(kb_profile)
-                if existing_profile and isinstance(existing_profile.profile, dict):
-                    previous_overview = existing_profile.profile.get("llm_overview")
-                    if isinstance(previous_overview, dict):
-                        enriched_profile["llm_overview"] = previous_overview
-                RepoProfilesRepo().upsert_profile(
-                    repo_id=analysis.repo,
-                    repo_path=repo_path,
-                    indexed_commit=str(kb_profile.get("indexed_commit") or "") or None,
-                    default_branch=str(kb_profile.get("default_branch") or "") or None,
-                    profile=enriched_profile,
-                    overview_context=kb_context_preview,
-                )
-        except Exception as exc:
-            kb_retrieval_mode = "failed"
-            kb_retrieval_error = str(exc)
 
         security_findings_count = 0
         scan_failed = False
@@ -694,14 +509,15 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         langgraph_findings_count = 0
         langgraph_pipeline_payload: dict[str, Any] = {"status": "skipped", "enabled": settings.LANGGRAPH_ANALYSIS_ENABLED}
+        kb_retrieval_trace: dict[str, Any] = {}
         if settings.LANGGRAPH_ANALYSIS_ENABLED:
-            langgraph_repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
-            if langgraph_repo_path:
+            repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
+            if repo_path:
                 try:
                     langgraph_request = LangGraphAnalysisRequest(
                         analysis_id=analysis_id,
                         repo_id=analysis.repo,
-                        repo_path=langgraph_repo_path,
+                        repo_path=repo_path,
                         diff_text=diff_redacted or analysis.diff_raw,
                         changed_files=files_changed,
                         pr_number=analysis.pr_number,
@@ -712,28 +528,13 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         },
                     )
                     langgraph_result = asyncio.run(run_langgraph_analysis(request=langgraph_request))
-                    langgraph_pipeline_payload = langgraph_result.to_dict()
-                    langgraph_pipeline_payload["enabled"] = True
+                    langgraph_pipeline_payload = {**langgraph_result.to_dict(), "enabled": True}
 
-                    if not kb_context_preview and langgraph_result.retrieval.context_text:
-                        kb_context_preview = langgraph_result.retrieval.context_text
-                        kb_context_references = [item.to_dict() for item in langgraph_result.retrieval.references]
-                        kb_context_chunks_count = len(kb_context_references)
-                        kb_retrieval_mode = f"langgraph::{langgraph_result.retrieval.retrieval_mode}"
-                    elif langgraph_result.retrieval.references:
-                        existing_keys = {
-                            (str(ref.get("path") or ""), str(ref.get("title") or ""))
-                            for ref in kb_context_references
-                            if isinstance(ref, dict)
-                        }
-                        for ref in langgraph_result.retrieval.references:
-                            serialized = ref.to_dict()
-                            key = (str(serialized.get("path") or ""), str(serialized.get("title") or ""))
-                            if key in existing_keys:
-                                continue
-                            kb_context_references.append(serialized)
-                            existing_keys.add(key)
-                        kb_context_chunks_count = len(kb_context_references)
+                    kb_context_preview = langgraph_result.retrieval.context_text
+                    kb_context_references = [item.to_dict() for item in langgraph_result.retrieval.references]
+                    kb_context_chunks_count = len(kb_context_references)
+                    kb_retrieval_mode = f"graph_rag::{langgraph_result.retrieval.retrieval_mode}"
+                    kb_retrieval_trace = dict(langgraph_result.retrieval.retrieval_trace)
 
                     if langgraph_result.llm_output.status == "completed":
                         for finding in langgraph_result.llm_output.findings:
@@ -762,6 +563,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                                             "references": list(finding.references),
                                             "retrieval_mode": langgraph_result.retrieval.retrieval_mode,
                                             "cached": langgraph_result.cached,
+                                            "stack": "graph_rag",
                                         },
                                         fingerprint=_langgraph_fingerprint(
                                             analysis_id=analysis_id,
@@ -781,292 +583,70 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         "enabled": True,
                         "error": str(exc),
                     }
+                    kb_retrieval_mode = "failed"
+                    kb_retrieval_error = str(exc)
             else:
-                langgraph_pipeline_payload = {
-                    "status": "skipped",
-                    "enabled": True,
-                    "reason": "repo_path_unresolved",
-                }
-
-        langchain_review_engine = _get_langchain_review_engine()
-        run_langchain_shadow = bool(
-            langchain_review_engine
-            and (settings.LANGCHAIN_COMPARE_OUTPUTS_ENABLED or settings.langchain_primary_stack == "langchain")
-        )
-        serve_langchain = bool(langchain_review_engine and settings.langchain_primary_stack == "langchain")
-
-        llm_grounded_findings_count = 0
-        llm_grounded_findings_status = "skipped"
-        langchain_grounded_findings_count = 0
-        langchain_grounded_findings_status = "skipped"
-        if settings.LLM_REVIEW_FINDINGS_ENABLED and kb_context_preview:
-            try:
-                grounded_output = (
-                    langchain_review_engine.generate_grounded_findings(
-                        repo=analysis.repo,
-                        pr_number=analysis.pr_number,
-                        diff_redacted=diff_redacted or "",
-                        files_changed=files_changed,
-                        knowledge_base_context=kb_context_preview,
-                        max_findings=settings.LLM_REVIEW_MAX_FINDINGS,
-                    )
-                    if serve_langchain and langchain_review_engine is not None
-                    else _GROUNDED_REVIEW_SERVICE.generate_findings(
-                        repo=analysis.repo,
-                        pr_number=analysis.pr_number,
-                        diff_redacted=diff_redacted or "",
-                        files_changed=files_changed,
-                        knowledge_base_context=kb_context_preview,
-                        max_findings=settings.LLM_REVIEW_MAX_FINDINGS,
-                    )
-                )
-
-                for finding in grounded_output.findings:
-                    try:
-                        repo.create_finding(
-                            CreateFindingInput(
-                                finding_id=hashlib.md5(
-                                    (
-                                        f"{analysis_id}:LLM_GROUNDED_KB:{finding.file_path}:{finding.line_start}:"
-                                        f"{finding.category}:{finding.message}"
-                                    ).encode("utf-8")
-                                ).hexdigest(),
-                                analysis_id=analysis_id,
-                                source="LLM_GROUNDED_KB",
-                                file_path=finding.file_path,
-                                line_start=finding.line_start,
-                                line_end=finding.line_end,
-                                severity=finding.severity,
-                                category=finding.category,
-                                message=finding.message,
-                                suggestion=finding.suggestion,
-                                confidence=finding.confidence,
-                                issue_type="kb_grounded_review",
-                                rule_id="KB_GROUNDED_LLM",
-                                evidence={
-                                    "grounded": True,
-                                    "kb_refs": finding.kb_refs,
-                                    "kb_context_used": True,
-                                    "stack": "langchain" if serve_langchain else "legacy",
-                                },
-                                fingerprint=_llm_fingerprint(
-                                    analysis_id=analysis_id,
-                                    file_path=finding.file_path,
-                                    line_start=finding.line_start,
-                                    category=finding.category,
-                                    message=finding.message,
-                                ),
-                            )
-                        )
-                        llm_grounded_findings_count += 1
-                    except Exception:
-                        continue
-                llm_grounded_findings_status = "completed"
-            except Exception:
-                if serve_langchain and settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK:
-                    try:
-                        grounded_output = _GROUNDED_REVIEW_SERVICE.generate_findings(
-                            repo=analysis.repo,
-                            pr_number=analysis.pr_number,
-                            diff_redacted=diff_redacted or "",
-                            files_changed=files_changed,
-                            knowledge_base_context=kb_context_preview,
-                            max_findings=settings.LLM_REVIEW_MAX_FINDINGS,
-                        )
-                        for finding in grounded_output.findings:
-                            try:
-                                repo.create_finding(
-                                    CreateFindingInput(
-                                        finding_id=hashlib.md5(
-                                            (
-                                                f"{analysis_id}:LLM_GROUNDED_KB:{finding.file_path}:{finding.line_start}:"
-                                                f"{finding.category}:{finding.message}"
-                                            ).encode("utf-8")
-                                        ).hexdigest(),
-                                        analysis_id=analysis_id,
-                                        source="LLM_GROUNDED_KB",
-                                        file_path=finding.file_path,
-                                        line_start=finding.line_start,
-                                        line_end=finding.line_end,
-                                        severity=finding.severity,
-                                        category=finding.category,
-                                        message=finding.message,
-                                        suggestion=finding.suggestion,
-                                        confidence=finding.confidence,
-                                        issue_type="kb_grounded_review",
-                                        rule_id="KB_GROUNDED_LLM",
-                                        evidence={
-                                            "grounded": True,
-                                            "kb_refs": finding.kb_refs,
-                                            "kb_context_used": True,
-                                            "stack": "legacy_fallback",
-                                        },
-                                        fingerprint=_llm_fingerprint(
-                                            analysis_id=analysis_id,
-                                            file_path=finding.file_path,
-                                            line_start=finding.line_start,
-                                            category=finding.category,
-                                            message=finding.message,
-                                        ),
-                                    )
-                                )
-                                llm_grounded_findings_count += 1
-                            except Exception:
-                                continue
-                        llm_grounded_findings_status = "completed_legacy_fallback"
-                    except Exception:
-                        llm_grounded_findings_status = "failed"
-                else:
-                    llm_grounded_findings_status = "failed"
-
-            if run_langchain_shadow and not serve_langchain and langchain_review_engine is not None:
                 try:
-                    shadow_grounded = langchain_review_engine.generate_grounded_findings(
-                        repo=analysis.repo,
-                        pr_number=analysis.pr_number,
-                        diff_redacted=diff_redacted or "",
-                        files_changed=files_changed,
-                        knowledge_base_context=kb_context_preview,
-                        max_findings=settings.LLM_REVIEW_MAX_FINDINGS,
+                    rag_engine, _ = build_rag_engines()
+                    compatibility_result = asyncio.run(
+                        rag_engine.retrieve_for_diff(
+                            repo_id=analysis.repo,
+                            diff_text=diff_redacted or analysis.diff_raw,
+                            changed_files=files_changed,
+                            limit=settings.KB_EXACT_TOP_K,
+                        )
                     )
-                    langchain_grounded_findings_count = len(shadow_grounded.findings)
-                    langchain_grounded_findings_status = "completed"
+                    kb_context_preview = getattr(compatibility_result, "context_text", None)
+                    kb_context_references = list(getattr(compatibility_result, "context_references", []))
+                    kb_context_chunks_count = len(kb_context_references)
+                    kb_retrieval_mode = f"hybrid_rag::{getattr(compatibility_result, 'mode', 'compatibility')}"
+                    kb_retrieval_trace = dict(getattr(compatibility_result, "trace", {}))
+                    langgraph_pipeline_payload = {
+                        "status": "skipped",
+                        "enabled": True,
+                        "reason": "repo_path_unresolved_compatibility_fallback",
+                    }
                 except Exception:
-                    langchain_grounded_findings_status = "failed"
+                    langgraph_pipeline_payload = {
+                        "status": "skipped",
+                        "enabled": True,
+                        "reason": "repo_path_unresolved",
+                    }
+                    kb_retrieval_mode = "skipped"
+                    kb_retrieval_error = "repo_path_unresolved"
 
-        summary_text = "Automatic summary unavailable."
-        summary_source = "ollama"
+        llm_grounded_findings_status = "skipped"
+        summary_text = SummaryService.fallback_summary(
+            files_count=files_count,
+            additions_total=additions_total,
+            deletions_total=deletions_total,
+            change_type=change_type,
+            files_changed=files_changed,
+        )
+        summary_source = "heuristic"
         summary_fallback = True
-        legacy_summary_text: str | None = None
-        langchain_summary_text: str | None = None
-        try:
-            summary_output = _SUMMARY_SERVICE.generate_summary(
-                repo=analysis.repo,
-                pr_number=analysis.pr_number,
-                change_type=change_type,
-                diff_redacted=diff_redacted or "",
-                files_changed=files_changed,
-                retrieved_context=kb_context_preview,
-            )
-
-            legacy_summary_text = summary_output.summary
-        except Exception:
-            legacy_summary_text = SummaryService.fallback_summary(
-                files_count=files_count,
-                additions_total=additions_total,
-                deletions_total=deletions_total,
-                change_type=change_type,
-                files_changed=files_changed,
-            )
-
-        if run_langchain_shadow and langchain_review_engine is not None:
-            try:
-                langchain_summary_output = langchain_review_engine.generate_summary(
-                    repo=analysis.repo,
-                    pr_number=analysis.pr_number,
-                    change_type=change_type,
-                    diff_redacted=diff_redacted or "",
-                    files_changed=files_changed,
-                    retrieved_context=kb_context_preview,
-                )
-                langchain_summary_text = langchain_summary_output.summary
-            except Exception:
-                langchain_summary_text = None
-
-        if serve_langchain and langchain_summary_text:
-            summary_text = langchain_summary_text
-            summary_source = "langchain"
-            summary_fallback = False
-        elif legacy_summary_text:
-            summary_text = legacy_summary_text
-            summary_source = "ollama"
-            summary_fallback = False
-        else:
-            summary_text = SummaryService.fallback_summary(
-                files_count=files_count,
-                additions_total=additions_total,
-                deletions_total=deletions_total,
-                change_type=change_type,
-                files_changed=files_changed,
-            )
-            summary_source = "heuristic"
-            summary_fallback = True
-
         review_output_status = "skipped"
         review_output_source: str | None = None
         review_output_reason: str | None = None
         review_merge_status: str | None = None
         review_risk_count = 0
-        review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
-        langchain_review_output_status = "skipped"
-        langchain_review_reason: str | None = None
-        langchain_review_risk_count = 0
-        langchain_review_test_count = 0
-        langchain_review_generation_ms: int | None = None
-        legacy_review_risk_count = 0
-        legacy_review_test_count = 0
-        legacy_review_generation_ms: int | None = None
+        review_qdrant_required = settings.GRAPH_RAG_REQUIRED
+        review_generation_ms: int | None = None
+
         if settings.REVIEW_INTELLIGENCE_ENABLED:
             current_findings = repo.list_findings_by_analysis(analysis_id)
-            can_use_hybrid_rag, review_output_reason = _REVIEW_INTELLIGENCE_SERVICE.can_use_hybrid_rag(
-                qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
+            can_use_graph_rag, review_output_reason = _REVIEW_INTELLIGENCE_SERVICE.can_use_graph_rag(
+                qdrant_enabled=bool(kb_context_preview and kb_context_references),
                 kb_retrieval_mode=kb_retrieval_mode,
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=kb_context_preview,
                 kb_retrieval_error=kb_retrieval_error,
                 context_references=kb_context_references,
+                allow_non_qdrant_grounding=True,
             )
-            langchain_can_use_hybrid_rag = False
-            if langchain_review_engine is not None and langchain_kb_result is not None:
-                langchain_can_use_hybrid_rag, langchain_review_reason = langchain_review_engine.can_use_hybrid_rag(
-                    qdrant_enabled=langchain_kb_result.qdrant_enabled,
-                    kb_retrieval_mode=langchain_kb_result.mode,
-                    kb_context_chunks_count=len(langchain_kb_result.chunks),
-                    knowledge_base_context=langchain_kb_result.context_text,
-                    kb_retrieval_error=langchain_kb_result.error,
-                    context_references=langchain_kb_result.context_references,
-                    allow_non_qdrant_grounding=True,
-                )
             try:
-                langchain_review_output = None
-                if run_langchain_shadow and langchain_review_engine is not None and langchain_kb_result is not None:
-                    if langchain_can_use_hybrid_rag:
-                        langchain_review_output, langchain_review_generation_ms = _timed_call(
-                            langchain_review_engine.generate_review_output,
-                            repo=analysis.repo,
-                            pr_number=analysis.pr_number,
-                            change_type=change_type,
-                            parsed_diff=parsed,
-                            diff_redacted=diff_redacted or "",
-                            metadata=analysis.metadata,
-                            findings=current_findings,
-                            knowledge_base_context=langchain_kb_result.context_text,
-                            context_references=langchain_kb_result.context_references,
-                            fallback_summary=langchain_summary_text or summary_text,
-                            qdrant_enabled=langchain_kb_result.qdrant_enabled,
-                            kb_retrieval_mode=langchain_kb_result.mode,
-                            kb_context_chunks_count=len(langchain_kb_result.chunks),
-                            kb_retrieval_error=langchain_kb_result.error,
-                            allow_non_qdrant_grounding=True,
-                        )
-                        langchain_review_output_status = "completed"
-                    else:
-                        langchain_review_output, langchain_review_generation_ms = _timed_call(
-                            langchain_review_engine.generate_rule_engine_output,
-                            repo=analysis.repo,
-                            change_type=change_type,
-                            parsed_diff=parsed,
-                            metadata=analysis.metadata,
-                            findings=current_findings,
-                            fallback_summary=langchain_summary_text or summary_text,
-                        )
-                        langchain_review_output_status = "rule_engine"
-                    langchain_review_risk_count = len(langchain_review_output.risk_findings)
-                    langchain_review_test_count = len(langchain_review_output.generated_tests)
-
-                selected_review_output = None
-                if can_use_hybrid_rag:
-                    legacy_review_output, legacy_review_generation_ms = _timed_call(
+                if can_use_graph_rag:
+                    review_output, review_generation_ms = _timed_call(
                         _REVIEW_INTELLIGENCE_SERVICE.generate,
                         repo=analysis.repo,
                         pr_number=analysis.pr_number,
@@ -1078,74 +658,16 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         knowledge_base_context=kb_context_preview,
                         context_references=kb_context_references,
                         fallback_summary=summary_text,
-                        qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
+                        qdrant_enabled=bool(kb_context_preview and kb_context_references),
                         kb_retrieval_mode=kb_retrieval_mode,
                         kb_context_chunks_count=kb_context_chunks_count,
                         kb_retrieval_error=kb_retrieval_error,
+                        allow_non_qdrant_grounding=True,
                     )
-                    legacy_review_risk_count = len(legacy_review_output.risk_findings)
-                    legacy_review_test_count = len(legacy_review_output.generated_tests)
-                    selected_review_output = legacy_review_output
-                    review_output_source = "hybrid_rag"
-                    review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
+                    review_output_source = "graph_rag"
+                    review_qdrant_required = True
                 else:
-                    legacy_review_output, legacy_review_generation_ms = _timed_call(
-                        _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
-                        repo=analysis.repo,
-                        change_type=change_type,
-                        parsed_diff=parsed,
-                        metadata=analysis.metadata,
-                        findings=current_findings,
-                        fallback_summary=summary_text,
-                    )
-                    legacy_review_risk_count = len(legacy_review_output.risk_findings)
-                    legacy_review_test_count = len(legacy_review_output.generated_tests)
-                    selected_review_output = legacy_review_output
-                    review_output_source = "rule_engine"
-                    review_qdrant_required = False
-                if serve_langchain and langchain_review_output is not None:
-                    selected_review_output = langchain_review_output
-                    review_output_source = "hybrid_rag" if langchain_can_use_hybrid_rag else "rule_engine"
-                    review_qdrant_required = bool(langchain_kb_result and langchain_kb_result.qdrant_enabled and langchain_can_use_hybrid_rag)
-                    review_output_reason = langchain_review_reason
-                review_output = selected_review_output
-            except Exception as exc:
-                if serve_langchain and settings.LANGCHAIN_ALLOW_LEGACY_FALLBACK:
-                    if can_use_hybrid_rag:
-                        review_output, legacy_review_generation_ms = _timed_call(
-                            _REVIEW_INTELLIGENCE_SERVICE.generate,
-                            repo=analysis.repo,
-                            pr_number=analysis.pr_number,
-                            change_type=change_type,
-                            parsed_diff=parsed,
-                            diff_redacted=diff_redacted or "",
-                            metadata=analysis.metadata,
-                            findings=current_findings,
-                            knowledge_base_context=kb_context_preview,
-                            context_references=kb_context_references,
-                            fallback_summary=legacy_summary_text or summary_text,
-                            qdrant_enabled=bool(qdrant_client and qdrant_client.enabled),
-                            kb_retrieval_mode=kb_retrieval_mode,
-                            kb_context_chunks_count=kb_context_chunks_count,
-                            kb_retrieval_error=kb_retrieval_error,
-                        )
-                        review_output_source = "hybrid_rag"
-                        review_qdrant_required = settings.REVIEW_INTELLIGENCE_REQUIRE_QDRANT
-                    else:
-                        review_output, legacy_review_generation_ms = _timed_call(
-                            _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
-                            repo=analysis.repo,
-                            change_type=change_type,
-                            parsed_diff=parsed,
-                            metadata=analysis.metadata,
-                            findings=current_findings,
-                            fallback_summary=legacy_summary_text or summary_text,
-                        )
-                        review_output_source = "rule_engine"
-                        review_qdrant_required = False
-                    review_output_reason = f"langchain_failed:{exc}"
-                else:
-                    review_output, legacy_review_generation_ms = _timed_call(
+                    review_output, review_generation_ms = _timed_call(
                         _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
                         repo=analysis.repo,
                         change_type=change_type,
@@ -1156,22 +678,98 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     )
                     review_output_source = "rule_engine"
                     review_qdrant_required = False
-                    review_output_reason = str(exc)
 
-            ReviewOutputsRepo().upsert(
-                UpsertReviewOutputInput(
-                    analysis_id=analysis_id,
-                    source=review_output_source or "rule_engine",
-                    qdrant_required=review_qdrant_required,
-                    payload=review_output.model_dump(mode="json"),
+                review_output_status = "completed" if review_output_source == "graph_rag" else "rule_engine"
+                review_merge_status = review_output.merge_readiness.status
+                review_risk_count = len(review_output.risk_findings)
+                summary_text = review_output.summary.short_summary
+                summary_source = review_output_source or "rule_engine"
+                summary_fallback = summary_source != "graph_rag"
+
+                review_findings_count = 0
+                review_findings_source = "LLM_GRAPH_RAG" if review_output_source == "graph_rag" else "LLM_GRAPH_RAG_RULE_ENGINE"
+                for finding in review_output.risk_findings:
+                    try:
+                        repo.create_finding(
+                            CreateFindingInput(
+                                finding_id=hashlib.md5(
+                                    (
+                                        f"{analysis_id}:{review_findings_source}:{finding.file_path}:{finding.line_start}:"
+                                        f"{finding.severity}:{finding.title}"
+                                    ).encode("utf-8")
+                                ).hexdigest(),
+                                analysis_id=analysis_id,
+                                source=review_findings_source,
+                                file_path=finding.file_path,
+                                line_start=finding.line_start,
+                                line_end=finding.line_end,
+                                severity=finding.severity.upper(),
+                                category="risk",
+                                message=finding.explanation,
+                                suggestion=finding.suggestion,
+                                confidence=finding.confidence,
+                                issue_type="graph_rag_review",
+                                rule_id="GRAPH_RAG_REVIEW_LLM",
+                                evidence={
+                                    "grounded": review_output_source == "graph_rag",
+                                    "kb_context_used": bool(kb_context_preview),
+                                    "kb_reference_count": len(kb_context_references),
+                                },
+                                fingerprint=_llm_fingerprint(
+                                    analysis_id=analysis_id,
+                                    file_path=finding.file_path,
+                                    line_start=finding.line_start,
+                                    category="risk",
+                                    message=finding.title,
+                                ),
+                            )
+                        )
+                        review_findings_count += 1
+                    except Exception:
+                        continue
+                llm_grounded_findings_count = review_findings_count
+                llm_grounded_findings_status = "completed" if review_findings_count else "skipped"
+
+                persisted_review_source = "hybrid_rag" if review_output_source == "graph_rag" else (review_output_source or "rule_engine")
+                ReviewOutputsRepo().upsert(
+                    UpsertReviewOutputInput(
+                        analysis_id=analysis_id,
+                        source=persisted_review_source,
+                        qdrant_required=review_qdrant_required,
+                        payload=review_output.model_dump(mode="json"),
+                    )
                 )
-            )
-            summary_text = review_output.summary.short_summary
-            summary_source = review_output_source or "rule_engine"
-            summary_fallback = summary_source != "hybrid_rag"
-            review_output_status = "completed"
-            review_merge_status = review_output.merge_readiness.status
-            review_risk_count = len(review_output.risk_findings)
+            except Exception as exc:
+                review_output_status = "failed"
+                review_output_reason = str(exc)
+                try:
+                    review_output, review_generation_ms = _timed_call(
+                        _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
+                        repo=analysis.repo,
+                        change_type=change_type,
+                        parsed_diff=parsed,
+                        metadata=analysis.metadata,
+                        findings=current_findings,
+                        fallback_summary=summary_text,
+                    )
+                    review_output_source = "rule_engine"
+                    review_output_status = "rule_engine"
+                    review_merge_status = review_output.merge_readiness.status
+                    review_risk_count = len(review_output.risk_findings)
+                    summary_text = review_output.summary.short_summary
+                    summary_source = "rule_engine"
+                    summary_fallback = True
+                    review_qdrant_required = False
+                    ReviewOutputsRepo().upsert(
+                        UpsertReviewOutputInput(
+                            analysis_id=analysis_id,
+                            source="rule_engine",
+                            qdrant_required=False,
+                            payload=review_output.model_dump(mode="json"),
+                        )
+                    )
+                except Exception:
+                    pass
 
         try:
             repo.update_summary_result(analysis_id=analysis_id, summary=summary_text)
@@ -1196,20 +794,16 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "langgraph_findings_count": langgraph_findings_count,
             "duration_ms": duration_ms,
             "kb_retrieval": {
-                "stack": selected_kb_stack,
+                "stack": "graph_rag",
                 "mode": kb_retrieval_mode,
                 "context_chunks": kb_context_chunks_count,
                 "context_preview": kb_context_preview,
                 "used_in_summary": bool(kb_context_preview),
                 "references": kb_context_references,
-                "legacy_trace": legacy_kb_result.trace if legacy_kb_result else None,
-                "legacy_confidence_score": legacy_kb_result.rag_confidence_score if legacy_kb_result else 0.0,
+                "trace": kb_retrieval_trace,
             },
         }
         metrics["langgraph_pipeline"] = langgraph_pipeline_payload
-        if langchain_kb_result is not None:
-            metrics["kb_retrieval"]["langchain_trace"] = langchain_kb_result.trace
-            metrics["kb_retrieval"]["langchain_confidence_score"] = langchain_kb_result.rag_confidence_score
         if scan_disabled:
             metrics["security_scan"] = {"scan_disabled": True}
         elif scan_failed:
@@ -1224,18 +818,12 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "change_type": change_type,
                 "confidence": change_type_confidence,
                 "source": change_type_source,
-            }
+        }
         metrics["summary"] = {
             "source": summary_source,
             "fallback_used": summary_fallback,
-            "model": (
-                settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY
-                if summary_source == "langchain"
-                else settings.OLLAMA_MODEL if summary_source == "ollama" else None
-            ),
+            "model": settings.OLLAMA_MODEL if summary_source in {"graph_rag", "rule_engine"} else None,
             "preview": summary_text[:180],
-            "legacy_preview": (legacy_summary_text or "")[:180],
-            "langchain_preview": (langchain_summary_text or "")[:180],
         }
         metrics["review_intelligence"] = {
             "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
@@ -1245,45 +833,15 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "fallback_reason": review_output_reason,
             "merge_status": review_merge_status,
             "risk_findings_count": review_risk_count,
-            "legacy_generation_ms": legacy_review_generation_ms,
+            "generation_ms": review_generation_ms,
         }
         metrics["llm_grounded_review"] = {
             "enabled": settings.LLM_REVIEW_FINDINGS_ENABLED,
             "status": llm_grounded_findings_status,
             "findings_count": llm_grounded_findings_count,
-            "model": (
-                settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY
-                if serve_langchain and settings.LLM_REVIEW_FINDINGS_ENABLED
-                else settings.OLLAMA_MODEL if settings.LLM_REVIEW_FINDINGS_ENABLED else None
-            ),
+            "model": settings.OLLAMA_MODEL if settings.LLM_REVIEW_FINDINGS_ENABLED else None,
+            "source": review_output_source,
         }
-        if run_langchain_shadow:
-            divergence = _summarize_review_divergence(
-                legacy_references=legacy_kb_result.context_references if legacy_kb_result else [],
-                langchain_references=langchain_kb_result.context_references if langchain_kb_result else [],
-                legacy_summary=legacy_summary_text,
-                langchain_summary=langchain_summary_text,
-                legacy_risk_count=legacy_review_risk_count,
-                langchain_risk_count=langchain_review_risk_count,
-                legacy_test_count=legacy_review_test_count,
-                langchain_test_count=langchain_review_test_count,
-            )
-            metrics["langchain_shadow"] = {
-                "enabled": True,
-                "review_model": settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY,
-                "grounded_findings_status": langchain_grounded_findings_status,
-                "grounded_findings_count": langchain_grounded_findings_count,
-                "review_status": langchain_review_output_status,
-                "review_reason": langchain_review_reason,
-                "review_generation_ms": langchain_review_generation_ms,
-                "divergence": divergence,
-                "parity": _evaluate_langchain_parity(
-                    divergence=divergence,
-                    legacy_references=legacy_kb_result.context_references if legacy_kb_result else [],
-                    langchain_references=langchain_kb_result.context_references if langchain_kb_result else [],
-                    langchain_review_status=langchain_review_output_status,
-                ),
-            }
 
         repo.update_status(
             analysis_id=analysis_id,

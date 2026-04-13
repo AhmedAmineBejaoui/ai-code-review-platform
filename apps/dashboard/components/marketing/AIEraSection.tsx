@@ -22,8 +22,8 @@ const features = [
     icon: ShieldCheck,
     title: "Stop vulnerabilities early",
     description: "Security checks from the first line of code to the final merge.",
-    gradient: "from-[#3B82F6] to-[#60A5FA]",
-    glowColor: "rgba(59, 130, 246, 0.15)",
+    gradient: "from-[#E8713A] to-[#17F0C4]",
+    glowColor: "rgba(232, 113, 58, 0.15)",
   },
 ]
 

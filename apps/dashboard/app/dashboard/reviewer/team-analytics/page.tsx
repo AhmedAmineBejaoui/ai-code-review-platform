@@ -119,7 +119,7 @@ export default function TeamAnalyticsPage() {
               <Shield className="h-12 w-12 text-yellow-500 mx-auto" />
               <div>
                 <h3 className="font-semibold text-lg">Access Restricted</h3>
-                <p className="text-sm text-gray-600 mt-2">
+                <p className="text-sm text-muted-foreground mt-2">
                   Team analytics are only available to Lead Reviewers.
                 </p>
               </div>
@@ -177,10 +177,10 @@ export default function TeamAnalyticsPage() {
         <Card className="w-full max-w-md">
           <CardContent className="pt-6">
             <div className="text-center space-y-4">
-              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto" />
+              <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
               <div>
                 <h3 className="font-semibold text-lg">Error Loading Team Metrics</h3>
-                <p className="text-sm text-gray-600 mt-2">{error}</p>
+                <p className="text-sm text-muted-foreground mt-2">{error}</p>
               </div>
               <Button onClick={fetchTeamMetrics} variant="outline">
                 Try Again
@@ -199,7 +199,7 @@ export default function TeamAnalyticsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold">Team Analytics</h1>
+          <h1 className="card-heading text-foreground">Team Analytics</h1>
           <p className="text-muted-foreground mt-1">
             Team performance overview for the last {teamMetrics.period.days} days
           </p>
@@ -234,8 +234,8 @@ export default function TeamAnalyticsPage() {
                   {teamMetrics.team_overview.reviewer_count}
                 </p>
               </div>
-              <div className="h-12 w-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center">
-                <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="h-12 w-12 bg-teal-500/15 rounded-full flex items-center justify-center">
+                <Users className="h-6 w-6 text-teal-400" />
               </div>
             </div>
           </CardContent>
@@ -253,8 +253,8 @@ export default function TeamAnalyticsPage() {
                   +{teamMetrics.team_overview.total_assigned - teamMetrics.team_overview.total_completed} pending
                 </p>
               </div>
-              <div className="h-12 w-12 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center">
-                <CheckCircle className="h-6 w-6 text-green-600 dark:text-green-400" />
+              <div className="h-12 w-12 bg-[color:var(--green-status)]/15 rounded-full flex items-center justify-center">
+                <CheckCircle className="h-6 w-6 text-[color:var(--green-status)]" />
               </div>
             </div>
           </CardContent>
@@ -308,7 +308,7 @@ export default function TeamAnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
+                  <BarChart3 className="h-5 w-5 mr-2 text-[color:var(--green-status)]" />
                   Review Decisions Distribution
                 </CardTitle>
               </CardHeader>
@@ -330,7 +330,7 @@ export default function TeamAnalyticsPage() {
             <Card>
               <CardHeader>
                 <CardTitle className="flex items-center">
-                  <Activity className="h-5 w-5 mr-2 text-blue-600" />
+                  <Activity className="h-5 w-5 mr-2 text-teal-400" />
                   Activity Summary
                 </CardTitle>
               </CardHeader>
@@ -338,7 +338,7 @@ export default function TeamAnalyticsPage() {
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <MessageCircle className="h-5 w-5 text-blue-600 mr-3" />
+                      <MessageCircle className="h-5 w-5 text-teal-400 mr-3" />
                       <span className="text-sm font-medium">Comments Created</span>
                     </div>
                     <span className="text-lg font-bold">{teamMetrics.team_overview.total_comments}</span>
@@ -346,7 +346,7 @@ export default function TeamAnalyticsPage() {
 
                   <div className="flex items-center justify-between">
                     <div className="flex items-center">
-                      <AlertTriangle className="h-5 w-5 text-yellow-600 mr-3" />
+                      <AlertTriangle className="h-5 w-5 text-[color:var(--orange)] mr-3" />
                       <span className="text-sm font-medium">Change Requests</span>
                     </div>
                     <span className="text-lg font-bold">{teamMetrics.team_overview.total_change_requests}</span>
@@ -362,7 +362,7 @@ export default function TeamAnalyticsPage() {
 
                   <div className="pt-4">
                     <div className="flex items-center justify-between mb-2">
-                      <span className="text-sm font-medium text-gray-600">SLA Compliance</span>
+                      <span className="text-sm font-medium text-muted-foreground">SLA Compliance</span>
                       <span className="text-sm font-bold">
                         {Math.round((teamMetrics.team_overview.team_sla_rate || 0) * 100)}%
                       </span>
@@ -373,7 +373,7 @@ export default function TeamAnalyticsPage() {
                       size={100}
                       color={
                         (teamMetrics.team_overview.team_sla_rate || 0) >= 0.95 ? "#10b981" :
-                        (teamMetrics.team_overview.team_sla_rate || 0) >= 0.90 ? "#3b82f6" : "#f59e0b"
+                        (teamMetrics.team_overview.team_sla_rate || 0) >= 0.90 ? "#e8713a" : "#f59e0b"
                       }
                     />
                   </div>
@@ -416,7 +416,7 @@ export default function TeamAnalyticsPage() {
                           {index < 3 ? (
                             <Crown className={`h-4 w-4 ${
                               index === 0 ? "text-yellow-500" :
-                              index === 1 ? "text-gray-400" : "text-orange-600"
+                              index === 1 ? "text-muted-foreground" : "text-orange-600"
                             }`} />
                           ) : (
                             <span className="text-sm font-bold text-muted-foreground">#{index + 1}</span>
@@ -468,13 +468,13 @@ export default function TeamAnalyticsPage() {
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="text-center p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                      <div className="text-2xl font-bold text-green-600 dark:text-green-400">
+                      <div className="text-2xl font-bold text-[color:var(--green-status)]">
                         {Math.round((teamMetrics.team_overview.team_sla_rate || 0) * 100)}%
                       </div>
                       <div className="text-sm text-muted-foreground">SLA Compliance</div>
                     </div>
-                    <div className="text-center p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-                      <div className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                    <div className="text-center p-4 bg-card-inner rounded-lg">
+                      <div className="text-2xl font-bold text-teal-400">
                         {formatMinutes(teamMetrics.team_overview.avg_team_response_time || 0)}
                       </div>
                       <div className="text-sm text-muted-foreground">Avg Response Time</div>
@@ -524,7 +524,7 @@ export default function TeamAnalyticsPage() {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
-                <Zap className="h-5 w-5 mr-2 text-yellow-600 dark:text-yellow-400" />
+                <Zap className="h-5 w-5 mr-2 text-[color:var(--orange)] dark:text-yellow-400" />
                 Workload Analysis
               </CardTitle>
             </CardHeader>

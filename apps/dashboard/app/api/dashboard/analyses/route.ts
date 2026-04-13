@@ -818,12 +818,18 @@ function firstNonEmpty(...values: Array<string | null | undefined>): string | un
 export const dynamic = "force-dynamic"
 
 export async function GET(request: NextRequest) {
-  const { userId, getToken, sessionClaims } = await auth()
+  try {
+    const { userId, getToken, sessionClaims } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const token = await getToken()
+  let token: string | null = null
+  try {
+    token = await getToken()
+  } catch (error) {
+    console.error("Failed to get Clerk token for analyses GET:", error)
+  }
   const role = resolveUserRole(null, sessionClaims)
   const email = extractEmailFromClaims(sessionClaims)
   const size = normalizeDashboardAnalysesSize(request.nextUrl.searchParams.get("size"))
@@ -895,6 +901,10 @@ export async function GET(request: NextRequest) {
   })
 
   return NextResponse.json({ items: enrichedItems }, { status: 200 })
+  } catch (error) {
+    console.error("Error in analyses GET:", error)
+    return NextResponse.json({ items: [] }, { status: 200 })
+  }
 }
 
 export async function POST(request: NextRequest) {

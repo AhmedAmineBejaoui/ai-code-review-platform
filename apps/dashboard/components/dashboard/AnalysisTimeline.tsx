@@ -248,7 +248,7 @@ function FindingBadge({ type, count }: { type: "blocker" | "warn" | "info"; coun
   if (count === 0) return null
 
   const config = {
-    blocker: { bg: "bg-red-500/10 dark:bg-red-500/20", color: "text-red-500", icon: AlertCircle },
+    blocker: { bg: "bg-red-500/10 dark:bg-red-500/20", color: "text-destructive", icon: AlertCircle },
     warn: { bg: "bg-yellow-500/10 dark:bg-yellow-500/20", color: "text-yellow-500", icon: AlertCircle },
     info: { bg: "bg-blue-500/10 dark:bg-blue-500/20", color: "text-blue-500", icon: AlertCircle },
   }
@@ -456,7 +456,7 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
                   <Button
                     variant="outline"
                     size="sm"
-                    className="gap-2 text-red-500 hover:text-red-600 hover:bg-red-500/10"
+                    className="gap-2 text-destructive hover:text-destructive hover:bg-red-500/10"
                     onClick={(e) => { e.stopPropagation(); onDelete(item.id) }}
                     disabled={deleteBusyId === item.id}
                   >
@@ -760,7 +760,7 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
             Powered by Ollama
           </span>
         </div>
-        <h1 className="text-3xl font-black mt-4 bg-gradient-to-r from-foreground to-foreground/60 bg-clip-text text-transparent tracking-tight">
+        <h1 className="card-heading text-foreground mt-4 tracking-tight">
           Analysis History
         </h1>
         <p className="text-sm text-muted-foreground mt-1.5">

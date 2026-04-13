@@ -384,7 +384,7 @@ export default function NotificationsSettingsPage() {
           <Skeleton className="h-10 w-32" />
         </div>
         {[1, 2, 3, 4].map((i) => (
-          <Card key={i} className="bg-white/50 dark:bg-gray-900/50">
+          <Card key={i} variant="default">
             <CardHeader>
               <Skeleton className="h-6 w-48" />
               <Skeleton className="h-4 w-64" />
@@ -411,10 +411,10 @@ export default function NotificationsSettingsPage() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent">
+          <h1 className="card-heading text-foreground">
             Notification Settings
           </h1>
-          <p className="text-gray-500 dark:text-gray-400 mt-1">
+          <p className="text-muted-foreground mt-1">
             Choose how and when you want to be notified
           </p>
         </div>
@@ -423,14 +423,14 @@ export default function NotificationsSettingsPage() {
             <motion.div
               initial={{ opacity: 0, scale: 0.9 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center text-green-600 dark:text-green-400 text-sm"
+              className="flex items-center text-[color:var(--green-status)] text-sm"
             >
               <CheckCircle className="h-4 w-4 mr-2" />
               Preferences saved
             </motion.div>
           )}
           {hasChanges && (
-            <Badge variant="outline" className="text-amber-600 border-amber-300">
+            <Badge variant="outline" className="text-[color:var(--orange)] border-amber-300">
               Unsaved changes
             </Badge>
           )}
@@ -467,12 +467,12 @@ export default function NotificationsSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
-                  <Mail className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <div className="p-2 bg-teal-500/15 rounded-lg">
+                  <Mail className="h-5 w-5 text-teal-400" />
                 </div>
                 <div>
                   <CardTitle>Email Notifications</CardTitle>
@@ -552,7 +552,7 @@ export default function NotificationsSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.2 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -645,12 +645,12 @@ export default function NotificationsSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.3 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="p-2 bg-green-100 dark:bg-green-900/30 rounded-lg">
-                  <Bell className="h-5 w-5 text-green-600 dark:text-green-400" />
+                <div className="p-2 bg-[color:var(--green-status)]/15 rounded-lg">
+                  <Bell className="h-5 w-5 text-[color:var(--green-status)]" />
                 </div>
                 <div>
                   <CardTitle>In-App Notifications</CardTitle>
@@ -701,7 +701,7 @@ export default function NotificationsSettingsPage() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.4 }}
       >
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card variant="glass">
           <CardHeader>
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
@@ -716,10 +716,10 @@ export default function NotificationsSettingsPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-6">
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-card-inner rounded-lg">
               <div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Quiet Hours</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h4 className="font-medium text-foreground">Quiet Hours</h4>
+                <p className="text-sm text-muted-foreground">
                   Pause non-urgent notifications during specific hours
                 </p>
               </div>
@@ -732,7 +732,7 @@ export default function NotificationsSettingsPage() {
             {settings.schedule.quiet_hours_enabled && (
               <div className="grid grid-cols-2 gap-4 pl-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="text-sm font-medium text-secondary-foreground">
                     Start Time
                   </label>
                   <Select
@@ -752,7 +752,7 @@ export default function NotificationsSettingsPage() {
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                  <label className="text-sm font-medium text-secondary-foreground">
                     End Time
                   </label>
                   <Select
@@ -774,10 +774,10 @@ export default function NotificationsSettingsPage() {
               </div>
             )}
 
-            <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+            <div className="flex items-center justify-between p-4 bg-card-inner rounded-lg">
               <div>
-                <h4 className="font-medium text-gray-900 dark:text-white">Weekend Notifications</h4>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
+                <h4 className="font-medium text-foreground">Weekend Notifications</h4>
+                <p className="text-sm text-muted-foreground">
                   Receive notifications on weekends
                 </p>
               </div>
@@ -817,21 +817,21 @@ function NotificationItem({
       <div className="flex items-center gap-3">
         <div className={`p-1.5 rounded ${
           important
-            ? "bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400"
-            : "bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400"
+            ? "bg-amber-100 dark:bg-amber-900/30 text-[color:var(--orange)] dark:text-amber-400"
+            : "bg-gray-100 dark:bg-gray-800 text-muted-foreground"
         }`}>
           {icon}
         </div>
         <div>
           <div className="flex items-center gap-2">
-            <h4 className="text-sm font-medium text-gray-900 dark:text-white">{title}</h4>
+            <h4 className="text-sm font-medium text-foreground">{title}</h4>
             {important && (
-              <Badge variant="outline" className="text-xs text-amber-600 border-amber-300">
+              <Badge variant="outline" className="text-xs text-[color:var(--orange)] border-amber-300">
                 Recommended
               </Badge>
             )}
           </div>
-          <p className="text-xs text-gray-500 dark:text-gray-400">{description}</p>
+          <p className="text-xs text-muted-foreground">{description}</p>
         </div>
       </div>
       <Switch checked={checked} onCheckedChange={onChange} />

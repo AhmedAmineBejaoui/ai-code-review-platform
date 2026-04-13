@@ -48,6 +48,7 @@ import {
   type SeverityDistribution,
   type DashboardMetrics,
 } from "@/lib/dashboard-statistics";
+import { extractApiErrorMessage } from "@/lib/display";
 
 // ============================================================================
 // Sub-components
@@ -197,9 +198,9 @@ function PRRow({
       case "completed":
         return "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
       case "running":
-        return "bg-blue-500/10 text-blue-400 border-blue-500/20";
+        return "bg-blue-500/10 text-teal-400 border-blue-500/20";
       case "failed":
-        return "bg-red-500/10 text-red-400 border-red-500/20";
+        return "bg-red-500/10 text-destructive border-red-500/20";
       default:
         return "bg-zinc-500/10 text-zinc-400 border-zinc-500/20";
     }
@@ -277,7 +278,7 @@ function PRRow({
             <motion.span
               animate={{ scale: [1, 1.05, 1] }}
               transition={{ duration: 2, repeat: Infinity }}
-              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 text-red-400 text-xs font-medium"
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 text-destructive text-xs font-medium"
             >
               <ShieldAlert className="h-3 w-3" />
               {pr.errors}
@@ -432,8 +433,8 @@ function PRRow({
                       transition={{ delay: 0.3 }}
                       className="text-center"
                     >
-                      <Minus className="h-5 w-5 text-red-400 mx-auto mb-1" />
-                      <div className="text-xl font-bold text-red-400">
+                      <Minus className="h-5 w-5 text-destructive mx-auto mb-1" />
+                      <div className="text-xl font-bold text-destructive">
                         -{pr.deletions}
                       </div>
                       <div className="text-[10px] text-zinc-500 uppercase">
@@ -572,7 +573,7 @@ export function DashboardContent() {
         setSeverityDistribution(stats.severityDistribution.some(s => s.value > 0) ? stats.severityDistribution : defaultSeverityDistribution);
         
         if (stats.error) {
-          setError(stats.error);
+          setError(extractApiErrorMessage(stats, "Erreur lors du chargement des données"));
         }
       } catch (err) {
         console.error("[DashboardContent] Error loading data:", err);
@@ -663,7 +664,7 @@ export function DashboardContent() {
       trendUp: dashboardMetrics.trends.errorsTrendUp,
       gradient: "from-red-500/10 to-red-500/5",
       iconBg: "bg-red-500/10",
-      iconColor: "text-red-400",
+      iconColor: "text-destructive",
       shadow: "shadow-red-500/5",
     },
     {
@@ -788,7 +789,7 @@ export function DashboardContent() {
                     className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium ${
                       metric.trendUp
                         ? "bg-emerald-500/10 text-emerald-400"
-                        : "bg-red-500/10 text-red-400"
+                        : "bg-red-500/10 text-destructive"
                     }`}
                   >
                     {metric.trendUp ? "↗" : "↘"} {metric.trend}
@@ -833,8 +834,8 @@ export function DashboardContent() {
               <AreaChart data={weeklyActivity}>
                 <defs>
                   <linearGradient id="issuesGradient" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.3} />
-                    <stop offset="100%" stopColor="#8b5cf6" stopOpacity={0} />
+                    <stop offset="0%" stopColor="#e8713a" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#e8713a" stopOpacity={0} />
                   </linearGradient>
                   <linearGradient id="resolvedGradient" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
@@ -857,7 +858,7 @@ export function DashboardContent() {
                 <Area
                   type="monotone"
                   dataKey="issues"
-                  stroke="#8b5cf6"
+                  stroke="#e8713a"
                   fill="url(#issuesGradient)"
                   strokeWidth={2}
                   name="Issues"
@@ -999,7 +1000,7 @@ export function DashboardContent() {
               </div>
             ) : error ? (
               <div className="flex flex-col items-center justify-center py-12">
-                <ShieldAlert className="h-8 w-8 text-red-400 mb-2" />
+                <ShieldAlert className="h-8 w-8 text-destructive mb-2" />
                 <span className="text-sm text-zinc-400">{error}</span>
                 <button
                   onClick={handleRefresh}

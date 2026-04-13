@@ -10,12 +10,35 @@ import { cn } from '@/components/ui/utils';
 import { trustLogos } from './data';
 import { CodeGraphVisual } from './code-graph-visual';
 import { NeonHexVisual } from './neon-hex-visual';
+import { AnimatedReviewShowcase } from './animated-review-showcase';
+import { PremiumFooter } from './premium-footer';
 import { PremiumNavbar } from './premium-navbar';
 
 type PremiumLandingPageProps = {
   displayClassName?: string;
   monoClassName?: string;
 };
+
+type LandingVideoProps = {
+  src: string;
+  className?: string;
+};
+
+function LandingVideo({ src, className }: LandingVideoProps) {
+  return (
+    <div className={cn('overflow-hidden border border-border bg-muted', className)}>
+      <video
+        src={src}
+        autoPlay
+        muted
+        loop
+        playsInline
+        preload="metadata"
+        className="block h-full w-full object-contain"
+      />
+    </div>
+  );
+}
 
 const featureCards = [
   {
@@ -43,44 +66,44 @@ const featureCards = [
 const testimonials = [
   {
     quote:
-      '“We\'ve tried more code review tools than I can count. Greptile outperforms them all by a mile.”',
+      '"We\'ve tried more code review tools than I can count. Greptile outperforms them all by a mile."',
     name: 'James',
     role: 'CTO • Brex',
   },
   {
     quote:
-      '“We\'ve been impressed by Greptile\'s code review quality. It tightened feedback loops and consistency.”',
+      '"We\'ve been impressed by Greptile\'s code review quality. It tightened feedback loops and consistency."',
     name: 'Mark',
     role: 'Eng. Manager • WorkOS',
   },
   {
-    quote: '“Greptile helps the team do their best work and levels everybody up.”',
+    quote: '"Greptile helps the team do their best work and levels everybody up."',
     name: 'Anirudh',
     role: 'Tech Lead • Browserbase',
   },
   {
-    quote: '“One of the most impressive AI code review tools I\'ve used.”',
+    quote: '"One of the most impressive AI code review tools I\'ve used."',
     name: 'Martin',
     role: 'CTO • PurpleFish',
   },
   {
-    quote: '“I\'m thankful for the things Greptile catches in my pull requests.”',
+    quote: '"I\'m thankful for the things Greptile catches in my pull requests."',
     name: 'Hahnbee',
     role: 'CTO • Mintlify',
   },
   {
     quote:
-      '“It catches issues that human reviewers miss and gives senior-level suggestions.”',
+      '"It catches issues that human reviewers miss and gives senior-level suggestions."',
     name: 'Chase',
     role: 'CTO • RollCredits',
   },
   {
-    quote: '“Team is responsive and reviews are very good. Highly recommended.”',
+    quote: '"Team is responsive and reviews are very good. Highly recommended."',
     name: 'Chris',
     role: 'CTO • Risotto',
   },
   {
-    quote: '“Setup took 15 min and it became a game-changer for our release cycle.”',
+    quote: '"Setup took 15 min and it became a game-changer for our release cycle."',
     name: 'Harish',
     role: 'CTO • Flaire',
   },
@@ -91,7 +114,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
     <main
       id="top"
       className={cn(
-        'relative min-h-screen overflow-x-hidden bg-[#02030a] text-white selection:bg-[#17f0c4]/30',
+        'relative min-h-screen overflow-x-hidden bg-background text-foreground selection:bg-[#17f0c4]/30',
         displayClassName,
       )}
     >
@@ -105,21 +128,31 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           </div>
           <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">The leader in AI code reviews</h1>
 
-          <div className="mt-10 border border-white/10 bg-[#050711]/60 px-3 py-2 md:px-5 md:py-4">
-            <CodeGraphVisual monoClassName={monoClassName} />
+          <div className="mt-10 border border-border bg-card/60 px-3 py-2 md:px-5 md:py-4">
+            <div className="relative flex h-[350px] w-full items-center justify-center overflow-hidden rounded-[28px] border border-white/10 bg-[#06070b] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] lg:h-[450px]">
+              <video
+                src="/features.webm"
+                autoPlay
+                muted
+                loop
+                playsInline
+                preload="metadata"
+                className="h-full w-full object-cover"
+              />
+            </div>
           </div>
 
-          <div className="mt-12 border border-white/15 bg-[#070912]/75 p-4 md:p-6">
+          <div className="mt-12 border border-border bg-card/75 p-4 md:p-6">
             <div className="grid gap-4 md:grid-cols-3">
-              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-white/[0.03] p-8 text-center">
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-border bg-muted/30 p-8 text-center">
                 <p className="text-2xl">Most installed AI App</p>
-                <p className={cn('mt-6 text-4xl text-white/80', monoClassName)}>GitHub  GitLab</p>
+                <p className={cn('mt-6 text-4xl text-foreground/80', monoClassName)}>GitHub  GitLab</p>
               </div>
-              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-[#04060f]">
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-border bg-card">
                 <p className="text-8xl">3M</p>
                 <p className="text-4xl text-[#ff6a00]">Repositories</p>
               </div>
-              <div className="flex min-h-[220px] flex-col items-center justify-center border border-white/10 bg-[#04060f]">
+              <div className="flex min-h-[220px] flex-col items-center justify-center border border-border bg-card">
                 <p className="text-8xl">75M</p>
                 <p className="text-4xl text-[#ff6a00]">Defects found</p>
               </div>
@@ -130,7 +163,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           <p className={cn('mt-16 text-center text-6xl', monoClassName)}>Trusted by <span className="text-[#17f0c4]">15,000+</span> customers</p>
           <div className="mt-10 grid grid-cols-2 gap-10 md:grid-cols-4">
             {trustLogos.map((logo) => (
-              <div key={logo} className="text-center text-6xl font-semibold text-white/90">
+              <div key={logo} className="text-center text-6xl font-semibold text-foreground/90">
                 {logo}
               </div>
             ))}
@@ -142,42 +175,35 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             </Button>
           </div>
 
-          <div className="mt-12 border border-white/10 bg-[#050711]/60 px-3 py-2 md:px-5 md:py-4">
+          <div className="mt-12 border border-border bg-card/60 px-3 py-2 md:px-5 md:py-4">
             <CodeGraphVisual monoClassName={monoClassName} />
           </div>
         </div>
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto grid max-w-7xl gap-px border border-white/20 bg-white/20 md:grid-cols-2">
+        <div className="mx-auto grid max-w-7xl gap-px border border-border bg-border md:grid-cols-2">
           {featureCards.map((card) => (
-            <article key={card.title} className="bg-[#0d0f1a] p-8">
+            <article key={card.title} className="bg-card p-8">
               <p className={cn('text-xl text-[#ff6a00]', monoClassName)}>{card.tag}</p>
               <h2 className="mt-4 text-4xl font-semibold tracking-[-0.03em] md:text-5xl">{card.title}</h2>
-              <p className={cn('mt-4 text-xl text-white/70 md:text-2xl', monoClassName)}>{card.text}</p>
+              <p className={cn('mt-4 text-xl text-foreground/70 md:text-2xl', monoClassName)}>{card.text}</p>
             </article>
           ))}
         </div>
       </section>
 
+      <AnimatedReviewShowcase />
+
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-7xl border border-white/20 p-8">
+        <div className="mx-auto max-w-7xl border border-border p-8">
           <p className={cn('text-lg text-[#17f0c4]', monoClassName)}>[ 30+ languages supported ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">Full Codebase Context</h2>
-          <p className={cn('mt-4 max-w-5xl text-xl text-white/75 md:text-2xl', monoClassName)}>
+          <p className={cn('mt-4 max-w-5xl text-xl text-foreground/75 md:text-2xl', monoClassName)}>
             Greptile generates a detailed graph of your codebase and understands how everything fits together.
             Better understanding of your codebase = more bugs caught.
           </p>
-          <div className="mt-8 overflow-hidden border border-white/10 bg-black">
-            <video
-              src="/assets/context-type.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="w-full"
-            />
-          </div>
+          <LandingVideo src="/assets/context-type.mp4" className="mx-auto mt-8 w-full max-w-4xl aspect-[16/9]" />
           <div className="mt-8">
             <Link href="#" className={cn('inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
               Learn more <ArrowRight className="h-5 w-5" />
@@ -187,55 +213,28 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-7xl border border-white/20 p-8">
+        <div className="mx-auto max-w-7xl border border-border p-8">
           <p className={cn('text-lg text-[#ff6a00]', monoClassName)}>[ CUSTOM CONTEXT ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">Your house, your rules.</h2>
-          <p className={cn('mt-4 text-xl text-white/75 md:text-2xl', monoClassName)}>
+          <p className={cn('mt-4 text-xl text-foreground/75 md:text-2xl', monoClassName)}>
             Greptile is better when personalized to your team.
           </p>
-          <div className="mt-8 overflow-hidden border border-white/10 bg-black">
-            <video
-              src="/assets/final.mp4"
-              autoPlay
-              muted
-              loop
-              playsInline
-              className="w-full"
-            />
-          </div>
+          <LandingVideo src="/assets/final.mp4" className="mx-auto mt-8 w-full max-w-4xl aspect-[16/9]" />
           <div className="mt-10 grid gap-4 md:grid-cols-3">
-            <div className="border border-white/15 bg-[#0d0f1a] p-6">
-              <p className={cn('text-lg text-white/80', monoClassName)}>
+            <div className="border border-border bg-card p-6">
+              <p className={cn('text-lg text-foreground/80', monoClassName)}>
                 Write a rule in English or point Greptile to a markdown file with your team&apos;s best practices.
               </p>
-              <div className="mt-4 overflow-hidden border border-white/10 bg-black">
-                <video
-                  src="/assets/custom-context.mp4"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="w-full"
-                />
-              </div>
+              <LandingVideo src="/assets/custom-context.mp4" className="mt-4 w-full aspect-[16/9]" />
             </div>
-            <div className="border border-white/15 bg-[#0d0f1a] p-6">
-              <p className={cn('text-lg text-white/80', monoClassName)}>
+            <div className="border border-border bg-card p-6">
+              <p className={cn('text-lg text-foreground/80', monoClassName)}>
                 Apply rules and context to specific repositories, file paths, or code patterns.
               </p>
-              <div className="mt-4 overflow-hidden border border-white/10 bg-black">
-                <video
-                  src="/assets/custom-context.mp4"
-                  autoPlay
-                  muted
-                  loop
-                  playsInline
-                  className="w-full"
-                />
-              </div>
+              <LandingVideo src="/assets/context-type.mp4" className="mt-4 w-full aspect-[16/9]" />
             </div>
-            <div className="border border-white/15 bg-[#0d0f1a] p-6">
-              <p className={cn('text-lg text-white/80', monoClassName)}>
+            <div className="border border-border bg-card p-6">
+              <p className={cn('text-lg text-foreground/80', monoClassName)}>
                 Analyze whether rules are being used by Greptile and actioned by the team.
               </p>
             </div>
@@ -249,16 +248,16 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-7xl border border-white/20 p-8">
+        <div className="mx-auto max-w-7xl border border-border p-8">
           <p className={cn('text-lg text-[#ff6a00]', monoClassName)}>[ LEARNING ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">Introducing Learning.</h2>
-          <p className={cn('mt-4 text-xl text-white/75 md:text-2xl', monoClassName)}>
+          <p className={cn('mt-4 text-xl text-foreground/75 md:text-2xl', monoClassName)}>
             Greptile learns your team&apos;s coding standards by reading every engineer&apos;s PR comments, and learns what
             types of comments your team finds useful by tracking 👍/👎 reactions.
           </p>
           <div className="mt-6 flex flex-wrap gap-3">
             {['Prefer named exports.', 'Never push directly to main.', 'Remove all console.log and debugger statements.'].map((rule) => (
-              <span key={rule} className={cn('border border-white/20 bg-[#0d0f1a] px-4 py-2 text-lg text-white/80', monoClassName)}>
+              <span key={rule} className={cn('border border-border bg-card px-4 py-2 text-lg text-foreground/80', monoClassName)}>
                 {rule}
               </span>
             ))}
@@ -267,7 +266,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-7xl border border-white/20 p-8">
+        <div className="mx-auto max-w-7xl border border-border p-8">
           <p className={cn('text-lg text-[#ff6a00]', monoClassName)}>[ DATA-DRIVEN RESULTS ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">Merge PRs faster with Greptile.</h2>
           <Link href="#" className={cn('mt-5 inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
@@ -275,13 +274,13 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           </Link>
 
           <div className="mt-10 grid gap-4 md:grid-cols-2">
-            <div className="border border-white/15 bg-[#0d0f1a] p-6">
-              <p className={cn('text-xl text-white/70', monoClassName)}>Median Time to Merge Comparison</p>
+            <div className="border border-border bg-card p-6">
+              <p className={cn('text-xl text-foreground/70', monoClassName)}>Median Time to Merge Comparison</p>
               <p className="mt-4 text-4xl font-semibold">Without Greptile: 20 hrs</p>
               <p className="mt-2 text-4xl font-semibold text-[#17f0c4]">With Greptile: 1.8 hrs</p>
             </div>
-            <div className="border border-white/15 bg-[#0d0f1a] p-6">
-              <p className={cn('text-xl text-white/70', monoClassName)}>Team Size vs Merge Time</p>
+            <div className="border border-border bg-card p-6">
+              <p className={cn('text-xl text-foreground/70', monoClassName)}>Team Size vs Merge Time</p>
               <p className="mt-4 text-3xl">Without Greptile</p>
               <p className="mt-2 text-3xl text-[#17f0c4]">With Greptile</p>
             </div>
@@ -290,7 +289,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       </section>
 
       <section className="px-6 py-16">
-        <div className="mx-auto max-w-7xl border border-white/20 p-8">
+        <div className="mx-auto max-w-7xl border border-border p-8">
           <p className={cn('text-lg text-[#ff6a00]', monoClassName)}>[ SECURITY ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">Security-First Design</h2>
           <Link href="#" className={cn('mt-5 inline-flex items-center gap-2 text-xl text-[#17f0c4]', monoClassName)}>
@@ -298,21 +297,21 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
           </Link>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2">
-            <article className="border border-white/15 bg-[#0d0f1a] p-6">
+            <article className="border border-border bg-card p-6">
               <h3 className="text-3xl font-semibold">Self-Hosted Deployment</h3>
-              <p className={cn('mt-3 text-xl text-white/75', monoClassName)}>
+              <p className={cn('mt-3 text-xl text-foreground/75', monoClassName)}>
                 Deploy in your own air-gapped environment with complete control over your infrastructure.
               </p>
             </article>
-            <article className="border border-white/15 bg-[#0d0f1a] p-6">
+            <article className="border border-border bg-card p-6">
               <h3 className="text-3xl font-semibold">SOC 2 Compliant</h3>
-              <p className={cn('mt-3 text-xl text-white/75', monoClassName)}>
+              <p className={cn('mt-3 text-xl text-foreground/75', monoClassName)}>
                 All data is encrypted at rest and in transit. We use industry-standard encryption and security
                 practices.
               </p>
             </article>
           </div>
-          <div className="mt-6 overflow-hidden border border-white/10 bg-black">
+          <div className="mt-6 overflow-hidden border border-border bg-muted">
             <video
               src="/assets/workflow.webm"
               autoPlay
@@ -329,21 +328,23 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
         <div className="mx-auto max-w-7xl">
           <p className={cn('text-lg text-[#ff6a00]', monoClassName)}>[ TESTIMONIALS ]</p>
           <h2 className="mt-4 text-5xl font-semibold tracking-[-0.04em] md:text-6xl">From Developers That Use Greptile</h2>
-          <p className={cn('mt-3 text-xl text-white/75 md:text-2xl', monoClassName)}>
+          <p className={cn('mt-3 text-xl text-foreground/75 md:text-2xl', monoClassName)}>
             See what developers are saying about their experience with Greptile.
           </p>
 
           <div className="mt-8 grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             {testimonials.map((card) => (
-              <article key={`${card.name}-${card.role}`} className="border border-white/20 bg-[#100f18] p-6">
-                <p className={cn('text-lg text-white/85', monoClassName)}>{card.quote}</p>
+              <article key={`${card.name}-${card.role}`} className="border border-border bg-card p-6">
+                <p className={cn('text-lg text-foreground/85', monoClassName)}>{card.quote}</p>
                 <p className="mt-8 text-xl font-semibold">{card.name}</p>
-                <p className={cn('text-base text-white/60', monoClassName)}>{card.role}</p>
+                <p className={cn('text-base text-foreground/60', monoClassName)}>{card.role}</p>
               </article>
             ))}
           </div>
         </div>
       </section>
+
+      <PremiumFooter displayClassName={displayClassName} monoClassName={monoClassName} />
 
       <SignedOut>
         <div className="fixed bottom-6 right-6 z-50">

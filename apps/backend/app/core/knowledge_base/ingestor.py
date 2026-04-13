@@ -19,7 +19,6 @@ from app.core.knowledge_base.guardrails import (
     to_posix_relative,
     validate_allowed_roots,
 )
-from app.core.knowledge_base.langchain_shadow import LangChainShadowIndexingService
 from app.core.knowledge_base.qdrant_ids import build_repo_chunk_point_id, build_repo_profile_point_id
 from app.data.repos.repo_context_chunks_repo import RepoContextChunkRow, RepoContextChunkWrite, RepoContextChunksRepo
 from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
@@ -267,7 +266,6 @@ class RepoContextIngestor:
 
         await self._upsert_in_batches(points)
         self._repo_context_chunks_repo.upsert_chunks(sql_rows)
-        await self._upsert_langchain_shadow(repo_id=repo_key, rows=[_sql_write_to_row(row) for row in sql_rows])
         _persist_graph_edges(repo_key, graph_edges)
 
         profile_payload = self._build_repo_profile_payload(
@@ -387,11 +385,6 @@ class RepoContextIngestor:
 
         await self._upsert_in_batches(points_to_upsert)
         self._repo_context_chunks_repo.upsert_chunks(sql_rows_to_upsert)
-        await self._upsert_langchain_shadow(
-            repo_id=repo_key,
-            rows=[_sql_write_to_row(row) for row in sql_rows_to_upsert],
-        )
-
         default_branch = self._safe_git_branch(root)
         profile_payload = self._build_repo_profile_payload(
             repo_id=repo_key,
@@ -447,18 +440,6 @@ class RepoContextIngestor:
         for start in range(0, len(points), self._batch_size):
             batch = points[start : start + self._batch_size]
             await self._vector_store.upsert_points(collection_name=self._collection, points=batch)
-
-    async def _upsert_langchain_shadow(self, *, repo_id: str, rows: list[RepoContextChunkRow]) -> None:
-        if not rows or not settings.langchain_enabled:
-            return
-        try:
-            shadow_index = LangChainShadowIndexingService(vector_store=self._vector_store)
-            if not shadow_index.available:
-                return
-            await shadow_index.upsert_repo_context_rows(repo_id=repo_id, rows=rows)
-        except Exception:
-            # LangChain shadow mode must never break legacy repo indexing.
-            return
 
     def _file_to_chunks(self, file_path: Path) -> ChunkingResult:
         try:

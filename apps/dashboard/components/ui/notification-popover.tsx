@@ -190,13 +190,13 @@ function NotificationItem({
             </AnimatePresence>
           </div>
           
-          <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 line-clamp-2">
+          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
             {notification.message}
           </p>
           
           <div className="flex items-center gap-2 mt-2">
             <Clock className="h-3 w-3 text-gray-400" />
-            <span className="text-xs text-gray-500 dark:text-gray-400">
+            <span className="text-xs text-muted-foreground">
               {timestamp}
             </span>
             
@@ -243,7 +243,7 @@ function EmptyState({ tab }: { tab: string }) {
       <p className="text-sm font-medium text-gray-900 dark:text-white">
         {messages[tab as keyof typeof messages]}
       </p>
-      <p className="text-xs text-gray-500 dark:text-gray-400 mt-1 text-center">
+      <p className="text-xs text-muted-foreground mt-1 text-center">
         You&apos;re all caught up! Check back later for updates.
       </p>
     </div>
@@ -366,7 +366,7 @@ export function NotificationPopover({
               Notifications
             </h3>
             {unreadCount > 0 && (
-              <p className="text-xs text-gray-500 dark:text-gray-400">
+              <p className="text-xs text-muted-foreground">
                 {unreadCount} unread
               </p>
             )}

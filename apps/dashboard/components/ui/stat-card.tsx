@@ -33,8 +33,8 @@ const iconColorClasses = {
 };
 
 const trendColorClasses = {
-  positive: "text-green-600 dark:text-green-400",
-  negative: "text-red-600 dark:text-red-400",
+  positive: "text-[color:var(--green-status)]",
+  negative: "text-destructive",
   neutral: "text-muted-foreground",
 };
 

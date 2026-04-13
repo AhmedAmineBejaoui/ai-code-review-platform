@@ -174,36 +174,36 @@ export default function KnowledgeBasePage() {
     <div className="max-w-4xl mx-auto space-y-6">
       {/* Header */}
       <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <h1 className="text-3xl font-bold bg-gradient-to-r from-gray-900 via-blue-900 to-purple-900 dark:from-white dark:via-blue-100 dark:to-purple-100 bg-clip-text text-transparent mb-1">
+        <h1 className="text-4xl font-semibold tracking-[-0.05em] text-foreground mb-1">
           Knowledge Base
         </h1>
-        <p className="text-gray-500 dark:text-gray-400">
+        <p className="text-muted-foreground">
           Alimentez la base documentaire utilisée par le système RAG pour contextualiser les reviews de code.
         </p>
       </motion.div>
 
       {/* KB Stats */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-base">
-              <Database className="h-4 w-4 text-blue-500" />
+              <Database className="h-4 w-4 text-orange" />
               Repos indexés
-              {reposLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-gray-400" />}
+              {reposLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
             </CardTitle>
           </CardHeader>
           <CardContent>
             {repos.length === 0 && !reposLoading ? (
-              <p className="text-sm text-gray-400 dark:text-gray-500">Aucun repo indexé pour l&apos;instant.</p>
+              <p className="text-sm text-muted-foreground">Aucun repo indexé pour l&apos;instant.</p>
             ) : (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {repos.slice(0, 6).map((repo) => (
                   <div
                     key={repo.repo_id}
-                    className="flex items-center justify-between p-2.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50 cursor-pointer hover:border-blue-200 dark:hover:border-blue-700 transition-colors"
+                    className="flex cursor-pointer items-center justify-between rounded-lg border border-border bg-background/60 p-2.5 transition-colors hover:border-orange-accent"
                     onClick={() => setRepoId(repo.repo_id)}
                   >
-                    <span className="text-sm font-mono text-gray-700 dark:text-gray-300 truncate">{repo.repo_id}</span>
+                    <span className="truncate font-mono text-sm text-foreground">{repo.repo_id}</span>
                     {typeof repo.chunks_count === "number" && (
                       <Badge variant="outline" className="text-xs ml-2 shrink-0">
                         {repo.chunks_count} chunks
@@ -224,20 +224,20 @@ export default function KnowledgeBasePage() {
           {([1, 2, 3] as WizardStep[]).map((s) => (
             <div key={s} className="flex items-center gap-2">
               <div
-                className={`w-7 h-7 rounded-full flex items-center justify-center text-sm font-bold transition-colors ${
-                  step === s
-                    ? "bg-blue-600 text-white"
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-sm font-bold transition-colors ${
+                    step === s
+                    ? "bg-orange text-white"
                     : step > s
-                    ? "bg-green-500 text-white"
-                    : "bg-gray-200 dark:bg-gray-700 text-gray-500"
-                }`}
-              >
-                {step > s ? <CheckCircle2 className="h-4 w-4" /> : s}
-              </div>
-              <span className={`text-sm ${step === s ? "font-semibold text-gray-900 dark:text-white" : "text-gray-400"}`}>
+                    ? "bg-green-status text-white"
+                    : "bg-background text-muted-foreground"
+                  }`}
+                >
+                  {step > s ? <CheckCircle2 className="h-4 w-4" /> : s}
+                </div>
+              <span className={`text-sm ${step === s ? "font-semibold text-foreground" : "text-muted-foreground"}`}>
                 {s === 1 ? "Type de doc" : s === 2 ? "Contenu" : "Indexation"}
               </span>
-              {s < 3 && <ChevronRight className="h-4 w-4 text-gray-300 dark:text-gray-600" />}
+              {s < 3 && <ChevronRight className="h-4 w-4 text-muted-foreground" />}
             </div>
           ))}
         </div>
@@ -246,7 +246,7 @@ export default function KnowledgeBasePage() {
         <AnimatePresence mode="wait">
           {step === 1 && (
             <motion.div key="step1" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+              <Card className="border-border bg-card/80 backdrop-blur-xl">
                 <CardHeader>
                   <CardTitle className="text-base">Étape 1 — Choisissez le type de document</CardTitle>
                 </CardHeader>
@@ -259,18 +259,18 @@ export default function KnowledgeBasePage() {
                         whileTap={{ scale: 0.98 }}
                         className={`p-4 rounded-xl border-2 cursor-pointer transition-colors ${
                           selectedDocType === docType.id
-                            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/30"
-                            : "border-gray-200 dark:border-gray-700 hover:border-blue-300 dark:hover:border-blue-700"
+                            ? "border-orange-accent bg-orange/10"
+                            : "border-border hover:border-orange-accent/70"
                         }`}
                         onClick={() => setSelectedDocType(docType.id)}
                       >
                         <div className="flex items-start gap-3">
-                          <div className={`p-2 rounded-lg ${selectedDocType === docType.id ? "bg-blue-500" : "bg-gray-100 dark:bg-gray-800"}`}>
-                            <docType.icon className={`h-4 w-4 ${selectedDocType === docType.id ? "text-white" : "text-gray-500"}`} />
+                          <div className={`rounded-lg p-2 ${selectedDocType === docType.id ? "bg-orange text-white" : "bg-background text-muted-foreground"}`}>
+                            <docType.icon className={`h-4 w-4 ${selectedDocType === docType.id ? "text-white" : "text-muted-foreground"}`} />
                           </div>
                           <div>
-                            <div className="font-semibold text-sm text-gray-900 dark:text-white">{docType.label}</div>
-                            <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{docType.description}</div>
+                            <div className="text-sm font-semibold text-foreground">{docType.label}</div>
+                            <div className="mt-0.5 text-xs text-muted-foreground">{docType.description}</div>
                           </div>
                         </div>
                       </motion.div>
@@ -289,14 +289,14 @@ export default function KnowledgeBasePage() {
           {/* Step 2: Enter content */}
           {step === 2 && (
             <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+              <Card className="border-border bg-card/80 backdrop-blur-xl">
                 <CardHeader>
                   <CardTitle className="text-base">Étape 2 — Renseignez le document</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                      Repo ID <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                      Repo ID <span className="text-destructive">*</span>
                     </label>
                     <Input
                       placeholder="ex: myorg/myrepo"
@@ -304,11 +304,11 @@ export default function KnowledgeBasePage() {
                       onChange={(e) => setRepoId(e.target.value)}
                       className="font-mono"
                     />
-                    <p className="text-xs text-gray-400 mt-1">Identifiant du repository concerné par ce document.</p>
+                    <p className="mt-1 text-xs text-muted-foreground">Identifiant du repository concerné par ce document.</p>
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                      Titre du document <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                      Titre du document <span className="text-destructive">*</span>
                     </label>
                     <Input
                       placeholder="ex: Guide de sécurité API, Convention de nommage..."
@@ -317,8 +317,8 @@ export default function KnowledgeBasePage() {
                     />
                   </div>
                   <div>
-                    <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
-                      Contenu <span className="text-red-500">*</span>
+                    <label className="text-sm font-medium text-muted-foreground mb-1 block">
+                      Contenu <span className="text-destructive">*</span>
                     </label>
                     <Textarea
                       placeholder="Collez ici le contenu du document (Markdown, texte, code...)..."
@@ -327,7 +327,7 @@ export default function KnowledgeBasePage() {
                       rows={10}
                       className="font-mono text-sm"
                     />
-                    <p className="text-xs text-gray-400 mt-1">
+                    <p className="mt-1 text-xs text-muted-foreground">
                       {content.length} caractères — Le document sera découpé en chunks et vectorisé.
                     </p>
                   </div>
@@ -347,37 +347,37 @@ export default function KnowledgeBasePage() {
           {/* Step 3: Confirm and ingest */}
           {step === 3 && (
             <motion.div key="step3" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }}>
-              <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
+              <Card className="border-border bg-card/80 backdrop-blur-xl">
                 <CardHeader>
                   <CardTitle className="text-base">Étape 3 — Indexation dans la Knowledge Base</CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-4">
                   {/* Summary */}
-                  <div className="rounded-xl bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-4 space-y-2">
+                  <div className="space-y-2 rounded-xl border border-border bg-background/60 p-4">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Repo</span>
-                      <span className="font-mono text-sm text-gray-900 dark:text-white">{repoId}</span>
+                      <span className="text-sm text-muted-foreground">Repo</span>
+                      <span className="font-mono text-sm text-foreground">{repoId}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Titre</span>
-                      <span className="text-sm text-gray-900 dark:text-white">{title}</span>
+                      <span className="text-sm text-muted-foreground">Titre</span>
+                      <span className="text-sm text-foreground">{title}</span>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Type</span>
+                      <span className="text-sm text-muted-foreground">Type</span>
                       <Badge variant="outline" className="text-xs">{selectedDocType}</Badge>
                     </div>
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-500">Taille</span>
-                      <span className="text-sm text-gray-700 dark:text-gray-300">{content.length} caractères</span>
+                      <span className="text-sm text-muted-foreground">Taille</span>
+                      <span className="text-sm text-foreground">{content.length} caractères</span>
                     </div>
                   </div>
 
                   {ingestLoading && (
                     <div className="space-y-2">
-                      <div className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400">
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                        Découpage en chunks et vectorisation en cours...
-                      </div>
+                    <div className="flex items-center gap-2 text-sm text-teal">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Découpage en chunks et vectorisation en cours...
+                    </div>
                       <Progress value={undefined} className="h-1.5 animate-pulse" />
                     </div>
                   )}
@@ -386,23 +386,23 @@ export default function KnowledgeBasePage() {
                     <motion.div
                       initial={{ opacity: 0, scale: 0.95 }}
                       animate={{ opacity: 1, scale: 1 }}
-                      className={`flex items-start gap-3 p-4 rounded-xl border ${
+                      className={`flex items-start gap-3 rounded-xl border p-4 ${
                         ingestResult.success
-                          ? "bg-green-50 dark:bg-green-950/30 border-green-200 dark:border-green-800"
-                          : "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800"
+                          ? "border-green-status/20 bg-green-status/10"
+                          : "border-red-500/20 bg-red-500/10"
                       }`}
                     >
                       {ingestResult.success ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+                        <CheckCircle2 className="flex-shrink-0 mt-0.5 h-5 w-5 text-green-status" />
                       ) : (
-                        <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                        <AlertCircle className="flex-shrink-0 mt-0.5 h-5 w-5 text-destructive" />
                       )}
                       <div>
-                        <p className={`text-sm font-medium ${ingestResult.success ? "text-green-900 dark:text-green-100" : "text-red-900 dark:text-red-100"}`}>
+                        <p className={`text-sm font-medium ${ingestResult.success ? "text-green-status" : "text-destructive"}`}>
                           {ingestResult.message}
                         </p>
                         {ingestResult.chunksCount !== undefined && (
-                          <p className="text-xs text-green-700 dark:text-green-300 mt-0.5">
+                          <p className="mt-0.5 text-xs text-green-status">
                             {ingestResult.chunksCount} chunk(s) indexé(s) dans Qdrant.
                           </p>
                         )}
@@ -430,11 +430,11 @@ export default function KnowledgeBasePage() {
                         </Button>
                       )}
                       {!ingestResult?.success && (
-                        <Button onClick={handleIngest} disabled={ingestLoading} className="gap-2 bg-blue-600 hover:bg-blue-700 text-white">
-                          {ingestLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
-                          Indexer dans la KB
-                        </Button>
-                      )}
+                <Button onClick={handleIngest} disabled={ingestLoading} className="gap-2">
+                  {ingestLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Upload className="h-4 w-4" />}
+                  Indexer dans la KB
+                </Button>
+              )}
                     </div>
                   </div>
                 </CardContent>
@@ -446,13 +446,13 @@ export default function KnowledgeBasePage() {
 
       {/* Search KB */}
       <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-base">
-              <Search className="h-4 w-4 text-purple-500" />
-              Recherche dans la Knowledge Base
-            </CardTitle>
-          </CardHeader>
+        <Card className="border-border bg-card/80 backdrop-blur-xl">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-base">
+              <Search className="h-4 w-4 text-teal" />
+                  Recherche dans la Knowledge Base
+                </CardTitle>
+              </CardHeader>
           <CardContent className="space-y-3">
             <div className="flex gap-2">
               <Input
@@ -472,7 +472,7 @@ export default function KnowledgeBasePage() {
               </Button>
             </div>
             {!repoId.trim() && (
-              <p className="text-xs text-amber-600 dark:text-amber-400">Saisissez un Repo ID ci-dessus pour activer la recherche.</p>
+              <p className="text-xs text-[color:var(--orange)] dark:text-amber-400">Saisissez un Repo ID ci-dessus pour activer la recherche.</p>
             )}
 
             {searchResults.length > 0 && (
@@ -483,18 +483,18 @@ export default function KnowledgeBasePage() {
                     initial={{ opacity: 0, y: 5 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ delay: idx * 0.05 }}
-                    className="p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700"
+                    className="rounded-lg border border-border bg-background/60 p-3"
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{result.title ?? "Sans titre"}</span>
-                      <span className="text-xs px-1.5 py-0.5 rounded font-mono bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">
+                      <span className="text-sm font-semibold text-foreground">{result.title ?? "Sans titre"}</span>
+                      <span className="rounded px-1.5 py-0.5 font-mono text-xs bg-orange/10 text-orange">
                         {Math.round((result.score ?? 0) * 100)}%
                       </span>
                       {result.chunk_type && (
                         <Badge variant="outline" className="text-xs">{result.chunk_type}</Badge>
                       )}
                     </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 line-clamp-3 font-mono">
+                    <p className="line-clamp-3 font-mono text-xs text-muted-foreground">
                       {result.content?.slice(0, 200) ?? ""}...
                     </p>
                   </motion.div>
@@ -503,7 +503,7 @@ export default function KnowledgeBasePage() {
             )}
 
             {searchResults.length === 0 && searchQuery && !searchLoading && (
-              <p className="text-sm text-gray-400 dark:text-gray-500 text-center py-2">Aucun résultat trouvé.</p>
+              <p className="py-2 text-center text-sm text-muted-foreground">Aucun résultat trouvé.</p>
             )}
           </CardContent>
         </Card>

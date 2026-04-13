@@ -20,7 +20,7 @@ function chunkTypeIcon(chunkType: string | null) {
   if (chunkType === "document" || chunkType === "markdown" || chunkType === "pdf") {
     return <BookOpen className="h-3.5 w-3.5 text-purple-500" />
   }
-  return <Database className="h-3.5 w-3.5 text-gray-400" />
+  return <Database className="h-3.5 w-3.5 text-muted-foreground" />
 }
 
 function scoreColor(score: number | null): string {
@@ -41,7 +41,7 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
 
   return (
     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}>
-      <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-blue-200/50 dark:border-blue-800/50">
+      <Card variant="glass" className="border-teal-500/30">
         <CardHeader
           className="cursor-pointer select-none"
           onClick={() => setIsOpen((prev) => !prev)}
@@ -60,10 +60,10 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
               )}
             </div>
             <motion.div animate={{ rotate: isOpen ? 180 : 0 }} transition={{ duration: 0.2 }}>
-              <ChevronDown className="h-4 w-4 text-gray-500" />
+              <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </motion.div>
           </CardTitle>
-          <p className="text-sm text-gray-500 dark:text-gray-400 font-normal mt-1">
+          <p className="text-sm text-muted-foreground font-normal mt-1">
             Documents et chunks de code récupérés depuis la Knowledge Base pour contextualiser l&apos;analyse.
           </p>
         </CardHeader>
@@ -86,14 +86,14 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
                       initial={{ opacity: 0, x: -10 }}
                       animate={{ opacity: 1, x: 0 }}
                       transition={{ delay: idx * 0.03 }}
-                      className="flex items-start gap-3 p-3 rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-100 dark:border-gray-700/50 hover:border-blue-200 dark:hover:border-blue-700 transition-colors"
+                      className="flex items-start gap-3 p-3 rounded-lg bg-card-inner border border-border hover:border-teal-500/40 transition-colors"
                     >
                       <div className="flex-shrink-0 mt-0.5">
                         {chunkTypeIcon(chunk.chunkType)}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="font-mono text-xs text-gray-700 dark:text-gray-300 truncate max-w-[240px]">
+                          <span className="font-mono text-xs text-secondary-foreground truncate max-w-[240px]">
                             {chunk.title ?? chunk.path ?? "unknown"}
                           </span>
                           {chunk.score !== null && (
@@ -108,12 +108,12 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
                           )}
                         </div>
                         {chunk.path && chunk.title && chunk.path !== chunk.title && (
-                          <p className="text-xs text-gray-400 dark:text-gray-500 font-mono truncate">
+                          <p className="text-xs text-muted-foreground font-mono truncate">
                             {chunk.path}
                           </p>
                         )}
                         {chunk.symbolName && (
-                          <p className="text-xs text-blue-600 dark:text-blue-400 font-mono">
+                          <p className="text-xs text-teal-400 font-mono">
                             {chunk.symbolName}
                           </p>
                         )}
@@ -132,7 +132,7 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
                         )}
                       </div>
                       {chunk.source && (
-                        <span className="flex-shrink-0 text-xs text-gray-400 dark:text-gray-500 hidden sm:block">
+                        <span className="flex-shrink-0 text-xs text-muted-foreground hidden sm:block">
                           {chunk.source}
                         </span>
                       )}
@@ -140,13 +140,13 @@ export function RagContextPanel({ ragContext, ragContextChunksCount, ragRetrieva
                   ))}
 
                   {ragContext.length > 15 && (
-                    <p className="text-xs text-center text-gray-400 dark:text-gray-500 pt-1">
+                    <p className="text-xs text-center text-muted-foreground pt-1">
                       ...et {ragContext.length - 15} autre(s) chunk(s) non affichés
                     </p>
                   )}
 
                   {ragContext.length === 0 && ragContextChunksCount > 0 && (
-                    <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-4">
+                    <p className="text-sm text-muted-foreground text-center py-4">
                       {ragContextChunksCount} chunk(s) utilisés — détails non disponibles dans cette réponse.
                     </p>
                   )}

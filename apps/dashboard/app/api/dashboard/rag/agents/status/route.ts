@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   try {
     return proxyBackendRequest({
-      path: "/api/rag/agents/status",
+      path: "/api/v1/rag/agents/status",
       method: "GET",
       token: authResult.token,
       userId: authResult.userId,

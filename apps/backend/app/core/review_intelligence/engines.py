@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.core.ai_orchestration import GroundedFindingOutput, GroundedReviewService
-from app.core.langchain_runtime import LangChainOllamaClient
 from app.core.review_engine.diff_engine import ParsedDiff
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
@@ -53,7 +52,7 @@ class ReviewGenerationEngine(Protocol):
         max_findings: int,
     ) -> GroundedFindingOutput: ...
 
-    def can_use_hybrid_rag(
+    def can_use_graph_rag(
         self,
         *,
         qdrant_enabled: bool,
@@ -157,6 +156,27 @@ class _BaseReviewGenerationEngine:
             max_findings=max_findings,
         )
 
+    def can_use_graph_rag(
+        self,
+        *,
+        qdrant_enabled: bool,
+        kb_retrieval_mode: str,
+        kb_context_chunks_count: int,
+        knowledge_base_context: str | None,
+        kb_retrieval_error: str | None,
+        context_references: list[dict[str, Any]] | None = None,
+        allow_non_qdrant_grounding: bool = False,
+    ) -> tuple[bool, str | None]:
+        return self.review_intelligence_service.can_use_graph_rag(
+            qdrant_enabled=qdrant_enabled,
+            kb_retrieval_mode=kb_retrieval_mode,
+            kb_context_chunks_count=kb_context_chunks_count,
+            knowledge_base_context=knowledge_base_context,
+            kb_retrieval_error=kb_retrieval_error,
+            context_references=context_references,
+            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
+        )
+
     def can_use_hybrid_rag(
         self,
         *,
@@ -168,7 +188,7 @@ class _BaseReviewGenerationEngine:
         context_references: list[dict[str, Any]] | None = None,
         allow_non_qdrant_grounding: bool = False,
     ) -> tuple[bool, str | None]:
-        return self.review_intelligence_service.can_use_hybrid_rag(
+        enabled, reason = self.can_use_graph_rag(
             qdrant_enabled=qdrant_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
@@ -177,6 +197,9 @@ class _BaseReviewGenerationEngine:
             context_references=context_references,
             allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
+        if reason:
+            reason = reason.replace("GraphRAG", "Hybrid RAG")
+        return enabled, reason
 
     def generate_review_output(
         self,
@@ -235,38 +258,16 @@ class _BaseReviewGenerationEngine:
         )
 
 
-def build_legacy_review_generation_engine() -> ReviewGenerationEngine:
+def build_graph_rag_review_generation_engine() -> ReviewGenerationEngine:
     client = OllamaClient(
         base_url=settings.OLLAMA_BASE_URL,
         model=settings.OLLAMA_MODEL,
         timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
     )
     return _BaseReviewGenerationEngine(
-        stack_name="legacy",
+        stack_name="graph_rag",
         model_name=settings.OLLAMA_MODEL,
         available=True,
-        summary_service=SummaryService(llm_client=client),
-        grounded_review_service=GroundedReviewService(llm_client=client),
-        review_intelligence_service=ReviewIntelligenceService(
-            summary_service=PRSummaryService(llm_client=client),
-            change_explainer=ChangeExplainer(llm_client=client),
-            risk_detector=RiskDetector(),
-            test_generator=TestGenerator(llm_client=client),
-        ),
-    )
-
-
-def build_langchain_review_generation_engine() -> ReviewGenerationEngine:
-    client = LangChainOllamaClient(
-        base_url=settings.langchain_ollama_base_url,
-        model=settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY,
-        fallback_model=settings.LANGCHAIN_OLLAMA_CHAT_MODEL_FALLBACK,
-        timeout_s=settings.LANGCHAIN_RAG_TIMEOUT_SECONDS,
-    )
-    return _BaseReviewGenerationEngine(
-        stack_name="langchain",
-        model_name=settings.LANGCHAIN_OLLAMA_CHAT_MODEL_PRIMARY,
-        available=client.available,
         summary_service=SummaryService(llm_client=client),
         grounded_review_service=GroundedReviewService(llm_client=client),
         review_intelligence_service=ReviewIntelligenceService(

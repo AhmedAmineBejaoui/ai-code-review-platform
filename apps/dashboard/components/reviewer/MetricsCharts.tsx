@@ -16,14 +16,14 @@ interface MetricsChartsProps {
 }
 
 const DEFAULT_COLORS = [
-  "#3b82f6", // Blue
-  "#10b981", // Green
+  "var(--orange)",
+  "var(--teal)",
   "#f59e0b", // Yellow
   "#ef4444", // Red
-  "#8b5cf6", // Purple
-  "#f97316", // Orange
-  "#06b6d4", // Cyan
-  "#84cc16", // Lime
+  "#f09456",
+  "#d96530",
+  "var(--teal)",
+  "#22c55e",
 ]
 
 export function MetricsChart({
@@ -170,7 +170,7 @@ export function MetricsChart({
   return (
     <div className="w-full">
       {title && (
-        <h3 className="text-lg font-semibold text-gray-900 mb-4">{title}</h3>
+        <h3 className="text-lg font-semibold text-foreground mb-4">{title}</h3>
       )}
       <ResponsiveContainer width="100%" height={height}>
         {chart}
@@ -262,8 +262,8 @@ export function DonutChart({
       {centerLabel && centerValue && (
         <div className="absolute inset-0 flex items-center justify-center">
           <div className="text-center">
-            <div className="text-2xl font-bold text-gray-900">{centerValue}</div>
-            <div className="text-sm text-gray-600">{centerLabel}</div>
+            <div className="text-2xl font-bold text-foreground">{centerValue}</div>
+            <div className="text-sm text-muted-foreground">{centerLabel}</div>
           </div>
         </div>
       )}
@@ -330,7 +330,7 @@ export function Heatmap({ data, height = 300 }: HeatmapProps) {
         {/* Hour labels */}
         <div className="col-span-24 grid grid-cols-24 gap-1">
           {hours.map(hour => (
-            <div key={hour} className="text-xs text-center text-gray-500">
+            <div key={hour} className="text-xs text-center text-muted-foreground">
               {hour}
             </div>
           ))}
@@ -357,7 +357,7 @@ export function Heatmap({ data, height = 300 }: HeatmapProps) {
         {/* Day labels */}
         <div className="col-span-24 grid grid-cols-24 gap-1">
           {days.map((day, index) => (
-            <div key={day} className={`text-xs text-center text-gray-500 ${index === 0 ? 'col-start-1' : ''} col-span-3`}>
+            <div key={day} className={`text-xs text-center text-muted-foreground ${index === 0 ? 'col-start-1' : ''} col-span-3`}>
               {index % 3 === 0 ? day : ''}
             </div>
           ))}
@@ -382,7 +382,7 @@ export function ProgressRing({
   max,
   size = 120,
   strokeWidth = 8,
-  color = "#3b82f6",
+  color = "var(--orange)",
   label,
   showValue = true
 }: ProgressRingProps) {
@@ -419,11 +419,11 @@ export function ProgressRing({
         {showValue && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-center">
-              <div className="text-xl font-bold text-gray-900">
+              <div className="text-xl font-bold text-foreground">
                 {Math.round(percentage)}%
               </div>
               {label && (
-                <div className="text-xs text-gray-600">{label}</div>
+                <div className="text-xs text-muted-foreground">{label}</div>
               )}
             </div>
           </div>

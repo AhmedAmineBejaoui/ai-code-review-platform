@@ -15,7 +15,7 @@ const cardVariants = cva(
           "glass-pro border-primary/10 hover:-translate-y-2 cursor-pointer hover-lift",
         gradient:
           "bg-gradient-primary text-white border-transparent shadow-glow",
-        glow: "border-2 border-blue-500/20 hover:border-blue-500/40 hover:shadow-glow",
+        glow: "border-2 border-orange-500/20 hover:border-orange-500/40 hover:shadow-glow",
         outline: "border-2 border-primary/30 hover:border-primary/50",
       },
     },

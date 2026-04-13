@@ -91,7 +91,7 @@ export function SeverityIndicator({
               cy={config.circle / 2}
               r={radius}
               fill="none"
-              stroke="#3b82f6"
+              stroke="#e8713a"
               strokeWidth={config.stroke}
               strokeDasharray={circumference}
               strokeDashoffset={circumference - mediumDash}

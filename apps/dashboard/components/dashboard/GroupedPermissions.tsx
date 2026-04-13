@@ -1,18 +1,18 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useMemo, useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { 
-  ChevronDown, 
-  Shield, 
-  Users, 
-  FileCode, 
-  MessageSquare, 
-  ClipboardList, 
+import {
   BarChart3,
+  ChevronDown,
+  ClipboardList,
   FileText,
-  Settings,
-  Lock
+  Lock,
+  MessageSquare,
+  Search,
+  Shield,
+  ShieldCheck,
+  Users,
 } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -34,17 +34,31 @@ type PermissionGroup = {
   gradient: string
 }
 
-// Map permission prefixes to groups
-const PERMISSION_GROUPS_CONFIG: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string }> = {
-  reviews: { label: "Reviews", icon: FileCode, gradient: "from-purple-500 to-pink-500" },
+const PERMISSION_GROUP_ORDER = [
+  "assignments",
+  "comments",
+  "reviews",
+  "analyses",
+  "templates",
+  "threads",
+  "metrics",
+  "admin",
+  "other",
+]
+
+const PERMISSION_GROUPS_CONFIG: Record<
+  string,
+  { label: string; icon: React.ComponentType<{ className?: string }>; gradient: string }
+> = {
+  assignments: { label: "Assignments", icon: ClipboardList, gradient: "from-orange-500 to-amber-500" },
   comments: { label: "Comments", icon: MessageSquare, gradient: "from-blue-500 to-cyan-500" },
+  reviews: { label: "Reviews", icon: ShieldCheck, gradient: "from-emerald-500 to-teal-500" },
+  analyses: { label: "Analyses", icon: Search, gradient: "from-violet-500 to-fuchsia-500" },
+  templates: { label: "Templates", icon: FileText, gradient: "from-amber-500 to-yellow-500" },
   threads: { label: "Discussions", icon: Users, gradient: "from-indigo-500 to-purple-500" },
-  assignments: { label: "Assignments", icon: ClipboardList, gradient: "from-amber-500 to-orange-500" },
-  metrics: { label: "Metrics", icon: BarChart3, gradient: "from-green-500 to-emerald-500" },
-  templates: { label: "Templates", icon: FileText, gradient: "from-rose-500 to-red-500" },
-  analyses: { label: "Analyses", icon: Settings, gradient: "from-teal-500 to-cyan-500" },
-  admin: { label: "Administration", icon: Shield, gradient: "from-red-500 to-orange-500" },
-  other: { label: "Other", icon: Lock, gradient: "from-gray-500 to-slate-500" },
+  metrics: { label: "Metrics", icon: BarChart3, gradient: "from-cyan-500 to-emerald-500" },
+  admin: { label: "Administration", icon: Shield, gradient: "from-rose-500 to-orange-500" },
+  other: { label: "Other", icon: Lock, gradient: "from-slate-500 to-slate-700" },
 }
 
 function groupPermissions(permissions: PermissionCatalogItem[]): PermissionGroup[] {
@@ -58,20 +72,27 @@ function groupPermissions(permissions: PermissionCatalogItem[]): PermissionGroup
     groups[prefix].push(permission)
   }
 
-  const result: PermissionGroup[] = []
-  for (const [prefix, perms] of Object.entries(groups)) {
-    const config = PERMISSION_GROUPS_CONFIG[prefix] || PERMISSION_GROUPS_CONFIG.other
-    result.push({
-      id: prefix,
-      label: config.label,
-      icon: config.icon,
-      permissions: perms.sort((a, b) => a.code.localeCompare(b.code)),
-      gradient: config.gradient,
+  return Object.entries(groups)
+    .map(([prefix, perms]) => {
+      const config = PERMISSION_GROUPS_CONFIG[prefix] || PERMISSION_GROUPS_CONFIG.other
+      return {
+        id: prefix,
+        label: config.label,
+        icon: config.icon,
+        permissions: [...perms].sort((a, b) => a.code.localeCompare(b.code)),
+        gradient: config.gradient,
+      }
     })
-  }
-
-  // Sort groups by label
-  return result.sort((a, b) => a.label.localeCompare(b.label))
+    .sort((left, right) => {
+      const leftIndex = PERMISSION_GROUP_ORDER.indexOf(left.id)
+      const rightIndex = PERMISSION_GROUP_ORDER.indexOf(right.id)
+      const normalizedLeft = leftIndex === -1 ? PERMISSION_GROUP_ORDER.length : leftIndex
+      const normalizedRight = rightIndex === -1 ? PERMISSION_GROUP_ORDER.length : rightIndex
+      if (normalizedLeft !== normalizedRight) {
+        return normalizedLeft - normalizedRight
+      }
+      return left.label.localeCompare(right.label)
+    })
 }
 
 type PermissionGroupCardProps = {
@@ -82,48 +103,49 @@ type PermissionGroupCardProps = {
 
 function PermissionGroupCard({ group, isExpanded, onToggle }: PermissionGroupCardProps) {
   const Icon = group.icon
-  const totalUsers = group.permissions.reduce((sum, p) => sum + p.userCount, 0)
+  const totalUsers = group.permissions.reduce((sum, permission) => sum + permission.userCount, 0)
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden"
+      className="overflow-hidden rounded-[24px] border border-border/70 bg-white/55 shadow-[0_12px_40px_rgba(15,23,42,0.06)] backdrop-blur-2xl dark:border-white/10 dark:bg-white/5 dark:shadow-[0_20px_50px_rgba(0,0,0,0.24)]"
     >
-      {/* Group Header */}
       <button
         onClick={onToggle}
         className={cn(
-          "w-full flex items-center justify-between p-4 transition-colors",
-          "bg-gradient-to-r from-gray-50 to-transparent dark:from-gray-800/50 dark:to-transparent",
-          "hover:from-gray-100 hover:to-gray-50/50 dark:hover:from-gray-800 dark:hover:to-gray-800/30"
+          "flex w-full items-center justify-between gap-4 px-4 py-4 text-left transition-colors md:px-5",
+          "bg-gradient-to-r from-white/40 to-transparent dark:from-white/5 dark:to-transparent",
+          "hover:from-white/55 hover:to-white/5 dark:hover:from-white/10 dark:hover:to-white/5",
         )}
       >
         <div className="flex items-center gap-4">
-          <div className={`p-2 rounded-lg bg-gradient-to-br ${group.gradient}`}>
+          <div className={`flex size-11 items-center justify-center rounded-2xl bg-gradient-to-br ${group.gradient} shadow-[0_12px_25px_rgba(0,0,0,0.18)]`}>
             <Icon className="h-5 w-5 text-white" />
           </div>
-          <div className="text-left">
-            <span className="font-medium text-gray-900 dark:text-white">{group.label}</span>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
+          <div className="space-y-0.5">
+            <span className="block text-base font-semibold tracking-[-0.02em] text-foreground">
+              {group.label}
+            </span>
+            <p className="text-sm text-muted-foreground">
               {group.permissions.length} permission{group.permissions.length !== 1 ? "s" : ""}
             </p>
           </div>
         </div>
+
         <div className="flex items-center gap-3">
-          <Badge variant="secondary" className="font-mono">
+          <Badge
+            variant="outline"
+            className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-[11px] font-mono text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+          >
             {totalUsers} user{totalUsers !== 1 ? "s" : ""}
           </Badge>
-          <motion.div
-            animate={{ rotate: isExpanded ? 180 : 0 }}
-            transition={{ duration: 0.2 }}
-          >
-            <ChevronDown className="h-5 w-5 text-gray-500" />
+          <motion.div animate={{ rotate: isExpanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
+            <ChevronDown className="h-5 w-5 text-muted-foreground" />
           </motion.div>
         </div>
       </button>
 
-      {/* Permission List */}
       <AnimatePresence>
         {isExpanded && (
           <motion.div
@@ -132,8 +154,8 @@ function PermissionGroupCard({ group, isExpanded, onToggle }: PermissionGroupCar
             exit={{ height: 0, opacity: 0 }}
             transition={{ duration: 0.2 }}
           >
-            <ScrollArea className="max-h-[300px]">
-              <div className="p-2 space-y-1 bg-white/50 dark:bg-gray-900/30">
+            <ScrollArea className="max-h-[320px]">
+              <div className="space-y-1 p-3">
                 {group.permissions.map((permission, index) => (
                   <motion.div
                     key={permission.code}
@@ -141,21 +163,22 @@ function PermissionGroupCard({ group, isExpanded, onToggle }: PermissionGroupCar
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: index * 0.03 }}
                     className={cn(
-                      "flex items-center justify-between p-3 rounded-lg",
-                      "hover:bg-gray-100/50 dark:hover:bg-gray-800/50 transition-colors"
+                      "flex items-start justify-between gap-4 rounded-[18px] border border-border/60 px-3 py-3 transition-colors",
+                      "bg-white/55 hover:bg-white/80 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10",
                     )}
                   >
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2">
-                        <code className="text-xs bg-gray-100 dark:bg-gray-800 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 font-mono">
-                          {permission.code}
-                        </code>
-                      </div>
-                      <p className="text-sm text-gray-600 dark:text-gray-400 mt-1 truncate">
+                    <div className="min-w-0 flex-1">
+                      <code className="inline-flex rounded-full border border-border/70 bg-background/80 px-2.5 py-1 text-[11px] font-mono text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+                        {permission.code}
+                      </code>
+                      <p className="mt-1.5 text-sm text-muted-foreground">
                         {permission.description}
                       </p>
                     </div>
-                    <Badge variant="outline" className="ml-4 shrink-0">
+                    <Badge
+                      variant="outline"
+                      className="shrink-0 rounded-full border-border/70 bg-background/80 px-3 py-1 text-[11px] font-mono text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+                    >
                       {permission.userCount}
                     </Badge>
                   </motion.div>
@@ -176,13 +199,12 @@ type GroupedPermissionsProps = {
 }
 
 export function GroupedPermissions({ permissions, title = "Permissions disponibles", className }: GroupedPermissionsProps) {
-  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
-
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set(["comments"]))
   const groups = useMemo(() => groupPermissions(permissions), [permissions])
 
   const toggleGroup = (groupId: string) => {
-    setExpandedGroups((prev) => {
-      const next = new Set(prev)
+    setExpandedGroups((previous) => {
+      const next = new Set(previous)
       if (next.has(groupId)) {
         next.delete(groupId)
       } else {
@@ -192,53 +214,65 @@ export function GroupedPermissions({ permissions, title = "Permissions disponibl
     })
   }
 
-  const expandAll = () => {
-    setExpandedGroups(new Set(groups.map((g) => g.id)))
-  }
-
-  const collapseAll = () => {
-    setExpandedGroups(new Set())
-  }
+  const expandAll = () => setExpandedGroups(new Set(groups.map((group) => group.id)))
+  const collapseAll = () => setExpandedGroups(new Set())
 
   const totalPermissions = permissions.length
-  const totalUsers = permissions.reduce((sum, p) => sum + p.userCount, 0)
+  const totalUsers = permissions.reduce((sum, permission) => sum + permission.userCount, 0)
 
   return (
-    <Card className={cn("bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50", className)}>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Shield className="h-5 w-5 text-purple-500" />
-          <CardTitle>{title}</CardTitle>
+    <Card
+      className={cn(
+        "rounded-[30px] border border-border/70 bg-white/75 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/80 dark:shadow-[0_30px_80px_rgba(0,0,0,0.45)]",
+        className,
+      )}
+    >
+      <CardHeader className="flex flex-col gap-4 border-b border-border/60 pb-5 md:flex-row md:items-center md:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex size-11 items-center justify-center rounded-2xl bg-rose-500/15 text-rose-500 ring-1 ring-rose-500/20 dark:bg-rose-400/15 dark:text-rose-300">
+            <Shield className="h-5 w-5" />
+          </div>
+          <CardTitle className="text-[1.1rem] font-semibold tracking-[-0.02em] text-foreground">
+            {title}
+          </CardTitle>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="secondary">
+
+        <div className="flex flex-wrap items-center gap-2 md:justify-end">
+          <Badge
+            variant="secondary"
+            className="rounded-full border border-border/70 bg-white/70 px-3 py-1.5 font-mono text-[11px] text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+          >
             {totalPermissions} permissions
           </Badge>
-          <Badge variant="outline">
+          <Badge
+            variant="outline"
+            className="rounded-full border border-border/70 bg-background/70 px-3 py-1.5 font-mono text-[11px] text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100"
+          >
             {totalUsers} total assignations
           </Badge>
-          <div className="flex gap-1 ml-2">
+          <div className="flex items-center gap-2 pl-1">
             <button
               onClick={expandAll}
-              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              className="text-xs font-medium text-violet-600 transition hover:text-violet-500 dark:text-violet-300 dark:hover:text-violet-200"
             >
               Expand all
             </button>
-            <span className="text-gray-400">|</span>
+            <span className="text-muted-foreground/50">|</span>
             <button
               onClick={collapseAll}
-              className="text-xs text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300"
+              className="text-xs font-medium text-violet-600 transition hover:text-violet-500 dark:text-violet-300 dark:hover:text-violet-200"
             >
               Collapse all
             </button>
           </div>
         </div>
       </CardHeader>
-      <CardContent>
+
+      <CardContent className="pt-5">
         {groups.length === 0 ? (
-          <p className="text-sm text-gray-500 text-center py-8">Aucune permission chargée.</p>
+          <p className="py-10 text-center text-sm text-muted-foreground">Aucune permission chargée.</p>
         ) : (
-          <ScrollArea className="h-[500px] pr-4">
+          <ScrollArea className="h-[520px] pr-2">
             <div className="space-y-3">
               {groups.map((group) => (
                 <PermissionGroupCard

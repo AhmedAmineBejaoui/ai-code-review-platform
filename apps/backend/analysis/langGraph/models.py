@@ -102,6 +102,11 @@ class RetrievalResult:
         }
 
 
+# Canonical GraphRAG aliases used by the rest of the backend.
+GraphRagCitation = RetrievedContextReference
+GraphRagRetrievalResult = RetrievalResult
+
+
 @dataclass(frozen=True)
 class GraphIndexSnapshot:
     status: Literal["completed", "failed", "skipped"]
@@ -120,6 +125,9 @@ class GraphIndexSnapshot:
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
+
+
+GraphRagIndexSnapshot = GraphIndexSnapshot
 
 
 @dataclass(frozen=True)
@@ -236,3 +244,5 @@ class LangGraphState(TypedDict, total=False):
     started_perf: float
     completed_perf: float
 
+
+GraphRagAnalysisResult = LangGraphAnalysisResult

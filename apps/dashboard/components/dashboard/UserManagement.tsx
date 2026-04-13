@@ -4,7 +4,7 @@
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
 import { motion } from "framer-motion"
-import { Users, Plus, Trash2, Edit, Shield, Sparkles } from "lucide-react"
+import { CheckCircle2, Edit, Search, Shield, UserCog, UserPlus, Users, X } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -31,7 +31,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select"
 import { GroupedPermissions } from "./GroupedPermissions"
 
@@ -71,6 +70,90 @@ type IntegrationsPayload = {
   }
 }
 
+type RoleValue =
+  | "admin"
+  | "reviewer_lead"
+  | "reviewer_senior"
+  | "reviewer_junior"
+  | "developer"
+  | "viewer"
+
+type RoleOption = {
+  value: RoleValue
+  label: string
+  description: string
+  chips: string[]
+  dotClass: string
+  badgeClass: string
+}
+
+const ROLE_OPTIONS: RoleOption[] = [
+  {
+    value: "viewer",
+    label: "Viewer",
+    description: "Accès en lecture seule aux projets et analyses.",
+    chips: ["Consulter", "Surveiller"],
+    dotClass: "bg-slate-400",
+    badgeClass:
+      "border-slate-300/70 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200",
+  },
+  {
+    value: "developer",
+    label: "Developer",
+    description: "Peut soumettre des PRs pour analyse et consulter les résultats détaillés.",
+    chips: ["Soumettre", "Consulter", "Commenter"],
+    dotClass: "bg-emerald-400",
+    badgeClass:
+      "border-emerald-500/25 bg-emerald-500/15 text-emerald-600 dark:text-emerald-200",
+  },
+  {
+    value: "reviewer_junior",
+    label: "Junior Reviewer",
+    description: "Peut approuver les PRs, suggérer des changements et escalader les cas complexes.",
+    chips: ["Approuver", "Suggérer", "Escalader"],
+    dotClass: "bg-sky-400",
+    badgeClass:
+      "border-sky-500/25 bg-sky-500/15 text-sky-600 dark:text-sky-200",
+  },
+  {
+    value: "reviewer_senior",
+    label: "Senior Reviewer",
+    description: "Peut approuver, bloquer les PRs et demander des changements obligatoires.",
+    chips: ["Approuver", "Bloquer", "Demander changements"],
+    dotClass: "bg-violet-400",
+    badgeClass:
+      "border-violet-500/25 bg-violet-500/15 text-violet-600 dark:text-violet-200",
+  },
+  {
+    value: "reviewer_lead",
+    label: "Lead Reviewer",
+    description: "Accès complet pour gérer l’équipe, assigner les reviews et piloter les templates.",
+    chips: ["Assigner", "Déléguer", "Templates", "Analytics équipe"],
+    dotClass: "bg-amber-400",
+    badgeClass:
+      "border-amber-500/25 bg-amber-500/15 text-amber-700 dark:text-amber-200",
+  },
+  {
+    value: "admin",
+    label: "Admin",
+    description: "Accès complet à toutes les fonctionnalités de la plateforme.",
+    chips: ["Utilisateurs", "Intégrations", "Paramètres"],
+    dotClass: "bg-rose-400",
+    badgeClass:
+      "border-rose-500/25 bg-rose-500/15 text-rose-600 dark:text-rose-200",
+  },
+]
+
+const ROLE_LOOKUP = new Map(ROLE_OPTIONS.map((option) => [option.value, option]))
+
+function normalizeRole(role: string): RoleValue {
+  if (role === "admin") return "admin"
+  if (role === "reviewer_lead") return "reviewer_lead"
+  if (role === "reviewer_senior" || role === "reviewer") return "reviewer_senior"
+  if (role === "reviewer_junior") return "reviewer_junior"
+  if (role === "developer") return "developer"
+  return "viewer"
+}
 
 function extractApiErrorMessage(payload: unknown, fallback: string): string {
   if (!payload || typeof payload !== "object") {
@@ -127,73 +210,32 @@ function displayNameOf(user: AdminUser): string {
   return user.displayName && user.displayName.trim().length > 0 ? user.displayName : user.email
 }
 
-function primaryRole(user: AdminUser): string {
+function primaryRole(user: AdminUser): RoleValue {
   if (user.roles.includes("admin")) {
     return "admin"
   }
   if (user.roles.includes("reviewer_lead")) {
     return "reviewer_lead"
   }
-  if (user.roles.includes("reviewer_senior")) {
+  if (user.roles.includes("reviewer_senior") || user.roles.includes("reviewer")) {
     return "reviewer_senior"
   }
   if (user.roles.includes("reviewer_junior")) {
     return "reviewer_junior"
   }
-  if (user.roles.includes("reviewer")) {
-    return "reviewer_senior" // Backward compatibility
-  }
   if (user.roles.includes("developer")) {
     return "developer"
   }
-  return user.roles[0] ?? "viewer"
+  return normalizeRole(user.roles[0] ?? "viewer")
 }
 
-function roleToUi(role: string): "admin" | "reviewer_lead" | "reviewer_senior" | "reviewer_junior" | "dev" | "viewer" {
-  if (role === "admin") {
-    return "admin"
-  }
-  if (role === "reviewer_lead") {
-    return "reviewer_lead"
-  }
-  if (role === "reviewer_senior") {
-    return "reviewer_senior"
-  }
-  if (role === "reviewer_junior") {
-    return "reviewer_junior"
-  }
-  if (role === "reviewer") {
-    return "reviewer_senior" // Backward compatibility
-  }
-  if (role === "developer") {
-    return "dev"
-  }
-  return "viewer"
+function getRoleMeta(role: string) {
+  return ROLE_LOOKUP.get(normalizeRole(role)) ?? ROLE_OPTIONS[0]
 }
 
-function roleGradient(role: string): string {
-  if (role === "admin") {
-    return "from-red-500 to-orange-500"
-  }
-  if (role === "reviewer_lead") {
-    return "from-amber-500 to-orange-500"
-  }
-  if (role === "reviewer_senior") {
-    return "from-purple-500 to-pink-500"
-  }
-  if (role === "reviewer_junior") {
-    return "from-blue-500 to-cyan-500"
-  }
-  if (role === "reviewer") {
-    return "from-purple-500 to-pink-500" // Backward compatibility
-  }
-  if (role === "developer") {
-    return "from-green-500 to-emerald-500"
-  }
-  return "from-gray-500 to-slate-500"
+function hasReviewerRole(user: AdminUser): boolean {
+  return user.roles.some((role) => role === "reviewer" || role.startsWith("reviewer_"))
 }
-
-const ROLE_CYCLE = ["developer", "reviewer_junior", "reviewer_senior", "reviewer_lead", "admin", "viewer"] as const
 
 export function UserManagement() {
   const [users, setUsers] = useState<AdminUser[]>([])
@@ -205,6 +247,7 @@ export function UserManagement() {
   const [tokenBusy, setTokenBusy] = useState(false)
   const [tokenInfo, setTokenInfo] = useState<IntegrationsPayload["ciToken"] | null>(null)
   const [lastRotatedToken, setLastRotatedToken] = useState<string | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
   const [stats, setStats] = useState({
     totalUsers: 0,
     admins: 0,
@@ -214,13 +257,12 @@ export function UserManagement() {
   })
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
-  const [selectedRole, setSelectedRole] = useState<string>("")
+  const [selectedRole, setSelectedRole] = useState<RoleValue>("viewer")
 
   const loadData = async () => {
     setLoading(true)
     setError(null)
     try {
-      // Keep backend RBAC profile in sync with Clerk session before admin API calls.
       await fetch("/api/auth/sync", {
         method: "POST",
         cache: "no-store",
@@ -246,7 +288,7 @@ export function UserManagement() {
       setStats({
         totalUsers: Number(payloadStats.totalUsers ?? items.length),
         admins: Number(payloadStats.admins ?? items.filter((item) => primaryRole(item) === "admin").length),
-        reviewers: Number(payloadStats.reviewers ?? items.filter((item) => primaryRole(item) === "reviewer").length),
+        reviewers: Number(payloadStats.reviewers ?? items.filter((item) => hasReviewerRole(item)).length),
         developers: Number(payloadStats.developers ?? items.filter((item) => primaryRole(item) === "developer").length),
         activeUsers: Number(payloadStats.activeUsers ?? items.filter((item) => item.isActive).length),
       })
@@ -263,7 +305,7 @@ export function UserManagement() {
         setActionMessage(
           extractApiErrorMessage(
             integrationsPayload,
-            "Les utilisateurs sont charges, mais les informations d'integration CI sont indisponibles.",
+            "Les utilisateurs sont chargés, mais les informations d'intégration CI sont indisponibles.",
           ),
         )
       }
@@ -279,30 +321,25 @@ export function UserManagement() {
     void loadData()
   }, [])
 
-  const getRoleBadge = (role: string) => {
-    const normalizedRole = roleToUi(role)
-    if (normalizedRole === "admin") {
-      return <Badge variant="destructive">admin</Badge>
-    }
-    if (normalizedRole === "reviewer_lead") {
-      return <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none">Lead Reviewer</Badge>
-    }
-    if (normalizedRole === "reviewer_senior") {
-      return <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">Senior Reviewer</Badge>
-    }
-    if (normalizedRole === "reviewer_junior") {
-      return <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">Junior Reviewer</Badge>
-    }
-    if (normalizedRole === "dev") {
-      return <Badge variant="outline">dev</Badge>
-    }
-    return <Badge variant="outline">viewer</Badge>
-  }
-
   const sortedUsers = useMemo(
     () => [...users].sort((left, right) => Number(right.isActive) - Number(left.isActive)),
     [users],
   )
+
+  const filteredUsers = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    if (!query) {
+      return sortedUsers
+    }
+    return sortedUsers.filter((user) => {
+      const primary = primaryRole(user)
+      const roleMeta = getRoleMeta(primary)
+      const haystack = [displayNameOf(user), user.email, primary, roleMeta.label, ...user.permissions]
+      return haystack.some((value) => value.toLowerCase().includes(query))
+    })
+  }, [searchQuery, sortedUsers])
+
+  const selectedRoleMeta = useMemo(() => getRoleMeta(selectedRole), [selectedRole])
 
   const patchUser = async (userId: string, body: { role?: string; isActive?: boolean }) => {
     setBusyUserId(userId)
@@ -315,48 +352,33 @@ export function UserManagement() {
       })
       const payload = (await response.json().catch(() => ({}))) as { error?: string; item?: AdminUser }
       if (!response.ok || !payload.item) {
-        throw new Error(extractApiErrorMessage(payload, "Mise a jour utilisateur impossible."))
+        throw new Error(extractApiErrorMessage(payload, "Mise à jour utilisateur impossible."))
       }
       setUsers((previous) => previous.map((user) => (user.id === userId ? payload.item! : user)))
-      setActionMessage("Utilisateur mis a jour.")
+      setActionMessage("Utilisateur mis à jour.")
       await loadData()
+      return true
     } catch (updateError) {
-      setActionMessage(updateError instanceof Error ? updateError.message : "Mise a jour utilisateur impossible.")
+      setActionMessage(updateError instanceof Error ? updateError.message : "Mise à jour utilisateur impossible.")
+      return false
     } finally {
       setBusyUserId(null)
     }
   }
 
-  const rotateRole = async (user: AdminUser) => {
-    const current = primaryRole(user)
-    const index = ROLE_CYCLE.indexOf(current as (typeof ROLE_CYCLE)[number])
-    const nextRole = ROLE_CYCLE[(index + 1 + ROLE_CYCLE.length) % ROLE_CYCLE.length]
-    await patchUser(user.id, { role: nextRole })
-  }
-
   const openRoleDialog = (user: AdminUser) => {
     setSelectedUser(user)
-    setSelectedRole(primaryRole(user))
+    setSelectedRole(normalizeRole(primaryRole(user)))
     setRoleDialogOpen(true)
   }
 
   const saveRole = async () => {
     if (!selectedUser || !selectedRole) return
-    await patchUser(selectedUser.id, { role: selectedRole })
-    setRoleDialogOpen(false)
-    setSelectedUser(null)
-  }
-
-  const toggleActive = async (user: AdminUser) => {
-    await patchUser(user.id, { isActive: !user.isActive })
-  }
-
-  const deactivate = async (user: AdminUser) => {
-    if (!user.isActive) {
-      setActionMessage("Utilisateur deja desactive.")
-      return
+    const updated = await patchUser(selectedUser.id, { role: selectedRole })
+    if (updated) {
+      setRoleDialogOpen(false)
+      setSelectedUser(null)
     }
-    await patchUser(user.id, { isActive: false })
   }
 
   const rotateCiToken = async () => {
@@ -383,7 +405,7 @@ export function UserManagement() {
         createdAt: payload.createdAt ?? new Date().toISOString(),
         revoked: false,
       })
-      setActionMessage("Nouveau token genere. Copiez-le maintenant.")
+      setActionMessage("Nouveau token généré. Copiez-le maintenant.")
     } catch (rotateError) {
       setActionMessage(rotateError instanceof Error ? rotateError.message : "Rotation du token impossible.")
     } finally {
@@ -409,7 +431,7 @@ export function UserManagement() {
         exists: false,
         revoked: true,
       }))
-      setActionMessage("Token CI revoque.")
+      setActionMessage("Token CI révoqué.")
     } catch (revokeError) {
       setActionMessage(revokeError instanceof Error ? revokeError.message : "Revocation du token impossible.")
     } finally {
@@ -418,51 +440,63 @@ export function UserManagement() {
   }
 
   const statsCards = [
-    { label: "Total utilisateurs", value: stats.totalUsers, icon: Users, gradient: "from-blue-500 to-cyan-500" },
-    { label: "Admins", value: stats.admins, icon: Shield, gradient: "from-red-500 to-orange-500" },
-    { label: "Reviewers", value: stats.reviewers, icon: Shield, gradient: "from-orange-500 to-yellow-500" },
-    { label: "Developpeurs", value: stats.developers, icon: Users, gradient: "from-green-500 to-emerald-500" },
+    { label: "Total utilisateurs", value: stats.totalUsers, icon: Users, gradient: "from-violet-500 to-fuchsia-500" },
+    { label: "Admins", value: stats.admins, icon: Shield, gradient: "from-rose-500 to-orange-500" },
+    { label: "Reviewers", value: stats.reviewers, icon: CheckCircle2, gradient: "from-amber-500 to-yellow-500" },
+    { label: "Développeurs", value: stats.developers, icon: UserCog, gradient: "from-emerald-500 to-teal-500" },
   ]
 
   return (
-    <motion.div className="max-w-6xl mx-auto space-y-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <motion.div className="flex justify-between items-start" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
-        <div>
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-gray-900 via-indigo-900 to-purple-900 dark:from-white dark:via-indigo-100 dark:to-purple-100 bg-clip-text text-transparent mb-2 flex items-center gap-3">
-            <Users className="h-10 w-10 text-indigo-500" />
-            Gestion des utilisateurs
-          </h1>
-          <p className="text-gray-600 dark:text-gray-400">Gestion des acces et permissions (RBAC)</p>
+    <motion.div className="mx-auto w-full max-w-[1180px] space-y-6 px-4 pb-10 lg:px-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+      <motion.div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+        <div className="flex items-start gap-4">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-500 ring-1 ring-violet-500/20 dark:bg-violet-400/15 dark:text-violet-300">
+            <Users className="h-5 w-5" />
+          </div>
+          <div className="space-y-1">
+            <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-foreground md:text-[2.5rem]">Gestion des utilisateurs</h1>
+            <p className="text-sm text-muted-foreground">Gestion des accès et permissions (RBAC)</p>
+          </div>
         </div>
-        <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-          <Link href="/dashboard/admin/organization">
-            <Button className="gap-2 bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-700 hover:to-purple-700">
-              <Plus className="h-4 w-4" />
-              Ajouter utilisateur
-            </Button>
-          </Link>
-        </motion.div>
+
+        <div className="flex flex-wrap items-center gap-3 lg:justify-end">
+          <Button
+            asChild
+            variant="outline"
+            className="h-11 rounded-full border-border/70 bg-white/95 px-5 text-sm font-medium text-slate-900 shadow-sm hover:bg-white dark:border-white/10 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-50"
+          >
+            <Link href="/dashboard/admin/organization">Gérer les invitations organization</Link>
+          </Button>
+          <Button className="h-11 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 text-sm font-medium text-white shadow-[0_16px_35px_rgba(124,58,237,0.35)] hover:from-violet-500 hover:to-fuchsia-500">
+            <UserPlus className="h-4 w-4" />
+            Ajouter utilisateur
+          </Button>
+        </div>
       </motion.div>
 
-      {error && <div className="rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-200">{error}</div>}
-      {actionMessage && (
-        <div className="rounded-xl border border-blue-500/40 bg-blue-500/10 px-4 py-3 text-sm text-blue-200">{actionMessage}</div>
-      )}
+      {error && <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-200">{error}</div>}
+      {actionMessage && <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-600 dark:text-sky-200">{actionMessage}</div>}
 
-      <div className="grid md:grid-cols-4 gap-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {statsCards.map((stat, index) => (
-          <motion.div key={stat.label} initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 + index * 0.05 }} whileHover={{ y: -4, scale: 1.02 }}>
-            <Card className="relative overflow-hidden bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-              <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br ${stat.gradient} opacity-20 rounded-full blur-2xl`} />
-              <CardContent className="pt-6 relative z-10">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm text-gray-600 dark:text-gray-400 mb-1">{stat.label}</p>
-                    <p className="text-3xl font-bold text-gray-900 dark:text-white">{stat.value}</p>
+          <motion.div
+            key={stat.label}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.1 + index * 0.05 }}
+            whileHover={{ y: -4, scale: 1.01 }}
+          >
+            <Card className="relative overflow-hidden rounded-[28px] border border-border/70 bg-white/75 shadow-[0_16px_45px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/75 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
+              <div className={`absolute -right-6 -top-8 size-28 rounded-full bg-gradient-to-br ${stat.gradient} opacity-15 blur-2xl`} />
+              <CardContent className="relative z-10 pt-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground/80">{stat.label}</p>
+                    <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">{stat.value}</p>
                   </div>
-                  <motion.div className={`p-3 rounded-xl bg-gradient-to-br ${stat.gradient}`} whileHover={{ scale: 1.1, rotate: 360 }} transition={{ duration: 0.5 }}>
-                    <stat.icon className="h-6 w-6 text-white" />
-                  </motion.div>
+                  <div className={`flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br ${stat.gradient} shadow-[0_12px_25px_rgba(0,0,0,0.18)]`}>
+                    <stat.icon className="h-5 w-5 text-white" />
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -470,92 +504,152 @@ export function UserManagement() {
         ))}
       </div>
 
+      <div className="rounded-[28px] border border-border/70 bg-white/70 p-3 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/80">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="relative w-full md:max-w-2xl">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <input
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+              type="search"
+              placeholder="Rechercher un utilisateur, un email, un rôle ou une permission"
+              className="h-12 w-full rounded-[20px] border border-border/70 bg-background/85 pl-11 pr-11 text-sm text-foreground shadow-sm outline-none transition focus:border-violet-500/50 focus:bg-background dark:border-white/10 dark:bg-white/5 dark:focus:bg-white/10"
+            />
+            {searchQuery.length > 0 && (
+              <button
+                type="button"
+                aria-label="Effacer la recherche"
+                onClick={() => setSearchQuery("")}
+                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground dark:hover:bg-white/10"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
+              {filteredUsers.length} visibles
+            </span>
+            <span className="hidden md:inline">sur {sortedUsers.length} utilisateurs</span>
+          </div>
+        </div>
+      </div>
+
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <Card className="bg-white/50 dark:bg-gray-900/50 backdrop-blur-xl border-gray-200/50 dark:border-gray-800/50">
-          <CardHeader>
-            <CardTitle>Utilisateurs</CardTitle>
+        <Card className="rounded-[30px] border border-border/70 bg-white/75 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0a0f16]/80 dark:shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+          <CardHeader className="pb-4">
+            <CardTitle className="text-[1.15rem] font-semibold tracking-[-0.02em] text-foreground">Utilisateurs</CardTitle>
           </CardHeader>
-          <CardContent>
-            <div className="rounded-xl border border-gray-200/50 dark:border-gray-700/50 overflow-hidden">
-              <Table>
+          <CardContent className="pt-0">
+            <div className="overflow-hidden rounded-[24px] border border-border/70 bg-background/50 dark:border-white/10 dark:bg-white/5">
+              <Table className="border-separate border-spacing-0">
                 <TableHeader>
-                  <TableRow className="bg-gray-50/50 dark:bg-gray-800/50 hover:bg-gray-50/50 dark:hover:bg-gray-800/50">
-                    <TableHead>Utilisateur</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Permissions</TableHead>
-                    <TableHead className="text-right">Actions</TableHead>
+                  <TableRow className="border-b border-border/60 bg-muted/30 hover:bg-muted/30 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/5">
+                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Utilisateur</TableHead>
+                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Email</TableHead>
+                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Rôle</TableHead>
+                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Permissions</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {loading ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-gray-500">
+                      <TableCell colSpan={4} className="px-6 py-10 text-center text-sm text-muted-foreground">
                         Chargement des utilisateurs...
                       </TableCell>
                     </TableRow>
-                  ) : sortedUsers.length === 0 ? (
+                  ) : filteredUsers.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={5} className="text-center py-8 text-gray-500">
-                        Aucun utilisateur RBAC trouve.
+                      <TableCell colSpan={4} className="px-6 py-10 text-center text-sm text-muted-foreground">
+                        {searchQuery ? "Aucun utilisateur ne correspond à cette recherche." : "Aucun utilisateur RBAC trouvé."}
                       </TableCell>
                     </TableRow>
                   ) : (
-                    sortedUsers.map((user, index) => {
+                    filteredUsers.map((user, index) => {
                       const role = primaryRole(user)
-                      const gradient = roleGradient(role)
+                      const roleMeta = getRoleMeta(role)
                       const isBusy = busyUserId === user.id
+                      const permissionPreview = user.permissions.slice(0, 5)
+                      const extraPermissions = Math.max(0, user.permissions.length - permissionPreview.length)
+                      const avatarGradient =
+                        role === "admin"
+                          ? "from-rose-500 to-orange-500"
+                          : role === "reviewer_lead"
+                            ? "from-amber-500 to-orange-500"
+                            : role === "reviewer_senior"
+                              ? "from-violet-500 to-fuchsia-500"
+                              : role === "reviewer_junior"
+                                ? "from-sky-500 to-cyan-500"
+                                : role === "developer"
+                                  ? "from-emerald-500 to-teal-500"
+                                  : "from-slate-500 to-slate-700"
+
                       return (
-                        <motion.tr key={user.id} initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 + index * 0.03 }} className="group hover:bg-gray-50/50 dark:hover:bg-gray-800/50 transition-colors">
-                          <TableCell>
-                            <div className="flex items-center gap-3">
-                              <motion.div whileHover={{ scale: 1.1 }}>
-                                <Avatar className="ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-900 ring-transparent group-hover:ring-blue-500/50 transition-all">
-                                  <AvatarFallback className={`bg-gradient-to-br ${gradient} text-white font-semibold`}>
+                        <motion.tr
+                          key={user.id}
+                          initial={{ opacity: 0, x: -20 }}
+                          animate={{ opacity: 1, x: 0 }}
+                          transition={{ delay: 0.4 + index * 0.03 }}
+                          className="group border-b border-border/40 transition-colors last:border-b-0 hover:bg-muted/25 dark:border-white/5 dark:hover:bg-white/5"
+                        >
+                          <TableCell className="px-6 py-5 align-top">
+                            <div className="flex items-start gap-3">
+                              <motion.div whileHover={{ scale: 1.05 }}>
+                                <Avatar className="size-11 border border-border/60 ring-2 ring-transparent ring-offset-2 ring-offset-background transition group-hover:ring-violet-500/40 dark:border-white/10 dark:ring-offset-[#0a0f16]">
+                                  <AvatarFallback className={`bg-gradient-to-br ${avatarGradient} font-semibold text-white`}>
                                     {initials(displayNameOf(user))}
                                   </AvatarFallback>
                                 </Avatar>
                               </motion.div>
-                              <div>
-                                <span className="font-medium text-gray-900 dark:text-white">{displayNameOf(user)}</span>
-                                {!user.isActive && <p className="text-xs text-red-400">Desactive</p>}
+                              <div className="space-y-1 pt-0.5">
+                                <p className="font-medium tracking-[-0.01em] text-foreground">{displayNameOf(user)}</p>
+                                <p className={`text-xs font-medium ${user.isActive ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500 dark:text-rose-400"}`}>
+                                  {user.isActive ? "Active" : "Desactive"}
+                                </p>
                               </div>
                             </div>
                           </TableCell>
-                          <TableCell className="text-gray-700 dark:text-gray-300">{user.email}</TableCell>
-                          <TableCell>{getRoleBadge(role)}</TableCell>
-                          <TableCell>
-                            <div className="flex flex-wrap gap-1">
-                              {user.permissions.length === 0 ? (
-                                <Badge variant="outline" className="text-xs">
-                                  aucune
-                                </Badge>
-                              ) : (
-                                user.permissions.map((permission) => (
-                                  <Badge key={permission} variant="outline" className="text-xs">
-                                    {permission}
-                                  </Badge>
-                                ))
-                              )}
+
+                          <TableCell className="px-6 py-5 align-top text-sm text-muted-foreground">{user.email}</TableCell>
+
+                          <TableCell className="px-6 py-5 align-top">
+                            <div className="flex items-center gap-2">
+                              <Badge className={`rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide ${roleMeta.badgeClass}`}>
+                                {roleMeta.label}
+                              </Badge>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => openRoleDialog(user)}
+                                disabled={isBusy}
+                                className="size-8 rounded-full border border-border/70 bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </Button>
                             </div>
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex justify-end gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => openRoleDialog(user)} disabled={isBusy}>
-                                  <Edit className="h-4 w-4 text-blue-600" />
-                                </Button>
-                              </motion.div>
-                              <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void toggleActive(user)} disabled={isBusy}>
-                                  <Shield className="h-4 w-4 text-purple-600" />
-                                </Button>
-                              </motion.div>
-                              <motion.div whileHover={{ scale: 1.2 }} whileTap={{ scale: 0.9 }}>
-                                <Button variant="ghost" size="icon" onClick={() => void deactivate(user)} disabled={isBusy}>
-                                  <Trash2 className="h-4 w-4 text-red-600" />
-                                </Button>
-                              </motion.div>
+
+                          <TableCell className="px-6 py-5 align-top">
+                            <div className="flex flex-wrap gap-1.5">
+                              {permissionPreview.length === 0 ? (
+                                <span className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-muted-foreground dark:border-white/10 dark:bg-white/5">
+                                  aucune
+                                </span>
+                              ) : (
+                                permissionPreview.map((permission) => (
+                                  <span
+                                    key={permission}
+                                    className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                                  >
+                                    {permission}
+                                  </span>
+                                ))
+                              )}
+                              {extraPermissions > 0 && (
+                                <span className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-muted-foreground dark:border-white/10 dark:bg-white/5">
+                                  +{extraPermissions}
+                                </span>
+                              )}
                             </div>
                           </TableCell>
                         </motion.tr>
@@ -574,44 +668,48 @@ export function UserManagement() {
       </motion.div>
 
       <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
-        <Card className="bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-950/30 dark:to-pink-950/30 backdrop-blur-xl border-purple-200/50 dark:border-purple-800/50">
+        <Card className="rounded-[28px] border border-border/70 bg-white/75 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/80">
           <CardHeader>
-            <CardTitle>Gestion des tokens CI</CardTitle>
+            <CardTitle className="text-[1.05rem] font-semibold tracking-[-0.02em]">Gestion des tokens CI</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Ce token sert a l'integration CI/CD (rotation et revocation reelles).
+            <p className="text-sm text-muted-foreground">
+              Ce token sert à l&apos;intégration CI/CD (rotation et révocation réelles).
             </p>
-            <div className="rounded-lg border border-purple-300/30 bg-white/60 dark:bg-gray-900/40 px-4 py-3">
-              <p className="text-sm text-gray-700 dark:text-gray-300">
-                Etat token:{" "}
+            <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 dark:border-white/10 dark:bg-white/5">
+              <p className="text-sm text-foreground">
+                État token:{" "}
                 {tokenInfo?.exists && !tokenInfo?.revoked ? (
-                  <span className="font-semibold text-emerald-400">Actif ({tokenInfo?.prefix ?? "prefix inconnu"})</span>
+                  <span className="font-semibold text-emerald-500 dark:text-emerald-400">
+                    Actif ({tokenInfo?.prefix ?? "prefix inconnu"})
+                  </span>
                 ) : (
-                  <span className="font-semibold text-amber-400">Aucun token actif</span>
+                  <span className="font-semibold text-[color:var(--orange)] dark:text-amber-400">Aucun token actif</span>
                 )}
               </p>
               {tokenInfo?.createdAt && (
-                <p className="text-xs text-gray-500 mt-1">
-                  Derniere rotation: {new Date(tokenInfo.createdAt).toLocaleString("fr-FR")}
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Dernière rotation: {new Date(tokenInfo.createdAt).toLocaleString("fr-FR")}
                 </p>
               )}
             </div>
             {lastRotatedToken && (
-              <div className="rounded-lg border border-emerald-500/40 bg-emerald-500/10 px-4 py-3">
-                <p className="text-xs text-emerald-200 mb-1">Nouveau token (affiche une seule fois):</p>
-                <code className="text-xs break-all">{lastRotatedToken}</code>
+              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
+                <p className="mb-1 text-xs text-emerald-700 dark:text-emerald-200">
+                  Nouveau token (affiché une seule fois):
+                </p>
+                <code className="break-all text-xs text-emerald-900 dark:text-emerald-100">{lastRotatedToken}</code>
               </div>
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="outline" className="bg-white dark:bg-gray-800" onClick={() => void rotateCiToken()} disabled={tokenBusy}>
-                  Generer nouveau token
+                <Button variant="outline" className="bg-background/80 text-foreground dark:bg-white/5" onClick={() => void rotateCiToken()} disabled={tokenBusy}>
+                  Générer nouveau token
                 </Button>
               </motion.div>
               <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="outline" className="bg-white dark:bg-gray-800" onClick={() => void revokeCiToken()} disabled={tokenBusy}>
-                  Revoquer le token actif
+                <Button variant="outline" className="bg-background/80 text-foreground dark:bg-white/5" onClick={() => void revokeCiToken()} disabled={tokenBusy}>
+                  Révoquer le token actif
                 </Button>
               </motion.div>
             </div>
@@ -619,127 +717,74 @@ export function UserManagement() {
         </Card>
       </motion.div>
 
-      {/* Role Selection Dialog */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
-          <DialogHeader>
-            <DialogTitle>Modifier le rôle de l&apos;utilisateur</DialogTitle>
-            <DialogDescription>
-              Sélectionnez le nouveau rôle pour {selectedUser?.displayName || selectedUser?.email}
+        <DialogContent className="sm:max-w-[560px] rounded-[28px] border border-border/70 bg-white/95 p-6 shadow-[0_30px_100px_rgba(15,23,42,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#131821]/95 dark:shadow-[0_40px_120px_rgba(0,0,0,0.5)]">
+          <DialogHeader className="space-y-2 text-left">
+            <DialogTitle className="text-[1.55rem] font-semibold tracking-[-0.03em] text-foreground">
+              Modifier le rôle de l&apos;utilisateur
+            </DialogTitle>
+            <DialogDescription className="text-sm text-muted-foreground">
+              Sélectionnez le nouveau rôle pour {selectedUser ? displayNameOf(selectedUser) : ""}
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <Select value={selectedRole} onValueChange={setSelectedRole}>
-              <SelectTrigger className="w-full">
-                <SelectValue placeholder="Sélectionner un rôle" />
+
+          <div className="space-y-4 pt-3">
+            <Select value={selectedRole} onValueChange={(value) => setSelectedRole(normalizeRole(value))}>
+              <SelectTrigger className="h-14 w-full rounded-2xl border border-border/70 bg-background/80 px-4 text-left text-sm shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5">
+                <div className="flex items-center gap-3">
+                  <span className={`size-3 rounded-full ${selectedRoleMeta.dotClass}`} />
+                  <span className="font-medium text-foreground">{selectedRoleMeta.label}</span>
+                </div>
               </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="viewer">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-gray-500 to-slate-500"></div>
-                    <span>Viewer</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="developer">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-green-500 to-emerald-500"></div>
-                    <span>Developer</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="reviewer_junior">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-blue-500 to-cyan-500"></div>
-                    <span>Junior Reviewer</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="reviewer_senior">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-purple-500 to-pink-500"></div>
-                    <span>Senior Reviewer</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="reviewer_lead">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-amber-500 to-orange-500"></div>
-                    <span>Lead Reviewer</span>
-                  </div>
-                </SelectItem>
-                <SelectItem value="admin">
-                  <div className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-full bg-gradient-to-r from-red-500 to-orange-500"></div>
-                    <span>Admin</span>
-                  </div>
-                </SelectItem>
+              <SelectContent className="rounded-[24px] border border-border/70 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-[#1d2229]">
+                {ROLE_OPTIONS.map((role) => (
+                  <SelectItem
+                    key={role.value}
+                    value={role.value}
+                    className="rounded-xl px-4 py-3 text-sm text-foreground data-[highlighted]:bg-muted/80 data-[highlighted]:text-foreground dark:data-[highlighted]:bg-white/10"
+                  >
+                    <div className="flex items-center gap-3">
+                      <span className={`size-2.5 rounded-full ${role.dotClass}`} />
+                      <span>{role.label}</span>
+                    </div>
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
-            
-            {/* Role Description */}
-            <div className="p-4 rounded-lg border bg-gray-50 dark:bg-gray-900">
-              {selectedRole === "viewer" && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Accès en lecture seule aux projets et analyses.
-                </p>
-              )}
-              {selectedRole === "developer" && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Peut créer des analyses, voir les résultats et participer aux discussions.
-                </p>
-              )}
-              {selectedRole === "reviewer_junior" && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-blue-600 dark:text-blue-400">Junior Reviewer</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Peut approuver les PRs, suggérer des changements, et escalader les reviews complexes. Ne peut pas bloquer les PRs.
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    <Badge variant="outline" className="text-xs">Approuver</Badge>
-                    <Badge variant="outline" className="text-xs">Suggérer</Badge>
-                    <Badge variant="outline" className="text-xs">Escalader</Badge>
-                  </div>
-                </div>
-              )}
-              {selectedRole === "reviewer_senior" && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-purple-600 dark:text-purple-400">Senior Reviewer</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Peut approuver, bloquer les PRs, et demander des changements obligatoires. Plus d&apos;autorité sur les décisions.
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    <Badge variant="outline" className="text-xs">Approuver</Badge>
-                    <Badge variant="outline" className="text-xs">Bloquer</Badge>
-                    <Badge variant="outline" className="text-xs">Demander changements</Badge>
-                    <Badge variant="outline" className="text-xs">Escalader</Badge>
-                  </div>
-                </div>
-              )}
-              {selectedRole === "reviewer_lead" && (
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-amber-600 dark:text-amber-400">Lead Reviewer</p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Accès complet: gestion d&apos;équipe, assignation de reviews, création de templates, et accès aux analytics d&apos;équipe.
-                  </p>
-                  <div className="flex flex-wrap gap-1 mt-2">
-                    <Badge variant="outline" className="text-xs">Approuver</Badge>
-                    <Badge variant="outline" className="text-xs">Bloquer</Badge>
-                    <Badge variant="outline" className="text-xs">Assigner</Badge>
-                    <Badge variant="outline" className="text-xs">Déléguer</Badge>
-                    <Badge variant="outline" className="text-xs">Templates</Badge>
-                    <Badge variant="outline" className="text-xs">Analytics équipe</Badge>
-                  </div>
-                </div>
-              )}
-              {selectedRole === "admin" && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">
-                  Accès complet à toutes les fonctionnalités de la plateforme, incluant la gestion des utilisateurs, intégrations, et configuration.
-                </p>
-              )}
+
+            <div className="rounded-[22px] border border-border/70 bg-muted/40 p-4 dark:border-white/10 dark:bg-white/5">
+              <div className="flex items-center gap-2">
+                <span className={`size-2.5 rounded-full ${selectedRoleMeta.dotClass}`} />
+                <p className="text-base font-semibold tracking-[-0.02em] text-foreground">{selectedRoleMeta.label}</p>
+              </div>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedRoleMeta.description}</p>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {selectedRoleMeta.chips.map((chip) => (
+                  <Badge
+                    key={chip}
+                    variant="outline"
+                    className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                  >
+                    {chip}
+                  </Badge>
+                ))}
+              </div>
             </div>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setRoleDialogOpen(false)}>
+
+          <DialogFooter className="mt-2 flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              onClick={() => setRoleDialogOpen(false)}
+              className="rounded-full border-border/70 bg-background/70 text-foreground hover:bg-background dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
+            >
               Annuler
             </Button>
-            <Button onClick={() => void saveRole()} disabled={!selectedRole}>
+            <Button
+              onClick={() => void saveRole()}
+              disabled={!selectedRole || busyUserId === selectedUser?.id}
+              className="rounded-full bg-white px-5 text-slate-950 hover:bg-slate-100 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
+            >
               Enregistrer
             </Button>
           </DialogFooter>

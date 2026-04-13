@@ -140,12 +140,12 @@ export function ProjectDescription({
                   </Badge>
                 )}
                 {data.quality?.has_tests && (
-                  <Badge variant="outline" className="text-green-600">
+                  <Badge variant="outline" className="text-[color:var(--green-status)]">
                     Has Tests
                   </Badge>
                 )}
                 {data.quality?.has_ci_cd && (
-                  <Badge variant="outline" className="text-blue-600">
+                  <Badge variant="outline" className="text-teal-400">
                     CI/CD
                   </Badge>
                 )}

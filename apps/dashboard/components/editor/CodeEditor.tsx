@@ -11,6 +11,7 @@ import {
   Undo2,
   X,
 } from "lucide-react"
+import { extractApiErrorMessage } from "@/lib/display"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -200,7 +201,7 @@ export function CodeEditor({
           const listBranches = await ghPost("list_branches", { owner, repo })
           if (!listBranches.response.ok) {
             throw new Error(
-              listBranches.data?.error || "Failed to resolve repository branches",
+              extractApiErrorMessage(listBranches.data, "Failed to resolve repository branches"),
             )
           }
 
@@ -233,10 +234,10 @@ export function CodeEditor({
           }
 
           if (!loadedFromFallback && !successfulLoad.response.ok) {
-            throw new Error(firstTry.data?.error || "Failed to load file")
+            throw new Error(extractApiErrorMessage(firstTry.data, "Failed to load file"))
           }
         } else if (!firstTry.response.ok) {
-          throw new Error(firstTry.data?.error || "Failed to load file")
+          throw new Error(extractApiErrorMessage(firstTry.data, "Failed to load file"))
         }
 
         if (cancelled) return
@@ -317,7 +318,7 @@ export function CodeEditor({
         return
       }
 
-      if (!res.ok) throw new Error(data.error || "Failed to save")
+      if (!res.ok) throw new Error(extractApiErrorMessage(data, "Failed to save"))
 
       setOriginalContent(content)
       setIsDirty(false)
