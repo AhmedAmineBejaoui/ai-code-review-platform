@@ -64,17 +64,14 @@ export default function RoleRedirectPage() {
       <div className="pointer-events-none absolute -right-20 bottom-6 h-64 w-64 rounded-full bg-teal/10 blur-3xl" />
       <div className="pointer-events-none absolute inset-0 opacity-35 [background-image:linear-gradient(rgba(73,82,127,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
 
-      <section className="relative w-full max-w-5xl rounded-[28px] border border-border bg-card/90 p-4 shadow-[0_24px_80px_rgba(0,0,0,0.36)] sm:p-6">
-        <div className="rounded-[24px] border border-border bg-background/60 p-5 sm:p-6">
-          <CircuitLoader text="Synchronisation GitHub..." />
+      <div className="relative z-10 flex flex-col items-center gap-8">
+        <CircuitLoader text="Synchronisation GitHub..." />
+        <div className="text-center">
+          <p className="text-lg font-semibold text-foreground">Synchronisation du compte...</p>
+          <p className="mt-2 text-sm text-muted-foreground">
+            Nous appliquons vos permissions et préparons votre interface.
+          </p>
         </div>
-      </section>
-
-      <div className="relative z-10 mt-8 text-center">
-        <p className="text-lg font-semibold text-foreground">Synchronisation du compte...</p>
-        <p className="mt-2 text-sm text-muted-foreground">
-          Nous appliquons vos permissions et préparons votre interface.
-        </p>
       </div>
     </main>
   )

@@ -3,13 +3,7 @@
 import type { ReactNode } from "react"
 import Link from "next/link"
 import { motion } from "framer-motion"
-import {
-  CheckCircle2,
-  FileCode2,
-  GitPullRequest,
-  ShieldCheck,
-  Sparkles,
-} from "lucide-react"
+import { Sparkles } from "lucide-react"
 
 import { BrandMark } from "@/components/marketing/premium-landing/brand-mark"
 
@@ -41,43 +35,31 @@ const modeCopy: Record<AuthMode, AuthCopy> = {
   },
 }
 
-const featureCards = [
-  {
-    icon: GitPullRequest,
-    title: "GitHub sync",
-    text: "Every file change, PR note, and review action stays attached to the connected repository.",
-  },
-  {
-    icon: FileCode2,
-    title: "Editor-grade flow",
-    text: "File, folder, and branch operations feel like a real code editor, not a simulated workspace.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Team context",
-    text: "Roles, policies, and permissions remain scoped to the current team and repo boundaries.",
-  },
-] as const
-
 export function AuthShell({ children, mode }: AuthShellProps) {
   const copy = modeCopy[mode]
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background px-4 py-4 text-foreground sm:px-6 lg:px-8">
+      {/* Background grid */}
       <div className="pointer-events-none absolute inset-0 opacity-40 [background-image:linear-gradient(rgba(73,82,127,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.08)_1px,transparent_1px)] [background-size:24px_24px]" />
+
+      {/* Decorative orbs */}
       <div className="pointer-events-none absolute -left-24 top-16 h-72 w-72 rounded-full bg-orange/10 blur-3xl" />
       <div className="pointer-events-none absolute -right-16 bottom-0 h-80 w-80 rounded-full bg-teal/10 blur-3xl" />
 
       <div className="relative mx-auto grid w-full max-w-[1440px] gap-6 lg:min-h-[calc(100vh-2rem)] lg:grid-cols-[minmax(0,1.08fr)_minmax(420px,0.92fr)]">
+        
+        {/* Left Panel - Visual Side */}
         <motion.section
           initial={{ opacity: 0, x: -24, y: 8 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           transition={{ duration: 0.55, ease: "easeOut" }}
-          className="relative overflow-hidden rounded-[28px] border border-border bg-card/80 p-6 shadow-[0_24px_80px_rgba(0,0,0,0.35)] sm:p-8 lg:p-10"
+          className="relative overflow-hidden p-6 sm:p-8 lg:p-10"
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(232,113,58,0.08),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(23,240,196,0.08),transparent_28%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(232,113,58,0.06),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(23,240,196,0.06),transparent_28%)]" />
 
           <div className="relative z-10 flex h-full flex-col gap-10">
+            {/* Header */}
             <div className="flex items-center justify-between gap-6">
               <Link href="/" className="inline-flex items-center gap-3">
                 <BrandMark className="size-11" tone="dark" />
@@ -97,6 +79,7 @@ export function AuthShell({ children, mode }: AuthShellProps) {
               </div>
             </div>
 
+            {/* Text Content */}
             <div className="max-w-2xl">
               <p className="font-mono text-sm uppercase tracking-[0.3em] text-orange">
                 {copy.eyebrow}
@@ -109,140 +92,61 @@ export function AuthShell({ children, mode }: AuthShellProps) {
               </p>
             </div>
 
-            <div className="grid gap-4 md:grid-cols-3">
-              {featureCards.map((card, index) => {
-                const Icon = card.icon
+            {/* Video Container - Corrected */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2, duration: 0.45 }}
+              className="relative flex-1 overflow-hidden rounded-[28px] bg-[#0a0a0d] flex items-center justify-center shadow-inner border border-white/5"
+              style={{ minHeight: "320px" }}
+            >
+              <div className="relative w-full h-full max-w-[560px] max-h-[340px] overflow-hidden rounded-3xl">
+                <video
+                  autoPlay
+                  muted
+                  loop
+                  playsInline
+                  className="w-full h-full object-cover"
+                >
+                  <source src="/videos/login.mp4" type="video/mp4" />
+                </video>
 
-                return (
-                  <motion.div
-                    key={card.title}
-                    initial={{ opacity: 0, y: 12 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ delay: 0.12 + index * 0.08, duration: 0.35 }}
-                    className="rounded-[20px] border border-border bg-background/60 p-4"
-                  >
-                    <div className="flex items-center gap-2">
-                      <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-orange/10 text-orange">
-                        <Icon className="h-4 w-4" />
-                      </div>
-                      <p className="text-sm font-medium text-foreground">
-                        {card.title}
-                      </p>
-                    </div>
-                    <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                      {card.text}
-                    </p>
-                  </motion.div>
-                )
-              })}
-            </div>
+                {/* Overlay for better look */}
+                <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-            <div className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-              <div className="rounded-[24px] border border-border bg-[#111114] p-5 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)]">
-                <div className="flex items-center justify-between border-b border-white/5 pb-4">
-                  <div>
-                    <p className="font-mono text-xs uppercase tracking-[0.24em] text-teal">
-                      Connected workflow
-                    </p>
-                    <p className="mt-1 text-sm text-foreground/90">
-                      Every correction creates a real commit.
-                    </p>
+                {/* Bottom bar */}
+                <div className="pointer-events-none absolute bottom-5 left-5 right-5 flex items-center justify-between z-10">
+                  <p className="font-mono text-xs uppercase tracking-[0.26em] text-white/60">
+                    NO LOCAL-ONLY STATE. NO FAKE REVIEW FLOW.
+                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-teal animate-pulse" />
+                    <span className="font-mono text-[10px] uppercase tracking-widest text-teal/70">LIVE</span>
                   </div>
-                  <CheckCircle2 className="h-5 w-5 text-teal" />
-                </div>
-
-                <div className="mt-4 space-y-3 font-mono text-sm leading-6 text-zinc-300">
-                  <p>&gt; review new file changes</p>
-                  <p className="text-orange">
-                    commit created • branch updated • PR comment synced
-                  </p>
-                  <p className="text-zinc-500">git status --short</p>
                 </div>
               </div>
-
-              <div className="grid gap-3">
-                <div className="rounded-[20px] border border-border bg-background/60 p-4">
-                  <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">
-                    100%
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    GitHub-backed actions
-                  </p>
-                </div>
-                <div className="rounded-[20px] border border-border bg-background/60 p-4">
-                  <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">
-                    Real
-                  </p>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    No mock workflows
-                  </p>
-                </div>
-              </div>
-            </div>
-
-            <p className="font-mono text-xs uppercase tracking-[0.26em] text-muted-foreground">
-              No local-only state. No fake review flow.
-            </p>
+            </motion.div>
           </div>
         </motion.section>
 
+        {/* Right Panel - Auth Form */}
         <motion.section
           initial={{ opacity: 0, x: 24, y: 8 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           transition={{ duration: 0.58, ease: "easeOut", delay: 0.08 }}
-          className="relative overflow-hidden rounded-[28px] border border-border bg-card/90 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.4)] sm:p-5 lg:min-h-full lg:p-6"
+          className="relative flex flex-col overflow-hidden p-3 sm:p-5 lg:min-h-full lg:p-6"
         >
-          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(232,113,58,0.08),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(23,240,196,0.08),transparent_30%)]" />
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(232,113,58,0.06),transparent_34%),radial-gradient(circle_at_100%_100%,rgba(23,240,196,0.06),transparent_30%)]" />
 
-          <div className="relative z-10 flex h-full flex-col">
-            <div className="flex items-center justify-between rounded-[18px] border border-border bg-background/60 px-4 py-3">
-              <div>
-                <p className="font-mono text-xs uppercase tracking-[0.24em] text-orange">
-                  Authentication
-                </p>
-                <p className="text-sm text-muted-foreground">
-                  {mode === "sign-in" ? "Secure sign-in" : "Secure sign-up"}
-                </p>
-              </div>
-              <div className="flex items-center gap-2 text-sm text-teal">
-                <CheckCircle2 className="h-4 w-4" />
-                GitHub verified
-              </div>
-            </div>
-
-            <div className="mt-5 flex flex-1 items-center justify-center">
-              <motion.div
-                initial={{ opacity: 0, scale: 0.98, y: 8 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                transition={{ duration: 0.45, delay: 0.14 }}
-                className="w-full max-w-[560px] rounded-[24px] border border-border bg-background/80 p-2 shadow-[0_18px_60px_rgba(0,0,0,0.28)]"
-              >
-                <div className="overflow-hidden rounded-[20px] border border-border bg-card/90 p-1">
-                  {children}
-                </div>
-              </motion.div>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-[18px] border border-border bg-background/60 p-4">
-                <p className="text-sm font-medium text-foreground">Editor-grade</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  File, folder, and branch actions stay in sync.
-                </p>
-              </div>
-              <div className="rounded-[18px] border border-border bg-background/60 p-4">
-                <p className="text-sm font-medium text-foreground">Real PRs</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Reviews are posted to the connected repository.
-                </p>
-              </div>
-              <div className="rounded-[18px] border border-border bg-background/60 p-4">
-                <p className="text-sm font-medium text-foreground">Team scoped</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Access stays inside the authenticated team.
-                </p>
-              </div>
-            </div>
+          <div className="relative z-10 flex h-full flex-1 flex-col items-center justify-center">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.98, y: 8 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.45, delay: 0.14 }}
+              className="w-full max-w-[480px]"
+            >
+              {children}
+            </motion.div>
           </div>
         </motion.section>
       </div>

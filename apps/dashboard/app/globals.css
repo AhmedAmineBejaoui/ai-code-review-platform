@@ -91,7 +91,7 @@
   --input: transparent;
   --input-background: var(--bg-card-inner);
   --ring: var(--orange);
-  --radius: 0.75rem;
+  --radius: 0.25rem;
 
   /* === Sidebar tokens === */
   --sidebar: var(--bg-card-inner);
@@ -522,6 +522,41 @@ input, textarea, [contenteditable="true"], .selectable {
     font-size: 16px !important;
     border-radius: 8px;
   }
+}
+
+/* === LANDING PAGE DESIGN SYSTEM UTILITIES === */
+
+/* Landing-style section tag */
+.landing-tag {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.3em;
+  color: var(--orange);
+}
+
+/* Landing-style card grid (gap-px separator) */
+.card-grid-separator {
+  display: grid;
+  gap: 1px;
+  background-color: var(--border-card);
+  border: 1px solid var(--border-default);
+}
+.card-grid-separator > * {
+  background-color: var(--bg-card);
+}
+
+/* Dashboard card matching landing feature cards */
+.dash-card {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-card);
+  padding: 1.5rem;
+  transition: background-color 200ms, border-color 200ms;
+}
+.dash-card:hover {
+  background-color: var(--bg-card-hover);
+  border-color: var(--border-accent);
 }
 
 /* === TV / LARGE SCREEN STYLES === */

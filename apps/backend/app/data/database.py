@@ -471,6 +471,9 @@ def init_db() -> None:
                 VALUES
                     ('role_admin', 'admin', 'Administrator', TRUE),
                     ('role_reviewer', 'reviewer', 'Reviewer', TRUE),
+                    ('role_reviewer_lead', 'reviewer_lead', 'Lead Reviewer', TRUE),
+                    ('role_reviewer_senior', 'reviewer_senior', 'Senior Reviewer', TRUE),
+                    ('role_reviewer_junior', 'reviewer_junior', 'Junior Reviewer', TRUE),
                     ('role_developer', 'developer', 'Developer', TRUE),
                     ('role_viewer', 'viewer', 'Viewer', TRUE)
                 ON CONFLICT (code) DO NOTHING

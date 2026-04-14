@@ -23,6 +23,7 @@ import {
   listPullRequests,
   mergePullRequest,
   renamePath,
+  requestGithub,
   resolveGithubInstallationToken,
   resolveGithubTokensForUser,
 } from "../../../../lib/github-client"
@@ -853,6 +854,41 @@ export async function POST(request: NextRequest) {
         })
         const result = await listPRComments(owner, repo, pullNumber, accessToken)
         return NextResponse.json({ ok: true, ...result }, { status: 200 })
+      }
+
+      case "get_pr_reviews": {
+        const owner = str(payload.owner)
+        const repo = str(payload.repo)
+        const pullNumber = num(payload.pullNumber)
+        if (!owner || !repo || !Number.isFinite(pullNumber)) {
+          return NextResponse.json({ error: "Missing: owner, repo, pullNumber" }, { status: 400 })
+        }
+        const { token: accessToken } = await ensureRepositoryAccess({ tokenCandidates, installationToken, owner, repo, scope })
+        const reviews = await requestGithub<unknown[]>(`/repos/${owner}/${repo}/pulls/${pullNumber}/reviews`, {}, accessToken)
+        return NextResponse.json({ ok: true, result: reviews }, { status: 200 })
+      }
+
+      case "get_pr_checks": {
+        const owner = str(payload.owner)
+        const repo = str(payload.repo)
+        const ref = str(payload.ref)
+        if (!owner || !repo || !ref) {
+          return NextResponse.json({ error: "Missing: owner, repo, ref" }, { status: 400 })
+        }
+        const { token: accessToken } = await ensureRepositoryAccess({ tokenCandidates, installationToken, owner, repo, scope })
+        const checks = await requestGithub<{ check_runs?: unknown[]; total_count?: number }>(`/repos/${owner}/${repo}/commits/${ref}/check-runs?per_page=20`, {}, accessToken).catch(() => ({ check_runs: [], total_count: 0 }))
+        const statuses = await requestGithub<{ statuses?: unknown[] }>(`/repos/${owner}/${repo}/commits/${ref}/status`, {}, accessToken).catch(() => ({ statuses: [] }))
+        return NextResponse.json({ ok: true, checkRuns: checks.check_runs ?? [], statuses: (statuses as { statuses?: unknown[] }).statuses ?? [] }, { status: 200 })
+      }
+
+      case "list_user_repos": {
+        const { token: accessToken } = tokenCandidates.length > 0
+          ? { token: tokenCandidates[0] }
+          : installationToken
+          ? { token: installationToken }
+          : (() => { throw permissionError("GitHub token not available.") })()
+        const repos = await requestGithub<unknown[]>(`/user/repos?sort=pushed&per_page=100&type=all`, {}, accessToken).catch(() => [])
+        return NextResponse.json({ ok: true, result: repos }, { status: 200 })
       }
 
       default:

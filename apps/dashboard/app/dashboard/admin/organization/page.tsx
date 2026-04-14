@@ -9,11 +9,14 @@ import {
   Github,
   Link2,
   Loader2,
+  Mail,
   Pencil,
   Plus,
   RefreshCw,
   ShieldCheck,
   Trash2,
+  UserMinus,
+  UserPlus,
   Unplug,
   Users,
 } from "lucide-react"
@@ -36,6 +39,21 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea"
 
 type CreateMode = "platform" | "github_import"
+
+interface OrgMember {
+  user_id: string
+  email: string
+  display_name: string | null
+  role: string
+  joined_at: string
+}
+
+interface PendingInvitation {
+  id: string
+  emailAddress: string
+  role: string
+  createdAt: number
+}
 
 interface Organization {
   id: string
@@ -140,6 +158,20 @@ export default function OrganizationPage() {
   const [formData, setFormData] = useState<FormState>(EMPTY_FORM)
   const [formError, setFormError] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
+  const [linkingId, setLinkingId] = useState<string | null>(null)
+  const [linkSuccess, setLinkSuccess] = useState<string | null>(null)
+
+  // Members dialog state
+  const [membersDialogOpen, setMembersDialogOpen] = useState(false)
+  const [membersOrg, setMembersOrg] = useState<Organization | null>(null)
+  const [members, setMembers] = useState<OrgMember[]>([])
+  const [pendingInvitations, setPendingInvitations] = useState<PendingInvitation[]>([])
+  const [membersLoading, setMembersLoading] = useState(false)
+  const [inviteEmail, setInviteEmail] = useState("")
+  const [inviteRole, setInviteRole] = useState<"admin" | "member" | "viewer">("member")
+  const [inviting, setInviting] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
 
   const linkedCount = useMemo(
     () => organizations.filter((org) => org.syncStatus === "linked").length,
@@ -250,6 +282,132 @@ export default function OrganizationPage() {
         description: nextDescription,
       }
     })
+  }
+
+  async function handleLinkClerk(org: Organization) {
+    setLinkingId(org.id)
+    setError(null)
+    setLinkSuccess(null)
+    try {
+      const response = await fetch(`/api/dashboard/admin/organizations/${org.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: org.name,
+          slug: org.slug,
+          description: org.description,
+          linkClerk: true,
+        }),
+      })
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string
+        warning?: string
+        organization?: Organization
+      } | null
+      if (!response.ok) {
+        throw new Error(payload?.error || "Failed to link Clerk organization")
+      }
+      if (payload?.warning) {
+        // Partial success — Clerk unavailable but local id was saved
+        setError(`ℹ️ ${payload.warning}`)
+      } else {
+        setLinkSuccess(`Organization "${org.name}" linked successfully.`)
+      }
+      await loadOrganizations({ silent: true })
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to link Clerk organization")
+    } finally {
+      setLinkingId(null)
+    }
+  }
+
+  async function openMembersDialog(org: Organization) {
+    setMembersOrg(org)
+    setMembersDialogOpen(true)
+    setInviteEmail("")
+    setInviteError(null)
+    setInviteSuccess(null)
+    await loadMembers(org.id)
+  }
+
+  async function loadMembers(orgId: string) {
+    setMembersLoading(true)
+    try {
+      const res = await fetch(`/api/dashboard/admin/organizations/${orgId}/members`)
+      const data = (await res.json().catch(() => null)) as {
+        members?: OrgMember[]
+        pendingInvitations?: PendingInvitation[]
+      } | null
+      setMembers(Array.isArray(data?.members) ? (data.members as OrgMember[]) : [])
+      setPendingInvitations(Array.isArray(data?.pendingInvitations) ? (data.pendingInvitations as PendingInvitation[]) : [])
+    } catch {
+      setMembers([])
+      setPendingInvitations([])
+    } finally {
+      setMembersLoading(false)
+    }
+  }
+
+  async function handleInvite() {
+    if (!membersOrg || !inviteEmail.trim()) return
+    setInviting(true)
+    setInviteError(null)
+    setInviteSuccess(null)
+    try {
+      const res = await fetch(`/api/dashboard/admin/organizations/${membersOrg.id}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: inviteEmail.trim(), role: inviteRole }),
+      })
+      const data = (await res.json().catch(() => null)) as {
+        error?: string
+        warnings?: string[]
+        clerkInvitation?: { emailAddress: string }
+      } | null
+      if (!res.ok) throw new Error(data?.error || "Failed to invite member")
+      const warn = data?.warnings?.[0]
+      setInviteSuccess(
+        data?.clerkInvitation
+          ? `Invitation sent to ${data.clerkInvitation.emailAddress}${warn ? ` (${warn})` : ""}`
+          : `Member added${warn ? `. Note: ${warn}` : ""}`,
+      )
+      setInviteEmail("")
+      await loadMembers(membersOrg.id)
+      await loadOrganizations({ silent: true })
+    } catch (err) {
+      setInviteError(err instanceof Error ? err.message : "Failed to invite member")
+    } finally {
+      setInviting(false)
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    if (!membersOrg) return
+    const confirmed = window.confirm("Remove this member from the organization?")
+    if (!confirmed) return
+    try {
+      await fetch(
+        `/api/dashboard/admin/organizations/${membersOrg.id}/members?userId=${encodeURIComponent(userId)}`,
+        { method: "DELETE" },
+      )
+      await loadMembers(membersOrg.id)
+      await loadOrganizations({ silent: true })
+    } catch {
+      // non-fatal
+    }
+  }
+
+  function openLinkGithubDialog(org: Organization) {
+    setEditingOrg(org)
+    setDialogMode("github_import")
+    setFormData({
+      name: org.name,
+      slug: org.slug ?? "",
+      description: org.description ?? "",
+      githubOrgLogin: org.githubOrgLogin ?? "",
+    })
+    setFormError(null)
+    setDialogOpen(true)
   }
 
   async function handleCreate() {
@@ -420,10 +578,18 @@ export default function OrganizationPage() {
       </Alert>
 
       {error ? (
-        <Alert variant="destructive">
+        <Alert variant={error.startsWith("ℹ️") ? "default" : "destructive"}>
           <AlertTriangle />
-          <AlertTitle>Organization management failed</AlertTitle>
-          <AlertDescription>{error}</AlertDescription>
+          <AlertTitle>{error.startsWith("ℹ️") ? "Notice" : "Organization management failed"}</AlertTitle>
+          <AlertDescription>{error.replace(/^ℹ️\s*/, "")}</AlertDescription>
+        </Alert>
+      ) : null}
+
+      {linkSuccess ? (
+        <Alert className="border-green-500/30 bg-green-500/10">
+          <CheckCircle2 className="text-green-500" />
+          <AlertTitle>Linked successfully</AlertTitle>
+          <AlertDescription>{linkSuccess}</AlertDescription>
         </Alert>
       ) : null}
 
@@ -493,13 +659,23 @@ export default function OrganizationPage() {
                         {org.clerkOrgId ? (
                           <Badge variant="outlinePrimary" size="sm">
                             <ShieldCheck className="h-3 w-3" />
-                            {org.clerkOrgId}
+                            <span className="max-w-[120px] truncate">{org.clerkOrgId}</span>
                           </Badge>
                         ) : (
-                          <Badge variant="outline" size="sm">
-                            <Unplug className="h-3 w-3" />
-                            Not linked
-                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            disabled={linkingId === org.id}
+                            onClick={() => void handleLinkClerk(org)}
+                          >
+                            {linkingId === org.id ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <ShieldCheck className="h-3 w-3" />
+                            )}
+                            Link Clerk
+                          </Button>
                         )}
                       </TableCell>
                       <TableCell>
@@ -509,10 +685,15 @@ export default function OrganizationPage() {
                             {org.githubOrgLogin}
                           </Badge>
                         ) : (
-                          <Badge variant="outline" size="sm">
-                            <Unplug className="h-3 w-3" />
-                            Not linked
-                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 gap-1 text-xs"
+                            onClick={() => openLinkGithubDialog(org)}
+                          >
+                            <Github className="h-3 w-3" />
+                            Link GitHub
+                          </Button>
                         )}
                       </TableCell>
                       <TableCell>
@@ -530,6 +711,10 @@ export default function OrganizationPage() {
                       <TableCell>{formatDate(org.createdAt)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" onClick={() => void openMembersDialog(org)}>
+                            <Users className="mr-2 h-3 w-3" />
+                            Members
+                          </Button>
                           <Button variant="outline" size="sm" onClick={() => openEditDialog(org)}>
                             <Pencil className="mr-2 h-3 w-3" />
                             Edit
@@ -553,6 +738,95 @@ export default function OrganizationPage() {
           </CardContent>
         </Card>
       </motion.div>
+
+      {/* ── Members Dialog ─────────────────────────────────────────────── */}
+      <Dialog open={membersDialogOpen} onOpenChange={(open) => { if (!open) { setMembersDialogOpen(false); setMembersOrg(null) } }}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Users className="h-5 w-5 text-orange" />
+              Members — {membersOrg?.name}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            {/* Invite form */}
+            <div className="rounded-lg border border-border bg-muted/20 p-4 space-y-3">
+              <p className="text-sm font-medium flex items-center gap-2">
+                <UserPlus className="h-4 w-4 text-orange" />
+                Invite a member
+              </p>
+              <div className="flex gap-2">
+                <Input
+                  placeholder="email@example.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && void handleInvite()}
+                  className="flex-1"
+                  disabled={inviting}
+                />
+                <Select value={inviteRole} onValueChange={(v) => setInviteRole(v as "admin" | "member" | "viewer")}>
+                  <SelectTrigger className="w-[110px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">Admin</SelectItem>
+                    <SelectItem value="member">Member</SelectItem>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button onClick={() => void handleInvite()} disabled={!inviteEmail.trim() || inviting} size="sm">
+                  {inviting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Mail className="h-4 w-4" />}
+                </Button>
+              </div>
+              {inviteError && <p className="text-xs text-destructive">{inviteError}</p>}
+              {inviteSuccess && <p className="text-xs text-green-600 dark:text-green-400">{inviteSuccess}</p>}
+            </div>
+
+            {/* Member list */}
+            {membersLoading ? (
+              <div className="flex items-center justify-center py-6">
+                <Loader2 className="h-5 w-5 animate-spin mr-2" />
+                <span className="text-sm text-muted-foreground">Loading members…</span>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {members.length === 0 && pendingInvitations.length === 0 && (
+                  <p className="text-sm text-center text-muted-foreground py-4">No members yet</p>
+                )}
+                {members.map((m) => (
+                  <div key={m.user_id} className="flex items-center justify-between rounded-md border border-border px-3 py-2">
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">{m.display_name || m.email}</p>
+                      <p className="text-xs text-muted-foreground truncate">{m.email}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <Badge variant="outline" size="sm">{m.role}</Badge>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                        onClick={() => void handleRemoveMember(m.user_id)}
+                      >
+                        <UserMinus className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {pendingInvitations.map((inv) => (
+                  <div key={inv.id} className="flex items-center justify-between rounded-md border border-dashed border-border px-3 py-2 opacity-75">
+                    <div className="min-w-0">
+                      <p className="text-sm truncate">{inv.emailAddress}</p>
+                      <p className="text-xs text-muted-foreground">Pending invitation</p>
+                    </div>
+                    <Badge variant="outline" size="sm" className="shrink-0 ml-2">{inv.role}</Badge>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={dialogOpen} onOpenChange={(open) => (open ? setDialogOpen(true) : resetDialogState())}>
         <DialogContent className="sm:max-w-2xl">

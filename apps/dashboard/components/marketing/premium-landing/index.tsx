@@ -9,8 +9,8 @@ import { cn } from '@/components/ui/utils';
 
 import { trustLogos } from './data';
 import { CodeGraphVisual } from './code-graph-visual';
-import { NeonHexVisual } from './neon-hex-visual';
 import { AnimatedReviewShowcase } from './animated-review-showcase';
+import { ContainerScroll } from '@/components/ui/container-scroll-animation';
 import { PremiumFooter } from './premium-footer';
 import { PremiumNavbar } from './premium-navbar';
 
@@ -123,24 +123,21 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       <section className="relative px-6 pb-20 pt-36">
         <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(73,82,127,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.14)_1px,transparent_1px)] [background-size:18px_18px]" />
         <div className="mx-auto max-w-6xl">
-          <div className="flex justify-center mb-10">
-            <NeonHexVisual className="w-44 h-44 md:w-56 md:h-56" />
-          </div>
-          <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">The leader in AI code reviews</h1>
+          <h1 className="text-center text-6xl font-semibold tracking-[-0.04em] md:text-7xl">
+            The leader in AI code reviews
+          </h1>
 
-          <div className="mt-10 border border-border bg-card/60 px-3 py-2 md:px-5 md:py-4">
-            <div className="relative flex h-[350px] w-full items-center justify-center overflow-hidden rounded-[28px] border border-white/10 bg-[#06070b] shadow-[inset_0_0_0_1px_rgba(255,255,255,0.03)] lg:h-[450px]">
-              <video
-                src="/features.webm"
-                autoPlay
-                muted
-                loop
-                playsInline
-                preload="metadata"
-                className="h-full w-full object-cover"
-              />
-            </div>
-          </div>
+          <ContainerScroll>
+            <video
+              src="/features.webm"
+              autoPlay
+              muted
+              loop
+              playsInline
+              preload="metadata"
+              className="h-full w-full rounded-2xl object-cover"
+            />
+          </ContainerScroll>
 
           <div className="mt-12 border border-border bg-card/75 p-4 md:p-6">
             <div className="grid gap-4 md:grid-cols-3">

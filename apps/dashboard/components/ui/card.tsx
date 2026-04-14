@@ -4,19 +4,15 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./utils";
 
 const cardVariants = cva(
-  "bg-card text-card-foreground flex flex-col gap-6 rounded-2xl border transition-all duration-400",
+  "bg-card text-card-foreground flex flex-col gap-0 border transition-colors duration-200",
   {
     variants: {
       variant: {
-        default: "border-border shadow-pro-sm",
-        elevated:
-          "border-border shadow-pro-md hover:shadow-pro-lg hover:-translate-y-2 cursor-pointer",
-        glass:
-          "glass-pro border-primary/10 hover:-translate-y-2 cursor-pointer hover-lift",
-        gradient:
-          "bg-gradient-primary text-white border-transparent shadow-glow",
-        glow: "border-2 border-orange-500/20 hover:border-orange-500/40 hover:shadow-glow",
-        outline: "border-2 border-primary/30 hover:border-primary/50",
+        default: "border-border",
+        hover:
+          "border-border hover:bg-[--bg-card-hover] hover:border-[--border-accent] cursor-pointer",
+        glow: "border-[--border-accent]",
+        outline: "border-border",
       },
     },
     defaultVariants: {
@@ -44,7 +40,7 @@ function CardHeader({ className, ...props }: React.ComponentProps<"div">) {
     <div
       data-slot="card-header"
       className={cn(
-        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 pt-6 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
+        "@container/card-header grid auto-rows-min grid-rows-[auto_auto] items-start gap-1.5 px-6 pt-6 pb-0 has-data-[slot=card-action]:grid-cols-[1fr_auto] [.border-b]:pb-6",
         className,
       )}
       {...props}
@@ -56,7 +52,7 @@ function CardTitle({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <h4
       data-slot="card-title"
-      className={cn("text-lg font-semibold leading-none", className)}
+      className={cn("text-base font-semibold leading-none", className)}
       {...props}
     />
   );
@@ -92,7 +88,7 @@ function CardContent({ className, ...props }: React.ComponentProps<"div">) {
   return (
     <div
       data-slot="card-content"
-      className={cn("px-6 [&:last-child]:pb-6", className)}
+      className={cn("px-6 py-4 [&:last-child]:pb-6", className)}
       {...props}
     />
   );

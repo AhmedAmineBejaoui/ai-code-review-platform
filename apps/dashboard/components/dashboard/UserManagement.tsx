@@ -3,13 +3,11 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { motion } from "framer-motion"
 import { CheckCircle2, Edit, Search, Shield, UserCog, UserPlus, Users, X } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Table,
   TableBody,
@@ -83,7 +81,7 @@ type RoleOption = {
   label: string
   description: string
   chips: string[]
-  dotClass: string
+  indicatorClass: string
   badgeClass: string
 }
 
@@ -93,54 +91,54 @@ const ROLE_OPTIONS: RoleOption[] = [
     label: "Viewer",
     description: "Accès en lecture seule aux projets et analyses.",
     chips: ["Consulter", "Surveiller"],
-    dotClass: "bg-slate-400",
+    indicatorClass: "bg-muted-foreground",
     badgeClass:
-      "border-slate-300/70 bg-slate-100 text-slate-700 dark:border-white/10 dark:bg-white/5 dark:text-slate-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-[--border-card] text-muted-foreground bg-transparent",
   },
   {
     value: "developer",
     label: "Developer",
     description: "Peut soumettre des PRs pour analyse et consulter les résultats détaillés.",
     chips: ["Soumettre", "Consulter", "Commenter"],
-    dotClass: "bg-emerald-400",
+    indicatorClass: "bg-[#17f0c4]",
     badgeClass:
-      "border-emerald-500/25 bg-emerald-500/15 text-emerald-600 dark:text-emerald-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-[#17f0c4]/40 text-[#17f0c4] bg-[#17f0c4]/10",
   },
   {
     value: "reviewer_junior",
-    label: "Junior Reviewer",
+    label: "Jr. Reviewer",
     description: "Peut approuver les PRs, suggérer des changements et escalader les cas complexes.",
     chips: ["Approuver", "Suggérer", "Escalader"],
-    dotClass: "bg-sky-400",
+    indicatorClass: "bg-sky-400",
     badgeClass:
-      "border-sky-500/25 bg-sky-500/15 text-sky-600 dark:text-sky-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-sky-400/40 text-sky-400 bg-sky-400/10",
   },
   {
     value: "reviewer_senior",
-    label: "Senior Reviewer",
+    label: "Sr. Reviewer",
     description: "Peut approuver, bloquer les PRs et demander des changements obligatoires.",
     chips: ["Approuver", "Bloquer", "Demander changements"],
-    dotClass: "bg-violet-400",
+    indicatorClass: "bg-violet-400",
     badgeClass:
-      "border-violet-500/25 bg-violet-500/15 text-violet-600 dark:text-violet-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-violet-400/40 text-violet-400 bg-violet-400/10",
   },
   {
     value: "reviewer_lead",
     label: "Lead Reviewer",
-    description: "Accès complet pour gérer l’équipe, assigner les reviews et piloter les templates.",
-    chips: ["Assigner", "Déléguer", "Templates", "Analytics équipe"],
-    dotClass: "bg-amber-400",
+    description: "Accès complet pour gérer l'équipe, assigner les reviews et piloter les templates.",
+    chips: ["Assigner", "Déléguer", "Templates", "Analytics"],
+    indicatorClass: "bg-amber-400",
     badgeClass:
-      "border-amber-500/25 bg-amber-500/15 text-amber-700 dark:text-amber-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-amber-400/40 text-amber-400 bg-amber-400/10",
   },
   {
     value: "admin",
     label: "Admin",
     description: "Accès complet à toutes les fonctionnalités de la plateforme.",
     chips: ["Utilisateurs", "Intégrations", "Paramètres"],
-    dotClass: "bg-rose-400",
+    indicatorClass: "bg-[--orange]",
     badgeClass:
-      "border-rose-500/25 bg-rose-500/15 text-rose-600 dark:text-rose-200",
+      "font-mono text-[11px] uppercase tracking-wider border border-[--border-accent] text-[--orange] bg-[--orange-glow]",
   },
 ]
 
@@ -350,13 +348,23 @@ export function UserManagement() {
         headers: { "Content-Type": "application/json", Accept: "application/json" },
         body: JSON.stringify(body),
       })
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; item?: AdminUser }
-      if (!response.ok || !payload.item) {
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; item?: Partial<AdminUser> }
+      if (!response.ok) {
         throw new Error(extractApiErrorMessage(payload, "Mise à jour utilisateur impossible."))
       }
-      setUsers((previous) => previous.map((user) => (user.id === userId ? payload.item! : user)))
+      // Targeted optimistic update — preserve all existing fields (esp. permissions)
+      // and only overwrite the fields we actually changed.
+      setUsers((previous) =>
+        previous.map((user) => {
+          if (user.id !== userId) return user
+          return {
+            ...user,
+            ...(body.role !== undefined ? { roles: [body.role] } : {}),
+            ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
+          }
+        }),
+      )
       setActionMessage("Utilisateur mis à jour.")
-      await loadData()
       return true
     } catch (updateError) {
       setActionMessage(updateError instanceof Error ? updateError.message : "Mise à jour utilisateur impossible.")
@@ -440,311 +448,288 @@ export function UserManagement() {
   }
 
   const statsCards = [
-    { label: "Total utilisateurs", value: stats.totalUsers, icon: Users, gradient: "from-violet-500 to-fuchsia-500" },
-    { label: "Admins", value: stats.admins, icon: Shield, gradient: "from-rose-500 to-orange-500" },
-    { label: "Reviewers", value: stats.reviewers, icon: CheckCircle2, gradient: "from-amber-500 to-yellow-500" },
-    { label: "Développeurs", value: stats.developers, icon: UserCog, gradient: "from-emerald-500 to-teal-500" },
+    { label: "Total utilisateurs", value: stats.totalUsers, icon: Users, accent: "text-[--orange]", bg: "bg-[--orange-glow]" },
+    { label: "Admins", value: stats.admins, icon: Shield, accent: "text-rose-400", bg: "bg-rose-400/10" },
+    { label: "Reviewers", value: stats.reviewers, icon: CheckCircle2, accent: "text-amber-400", bg: "bg-amber-400/10" },
+    { label: "Développeurs", value: stats.developers, icon: UserCog, accent: "text-[#17f0c4]", bg: "bg-[#17f0c4]/10" },
   ]
 
   return (
-    <motion.div className="mx-auto w-full max-w-[1180px] space-y-6 px-4 pb-10 lg:px-6" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-      <motion.div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between" initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }}>
+    <div className="mx-auto w-full max-w-[1180px] space-y-6 px-4 pb-10 lg:px-6">
+
+      {/* ── Header ───────────────────────────────────────────────────── */}
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
         <div className="flex items-start gap-4">
-          <div className="flex size-11 shrink-0 items-center justify-center rounded-2xl bg-violet-500/15 text-violet-500 ring-1 ring-violet-500/20 dark:bg-violet-400/15 dark:text-violet-300">
+          <div className="flex size-10 shrink-0 items-center justify-center border border-[--border-accent] bg-[--orange-glow] text-[--orange]">
             <Users className="h-5 w-5" />
           </div>
           <div className="space-y-1">
-            <h1 className="text-[2rem] font-semibold tracking-[-0.03em] text-foreground md:text-[2.5rem]">Gestion des utilisateurs</h1>
-            <p className="text-sm text-muted-foreground">Gestion des accès et permissions (RBAC)</p>
+            <h1 className="text-2xl font-semibold tracking-tight text-foreground">Gestion des utilisateurs</h1>
+            <p className="text-sm text-muted-foreground font-mono uppercase tracking-wider text-[11px]">
+              RBAC · Accès &amp; permissions
+            </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-          <Button
-            asChild
-            variant="outline"
-            className="h-11 rounded-full border-border/70 bg-white/95 px-5 text-sm font-medium text-slate-900 shadow-sm hover:bg-white dark:border-white/10 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-50"
-          >
-            <Link href="/dashboard/admin/organization">Gérer les invitations organization</Link>
+          <Button asChild variant="outline" size="sm">
+            <Link href="/dashboard/admin/organization">Invitations organisation</Link>
           </Button>
-          <Button className="h-11 rounded-full bg-gradient-to-r from-violet-600 to-fuchsia-600 px-5 text-sm font-medium text-white shadow-[0_16px_35px_rgba(124,58,237,0.35)] hover:from-violet-500 hover:to-fuchsia-500">
+          <Button size="sm">
             <UserPlus className="h-4 w-4" />
             Ajouter utilisateur
           </Button>
         </div>
-      </motion.div>
+      </div>
 
-      {error && <div className="rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-600 dark:text-rose-200">{error}</div>}
-      {actionMessage && <div className="rounded-2xl border border-sky-500/30 bg-sky-500/10 px-4 py-3 text-sm text-sky-600 dark:text-sky-200">{actionMessage}</div>}
+      {/* ── Alerts ───────────────────────────────────────────────────── */}
+      {error && (
+        <div className="border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-400">
+          {error}
+        </div>
+      )}
+      {actionMessage && (
+        <div className="border border-[--border-accent] bg-[--orange-glow] px-4 py-3 text-sm text-[--orange]">
+          {actionMessage}
+        </div>
+      )}
 
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        {statsCards.map((stat, index) => (
-          <motion.div
-            key={stat.label}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 + index * 0.05 }}
-            whileHover={{ y: -4, scale: 1.01 }}
-          >
-            <Card className="relative overflow-hidden rounded-[28px] border border-border/70 bg-white/75 shadow-[0_16px_45px_rgba(15,23,42,0.08)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/75 dark:shadow-[0_24px_70px_rgba(0,0,0,0.35)]">
-              <div className={`absolute -right-6 -top-8 size-28 rounded-full bg-gradient-to-br ${stat.gradient} opacity-15 blur-2xl`} />
-              <CardContent className="relative z-10 pt-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div className="space-y-1">
-                    <p className="text-xs font-medium uppercase tracking-[0.24em] text-muted-foreground/80">{stat.label}</p>
-                    <p className="text-3xl font-semibold tracking-[-0.04em] text-foreground">{stat.value}</p>
-                  </div>
-                  <div className={`flex size-12 items-center justify-center rounded-2xl bg-gradient-to-br ${stat.gradient} shadow-[0_12px_25px_rgba(0,0,0,0.18)]`}>
-                    <stat.icon className="h-5 w-5 text-white" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          </motion.div>
+      {/* ── Stats cards ──────────────────────────────────────────────── */}
+      <div className="grid gap-px bg-[--border-card] border border-[--border-card] sm:grid-cols-2 xl:grid-cols-4">
+        {statsCards.map((stat) => (
+          <div key={stat.label} className="bg-[--bg-card] px-5 py-4">
+            <div className="flex items-center justify-between gap-4">
+              <div className="space-y-1">
+                <p className="font-mono text-[10px] uppercase tracking-[0.25em] text-muted-foreground">
+                  {stat.label}
+                </p>
+                <p className="text-3xl font-semibold tabular-nums text-foreground">{stat.value}</p>
+              </div>
+              <div className={`flex size-10 items-center justify-center border border-[--border-card] ${stat.bg} ${stat.accent}`}>
+                <stat.icon className="h-5 w-5" />
+              </div>
+            </div>
+          </div>
         ))}
       </div>
 
-      <div className="rounded-[28px] border border-border/70 bg-white/70 p-3 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/80">
+      {/* ── Search ───────────────────────────────────────────────────── */}
+      <div className="border border-[--border-card] bg-[--bg-card] p-3">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="relative w-full md:max-w-2xl">
-            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <input
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               type="search"
-              placeholder="Rechercher un utilisateur, un email, un rôle ou une permission"
-              className="h-12 w-full rounded-[20px] border border-border/70 bg-background/85 pl-11 pr-11 text-sm text-foreground shadow-sm outline-none transition focus:border-violet-500/50 focus:bg-background dark:border-white/10 dark:bg-white/5 dark:focus:bg-white/10"
+              placeholder="Rechercher un utilisateur, email, rôle ou permission…"
+              className="h-10 w-full border border-[--border-card] bg-[--bg-card-inner] pl-9 pr-9 text-sm text-foreground outline-none transition-colors focus:border-[--orange] placeholder:text-muted-foreground"
             />
             {searchQuery.length > 0 && (
               <button
                 type="button"
                 aria-label="Effacer la recherche"
                 onClick={() => setSearchQuery("")}
-                className="absolute right-3 top-1/2 -translate-y-1/2 rounded-full p-1 text-muted-foreground transition hover:bg-muted hover:text-foreground dark:hover:bg-white/10"
+                className="absolute right-3 top-1/2 -translate-y-1/2 p-0.5 text-muted-foreground transition hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             )}
           </div>
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="rounded-full border border-border/70 bg-background/80 px-3 py-1.5 text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-100">
-              {filteredUsers.length} visibles
+          <div className="flex items-center gap-2 text-xs text-muted-foreground font-mono">
+            <span className="border border-[--border-card] bg-[--bg-card-inner] px-2.5 py-1 text-foreground">
+              {filteredUsers.length}
             </span>
-            <span className="hidden md:inline">sur {sortedUsers.length} utilisateurs</span>
+            <span>/ {sortedUsers.length} utilisateurs</span>
           </div>
         </div>
       </div>
 
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}>
-        <Card className="rounded-[30px] border border-border/70 bg-white/75 shadow-[0_24px_70px_rgba(15,23,42,0.12)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#0a0f16]/80 dark:shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-[1.15rem] font-semibold tracking-[-0.02em] text-foreground">Utilisateurs</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="overflow-hidden rounded-[24px] border border-border/70 bg-background/50 dark:border-white/10 dark:bg-white/5">
-              <Table className="border-separate border-spacing-0">
-                <TableHeader>
-                  <TableRow className="border-b border-border/60 bg-muted/30 hover:bg-muted/30 dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/5">
-                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Utilisateur</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Email</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Rôle</TableHead>
-                    <TableHead className="px-6 py-4 text-[10px] uppercase tracking-[0.28em] text-muted-foreground">Permissions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                        Chargement des utilisateurs...
-                      </TableCell>
-                    </TableRow>
-                  ) : filteredUsers.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={4} className="px-6 py-10 text-center text-sm text-muted-foreground">
-                        {searchQuery ? "Aucun utilisateur ne correspond à cette recherche." : "Aucun utilisateur RBAC trouvé."}
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    filteredUsers.map((user, index) => {
-                      const role = primaryRole(user)
-                      const roleMeta = getRoleMeta(role)
-                      const isBusy = busyUserId === user.id
-                      const permissionPreview = user.permissions.slice(0, 5)
-                      const extraPermissions = Math.max(0, user.permissions.length - permissionPreview.length)
-                      const avatarGradient =
-                        role === "admin"
-                          ? "from-rose-500 to-orange-500"
-                          : role === "reviewer_lead"
-                            ? "from-amber-500 to-orange-500"
-                            : role === "reviewer_senior"
-                              ? "from-violet-500 to-fuchsia-500"
-                              : role === "reviewer_junior"
-                                ? "from-sky-500 to-cyan-500"
-                                : role === "developer"
-                                  ? "from-emerald-500 to-teal-500"
-                                  : "from-slate-500 to-slate-700"
+      {/* ── Users table ──────────────────────────────────────────────── */}
+      <div className="border border-[--border-card] bg-[--bg-card]">
+        <div className="border-b border-[--border-card] bg-[--bg-card-inner] px-5 py-3">
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            Utilisateurs
+          </h2>
+        </div>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Utilisateur</TableHead>
+              <TableHead>Email</TableHead>
+              <TableHead>Rôle</TableHead>
+              <TableHead>Permissions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                  Chargement des utilisateurs…
+                </TableCell>
+              </TableRow>
+            ) : filteredUsers.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="py-10 text-center text-sm text-muted-foreground">
+                  {searchQuery
+                    ? "Aucun utilisateur ne correspond à cette recherche."
+                    : "Aucun utilisateur RBAC trouvé."}
+                </TableCell>
+              </TableRow>
+            ) : (
+              filteredUsers.map((user) => {
+                const role = primaryRole(user)
+                const roleMeta = getRoleMeta(role)
+                const isBusy = busyUserId === user.id
+                const permissionPreview = user.permissions.slice(0, 5)
+                const extraPermissions = Math.max(0, user.permissions.length - permissionPreview.length)
 
-                      return (
-                        <motion.tr
-                          key={user.id}
-                          initial={{ opacity: 0, x: -20 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.4 + index * 0.03 }}
-                          className="group border-b border-border/40 transition-colors last:border-b-0 hover:bg-muted/25 dark:border-white/5 dark:hover:bg-white/5"
+                return (
+                  <TableRow key={user.id}>
+                    <TableCell>
+                      <div className="flex items-center gap-3">
+                        <Avatar className="size-9 border border-[--border-card]">
+                          <AvatarFallback className="bg-[--bg-card-inner] text-xs font-semibold text-foreground">
+                            {initials(displayNameOf(user))}
+                          </AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <p className="font-medium text-foreground">{displayNameOf(user)}</p>
+                          <p className={`text-[11px] font-mono ${user.isActive ? "text-[#17f0c4]" : "text-rose-400"}`}>
+                            {user.isActive ? "ACTIF" : "INACTIF"}
+                          </p>
+                        </div>
+                      </div>
+                    </TableCell>
+
+                    <TableCell className="text-muted-foreground">{user.email}</TableCell>
+
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <span className={`inline-flex items-center border px-2 py-0.5 ${roleMeta.badgeClass}`}>
+                          {roleMeta.label}
+                        </span>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => openRoleDialog(user)}
+                          disabled={isBusy}
+                          className="size-7"
                         >
-                          <TableCell className="px-6 py-5 align-top">
-                            <div className="flex items-start gap-3">
-                              <motion.div whileHover={{ scale: 1.05 }}>
-                                <Avatar className="size-11 border border-border/60 ring-2 ring-transparent ring-offset-2 ring-offset-background transition group-hover:ring-violet-500/40 dark:border-white/10 dark:ring-offset-[#0a0f16]">
-                                  <AvatarFallback className={`bg-gradient-to-br ${avatarGradient} font-semibold text-white`}>
-                                    {initials(displayNameOf(user))}
-                                  </AvatarFallback>
-                                </Avatar>
-                              </motion.div>
-                              <div className="space-y-1 pt-0.5">
-                                <p className="font-medium tracking-[-0.01em] text-foreground">{displayNameOf(user)}</p>
-                                <p className={`text-xs font-medium ${user.isActive ? "text-emerald-500 dark:text-emerald-400" : "text-rose-500 dark:text-rose-400"}`}>
-                                  {user.isActive ? "Active" : "Desactive"}
-                                </p>
-                              </div>
-                            </div>
-                          </TableCell>
+                          <Edit className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </TableCell>
 
-                          <TableCell className="px-6 py-5 align-top text-sm text-muted-foreground">{user.email}</TableCell>
-
-                          <TableCell className="px-6 py-5 align-top">
-                            <div className="flex items-center gap-2">
-                              <Badge className={`rounded-full border px-3 py-1 text-[11px] font-medium tracking-wide ${roleMeta.badgeClass}`}>
-                                {roleMeta.label}
-                              </Badge>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                onClick={() => openRoleDialog(user)}
-                                disabled={isBusy}
-                                className="size-8 rounded-full border border-border/70 bg-background/70 text-muted-foreground hover:bg-muted hover:text-foreground dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-                              >
-                                <Edit className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          </TableCell>
-
-                          <TableCell className="px-6 py-5 align-top">
-                            <div className="flex flex-wrap gap-1.5">
-                              {permissionPreview.length === 0 ? (
-                                <span className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-muted-foreground dark:border-white/10 dark:bg-white/5">
-                                  aucune
-                                </span>
-                              ) : (
-                                permissionPreview.map((permission) => (
-                                  <span
-                                    key={permission}
-                                    className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-slate-300 dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
-                                  >
-                                    {permission}
-                                  </span>
-                                ))
-                              )}
-                              {extraPermissions > 0 && (
-                                <span className="inline-flex items-center rounded-full border border-border/70 bg-background/75 px-2.5 py-1 text-[11px] font-mono text-muted-foreground dark:border-white/10 dark:bg-white/5">
-                                  +{extraPermissions}
-                                </span>
-                              )}
-                            </div>
-                          </TableCell>
-                        </motion.tr>
-                      )
-                    })
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}>
-        <GroupedPermissions permissions={permissions} />
-      </motion.div>
-
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.65 }}>
-        <Card className="rounded-[28px] border border-border/70 bg-white/75 backdrop-blur-2xl dark:border-white/10 dark:bg-[#0b1016]/80">
-          <CardHeader>
-            <CardTitle className="text-[1.05rem] font-semibold tracking-[-0.02em]">Gestion des tokens CI</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <p className="text-sm text-muted-foreground">
-              Ce token sert à l&apos;intégration CI/CD (rotation et révocation réelles).
-            </p>
-            <div className="rounded-2xl border border-border/70 bg-background/70 px-4 py-3 dark:border-white/10 dark:bg-white/5">
-              <p className="text-sm text-foreground">
-                État token:{" "}
-                {tokenInfo?.exists && !tokenInfo?.revoked ? (
-                  <span className="font-semibold text-emerald-500 dark:text-emerald-400">
-                    Actif ({tokenInfo?.prefix ?? "prefix inconnu"})
-                  </span>
-                ) : (
-                  <span className="font-semibold text-[color:var(--orange)] dark:text-amber-400">Aucun token actif</span>
-                )}
-              </p>
-              {tokenInfo?.createdAt && (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Dernière rotation: {new Date(tokenInfo.createdAt).toLocaleString("fr-FR")}
-                </p>
-              )}
-            </div>
-            {lastRotatedToken && (
-              <div className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 px-4 py-3">
-                <p className="mb-1 text-xs text-emerald-700 dark:text-emerald-200">
-                  Nouveau token (affiché une seule fois):
-                </p>
-                <code className="break-all text-xs text-emerald-900 dark:text-emerald-100">{lastRotatedToken}</code>
-              </div>
+                    <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {permissionPreview.length === 0 ? (
+                          <span className="border border-[--border-card] bg-[--bg-card-inner] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                            aucune
+                          </span>
+                        ) : (
+                          permissionPreview.map((permission) => (
+                            <span
+                              key={permission}
+                              className="border border-[--border-card] bg-[--bg-card-inner] px-2 py-0.5 font-mono text-[10px] text-muted-foreground"
+                            >
+                              {permission}
+                            </span>
+                          ))
+                        )}
+                        {extraPermissions > 0 && (
+                          <span className="border border-[--border-card] bg-[--bg-card-inner] px-2 py-0.5 font-mono text-[10px] text-muted-foreground">
+                            +{extraPermissions}
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                )
+              })
             )}
-            <div className="flex flex-wrap gap-2">
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="outline" className="bg-background/80 text-foreground dark:bg-white/5" onClick={() => void rotateCiToken()} disabled={tokenBusy}>
-                  Générer nouveau token
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}>
-                <Button variant="outline" className="bg-background/80 text-foreground dark:bg-white/5" onClick={() => void revokeCiToken()} disabled={tokenBusy}>
-                  Révoquer le token actif
-                </Button>
-              </motion.div>
-            </div>
-          </CardContent>
-        </Card>
-      </motion.div>
+          </TableBody>
+        </Table>
+      </div>
 
+      {/* ── Permissions catalog ──────────────────────────────────────── */}
+      <GroupedPermissions permissions={permissions} />
+
+      {/* ── CI Token ─────────────────────────────────────────────────── */}
+      <div className="border border-[--border-card] bg-[--bg-card]">
+        <div className="border-b border-[--border-card] bg-[--bg-card-inner] px-5 py-3">
+          <h2 className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+            Token CI / CD
+          </h2>
+        </div>
+        <div className="space-y-4 px-5 py-4">
+          <p className="text-sm text-muted-foreground">
+            Ce token sert à l&apos;intégration CI/CD (rotation et révocation réelles).
+          </p>
+          <div className="border border-[--border-card] bg-[--bg-card-inner] px-4 py-3">
+            <p className="text-sm text-foreground">
+              État :{" "}
+              {tokenInfo?.exists && !tokenInfo?.revoked ? (
+                <span className="font-mono font-semibold text-[#17f0c4]">
+                  ACTIF ({tokenInfo?.prefix ?? "inconnu"})
+                </span>
+              ) : (
+                <span className="font-mono font-semibold text-[--orange]">AUCUN TOKEN ACTIF</span>
+              )}
+            </p>
+            {tokenInfo?.createdAt && (
+              <p className="mt-1 font-mono text-[11px] text-muted-foreground">
+                Dernière rotation : {new Date(tokenInfo.createdAt).toLocaleString("fr-FR")}
+              </p>
+            )}
+          </div>
+
+          {lastRotatedToken && (
+            <div className="border border-[#17f0c4]/30 bg-[#17f0c4]/10 px-4 py-3">
+              <p className="mb-1 font-mono text-[11px] text-[#17f0c4]">
+                NOUVEAU TOKEN — affiché une seule fois :
+              </p>
+              <code className="break-all font-mono text-xs text-[#17f0c4]">{lastRotatedToken}</code>
+            </div>
+          )}
+
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={() => void rotateCiToken()} disabled={tokenBusy}>
+              Générer nouveau token
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => void revokeCiToken()} disabled={tokenBusy}>
+              Révoquer le token actif
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Role Dialog ──────────────────────────────────────────────── */}
       <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="sm:max-w-[560px] rounded-[28px] border border-border/70 bg-white/95 p-6 shadow-[0_30px_100px_rgba(15,23,42,0.18)] backdrop-blur-2xl dark:border-white/10 dark:bg-[#131821]/95 dark:shadow-[0_40px_120px_rgba(0,0,0,0.5)]">
-          <DialogHeader className="space-y-2 text-left">
-            <DialogTitle className="text-[1.55rem] font-semibold tracking-[-0.03em] text-foreground">
-              Modifier le rôle de l&apos;utilisateur
-            </DialogTitle>
-            <DialogDescription className="text-sm text-muted-foreground">
-              Sélectionnez le nouveau rôle pour {selectedUser ? displayNameOf(selectedUser) : ""}
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Modifier le rôle</DialogTitle>
+            <DialogDescription>
+              Sélectionnez le nouveau rôle pour{" "}
+              <span className="font-medium text-foreground">
+                {selectedUser ? displayNameOf(selectedUser) : ""}
+              </span>
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4 pt-3">
+          <div className="space-y-4 pt-2">
             <Select value={selectedRole} onValueChange={(value) => setSelectedRole(normalizeRole(value))}>
-              <SelectTrigger className="h-14 w-full rounded-2xl border border-border/70 bg-background/80 px-4 text-left text-sm shadow-sm backdrop-blur-md dark:border-white/10 dark:bg-white/5">
-                <div className="flex items-center gap-3">
-                  <span className={`size-3 rounded-full ${selectedRoleMeta.dotClass}`} />
+              <SelectTrigger className="h-10 w-full">
+                <div className="flex items-center gap-2.5">
+                  <span className={`size-2 ${selectedRoleMeta.indicatorClass}`} />
                   <span className="font-medium text-foreground">{selectedRoleMeta.label}</span>
                 </div>
               </SelectTrigger>
-              <SelectContent className="rounded-[24px] border border-border/70 bg-white/95 p-2 shadow-2xl backdrop-blur-2xl dark:border-white/10 dark:bg-[#1d2229]">
+              <SelectContent>
                 {ROLE_OPTIONS.map((role) => (
-                  <SelectItem
-                    key={role.value}
-                    value={role.value}
-                    className="rounded-xl px-4 py-3 text-sm text-foreground data-[highlighted]:bg-muted/80 data-[highlighted]:text-foreground dark:data-[highlighted]:bg-white/10"
-                  >
-                    <div className="flex items-center gap-3">
-                      <span className={`size-2.5 rounded-full ${role.dotClass}`} />
+                  <SelectItem key={role.value} value={role.value}>
+                    <div className="flex items-center gap-2.5">
+                      <span className={`size-2 ${role.indicatorClass}`} />
                       <span>{role.label}</span>
                     </div>
                   </SelectItem>
@@ -752,44 +737,39 @@ export function UserManagement() {
               </SelectContent>
             </Select>
 
-            <div className="rounded-[22px] border border-border/70 bg-muted/40 p-4 dark:border-white/10 dark:bg-white/5">
+            <div className="border border-[--border-card] bg-[--bg-card-inner] p-4">
               <div className="flex items-center gap-2">
-                <span className={`size-2.5 rounded-full ${selectedRoleMeta.dotClass}`} />
-                <p className="text-base font-semibold tracking-[-0.02em] text-foreground">{selectedRoleMeta.label}</p>
+                <span className={`size-2 ${selectedRoleMeta.indicatorClass}`} />
+                <p className="font-semibold text-foreground">{selectedRoleMeta.label}</p>
               </div>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedRoleMeta.description}</p>
-              <div className="mt-4 flex flex-wrap gap-2">
+              <div className="mt-3 flex flex-wrap gap-1.5">
                 {selectedRoleMeta.chips.map((chip) => (
-                  <Badge
+                  <span
                     key={chip}
-                    variant="outline"
-                    className="rounded-full border-border/70 bg-background/80 px-3 py-1 text-xs font-medium text-foreground dark:border-white/10 dark:bg-white/5 dark:text-slate-200"
+                    className="border border-[--border-card] bg-[--bg-card] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
                   >
                     {chip}
-                  </Badge>
+                  </span>
                 ))}
               </div>
             </div>
           </div>
 
-          <DialogFooter className="mt-2 flex flex-col gap-3 sm:flex-row sm:justify-end">
-            <Button
-              variant="outline"
-              onClick={() => setRoleDialogOpen(false)}
-              className="rounded-full border-border/70 bg-background/70 text-foreground hover:bg-background dark:border-white/10 dark:bg-white/5 dark:hover:bg-white/10"
-            >
+          <DialogFooter className="mt-2 gap-2">
+            <Button variant="outline" size="sm" onClick={() => setRoleDialogOpen(false)}>
               Annuler
             </Button>
             <Button
+              size="sm"
               onClick={() => void saveRole()}
               disabled={!selectedRole || busyUserId === selectedUser?.id}
-              className="rounded-full bg-white px-5 text-slate-950 hover:bg-slate-100 dark:bg-white dark:text-slate-950 dark:hover:bg-slate-100"
             >
-              Enregistrer
+              {busyUserId === selectedUser?.id ? "Enregistrement…" : "Enregistrer"}
             </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </motion.div>
+    </div>
   )
 }

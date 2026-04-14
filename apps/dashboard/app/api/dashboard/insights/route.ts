@@ -1,323 +1,248 @@
 import { auth } from "@clerk/nextjs/server"
-import { NextResponse } from "next/server"
-
-import { extractRoleFromClaims, normalizeRole, type AppRole } from "@/lib/roles"
+import { NextResponse, type NextRequest } from "next/server"
+import {
+  resolveGithubTokensForUser,
+  listPullRequests,
+} from "@/lib/github-client"
 
 export const dynamic = "force-dynamic"
 
-const BACKEND_API_BASE_URL =
-  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-const BACKEND_FETCH_TIMEOUT_MS = Math.max(
-  1_000,
-  Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
-)
-const DASHBOARD_INSIGHTS_ROUTE_CACHE_TTL_MS = 8_000
-
-type BackendAnalysisListResponse = {
-  items?: Array<{
-    analysis_id?: string
-    repo?: string
-    pr_number?: number | null
-    commit_sha?: string | null
-    status?: string
-    summary?: string | null
-    created_at?: string
-    metadata?: Record<string, unknown>
-  }>
+type PRItem = {
+  number: number
+  state: string
+  merged_at: string | null
+  created_at: string
+  user: { login: string } | null
+  additions: number
+  deletions: number
+  changed_files: number
+  requested_reviewers?: Array<{ login: string }>
+  review_comments?: number
+  comments?: number
+  title: string
 }
 
-type BackendRepoProfilesResponse = {
-  items?: Array<{
-    repo_id?: string
-    indexed_commit?: string | null
-    updated_at?: string | null
-    profile?: Record<string, unknown>
-  }>
-}
-
-type RepoOverviewDTO = {
-  repoId: string
-  summary: string
-  highlights: string[]
-  indexedCommit?: string | null
-  updatedAt?: string | null
-  source: string
-  fallbackUsed: boolean
-}
-
-type PrSummaryDTO = {
-  analysisId: string
-  repo: string
-  prNumber: number | null
-  commitSha: string | null
-  status: string
-  summary: string
-  createdAt: string
-  authorLabel: string | null
-}
-
-type InsightsRouteCacheEntry = {
-  expiresAt: number
-  payload: {
-    role: AppRole
-    prSummaries: PrSummaryDTO[]
-    repoOverviews: RepoOverviewDTO[]
-    warnings: string[]
-    generatedAt: string
+function getDateRange(timeRange: string): Date {
+  const now = new Date()
+  switch (timeRange) {
+    case "1w": return new Date(now.getTime() - 7 * 24 * 3600000)
+    case "4w": return new Date(now.getTime() - 28 * 24 * 3600000)
+    case "3m": return new Date(now.getTime() - 90 * 24 * 3600000)
+    case "6m": return new Date(now.getTime() - 180 * 24 * 3600000)
+    case "1y": return new Date(now.getTime() - 365 * 24 * 3600000)
+    default: return new Date(now.getTime() - 28 * 24 * 3600000)
   }
 }
 
-const insightsRouteCache = new Map<string, InsightsRouteCacheEntry>()
-
-function asRecord(value: unknown): Record<string, unknown> | null {
-  if (typeof value !== "object" || value === null) {
-    return null
-  }
-  return value as Record<string, unknown>
+function getWeekKey(dateStr: string): string {
+  const d = new Date(dateStr)
+  const day = d.getDay()
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1)
+  const monday = new Date(d.setDate(diff))
+  return monday.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
-function normalizeUserRole(userRoleCandidate: unknown, claims: unknown): AppRole {
-  const claimsRole = extractRoleFromClaims(claims)
-  if (claimsRole !== "developer") {
-    return claimsRole
-  }
-  if (typeof userRoleCandidate === "string" && userRoleCandidate.trim().length > 0) {
-    return normalizeRole(userRoleCandidate)
-  }
-  return claimsRole
+function median(values: number[]): number {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 !== 0
+    ? sorted[mid]
+    : Math.round((sorted[mid - 1] + sorted[mid]) / 2)
 }
 
-async function fetchBackendJSON<T>(path: string, token: string | null, userId: string): Promise<T | null> {
-  const headers: Record<string, string> = {}
-  if (token) {
-    headers.Authorization = `Bearer ${token}`
-  }
-  if (userId) {
-    headers["X-User-Id"] = userId
-  }
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
-      method: "GET",
-      headers,
-      signal: controller.signal,
-      cache: "no-store",
-    })
-    if (!response.ok) {
-      return null
-    }
-    return (await response.json()) as T
-  } catch {
-    return null
-  } finally {
-    clearTimeout(timeout)
-  }
-}
-
-function extractAuthorLabel(metadata: Record<string, unknown> | undefined): string | null {
-  if (!metadata) {
-    return null
-  }
-  const candidates = [
-    metadata.author_name,
-    metadata.author,
-    metadata.author_login,
-    metadata.actor,
-    metadata.user_name,
-  ]
-  for (const candidate of candidates) {
-    if (typeof candidate === "string" && candidate.trim().length > 0) {
-      return candidate.trim()
-    }
-  }
-  return null
-}
-
-function isOwnedByUser(
-  metadata: Record<string, unknown> | undefined,
-  options: { userId: string; email: string | undefined },
-): boolean {
-  const { userId, email } = options
-  if (!metadata) {
-    return false
-  }
-  const idCandidates = [
-    metadata.author_id,
-    metadata.user_id,
-    metadata.actor_id,
-    metadata.clerk_user_id,
-    metadata.github_actor_id,
-  ]
-  for (const candidate of idCandidates) {
-    if (typeof candidate === "string" && candidate.trim() === userId) {
-      return true
-    }
-  }
-
-  if (email) {
-    const emailCandidates = [metadata.author_email, metadata.user_email, metadata.actor_email]
-    for (const candidate of emailCandidates) {
-      if (typeof candidate === "string" && candidate.trim().toLowerCase() === email.toLowerCase()) {
-        return true
-      }
-    }
-  }
-  return false
-}
-
-function hasOwnerIdentity(metadata: Record<string, unknown> | undefined): boolean {
-  if (!metadata) {
-    return false
-  }
-  const identityCandidates = [
-    metadata.author_id,
-    metadata.user_id,
-    metadata.actor_id,
-    metadata.clerk_user_id,
-    metadata.github_actor_id,
-    metadata.author_email,
-    metadata.user_email,
-    metadata.actor_email,
-  ]
-  return identityCandidates.some((candidate) => typeof candidate === "string" && candidate.trim().length > 0)
-}
-
-function toPrSummaries(
-  payload: BackendAnalysisListResponse | null,
-  role: AppRole,
-  userId: string,
-  email: string | undefined,
-): PrSummaryDTO[] {
-  const items = Array.isArray(payload?.items) ? payload!.items! : []
-  const mapped = items
-    .filter((item) => typeof item.analysis_id === "string" && typeof item.repo === "string")
-    .map((item) => {
-      const metadata = asRecord(item.metadata ?? {})
-      return {
-        analysisId: item.analysis_id as string,
-        repo: item.repo as string,
-        prNumber: typeof item.pr_number === "number" ? item.pr_number : null,
-        commitSha: typeof item.commit_sha === "string" ? item.commit_sha : null,
-        status: typeof item.status === "string" ? item.status : "UNKNOWN",
-        summary: typeof item.summary === "string" && item.summary.trim().length > 0 ? item.summary.trim() : "Summary unavailable.",
-        createdAt: typeof item.created_at === "string" ? item.created_at : "",
-        authorLabel: extractAuthorLabel(metadata ?? undefined),
-        metadata,
-      }
-    })
-    .sort((left, right) => (right.createdAt || "").localeCompare(left.createdAt || ""))
-
-  if (role !== "developer") {
-    return mapped.map(({ metadata: _metadata, ...value }) => value).slice(0, 25)
-  }
-
-  const own = mapped.filter(
-    (item) =>
-      isOwnedByUser(item.metadata ?? undefined, {
-        userId,
-        email,
-      }) || !hasOwnerIdentity(item.metadata ?? undefined),
-  )
-  const selected = own.length > 0 ? own : mapped.slice(0, 10)
-  return selected.map(({ metadata: _metadata, ...value }) => value).slice(0, 10)
-}
-
-function toRepoOverviews(payload: BackendRepoProfilesResponse | null): RepoOverviewDTO[] {
-  const items = Array.isArray(payload?.items) ? payload!.items! : []
-  const result: RepoOverviewDTO[] = []
-
-  for (const item of items) {
-    if (typeof item.repo_id !== "string" || item.repo_id.trim().length === 0) {
-      continue
-    }
-    const profile = asRecord(item.profile ?? {})
-    const llmOverview = asRecord(profile?.llm_overview)
-    const summary =
-      (typeof llmOverview?.summary === "string" && llmOverview.summary.trim().length > 0
-        ? llmOverview.summary
-        : typeof profile?.summary === "string"
-          ? profile.summary
-          : null) ?? "Repository overview unavailable."
-    const highlights = Array.isArray(llmOverview?.highlights)
-      ? llmOverview.highlights
-          .filter((entry): entry is string => typeof entry === "string")
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0)
-      : []
-    const source = typeof llmOverview?.source === "string" ? llmOverview.source : "unknown"
-    const fallbackUsed = Boolean(llmOverview?.fallback_used)
-
-    result.push({
-      repoId: item.repo_id.trim(),
-      summary: summary.trim(),
-      highlights: highlights.slice(0, 6),
-      indexedCommit: typeof item.indexed_commit === "string" ? item.indexed_commit : null,
-      updatedAt: typeof item.updated_at === "string" ? item.updated_at : null,
-      source,
-      fallbackUsed,
-    })
-  }
-
-  return result
-}
-
-export async function GET() {
-  const { userId, getToken, sessionClaims } = await auth()
+export async function GET(request: NextRequest) {
+  const { userId } = await auth()
   if (!userId) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 
-  const token = await getToken()
-  const claimsRecord = asRecord(sessionClaims)
-  const userRoleCandidate =
-    asRecord(claimsRecord?.public_metadata)?.role ??
-    asRecord(claimsRecord?.publicMetadata)?.role ??
-    asRecord(claimsRecord?.unsafe_metadata)?.role ??
-    asRecord(claimsRecord?.unsafeMetadata)?.role ??
-    asRecord(claimsRecord?.app_metadata)?.role ??
-    asRecord(claimsRecord?.appMetadata)?.role ??
-    claimsRecord?.role
-  const role = normalizeUserRole(userRoleCandidate, sessionClaims)
-  const emailCandidate = claimsRecord?.email ?? claimsRecord?.email_address
-  const email =
-    typeof emailCandidate === "string" && emailCandidate.trim().length > 0 ? emailCandidate.trim() : undefined
-  const cacheKey = `${userId}:${role}:${email ?? ""}`
-  const now = Date.now()
-  const cachedEntry = insightsRouteCache.get(cacheKey)
-  if (cachedEntry && cachedEntry.expiresAt > now) {
-    return NextResponse.json(cachedEntry.payload, { status: 200 })
-  }
-  const warnings: string[] = []
+  const { searchParams } = new URL(request.url)
+  const reposParam = searchParams.get("repos") || ""
+  const timeRange = searchParams.get("timeRange") || "4w"
 
-  const [analysesPayload, profilesPayload] = await Promise.all([
-    fetchBackendJSON<BackendAnalysisListResponse>("/v1/analyses?page=1&size=40", token, userId),
-    fetchBackendJSON<BackendRepoProfilesResponse>("/v1/kb/repos/profiles?limit=40", token, userId),
-  ])
+  const repos = reposParam
+    .split(",")
+    .map((r) => r.trim())
+    .filter(Boolean)
+    .map((r) => {
+      const parts = r.split("/")
+      return parts.length >= 2 ? { owner: parts[0], repo: parts[1] } : null
+    })
+    .filter(Boolean) as Array<{ owner: string; repo: string }>
 
-  if (!analysesPayload) {
-    warnings.push("analyses_unavailable")
-  }
-  if (!profilesPayload) {
-    warnings.push("repo_profiles_unavailable")
+  if (!repos.length) {
+    return NextResponse.json({
+      charts: { prsMergedPerEngineer: [], linesModifiedPerEngineer: [], linesOfCodePerPR: [] },
+      metrics: { medianPRSize: 0, publishToMergeTime: 0, timeToFirstReview: 0 },
+      fastFacts: { totalPRsMerged: 0, totalLinesModified: 0, netLinesAdded: 0, totalPRReviews: 0, uniqueAuthors: 0, uniqueReviewers: 0 },
+      userList: [],
+    })
   }
 
-  const prSummaries = toPrSummaries(analysesPayload, role, userId, email ?? undefined)
-  const repoOverviews = toRepoOverviews(profilesPayload)
-
-  const responsePayload = {
-    role,
-    prSummaries,
-    repoOverviews,
-    warnings,
-    generatedAt: new Date().toISOString(),
+  // Resolve GitHub token
+  let githubToken: string | null = null
+  try {
+    const tokens = await resolveGithubTokensForUser(userId)
+    githubToken = tokens[0] ?? null
+  } catch {
+    // no token
   }
 
-  insightsRouteCache.set(cacheKey, {
-    expiresAt: now + DASHBOARD_INSIGHTS_ROUTE_CACHE_TTL_MS,
-    payload: responsePayload,
+  if (!githubToken) {
+    return NextResponse.json({ error: "GitHub not connected" }, { status: 400 })
+  }
+
+  const since = getDateRange(timeRange)
+  const allPRs: PRItem[] = []
+
+  for (const { owner, repo } of repos) {
+    try {
+      // Fetch closed PRs (includes merged)
+      const prs = await listPullRequests(owner, repo, "closed", githubToken)
+      for (const pr of (prs as PRItem[])) {
+        if (pr.merged_at && new Date(pr.merged_at) >= since) {
+          allPRs.push(pr)
+        }
+      }
+    } catch {
+      // skip failed repos
+    }
+  }
+
+  // ── Build time-series data ──────────────────────────────────────────────
+
+  type WeekBucket = {
+    prSizes: number[]
+    linesAdded: number
+    linesDeleted: number
+    authors: Set<string>
+  }
+
+  const weeklyBuckets = new Map<string, WeekBucket>()
+
+  for (const pr of allPRs) {
+    const key = getWeekKey(pr.merged_at!)
+    if (!weeklyBuckets.has(key)) {
+      weeklyBuckets.set(key, { prSizes: [], linesAdded: 0, linesDeleted: 0, authors: new Set() })
+    }
+    const bucket = weeklyBuckets.get(key)!
+    bucket.prSizes.push((pr.additions ?? 0) + (pr.deletions ?? 0))
+    bucket.linesAdded += pr.additions ?? 0
+    bucket.linesDeleted += pr.deletions ?? 0
+    if (pr.user?.login) bucket.authors.add(pr.user.login)
+  }
+
+  // Sort weeks chronologically
+  const sortedWeeks = [...weeklyBuckets.entries()].sort(
+    (a, b) => new Date(a[0]).getTime() - new Date(b[0]).getTime()
+  )
+
+  const prsMergedPerEngineer = sortedWeeks.map(([week, bucket]) => ({
+    date: week,
+    value: bucket.authors.size > 0 ? Math.round(bucket.prSizes.length / bucket.authors.size * 10) / 10 : 0,
+  }))
+
+  const linesModifiedPerEngineer = sortedWeeks.map(([week, bucket]) => ({
+    date: week,
+    added: bucket.linesAdded,
+    deleted: bucket.linesDeleted,
+  }))
+
+  const linesOfCodePerPR = sortedWeeks.map(([week, bucket]) => ({
+    date: week,
+    value: median(bucket.prSizes),
+  }))
+
+  // ── Aggregate metrics ─────────────────────────────────────────────────
+
+  const allSizes = allPRs.map((pr) => (pr.additions ?? 0) + (pr.deletions ?? 0))
+  const medianPRSize = median(allSizes)
+
+  // Publish-to-merge time in hours: time from created_at to merged_at
+  const mergeTimes = allPRs
+    .filter((pr) => pr.merged_at)
+    .map((pr) => (new Date(pr.merged_at!).getTime() - new Date(pr.created_at).getTime()) / 3600000)
+  const publishToMergeTime = Math.round(median(mergeTimes) * 100) / 100
+
+  const timeToFirstReview = 0 // Would need review events API — default 0
+
+  const uniqueAuthors = new Set(allPRs.map((pr) => pr.user?.login).filter(Boolean)).size
+  const uniqueReviewers = new Set(
+    allPRs.flatMap((pr) => (pr.requested_reviewers ?? []).map((r) => r.login))
+  ).size
+
+  const totalLinesModified = allPRs.reduce(
+    (sum, pr) => sum + (pr.additions ?? 0) + (pr.deletions ?? 0),
+    0,
+  )
+  const netLinesAdded = allPRs.reduce(
+    (sum, pr) => sum + (pr.additions ?? 0) - (pr.deletions ?? 0),
+    0,
+  )
+  const totalPRReviews = allPRs.reduce(
+    (sum, pr) => sum + (pr.review_comments ?? 0) + (pr.comments ?? 0),
+    0,
+  )
+
+  // ── User list ─────────────────────────────────────────────────────────
+
+  const userMap = new Map<string, {
+    login: string
+    prsMerged: number
+    linesAdded: number
+    linesDeleted: number
+    totalLines: number
+    reviewCycles: number
+  }>()
+
+  for (const pr of allPRs) {
+    const login = pr.user?.login ?? "unknown"
+    if (!userMap.has(login)) {
+      userMap.set(login, { login, prsMerged: 0, linesAdded: 0, linesDeleted: 0, totalLines: 0, reviewCycles: 0 })
+    }
+    const u = userMap.get(login)!
+    u.prsMerged += 1
+    u.linesAdded += pr.additions ?? 0
+    u.linesDeleted += pr.deletions ?? 0
+    u.totalLines += (pr.additions ?? 0) + (pr.deletions ?? 0)
+    u.reviewCycles += pr.review_comments ?? 0
+  }
+
+  const userList = [...userMap.values()].map((u) => ({
+    login: u.login,
+    prsMerged: u.prsMerged,
+    prsReviewed: 0,
+    reviewRequestResponseTime: null,
+    timeToFirstReview: null,
+    timeWaitingOnReviews: null,
+    publishToMergeTime: null,
+    reviewCyclesUntilMerge: u.reviewCycles,
+    linesDeleted: u.linesDeleted,
+    linesAdded: u.linesAdded,
+    linesChangedPerPR: u.prsMerged > 0 ? Math.round(u.totalLines / u.prsMerged) : 0,
+  }))
+
+  return NextResponse.json({
+    charts: { prsMergedPerEngineer, linesModifiedPerEngineer, linesOfCodePerPR },
+    metrics: {
+      medianPRSize,
+      publishToMergeTime,
+      timeToFirstReview,
+      medianPRSizeStatus: medianPRSize > 500 ? "needs_improvement" : medianPRSize > 200 ? "warning" : "good",
+      publishToMergeStatus: publishToMergeTime < 4 ? "good" : publishToMergeTime < 24 ? "warning" : "needs_improvement",
+      timeToFirstReviewStatus: timeToFirstReview < 2 ? "good" : timeToFirstReview < 8 ? "warning" : "needs_improvement",
+    },
+    fastFacts: {
+      totalPRsMerged: allPRs.length,
+      totalLinesModified,
+      netLinesAdded,
+      totalPRReviews,
+      uniqueAuthors,
+      uniqueReviewers,
+    },
+    userList,
+    timeRange,
+    repos: repos.map((r) => `${r.owner}/${r.repo}`),
   })
-
-  return NextResponse.json(responsePayload, { status: 200 })
 }

@@ -97,7 +97,7 @@ function BrandBadge() {
     <div className="relative shrink-0 w-full">
       <div className="flex items-center p-1 w-full">
         <div className="h-10 w-8 flex items-center justify-center pl-2">
-          <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-sm font-bold text-primary-foreground shadow-glow">
+          <div className="flex h-8 w-8 items-center justify-center bg-[--orange] text-sm font-bold text-white">
             A
           </div>
         </div>
@@ -142,7 +142,7 @@ function SearchContainer({
       style={{ transitionTimingFunction: softSpringEasing }}
     >
       <div
-        className={`bg-sidebar-accent/50 h-10 relative rounded-lg flex items-center transition-all duration-500 border border-sidebar-border ${
+        className={`bg-sidebar-accent/50 h-10 relative rounded-none flex items-center transition-all duration-500 border border-[--border-default] ${
           isCollapsed ? "w-10 min-w-10 justify-center" : "w-full"
         }`}
         style={{ transitionTimingFunction: softSpringEasing }}
@@ -297,6 +297,12 @@ function getSidebarContent(
                 { label: "Review Velocity", href: "/dashboard/statistics?tab=velocity" },
                 { label: "Team Performance", href: "/dashboard/statistics?tab=performance" },
               ],
+            },
+            {
+              icon: <Activity size={16} className="text-sidebar-foreground" />,
+              label: "Insights",
+              href: "/dashboard/insights",
+              isActive: pathname === "/dashboard/insights",
             },
           ],
         },
@@ -695,9 +701,9 @@ function IconNavButton({
       type="button"
       title={title}
       className={cn(
-        "flex items-center justify-center rounded-xl size-10 min-w-10 transition-all duration-300",
+        "flex items-center justify-center rounded-none size-10 min-w-10 transition-colors duration-200",
         isActive
-          ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-glow"
+          ? "bg-[--orange] text-white border-l-2 border-[--orange]"
           : "hover:bg-sidebar-accent text-muted-foreground hover:text-sidebar-foreground"
       )}
       style={{ transitionTimingFunction: softSpringEasing }}
@@ -739,7 +745,7 @@ function IconNavigation({
     <aside className="bg-sidebar flex flex-col gap-2 items-center py-4 px-2 w-16 h-full border-r border-sidebar-border">
       {/* Logo */}
       <div className="mb-4 size-10 flex items-center justify-center">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/80 text-sm font-bold text-primary-foreground shadow-glow">
+        <div className="flex h-9 w-9 items-center justify-center bg-[--orange] text-sm font-bold text-white">
           A
         </div>
       </div>
@@ -997,7 +1003,7 @@ function DetailSidebar({
         <div className="w-full mt-auto pt-2 border-t border-sidebar-border">
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <button className="flex items-center gap-2 px-2 py-2 w-full rounded-xl hover:bg-sidebar-accent transition-colors">
+              <button className="flex items-center gap-2 px-2 py-2 w-full rounded-none hover:bg-sidebar-accent transition-colors">
                 <AvatarCircle initials={currentUser.avatar} />
                 <div className="flex-1 text-left min-w-0">
                   <div className="text-sm font-medium text-sidebar-foreground truncate">
@@ -1063,9 +1069,9 @@ function MenuItem({
   const content = (
     <div
       className={cn(
-        "rounded-xl cursor-pointer transition-all duration-300 flex items-center relative",
+        "rounded-none cursor-pointer transition-colors duration-200 flex items-center relative",
         item.isActive
-          ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground shadow-glow"
+          ? "border-l-2 border-[--orange] bg-[--orange-glow] text-foreground"
           : "hover:bg-sidebar-accent text-sidebar-foreground",
         isCollapsed ? "w-10 min-w-10 h-10 justify-center p-2" : "w-full h-10 px-3 py-2"
       )}
@@ -1166,7 +1172,7 @@ function MenuSection({
         style={{ transitionTimingFunction: softSpringEasing }}
       >
         <div className="flex items-center h-8 px-3">
-          <div className="text-[12px] font-medium uppercase tracking-wider text-muted-foreground">
+          <div className="font-mono text-[11px] font-medium uppercase tracking-[0.2em] text-muted-foreground">
             {section.title}
           </div>
         </div>
@@ -1207,10 +1213,11 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
     // Determine initial section based on pathname
     if (pathname.startsWith("/dashboard/admin")) return "admin";
     if (pathname.startsWith("/dashboard/reviewer")) return "reviews";
-    if (pathname.startsWith("/dashboard/organization")) return "workspace";
+    if (pathname.startsWith("/dashboard/organization") || pathname.startsWith("/dashboard/teams")) return "workspace";
     if (pathname.startsWith("/dashboard/analyses")) return "analyses";
     if (pathname.startsWith("/dashboard/editor")) return "editor";
     if (pathname.startsWith("/dashboard/pulls")) return "pulls";
+    if (pathname.startsWith("/dashboard/statistics") || pathname.startsWith("/dashboard/insights")) return "dashboard";
     return "dashboard";
   });
 
@@ -1272,7 +1279,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
       {/* Icon Navigation */}
       <div className={cn(
         // Mobile: fixed overlay, slide from left
-        "fixed left-0 top-0 z-50 h-screen w-16 bg-sidebar border-r border-sidebar-border transition-transform duration-300",
+        "fixed left-0 top-0 z-50 h-screen w-16 bg-[--bg-card] border-r border-[--border-default] transition-transform duration-300",
         // Desktop: static in flex layout
         "md:relative md:z-auto md:flex-shrink-0",
         // Mobile visibility
@@ -1289,7 +1296,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
       {/* Detail Sidebar */}
       <div className={cn(
         // Mobile: fixed overlay, slide from left (positioned after icon nav)
-        "fixed left-16 top-0 z-50 h-screen w-64 bg-sidebar border-r border-sidebar-border transition-transform duration-300",
+        "fixed left-16 top-0 z-50 h-screen w-64 bg-[--bg-card] border-r border-[--border-default] transition-transform duration-300",
         // Desktop: static in flex layout
         "md:relative md:left-0 md:z-auto md:flex-shrink-0",
         // Mobile visibility
@@ -1311,7 +1318,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-hidden">
         {/* Mobile Header */}
-        <header className="sticky top-0 z-30 flex h-16 items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-4 shadow-pro-sm md:hidden">
+        <header className="sticky top-0 z-30 flex h-14 items-center justify-between border-b border-[--border-default] bg-[--bg-nav] backdrop-blur-md px-4 md:hidden">
           <button
             onClick={() => setIsMobileMenuOpen(true)}
             className="flex items-center justify-center w-10 h-10 rounded-lg hover:bg-sidebar-accent text-sidebar-foreground"
@@ -1331,7 +1338,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Desktop Header */}
-        <header className="hidden md:flex sticky top-0 z-40 h-[72px] items-center justify-between border-b border-border bg-sidebar/95 backdrop-blur-md px-8 shadow-pro-sm">
+        <header className="hidden md:flex sticky top-0 z-40 h-14 items-center justify-between border-b border-[--border-default] bg-[--bg-nav] backdrop-blur-md px-6">
           <div className="w-full max-w-md">
             {/* Additional search or breadcrumbs can go here */}
           </div>
@@ -1345,13 +1352,20 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
         {/* Main content */}
         <main
           className={cn(
-            "flex-1 overflow-y-auto mx-auto w-full",
+            "flex-1 overflow-y-auto relative w-full",
             isImmersiveDiffPage
-              ? "max-w-none p-2 md:p-4 min-h-0 overflow-hidden"
-              : "max-w-[1200px] p-4 md:p-8",
+              ? "p-2 md:p-4 min-h-0 overflow-hidden"
+              : "",
           )}
         >
-          <div className={cn("animate-fade-in-up", isImmersiveDiffPage && "h-full")}>
+          {/* Landing-style grid background */}
+          {!isImmersiveDiffPage && (
+            <div className="pointer-events-none absolute inset-0 opacity-[0.15] [background-image:linear-gradient(rgba(73,82,127,0.14)_1px,transparent_1px),linear-gradient(90deg,rgba(73,82,127,0.14)_1px,transparent_1px)] [background-size:24px_24px]" />
+          )}
+          <div className={cn(
+            "relative",
+            isImmersiveDiffPage ? "h-full" : "mx-auto max-w-[1200px] p-4 md:p-8 animate-fade-in-up"
+          )}>
             {children}
           </div>
         </main>

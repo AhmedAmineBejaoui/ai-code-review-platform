@@ -1,5 +1,7 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
+
+export const dynamic = "force-dynamic"
 import { getGithubUser } from "@/lib/github-client"
 import { resolveGithubTokenForUser } from "@/lib/server/github/auth"
 import {

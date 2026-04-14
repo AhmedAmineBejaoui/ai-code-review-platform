@@ -85,12 +85,54 @@ export async function PATCH(request: Request, context: { params: { id: string } 
     }
   }
 
-  // Then proxy to backend to update PostgreSQL
-  return proxyBackendRequest({
-    method: "PATCH",
-    path: `/v1/admin/users/${encodeURIComponent(userId)}`,
-    token: authContext.token,
-    userId: authContext.userId,
-    body: payload,
+  // Sync to backend database
+  let backendStatus = 200
+  let backendBody: Record<string, unknown> = {}
+  try {
+    const backendResponse = await proxyBackendRequest({
+      method: "PATCH",
+      path: `/v1/admin/users/${encodeURIComponent(userId)}`,
+      token: authContext.token,
+      userId: authContext.userId,
+      body: payload,
+    })
+    backendStatus = backendResponse.status
+    backendBody = (await backendResponse.json().catch(() => ({}))) as Record<string, unknown>
+  } catch (backendError) {
+    // Network/timeout error — Clerk was already updated; log and proceed
+    console.warn(`[RBAC] Backend network error for user ${userId}:`, backendError)
+    backendStatus = 503
+  }
+
+  // 4xx from the backend means a real validation problem (e.g. ROLE_NOT_FOUND).
+  // Surface the error to the client so the UI doesn't show a false success.
+  if (backendStatus >= 400 && backendStatus < 500) {
+    console.error(`[RBAC] Backend rejected PATCH for user ${userId} with ${backendStatus}:`, backendBody)
+    return NextResponse.json(
+      {
+        error:
+          typeof backendBody.message === "string"
+            ? backendBody.message
+            : typeof backendBody.error === "string"
+              ? backendBody.error
+              : "Backend rejected the role update",
+        details: backendBody,
+      },
+      { status: backendStatus },
+    )
+  }
+
+  // 5xx / network error: Clerk was already updated — return success and log.
+  if (backendStatus >= 500) {
+    console.warn(`[RBAC] Backend returned ${backendStatus} for user ${userId}; Clerk was updated. DB may be out of sync.`)
+  }
+
+  // Return the updated fields so the UI can apply a targeted optimistic update.
+  return NextResponse.json({
+    item: {
+      id: userId,
+      ...(payload.role !== undefined ? { roles: [payload.role] } : {}),
+      ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
+    },
   })
 }

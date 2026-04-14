@@ -355,10 +355,12 @@ export async function POST(request: NextRequest) {
   }
 
   const mode = body.mode === "github_import" ? "github_import" : "platform"
-  const selectedGithubLogin = asString(body.githubOrgLogin)
+  // In platform mode, GitHub org is entirely optional and ignored even if the
+  // dropdown still holds a value from a previous interaction.
+  const selectedGithubLogin = mode === "github_import" ? asString(body.githubOrgLogin) : null
 
   let githubOrg: GithubOrganizationSummary | null = null
-  if (mode === "github_import" || selectedGithubLogin) {
+  if (mode === "github_import") {
     if (!selectedGithubLogin) {
       return NextResponse.json(
         { error: "A GitHub organization must be selected for import." },
@@ -431,7 +433,12 @@ export async function POST(request: NextRequest) {
   }
 
   let createdClerkOrganizationId: string | null = null
+  let clerkOrg: { id: string; name: string; slug: string | null; imageUrl: string | null } | null = null
+  const warnings: string[] = []
 
+  // Attempt Clerk organization creation — non-blocking.
+  // Clerk Organizations may be unavailable (plan restriction, missing permissions, etc.).
+  // In that case we fall back to a local UUID so the platform team can still be created.
   try {
     const { organization: clerkOrganization, created } = await ensureClerkOrganization({
       userId: authContext.userId,
@@ -442,17 +449,44 @@ export async function POST(request: NextRequest) {
     })
 
     createdClerkOrganizationId = created ? clerkOrganization.id : null
-
-    const backendPayload = {
+    clerkOrg = {
       id: clerkOrganization.id,
+      name: clerkOrganization.name,
+      slug: clerkOrganization.slug ?? null,
+      imageUrl: clerkOrganization.imageUrl ?? null,
+    }
+  } catch (clerkError) {
+    // Log for observability but do not abort — create a platform-only organization.
+    console.warn(
+      "[organizations] Clerk org creation skipped:",
+      clerkError instanceof Error ? clerkError.message : clerkError,
+    )
+    warnings.push(
+      "Clerk organization could not be created automatically. " +
+        "This may be due to plan restrictions or permissions. " +
+        "The platform organization was still created.",
+    )
+  }
+
+  // Use the Clerk org id when available, otherwise generate a stable local id.
+  const { randomUUID } = await import("crypto")
+  const orgId = clerkOrg?.id ?? randomUUID()
+
+  try {
+    const backendPayload = {
+      id: orgId,
       name,
       slug,
       description,
-      clerk_org_id: clerkOrganization.id,
+      clerk_org_id: clerkOrg?.id ?? null,
       github_org_id: githubOrg?.id ?? null,
       github_org_login: githubOrg?.login ?? null,
       source: githubOrg ? "github_import" : "platform",
-      sync_status: githubOrg ? "linked" : "clerk_only",
+      sync_status: clerkOrg
+        ? githubOrg
+          ? "linked"
+          : "clerk_only"
+        : "local_only",
     }
 
     const backendResponse = await fetchBackendJson<BackendTeam>(
@@ -466,6 +500,7 @@ export async function POST(request: NextRequest) {
     )
 
     if (!backendResponse.ok || !backendResponse.data) {
+      // Roll back Clerk org if we created one.
       if (createdClerkOrganizationId) {
         try {
           const client = await clerkClient()
@@ -481,25 +516,32 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    if (!githubOrg) {
+      warnings.push(
+        "GitHub organization creation is not automatic. Link an existing GitHub organization later if needed.",
+      )
+    }
+
     return NextResponse.json(
       {
         organization: normalizeTeam(backendResponse.data as BackendTeam),
-        clerkOrganization: {
-          id: clerkOrganization.id,
-          name: clerkOrganization.name,
-          slug: clerkOrganization.slug ?? null,
-          imageUrl: clerkOrganization.imageUrl ?? null,
-        },
+        clerkOrganization: clerkOrg,
         githubOrganization: githubOrg,
-        warnings: githubOrg
-          ? []
-          : [
-              "GitHub organization creation is not automatic. Link an existing GitHub organization later if needed.",
-            ],
+        warnings,
       },
       { status: 201 },
     )
   } catch (error) {
+    // Roll back Clerk org if we created one.
+    if (createdClerkOrganizationId) {
+      try {
+        const client = await clerkClient()
+        await client.organizations.deleteOrganization(createdClerkOrganizationId)
+      } catch {
+        // Best-effort rollback.
+      }
+    }
+
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Failed to create organization" },
       { status: 500 },

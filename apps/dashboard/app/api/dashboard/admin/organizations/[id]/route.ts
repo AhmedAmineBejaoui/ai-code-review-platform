@@ -36,6 +36,7 @@ type UpdateBody = {
   githubOrgId?: string | null
   source?: string | null
   syncStatus?: string | null
+  linkClerk?: boolean
 }
 
 function asString(value: unknown): string | null {
@@ -141,7 +142,74 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
   }
 
-  const backendPayload = {
+  // Fetch current state from backend to know if Clerk is already linked.
+  const currentResponse = await fetchBackendJson<BackendTeam>(
+    authContext.token,
+    authContext.userId,
+    `/api/v1/teams/${encodeURIComponent(orgId)}`,
+    { method: "GET" },
+  )
+  const currentTeam = currentResponse.ok ? (currentResponse.data as BackendTeam | null) : null
+  // Use ONLY the actual DB value — never infer from the org ID prefix.
+  const existingClerkId = currentTeam?.clerk_org_id ?? null
+
+  // If linkClerk is requested and Clerk is not yet linked, resolve a Clerk id now.
+  let resolvedClerkId: string | null = existingClerkId
+  let clerkWarning: string | null = null
+
+  if (body.linkClerk && !existingClerkId) {
+    // Case 1: the team was originally created with a Clerk org id as its primary id.
+    //         Re-use it directly — no need to call Clerk API.
+    if (orgId.startsWith("org_")) {
+      resolvedClerkId = orgId
+    } else {
+      // Case 2: try to create/find a Clerk org for this platform team.
+      const name = asString(body.name) ?? currentTeam?.name ?? orgId
+      const rawSlug = asString(body.slug) ?? currentTeam?.slug ?? orgId.toLowerCase().replace(/[^a-z0-9]+/g, "-").slice(0, 50)
+      const slug = rawSlug.toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 50) || `org-${orgId.slice(0, 8)}`
+      const description = body.description === "" ? null : asString(body.description) ?? currentTeam?.description ?? null
+
+      try {
+        const client = await clerkClient()
+
+        // Reuse an existing Clerk org if slug or name already matches.
+        const existing = await client.organizations.getOrganizationList({ limit: 100 })
+        const match = Array.isArray(existing?.data)
+          ? existing.data.find((item) => item.slug === slug || item.name === name)
+          : null
+
+        if (match) {
+          resolvedClerkId = match.id
+        } else {
+          const created = await client.organizations.createOrganization({
+            name,
+            slug,
+            createdBy: authContext.userId,
+            publicMetadata: { description },
+          })
+          try {
+            await client.organizations.createOrganizationMembership({
+              organizationId: created.id,
+              userId: authContext.userId,
+              role: "org:admin",
+            })
+          } catch {
+            // Creator may already be a member.
+          }
+          resolvedClerkId = created.id
+        }
+      } catch (clerkError) {
+        const msg = clerkError instanceof Error ? clerkError.message : "Unknown Clerk error"
+        console.warn("[organizations] Clerk org creation failed:", msg)
+        // Clerk Organizations unavailable on this plan — use a stable local id.
+        const { randomUUID } = await import("crypto")
+        resolvedClerkId = `org_local_${randomUUID().replace(/-/g, "").slice(0, 20)}`
+        clerkWarning = `Clerk organization could not be created (${msg}). A local identifier was used instead.`
+      }
+    }
+  }
+
+  const backendPayload: Record<string, unknown> = {
     name: asString(body.name) ?? undefined,
     slug: asString(body.slug) ?? undefined,
     description: body.description === "" ? "" : asString(body.description) ?? undefined,
@@ -149,7 +217,18 @@ export async function PATCH(
       body.githubOrgLogin === "" ? null : asString(body.githubOrgLogin) ?? undefined,
     github_org_id: body.githubOrgId === "" ? null : asString(body.githubOrgId) ?? undefined,
     source: asString(body.source) ?? undefined,
-    sync_status: asString(body.syncStatus) ?? undefined,
+  }
+
+  // Apply the resolved Clerk id and compute sync_status.
+  if (resolvedClerkId && resolvedClerkId !== existingClerkId) {
+    backendPayload.clerk_org_id = resolvedClerkId
+    const hasGithub = !!(
+      (body.githubOrgLogin && body.githubOrgLogin !== "") ||
+      currentTeam?.github_org_login
+    )
+    backendPayload.sync_status = hasGithub ? "linked" : "clerk_only"
+  } else if (asString(body.syncStatus)) {
+    backendPayload.sync_status = asString(body.syncStatus)
   }
 
   const backendResponse = await fetchBackendJson<BackendTeam>(
@@ -170,12 +249,13 @@ export async function PATCH(
   }
 
   const updatedTeam = backendResponse.data as BackendTeam
-  const clerkOrgId = updatedTeam.clerk_org_id ?? (orgId.startsWith("org_") ? orgId : null)
+  const finalClerkId = updatedTeam.clerk_org_id ?? resolvedClerkId
 
-  if (clerkOrgId) {
+  // Sync name/slug/metadata to existing Clerk org (if any).
+  if (finalClerkId && !body.linkClerk) {
     try {
       const client = await clerkClient()
-      await client.organizations.updateOrganization(clerkOrgId, {
+      await client.organizations.updateOrganization(finalClerkId, {
         ...(asString(body.name) ? { name: asString(body.name)! } : {}),
         ...(asString(body.slug) ? { slug: asString(body.slug)! } : {}),
         publicMetadata: {
@@ -200,7 +280,13 @@ export async function PATCH(
     }
   }
 
-  return NextResponse.json({ organization: normalizeTeam(updatedTeam) }, { status: 200 })
+  return NextResponse.json(
+    {
+      organization: normalizeTeam(updatedTeam),
+      ...(clerkWarning ? { warning: clerkWarning } : {}),
+    },
+    { status: 200 },
+  )
 }
 
 /**

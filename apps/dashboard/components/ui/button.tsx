@@ -5,36 +5,29 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "./utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-xl text-sm font-medium transition-[background-color,color,border-color,box-shadow,transform] duration-150 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-none text-sm font-medium transition-colors duration-200 disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground hover:bg-primary/90 shadow-pro-sm hover:shadow-pro-md hover:-translate-y-0.5 active:translate-y-0",
+          "bg-[--orange] text-white hover:bg-[--orange-hover]",
         destructive:
-          "bg-destructive text-white hover:bg-destructive/90 shadow-pro-sm hover:shadow-pro-md focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/80 hover:-translate-y-0.5 active:translate-y-0",
+          "bg-destructive text-white hover:bg-destructive/90",
         outline:
-          "border-2 border-primary bg-background text-primary hover:bg-primary hover:text-primary-foreground hover:-translate-y-0.5 active:translate-y-0",
+          "border border-[--border-card] bg-transparent text-foreground hover:border-[--orange] hover:text-[--orange]",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 shadow-pro-sm hover:shadow-pro-md hover:-translate-y-0.5 active:translate-y-0",
+          "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
-          "hover:bg-accent hover:text-accent-foreground dark:hover:bg-accent/50",
+          "bg-transparent text-muted-foreground hover:bg-[--bg-card-inner] hover:text-foreground",
         link: "text-primary underline-offset-4 hover:underline",
-        // Professional variants
-        gradient:
-          "bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
-        gradientAccent:
-          "bg-gradient-to-br from-orange-500 to-teal-500 text-white shadow-pro-md hover:shadow-glow hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
-        glass:
-          "glass-pro text-primary hover:bg-card-hover dark:hover:bg-card-hover border border-border hover:border-border/80",
-        shine:
-          "relative overflow-hidden bg-gradient-to-br from-orange-500 to-orange-700 text-white shadow-pro-md hover:shadow-glow before:absolute before:inset-0 before:bg-gradient-to-r before:from-transparent before:via-white/15 before:to-transparent before:-translate-x-full hover:before:translate-x-full before:transition-transform before:duration-700 hover:scale-105 hover:-translate-y-1 active:scale-100 active:translate-y-0",
+        teal:
+          "border border-[#17f0c4] bg-[#17f0c4]/10 text-[#17f0c4] hover:bg-[#17f0c4]/20",
       },
       size: {
-        default: "h-11 px-5 py-2.5 has-[>svg]:px-4",
-        sm: "h-9 rounded-lg gap-1.5 px-4 has-[>svg]:px-3",
-        lg: "h-12 rounded-xl px-7 text-base has-[>svg]:px-5",
-        icon: "size-11 rounded-xl",
+        default: "h-10 px-5 text-sm has-[>svg]:px-4",
+        sm: "h-8 px-3 text-xs gap-1.5 has-[>svg]:px-2.5",
+        lg: "h-12 px-7 text-base has-[>svg]:px-5",
+        icon: "h-10 w-10",
       },
     },
     defaultVariants: {

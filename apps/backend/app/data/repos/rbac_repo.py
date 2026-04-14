@@ -11,7 +11,11 @@ from app.data.models.rbac import RBACOrganizationMembership, RBACUser
 _CLERK_ROLE_TO_DB_ROLE: dict[str, str] = {
     "admin": "admin",
     "reviewer": "reviewer",
+    "reviewer_lead": "reviewer_lead",
+    "reviewer_senior": "reviewer_senior",
+    "reviewer_junior": "reviewer_junior",
     "developer": "developer",
+    "viewer": "viewer",
 }
 
 
