@@ -26,6 +26,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { BADGE_SUCCESS, BADGE_WARNING, BADGE_SECONDARY } from "@/lib/design-tokens"
+import { EmptyState } from "@/components/ui/empty-state"
 import { Input } from "@/components/ui/input"
 import { Progress } from "@/components/ui/progress"
 import {
@@ -495,15 +496,20 @@ export default function ProjectsPage() {
       </div>
 
       {filteredProjects.length === 0 && (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <Folder className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">Aucun projet trouve</h3>
-            <p className="text-muted-foreground mt-1">
-              Essayez d&apos;ajuster vos filtres ou creez un nouveau projet
-            </p>
-          </CardContent>
-        </Card>
+        <EmptyState
+          title="Aucun projet trouvé"
+          description="Essayez d'ajuster vos filtres ou créez un nouveau projet pour commencer."
+          icons={[
+            <Folder key="f" className="h-5 w-5" />,
+            <GitBranch key="g" className="h-5 w-5" />,
+            <Plus key="p" className="h-5 w-5" />,
+          ]}
+          action={{
+            label: "Créer un projet",
+            icon: <Plus className="h-3.5 w-3.5" />,
+            onClick: () => setCreateDialogOpen(true),
+          }}
+        />
       )}
 
       {/* Create Project Dialog */}

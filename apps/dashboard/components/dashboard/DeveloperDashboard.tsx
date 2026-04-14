@@ -55,6 +55,7 @@ import { extractApiErrorMessage } from "@/lib/display";
 import { resolveProjectIdForRepo } from "@/lib/project-lookup";
 import { Badge } from "@/components/ui/badge";
 import { BADGE_SUCCESS, BADGE_WARNING, BADGE_ERROR, BADGE_SECONDARY } from "@/lib/design-tokens";
+import { StatusIndicator } from "@/components/ui/status-indicator";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -231,9 +232,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                     {analysis.prLabel}
                   </Badge>
                 )}
-                <Badge variant={cfg.variant as "success" | "warning" | "error" | "secondary"} className="border-0 text-[10px] px-1.5 py-0">
-                  {cfg.label}
-                </Badge>
+                <StatusIndicator status={s} size="sm" />
               </div>
               <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
                 <GitPullRequest className="size-3" />

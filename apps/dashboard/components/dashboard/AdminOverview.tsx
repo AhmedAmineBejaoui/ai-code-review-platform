@@ -7,6 +7,7 @@ import { Activity, Building2, Database, Plug, Shield, Users } from "lucide-react
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
+import { AnimatedCounter } from "@/components/ui/animated-counter"
 
 type AdminOverviewStats = {
   sources: number
@@ -120,7 +121,11 @@ export function AdminOverview() {
               <CardTitle className="text-sm text-muted-foreground">{item.label}</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-2xl font-bold text-foreground">{loading ? "..." : item.value}</p>
+              {loading ? (
+                <span className="text-2xl font-bold text-muted-foreground animate-pulse">—</span>
+              ) : (
+                <AnimatedCounter value={item.value} className="text-2xl font-bold text-foreground" />
+              )}
             </CardContent>
           </Card>
         ))}

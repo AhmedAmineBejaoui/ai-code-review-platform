@@ -21,6 +21,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
 import { BANNER_INFO, CARD_GLASS_CLASS, INPUT_STANDARD } from "@/lib/design-tokens"
+import { StatusIndicator } from "@/components/ui/status-indicator"
+import { EmptyState } from "@/components/ui/empty-state"
 import { emptyDashboardInsights, fetchDashboardInsights } from "@/lib/dashboard-insights"
 import {
   deleteDashboardAnalysis,
@@ -107,14 +109,7 @@ export function AnalysisList() {
 
   const getStatusBadge = (status: string) => {
     const normalized = normalizeStatus(status)
-    const variants: Record<string, "default" | "secondary" | "destructive" | "outline"> = {
-      RECEIVED: "outline",
-      QUEUED: "outline",
-      RUNNING: "secondary",
-      COMPLETED: "default",
-      FAILED: "destructive",
-    }
-    return <Badge variant={variants[normalized]}>{normalized}</Badge>
+    return <StatusIndicator status={normalized} size="md" />
   }
 
   useEffect(() => {
@@ -266,8 +261,18 @@ export function AnalysisList() {
                     </TableRow>
                   ) : filteredAnalyses.length === 0 ? (
                     <TableRow>
-                      <TableCell colSpan={9} className="text-center text-sm text-muted-foreground py-8">
-                        Aucune analyse a afficher.
+                      <TableCell colSpan={9} className="py-6">
+                        <EmptyState
+                          title="Aucune analyse trouvée"
+                          description={searchQuery ? "Aucun résultat pour cette recherche. Essayez d'autres termes." : "Lancez votre première analyse via POST /v1/analyze."}
+                          icons={[
+                            <Search key="s" className="h-5 w-5" />,
+                            <GitCompare key="g" className="h-5 w-5" />,
+                            <AlertCircle key="a" className="h-5 w-5" />,
+                          ]}
+                          variant="subtle"
+                          size="sm"
+                        />
                       </TableCell>
                     </TableRow>
                   ) : (

@@ -33,41 +33,42 @@ import { AnalysisPipeline, MiniPipeline } from "./AnalysisPipeline"
 import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status"
 
 // â”€â”€â”€ STATUS CONFIG â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// Colors aligned with the platform design tokens (globals.css CSS vars)
 const statusConfig = {
   COMPLETED: {
-    color: "#34d399",
+    color: "var(--green-status)",
     label: "Completed",
-    bg: "rgba(52, 211, 153, 0.08)",
-    border: "rgba(52, 211, 153, 0.2)",
-    darkBg: "rgba(52, 211, 153, 0.15)",
+    bg: "color-mix(in srgb, var(--green-status) 10%, transparent)",
+    border: "color-mix(in srgb, var(--green-status) 25%, transparent)",
+    darkBg: "color-mix(in srgb, var(--green-status) 15%, transparent)",
   },
   FAILED: {
-    color: "#f87171",
+    color: "hsl(var(--destructive))",
     label: "Failed",
-    bg: "rgba(248, 113, 113, 0.08)",
-    border: "rgba(248, 113, 113, 0.25)",
-    darkBg: "rgba(248, 113, 113, 0.15)",
+    bg: "hsl(var(--destructive) / 0.08)",
+    border: "hsl(var(--destructive) / 0.25)",
+    darkBg: "hsl(var(--destructive) / 0.15)",
   },
   RUNNING: {
-    color: "#60a5fa",
+    color: "#2dd4bf",          // teal-400 — matches platform teal accent
     label: "Running",
-    bg: "rgba(96, 165, 250, 0.08)",
-    border: "rgba(96, 165, 250, 0.2)",
-    darkBg: "rgba(96, 165, 250, 0.15)",
+    bg: "rgba(45,212,191,0.08)",
+    border: "rgba(45,212,191,0.2)",
+    darkBg: "rgba(45,212,191,0.15)",
   },
   QUEUED: {
-    color: "#a78bfa",
+    color: "var(--orange)",
     label: "Queued",
-    bg: "rgba(167, 139, 250, 0.08)",
-    border: "rgba(167, 139, 250, 0.2)",
-    darkBg: "rgba(167, 139, 250, 0.15)",
+    bg: "color-mix(in srgb, var(--orange) 10%, transparent)",
+    border: "color-mix(in srgb, var(--orange) 25%, transparent)",
+    darkBg: "color-mix(in srgb, var(--orange) 15%, transparent)",
   },
   RECEIVED: {
-    color: "#fbbf24",
+    color: "var(--orange)",
     label: "Received",
-    bg: "rgba(251, 191, 36, 0.08)",
-    border: "rgba(251, 191, 36, 0.2)",
-    darkBg: "rgba(251, 191, 36, 0.15)",
+    bg: "color-mix(in srgb, var(--orange) 8%, transparent)",
+    border: "color-mix(in srgb, var(--orange) 20%, transparent)",
+    darkBg: "color-mix(in srgb, var(--orange) 12%, transparent)",
   },
 }
 
@@ -298,9 +299,12 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
       <div className="w-12 flex flex-col items-center relative flex-shrink-0 pt-5">
         <StatusDot status={status} />
         {!isLast && (
-          <div
-            className="flex-1 w-0.5 mt-1.5"
-            style={{ background: `linear-gradient(to bottom, ${sc.color}33, transparent)` }}
+          <motion.div
+            className="flex-1 w-0.5 mt-1.5 origin-top"
+            initial={{ scaleY: 0, opacity: 0 }}
+            animate={inView ? { scaleY: 1, opacity: 1 } : {}}
+            transition={{ duration: 0.6, delay: index * 0.05 + 0.25, ease: "easeOut" }}
+            style={{ background: `linear-gradient(to bottom, ${sc.color}44, transparent)` }}
           />
         )}
       </div>
@@ -332,8 +336,8 @@ function AnalysisCard({ item, index, isLast, onDelete, onRerun, onDownload, dele
               <span className={cn(
                 "px-2 py-0.5 rounded text-[11px] font-semibold font-mono",
                 isPR
-                  ? "bg-purple-500/15 text-purple-400"
-                  : "bg-yellow-500/12 text-yellow-500"
+                  ? "bg-teal-500/15 text-teal-400"
+                  : "bg-[color:var(--orange)]/10 text-[color:var(--orange)]"
               )}>
                 {isPR ? item.prLabel : "COMMIT"}
               </span>

@@ -31,62 +31,42 @@ export interface PipelineStep {
 }
 
 // ─── STATUS DOT COMPONENT ───────────────────────────────────
+const STATUS_DOT_CLASSES: Record<StepStatus, string> = {
+  pending:   "bg-muted-foreground/40",
+  active:    "bg-[color:var(--green-status)]",
+  completed: "bg-[color:var(--green-status)]",
+  failed:    "bg-destructive",
+}
+
 function StepDot({ status }: { status: StepStatus }) {
-  const colors = {
-    pending: "#9ca3af",      // gray
-    active: "#22c55e",       // green (animating)
-    completed: "#22c55e",    // green (solid)
-    failed: "#ef4444",       // red
-  }
-
-  const color = colors[status]
-
   if (status === "active") {
     return (
-      <div className="relative w-3 h-3 flex-shrink-0">
-        {/* Pulsing outer ring */}
-        <motion.div
-          animate={{ 
-            scale: [1, 1.8, 1], 
-            opacity: [0.6, 0, 0.6] 
-          }}
-          transition={{ 
-            duration: 1.5, 
-            repeat: Infinity, 
-            ease: "easeInOut" 
-          }}
-          className="absolute inset-0 rounded-full"
-          style={{ background: color }}
-        />
-        {/* Solid inner dot */}
-        <div 
-          className="absolute inset-[2px] rounded-full" 
-          style={{ background: color }} 
-        />
-      </div>
+      <span className="relative flex w-3 h-3 flex-shrink-0">
+        <span className={cn(
+          "absolute inline-flex h-full w-full animate-ping rounded-full opacity-75",
+          STATUS_DOT_CLASSES.active
+        )} />
+        <span className={cn("relative inline-flex rounded-full w-2 h-2 m-[1px]", STATUS_DOT_CLASSES.active)} />
+      </span>
     )
   }
 
   if (status === "failed") {
     return (
-      <motion.div
-        animate={{ 
-          boxShadow: [`0 0 4px ${color}`, `0 0 10px ${color}`, `0 0 4px ${color}`] 
-        }}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        className="w-3 h-3 rounded-full flex-shrink-0"
-        style={{ background: color }}
+      <motion.span
+        animate={{ opacity: [1, 0.5, 1] }}
+        transition={{ duration: 1.6, repeat: Infinity, ease: "easeInOut" }}
+        className={cn("w-3 h-3 rounded-full flex-shrink-0 block", STATUS_DOT_CLASSES.failed)}
       />
     )
   }
 
   return (
-    <motion.div
+    <motion.span
       initial={{ scale: status === "completed" ? 0 : 1 }}
       animate={{ scale: 1 }}
       transition={{ type: "spring", stiffness: 400, damping: 15 }}
-      className="w-3 h-3 rounded-full flex-shrink-0"
-      style={{ background: color }}
+      className={cn("w-3 h-3 rounded-full flex-shrink-0 block", STATUS_DOT_CLASSES[status])}
     />
   )
 }
@@ -102,7 +82,7 @@ function Connector({ fromStatus, toStatus }: { fromStatus: StepStatus; toStatus:
           initial={{ width: "0%" }}
           animate={{ width: "100%" }}
           transition={{ duration: 0.5, ease: "easeOut" }}
-          className="absolute inset-y-0 left-0 bg-green-500"
+          className="absolute inset-y-0 left-0 bg-[color:var(--green-status)]"
         />
       )}
     </div>
@@ -125,9 +105,9 @@ function StepPill({
 
   const bgClasses = {
     pending: "bg-muted/50 border-muted",
-    active: "bg-green-500/10 border-green-500/30",
-    completed: "bg-green-500/10 border-green-500/20",
-    failed: "bg-red-500/10 border-red-500/30",
+    active: "bg-[color:var(--green-status)]/10 border-[color:var(--green-status)]/30",
+    completed: "bg-[color:var(--green-status)]/10 border-[color:var(--green-status)]/20",
+    failed: "bg-destructive/10 border-destructive/30",
   }
 
   const textClasses = {
