@@ -1,0 +1,13 @@
+.git
+node_modules/
+.next/
+out/
+dist/
+build/
+.env
+.env.*
+*.log
+.DS_Store
+coverage/
+.turbo/
+.vercel/

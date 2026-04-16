@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
+from app.api.http.graphrag import router as graphrag_router
 
 from app.api.errors import register_exception_handlers
 from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -169,6 +170,7 @@ app.include_router(project_roles.router)
 app.include_router(role_permissions.router)
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
+app.include_router(graphrag_router)
 
 
 @app.get("/__routes")

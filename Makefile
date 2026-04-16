@@ -18,6 +18,9 @@ PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
 PROD_ENV_FILE = infra/cloud/oracle/.env.prod
 PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
 BACKEND_DIR  = apps/backend
+# Microservices
+MICRO_COMPOSE_FILE = services/docker-compose.yml
+MICRO_COMPOSE = docker compose --env-file .env -f $(MICRO_COMPOSE_FILE)
 MINIO_API_PORT ?= 9000
 MINIO_CONSOLE_PORT ?= 9001
 GRAFANA_PORT ?= 3000
@@ -77,6 +80,15 @@ help:
 	@echo "  Security"
 	@echo "  -----------------------------------------------------"
 	@echo "  make generate-fernet-key  Generate SECRETS_ENCRYPTION_KEY"
+	@echo ""
+	@echo "  Microservices (NEW)"
+	@echo "  -----------------------------------------------------"
+	@echo "  make micro-build        Build all microservice images"
+	@echo "  make micro-up           Start microservices stack"
+	@echo "  make micro-down         Stop microservices stack"
+	@echo "  make micro-logs         Show microservices logs"
+	@echo "  make micro-validate     Validate microservices health"
+	@echo "  make micro-migrate      Run microservices migrations"
 	@echo ""
 
 # ─── Stack Control ────────────────────────────────────────────────────────────
@@ -231,3 +243,34 @@ prod-down:
 
 prod-logs:
 	$(PROD_COMPOSE) logs -f
+
+# ——— Microservices Stack ——————————————————————————————————————————————
+micro-build:
+	$(MICRO_COMPOSE) build
+
+micro-up:
+	$(MICRO_COMPOSE) up -d
+	@echo ""
+	@echo "  Microservices started:"
+	@echo "  -------------------------------------------------------"
+	@echo "  API Gateway:     http://localhost:8000"
+	@echo "  Auth Service:    http://localhost:8001"
+	@echo "  Analysis:        http://localhost:8002"
+	@echo "  Review Service:  http://localhost:8003"
+	@echo "  RAG Service:     http://localhost:8004"
+	@echo "  Notifications:   http://localhost:8005"
+	@echo "  -------------------------------------------------------"
+	@echo "  Hint: run 'make micro-validate' to check health."
+	@echo ""
+
+micro-down:
+	$(MICRO_COMPOSE) down
+
+micro-logs:
+	$(MICRO_COMPOSE) logs -f
+
+micro-validate:
+	@bash services/scripts/validate-system.sh
+
+micro-migrate:
+	$(MICRO_COMPOSE) exec auth-service python -c "from app.data.models import Base; from sqlalchemy import create_engine; import os; Base.metadata.create_all(create_engine(os.getenv('DATABASE_URL')))"

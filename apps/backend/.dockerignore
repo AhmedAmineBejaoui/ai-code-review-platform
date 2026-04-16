@@ -1,0 +1,20 @@
+.git
+*.md
+__pycache__/
+*.pyc
+.venv/
+venv/
+.env
+.env.*
+.pytest_cache/
+.coverage
+*.log
+tests/
+.DS_Store
+
+# runtime data (CRITIQUE)
+qdrant_storage/
+*.lock
+storage/
+data/
+vector_store/

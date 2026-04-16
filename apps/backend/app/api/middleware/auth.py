@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 import time
 from functools import lru_cache
 from typing import Any
@@ -22,30 +23,33 @@ logger = logging.getLogger(__name__)
 # Key: (user_id, org_id), Value: (AuthenticatedPrincipal, timestamp)
 _principal_cache: dict[tuple[str, str | None], tuple["AuthenticatedPrincipal", float]] = {}
 _PRINCIPAL_CACHE_TTL_SECONDS = 60  # Cache principals for 60 seconds
+_cache_lock = threading.Lock()
 
 
 def _get_cached_principal(user_id: str, org_id: str | None) -> "AuthenticatedPrincipal | None":
     """Get cached principal if still valid."""
     key = (user_id, org_id)
-    if key in _principal_cache:
-        principal, cached_at = _principal_cache[key]
-        if time.time() - cached_at < _PRINCIPAL_CACHE_TTL_SECONDS:
-            return principal
-        # Expired, remove from cache
-        del _principal_cache[key]
+    with _cache_lock:
+        if key in _principal_cache:
+            principal, cached_at = _principal_cache[key]
+            if time.time() - cached_at < _PRINCIPAL_CACHE_TTL_SECONDS:
+                return principal
+            # Expired, remove from cache
+            del _principal_cache[key]
     return None
 
 
 def _cache_principal(user_id: str, org_id: str | None, principal: "AuthenticatedPrincipal") -> None:
     """Cache principal with current timestamp."""
     key = (user_id, org_id)
-    _principal_cache[key] = (principal, time.time())
-    # Simple cache size limit - clear oldest entries if too large
-    if len(_principal_cache) > 10000:
-        # Remove oldest 20% of entries
-        sorted_entries = sorted(_principal_cache.items(), key=lambda x: x[1][1])
-        for k, _ in sorted_entries[:2000]:
-            del _principal_cache[k]
+    with _cache_lock:
+        _principal_cache[key] = (principal, time.time())
+        # Simple cache size limit - clear oldest entries if too large
+        if len(_principal_cache) > 10000:
+            # Remove oldest 20% of entries
+            sorted_entries = sorted(_principal_cache.items(), key=lambda x: x[1][1])
+            for k, _ in sorted_entries[:2000]:
+                del _principal_cache[k]
 
 
 class AuthenticatedPrincipal(BaseModel):
@@ -302,7 +306,8 @@ def _extract_display_name_from_claims(claims: dict[str, Any]) -> str | None:
     )
 
 
-async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> AuthenticatedPrincipal:
+async def _validate_and_decode_token(token: str) -> dict[str, Any]:
+    """Validate and decode Clerk JWT token."""
     try:
         claims = await asyncio.to_thread(_decode_clerk_jwt, token)
     except InvalidTokenError as exc:
@@ -311,19 +316,21 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         raise
     except Exception as exc:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unable to validate Clerk token") from exc
+    return claims
 
+
+def _extract_user_info(claims: dict[str, Any]) -> tuple[str, str | None, str | None, str | None, str | None]:
+    """Extract user and organization info from claims."""
     user_id = _first_non_empty_string(claims.get("sub"), claims.get("user_id"), claims.get("uid"))
     if not user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Clerk token missing subject")
-
-    org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
     
-    # Check cache first to avoid DB calls on every request
-    cached_principal = _get_cached_principal(user_id, org_id)
-    if cached_principal is not None:
-        return cached_principal
+    org_id, org_slug, org_name, org_role = _extract_org_context_from_claims(claims)
+    return user_id, org_id, org_slug, org_name, org_role
 
-    existing_user = await asyncio.to_thread(repo.get_user, user_id)
+
+def _determine_email(existing_user, claims: dict[str, Any], user_id: str) -> str:
+    """Determine the email to use for the user."""
     email_from_claims = _extract_email_from_claims(claims)
     if _is_placeholder_email(email_from_claims):
         if existing_user is not None and not _is_placeholder_email(existing_user.email):
@@ -332,11 +339,12 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             email = f"{user_id}@clerk.local"
     else:
         email = email_from_claims.strip().lower()
-    display_name = _extract_display_name_from_claims(claims)
-    roles = _extract_roles(claims)
-    roles = _apply_admin_email_override(email, roles)
-    primary_role = roles[0] if roles else "developer"
+    return email
 
+
+async def _sync_user_with_db(repo: RBACRepo, user_id: str, email: str, display_name: str | None, roles: list[str], org_id: str | None, org_name: str | None, org_slug: str | None, org_role: str | None) -> None:
+    """Sync user and organization data with database."""
+    primary_role = roles[0] if roles else "developer"
     await asyncio.to_thread(repo.upsert_clerk_user, user_id, email, display_name, primary_role)
     if org_id:
         await asyncio.to_thread(
@@ -348,36 +356,37 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
             org_role,
         )
 
-    user = await asyncio.to_thread(repo.get_user, user_id)
-    if user is not None:
-        if not user.is_active:
-            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
 
-        resolved_org_name = org_name
-        if org_id and not resolved_org_name:
-            membership = next(
-                (item for item in user.organization_memberships if item.organization_id == org_id and item.status == "active"),
-                None,
-            )
-            if membership is not None:
-                resolved_org_name = membership.organization_name
+def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | None, org_name: str | None, org_role: str | None, fallback_user_id: str, fallback_email: str, fallback_display_name: str | None, fallback_roles: list[str], fallback_permissions: list[str]) -> AuthenticatedPrincipal:
+    """Construct principal from database user."""
+    if not user.is_active:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
 
-        principal = AuthenticatedPrincipal(
-            user_id=user.id,
-            email=user.email or email,
-            display_name=user.display_name or display_name,
-            roles=user.roles,
-            permissions=user.permissions,
-            org_id=org_id,
-            org_slug=org_slug,
-            org_name=resolved_org_name,
-            org_role=org_role,
+    resolved_org_name = org_name
+    if org_id and not resolved_org_name:
+        membership = next(
+            (item for item in user.organization_memberships if item.organization_id == org_id and item.status == "active"),
+            None,
         )
-        _cache_principal(user_id, org_id, principal)
-        return principal
+        if membership is not None:
+            resolved_org_name = membership.organization_name
 
-    permissions = _permissions_for_roles(roles)
-    principal = AuthenticatedPrincipal(
+    return AuthenticatedPrincipal(
+        user_id=user.id,
+        email=user.email or fallback_email,
+        display_name=user.display_name or fallback_display_name,
+        roles=user.roles,
+        permissions=user.permissions,
+        org_id=org_id,
+        org_slug=org_slug,
+        org_name=resolved_org_name,
+        org_role=org_role,
+    )
+
+
+def _construct_principal_fallback(user_id: str, email: str, display_name: str | None, roles: list[str], permissions: list[str], org_id: str | None, org_slug: str | None, org_name: str | None, org_role: str | None) -> AuthenticatedPrincipal:
+    """Construct principal when no DB user exists."""
+    return AuthenticatedPrincipal(
         user_id=user_id,
         email=email,
         display_name=display_name,
@@ -388,6 +397,33 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         org_name=org_name,
         org_role=org_role,
     )
+
+
+async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> AuthenticatedPrincipal:
+    claims = await _validate_and_decode_token(token)
+    user_id, org_id, org_slug, org_name, org_role = _extract_user_info(claims)
+    
+    # Check cache first to avoid DB calls on every request
+    cached_principal = _get_cached_principal(user_id, org_id)
+    if cached_principal is not None:
+        return cached_principal
+
+    existing_user = await asyncio.to_thread(repo.get_user, user_id)
+    email = _determine_email(existing_user, claims, user_id)
+    display_name = _extract_display_name_from_claims(claims)
+    roles = _extract_roles(claims)
+    roles = _apply_admin_email_override(email, roles)
+
+    await _sync_user_with_db(repo, user_id, email, display_name, roles, org_id, org_name, org_slug, org_role)
+
+    user = await asyncio.to_thread(repo.get_user, user_id)
+    if user is not None:
+        principal = _construct_principal_from_db_user(user, org_id, org_slug, org_name, org_role, user_id, email, display_name, roles, [])
+        _cache_principal(user_id, org_id, principal)
+        return principal
+
+    permissions = _permissions_for_roles(roles)
+    principal = _construct_principal_fallback(user_id, email, display_name, roles, permissions, org_id, org_slug, org_name, org_role)
     _cache_principal(user_id, org_id, principal)
     return principal
 
@@ -409,7 +445,7 @@ async def get_current_principal(
         except Exception as exc:
             # If auth enforcement is disabled, allow fallback to header-based auth
             if not _is_auth_enforced():
-                logger.debug("Bearer token validation failed; falling back to X-User-Id: %s", exc)
+                logger.debug("Bearer token validation failed; falling back to X-User-Id")
             else:
                 if isinstance(exc, HTTPException):
                     raise
@@ -442,6 +478,16 @@ async def get_current_principal(
         org_name=None,
         org_role=None,
     )
+
+
+def require_auth(principal: AuthenticatedPrincipal | None = Depends(get_current_principal)) -> AuthenticatedPrincipal | None:
+    """Require authentication — return principal if authenticated, None if auth not enforced."""
+    if not _is_auth_enforced():
+        return principal
+
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    return principal
 
 
 def require_permission(permission_code: str):

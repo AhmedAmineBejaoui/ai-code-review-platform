@@ -60,7 +60,10 @@
       "Bash(sed -i 's/bg-blue-100 dark:bg-blue-900\\\\/30/bg-teal-500\\\\/15/g' app/dashboard/reviewer/analytics/page.tsx app/dashboard/reviewer/team-analytics/page.tsx app/dashboard/settings/notifications/page.tsx)",
       "Bash(sed -i 's/bg-green-100 dark:bg-green-900\\\\/30/bg-[color:var\\(--green-status\\)]\\\\/15/g' app/dashboard/reviewer/analytics/page.tsx app/dashboard/reviewer/team-analytics/page.tsx app/dashboard/settings/notifications/page.tsx app/dashboard/settings/security/page.tsx)",
       "Bash(echo \"Glass card bg violations: $\\(grep -rn \"bg-white/[0-9]* dark:bg-gray-9\" --include=\"*.tsx\" app/dashboard/ components/)",
-      "mcp__magic__21st_magic_component_inspiration"
+      "mcp__magic__21st_magic_component_inspiration",
+      "Bash(dir \"C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\apps\\\\dashboard\\\\components\\\\dashboard\\\\\" 2>&1 | findstr \"Layout\\\\|layout\")",
+      "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); console.log\\('TrendingEqual' in lucide\\);\")",
+      "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); const icons = ['Hexagon','CircleDot','Waves','Keyboard','Sparkles','Target']; icons.forEach\\(i => console.log\\(i, i in lucide\\)\\);\")"
     ]
   }
 }

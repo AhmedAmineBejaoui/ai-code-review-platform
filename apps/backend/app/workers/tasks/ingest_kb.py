@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from pathlib import Path
 from typing import Any
+
+from app.core.analysis.knowledge_base import KnowledgeBaseIngestionService
 
 from app.core.knowledge_base.ingestor import RepoContextIngestor
 from app.core.knowledge_base.document_lifecycle import resync_document_source, run_due_document_maintenance
@@ -80,7 +83,28 @@ def run_document_maintenance(
 
 
 async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: str) -> dict[str, Any]:
+    repo_path = repo_path.strip('"')
     qdrant_client = QdrantClient()
+
+    if Path(repo_path).is_file():
+        # Treat as document ingestion
+        kb_service = KnowledgeBaseIngestionService(vector_store=qdrant_client)
+        result = await kb_service.ingest_document(
+            title=repo_id,
+            path_or_url=repo_path,
+            source_type="file",
+            tags={},
+        )
+        return {
+            "status": "ok",
+            "mode": "document",
+            "doc_id": result.document_id,
+            "title": repo_id,
+            "path": repo_path,
+            "chunks_upserted": result.chunks_upserted,
+        }
+
+    # Repo onboarding
     ingestor = RepoContextIngestor(vector_store=qdrant_client)
     rag_engine = build_graph_rag_engine(vector_store=qdrant_client)
 
