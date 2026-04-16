@@ -691,6 +691,95 @@ class QdrantClient:
         except Exception as exc:
             logger.warning("Qdrant search failed (repo=%s): %s", repo, exc)
             return []
+    
+    async def create_collection(
+        self,
+        *,
+        collection_name: str,
+        vector_size: int,
+    ) -> None:
+        """
+        Create a new collection with given vector size.
+        Alias for ensure_collection for compatibility with new services.
+        """
+        await self.ensure_collection(
+            collection_name=collection_name,
+            vector_size=vector_size,
+        )
+    
+    async def upsert_chunk_batch(
+        self,
+        *,
+        collection_name: str,
+        chunks: list[dict[str, Any]],
+        embeddings: list[list[float]],
+    ) -> None:
+        """
+        Batch upsert code/KB chunks with embeddings.
+        
+        Args:
+            collection_name: Collection to insert into
+            chunks: List of chunk dicts with 'id' and payload fields
+            embeddings: List of embedding vectors (same order as chunks)
+        """
+        if not chunks or not embeddings:
+            return
+        
+        points = []
+        for chunk, embedding in zip(chunks, embeddings):
+            chunk_id = chunk.get("id")
+            if not chunk_id:
+                logger.warning("Chunk missing 'id', skipping")
+                continue
+            
+            # Build payload from chunk data
+            payload = {k: v for k, v in chunk.items() if k != "id"}
+            
+            points.append(QdrantPoint(
+                id=str(chunk_id),
+                vector=embedding,
+                payload=payload,
+            ))
+        
+        await self.upsert_points(collection_name=collection_name, points=points)
+    
+    async def search_chunks(
+        self,
+        *,
+        collection_name: str,
+        query_embedding: list[float],
+        limit: int = 10,
+        filters: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        """
+        Search for chunks by embedding similarity.
+        
+        Args:
+            collection_name: Collection to search
+            query_embedding: Query embedding vector
+            limit: Max results to return
+            filters: Optional payload filters
+            
+        Returns:
+            List of chunk dicts with 'score' field added
+        """
+        hits = await self.search(
+            collection_name=collection_name,
+            query_vector=query_embedding,
+            limit=limit,
+            filter_payload=filters,
+        )
+        
+        # Convert QdrantHit to dict
+        results = []
+        for hit in hits:
+            chunk = dict(hit.payload) if hit.payload else {}
+            chunk["score"] = hit.score
+            if hit.id:
+                chunk["id"] = hit.id
+            results.append(chunk)
+        
+        return results
 
 
 def _extract_text_snippets(*, results: list[Any], limit: int) -> list[str]:

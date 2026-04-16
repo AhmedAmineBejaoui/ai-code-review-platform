@@ -1,7 +1,7 @@
 "use client"
 
-import { GlobalReport } from "@/components/dashboard/GlobalReport"
+import { EnhancedReportDetail } from "@/components/dashboard/EnhancedReportDetail"
 
 export default function ReportPage() {
-  return <GlobalReport />
+  return <EnhancedReportDetail />
 }

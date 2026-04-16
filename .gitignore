@@ -40,3 +40,4 @@ apps/backend/qdrant_storage/
 .claude/worktrees/silly-shockley
 .claude/worktrees/naughty-ritchie.claude/
 /out
+qdrant_storage/

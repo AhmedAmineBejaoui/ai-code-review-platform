@@ -201,6 +201,69 @@ class Settings(BaseSettings):
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "neo4j"
     NEO4J_DATABASE: str = "neo4j"
+    NEO4J_MAX_CONNECTION_POOL_SIZE: int = 50
+    NEO4J_MAX_CONNECTION_LIFETIME_SECONDS: int = 3600
+    NEO4J_CONNECTION_ACQUISITION_TIMEOUT_SECONDS: int = 60
+    NEO4J_CONNECTION_TIMEOUT_SECONDS: int = 30
+    NEO4J_KEEP_ALIVE: bool = True
+
+    # ── GraphRAG Configuration ────────────────────────────────────────────────
+    # LLM Provider Selection
+    LLM_PROVIDER: str = "ollama"  # "ollama", "openai", "anthropic"
+    ANTHROPIC_API_KEY: str | None = None
+    ANTHROPIC_MODEL: str = "claude-sonnet-4-20250514"
+    ANTHROPIC_MAX_TOKENS: int = 4096
+    ANTHROPIC_TEMPERATURE: float = 0.0
+    
+    # Embedding Configuration
+    EMBEDDING_PROVIDER: str = "sentence_transformers"  # "sentence_transformers", "openai", "codebert"
+    EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"  # For sentence_transformers
+    EMBEDDING_DIMENSION: int = 384  # Matches all-MiniLM-L6-v2
+    EMBEDDING_BATCH_SIZE: int = 32
+    EMBEDDING_CACHE_ENABLED: bool = True
+    EMBEDDING_CACHE_SIZE: int = 10000
+    
+    # Advanced Chunking Configuration
+    CHUNKING_STRATEGY: str = "ast"  # "ast" for Tree-sitter, "fixed" for simple
+    CHUNKING_MAX_CHUNK_SIZE: int = 1000
+    CHUNKING_MIN_CHUNK_SIZE: int = 100
+    CHUNKING_OVERLAP_SIZE: int = 100
+    CHUNKING_RESPECT_BOUNDARIES: bool = True  # Don't split functions/classes
+    
+    # Hybrid Retrieval Configuration
+    RETRIEVAL_VECTOR_TOP_K: int = 20
+    RETRIEVAL_GRAPH_MAX_DEPTH: int = 2
+    RETRIEVAL_COMBINE_METHOD: str = "weighted"  # "weighted", "reciprocal_rank"
+    RETRIEVAL_VECTOR_WEIGHT: float = 0.6
+    RETRIEVAL_GRAPH_WEIGHT: float = 0.4
+    RETRIEVAL_MIN_SIMILARITY_THRESHOLD: float = 0.5
+    RETRIEVAL_ENABLE_RERANKING: bool = True
+    RETRIEVAL_RERANKER_MODEL: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    RETRIEVAL_RERANKER_TOP_K: int = 10
+    
+    # Knowledge Base Priority Configuration
+    KB_PRIORITY_ENABLED: bool = True
+    KB_PRIORITY_MIN_SCORE: float = 0.7  # KB chunks below this score are deprioritized
+    KB_PRIORITY_BOOST_FACTOR: float = 1.5  # Boost KB scores by this factor
+    KB_MAX_CHUNKS_PER_QUERY: int = 10
+    REPO_MAX_CHUNKS_PER_QUERY: int = 15
+    
+    # Auto-fix Configuration
+    AUTO_FIX_ENABLED: bool = True
+    AUTO_FIX_MAX_SUGGESTIONS: int = 5
+    AUTO_FIX_CONFIDENCE_THRESHOLD: float = 0.8
+    AUTO_FIX_INCLUDE_EXAMPLES: bool = True
+    
+    # Analysis History Configuration
+    HISTORY_ENABLED: bool = True
+    HISTORY_MAX_RUNS_PER_REPO: int = 100
+    HISTORY_RETENTION_DAYS: int = 90
+    HISTORY_TRACK_REGRESSIONS: bool = True
+    
+    # Incremental Indexing Configuration
+    INCREMENTAL_INDEXING_ENABLED: bool = True
+    INCREMENTAL_INDEXING_DIFF_DETECTION: bool = True
+    INCREMENTAL_INDEXING_BATCH_SIZE: int = 50
 
     # ── Redis RAG Cache ───────────────────────────────────────────────────────
     RAG_CACHE_ENABLED: bool = True

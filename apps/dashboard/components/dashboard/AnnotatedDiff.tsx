@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState, useCallback } from "react"
 import { useParams } from "next/navigation"
 import Link from "next/link"
-import { AnimatePresence } from "framer-motion"
+import { AnimatePresence, motion } from "framer-motion"
 import {
   AlertTriangle,
   CheckCircle2,
@@ -22,6 +22,11 @@ import {
   Settings,
   Shield,
   SplitSquareHorizontal,
+  X,
+  Zap,
+  TrendingUp,
+  FileCode2,
+  Eye,
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewer } from "@/lib/roles"
@@ -46,14 +51,16 @@ function getFileInfo(path: string) {
   const ext = filename.split(".").pop()?.toUpperCase() ?? ""
   const extColors: Record<string, string> = {
     TS: "#3178c5", TSX: "#3178c5",
-    JS: "#e3b341", JSX: "#e3b341",
+    JS: "#f7df1e", JSX: "#f7df1e",
     PY: "#3572a5",
-    JSON: "#e3b341",
-    MD: "#79c0ff",
-    CSS: "#79c0ff",
+    JSON: "#fbc02d",
+    MD: "#42a5f5",
+    CSS: "#42a5f5",
     HTML: "#e67e22",
-    RS: "#b7410e",
+    RS: "#ce412b",
     GO: "#00acd7",
+    SH: "#4caf50",
+    CP: "#9c27b0",
   }
   return {
     filename,
@@ -95,34 +102,31 @@ function toolLabel(source: string): string {
 }
 
 function getScoreColor(score: number): string {
-  if (score >= 80) return "#56d364"
-  if (score >= 60) return "#e3b341"
-  return "#ff7b72"
+  if (score >= 80) return "#22c55e"
+  if (score >= 60) return "#f59e0b"
+  return "#ef4444"
 }
 
-type RepoCoordinates = {
-  owner: string
-  repo: string
+function getScoreGlow(score: number): string {
+  if (score >= 80) return "0 0 12px rgba(34,197,94,0.35)"
+  if (score >= 60) return "0 0 12px rgba(245,158,11,0.35)"
+  return "0 0 12px rgba(239,68,68,0.35)"
 }
+
+type RepoCoordinates = { owner: string; repo: string }
 
 function parseRepoCoordinates(value: string | null | undefined): RepoCoordinates | null {
   const raw = (value ?? "").trim()
   if (!raw) return null
-
   const normalized = raw
     .replace(/^https?:\/\/github\.com\//i, "")
     .replace(/^github\.com\//i, "")
     .replace(/\.git$/i, "")
     .replace(/^\/+/, "")
     .replace(/\/+$/, "")
-
   const parts = normalized.split("/").filter((part) => part.length > 0)
   if (parts.length < 2) return null
-
-  return {
-    owner: parts[0],
-    repo: parts[1],
-  }
+  return { owner: parts[0], repo: parts[1] }
 }
 
 // ─── sub-components ─────────────────────────────────────────────────────────
@@ -130,11 +134,56 @@ function parseRepoCoordinates(value: string | null | undefined): RepoCoordinates
 function ExtBadge({ ext, color }: { ext: string; color: string }) {
   return (
     <span
-      className="inline-flex items-center justify-center text-white text-[8px] font-bold rounded-sm flex-shrink-0"
-      style={{ background: color, width: 18, height: 14 }}
+      className="inline-flex items-center justify-center text-white flex-shrink-0 font-bold"
+      style={{
+        background: color,
+        width: 20,
+        height: 15,
+        fontSize: 8,
+        borderRadius: 3,
+        letterSpacing: "0.03em",
+      }}
     >
       {ext}
     </span>
+  )
+}
+
+function ScoreRing({ score, color }: { score: number; color: string }) {
+  const r = 28
+  const circ = 2 * Math.PI * r
+  const dash = (score / 100) * circ
+  return (
+    <svg width={72} height={72} className="flex-shrink-0">
+      <circle cx={36} cy={36} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={5} />
+      <motion.circle
+        cx={36}
+        cy={36}
+        r={r}
+        fill="none"
+        stroke={color}
+        strokeWidth={5}
+        strokeLinecap="round"
+        strokeDasharray={circ}
+        initial={{ strokeDashoffset: circ }}
+        animate={{ strokeDashoffset: circ - dash }}
+        transition={{ duration: 1.2, ease: "easeOut" }}
+        transform="rotate(-90 36 36)"
+        style={{ filter: `drop-shadow(0 0 5px ${color}66)` }}
+      />
+      <text
+        x={36}
+        y={36}
+        textAnchor="middle"
+        dominantBaseline="central"
+        fill={color}
+        fontSize={16}
+        fontWeight="bold"
+        fontFamily="Inter, sans-serif"
+      >
+        {score}
+      </text>
+    </svg>
   )
 }
 
@@ -152,92 +201,137 @@ function RagComment({
   onRequestCall?: () => void
 }) {
   const isCritical = finding.severity === "BLOCKER"
-  const borderColor = isCritical ? "rgba(127,119,221,0.8)" : "rgba(227,179,65,0.7)"
-  const bgColor = isCritical ? "rgba(127,119,221,0.08)" : "rgba(227,179,65,0.06)"
-  const avatarBg = isCritical ? "#7f77dd" : "rgba(227,179,65,0.9)"
-  const avatarText = isCritical ? "#fff" : "#403805"
-  const nameColor = isCritical ? "#d2a8ff" : "#e3b341"
-  const badgeColor = isCritical ? "#ff7b72" : "#e3b341"
-  const badgeBg = isCritical ? "rgba(255,123,114,0.15)" : "rgba(227,179,65,0.15)"
+  const accentColor = isCritical ? "#f87171" : "#fbbf24"
+  const bgColor = isCritical ? "rgba(248,113,113,0.05)" : "rgba(251,191,36,0.05)"
+  const borderColor = isCritical ? "rgba(248,113,113,0.3)" : "rgba(251,191,36,0.25)"
   const label = isCritical ? "critical" : "warning"
-  const location = finding.lineStart != null ? `· ligne ${finding.lineStart}${finding.lineEnd != null ? `–${finding.lineEnd}` : ""} · ${label}` : `· ${label}`
+  const location = finding.lineStart != null
+    ? `· ligne ${finding.lineStart}${finding.lineEnd != null ? `–${finding.lineEnd}` : ""} · ${label}`
+    : `· ${label}`
 
   return (
-    <div
-      className="relative pl-[3px]"
-      style={{ background: bgColor, borderLeft: `3px solid ${borderColor}` }}
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.2 }}
+      className="relative"
+      style={{
+        background: bgColor,
+        borderLeft: `2px solid ${accentColor}`,
+        borderBottom: `1px solid ${borderColor}`,
+      }}
     >
-      <div className="py-2 px-4">
+      <div className="py-2.5 px-4">
         {/* Header */}
-        <div className="flex items-center gap-2 mb-1">
+        <div className="flex items-center gap-2 mb-1.5">
           <div
-            className="flex items-center justify-center text-[10px] font-bold rounded-full flex-shrink-0"
-            style={{ background: avatarBg, color: avatarText, width: 28, height: 28 }}
+            className="flex items-center justify-center text-[10px] font-bold flex-shrink-0"
+            style={{
+              background: accentColor,
+              color: "#0d1117",
+              width: 26,
+              height: 26,
+              borderRadius: "50%",
+              boxShadow: `0 0 8px ${accentColor}55`,
+            }}
           >
             AI
           </div>
-          <span className="text-[11px] font-semibold" style={{ color: nameColor }}>RAG Reviewer</span>
-          <span className="text-[11px]" style={{ color: "#6e7681" }}>{location}</span>
+          <span className="text-[11px] font-semibold" style={{ color: accentColor }}>
+            RAG Reviewer
+          </span>
+          <span className="text-[10px]" style={{ color: "#6e7681" }}>{location}</span>
           <span
-            className="text-[9px] font-semibold px-1.5 py-0.5 rounded"
-            style={{ color: badgeColor, background: badgeBg }}
+            className="text-[9px] font-bold px-1.5 py-0.5 ml-0.5"
+            style={{
+              color: accentColor,
+              background: `${accentColor}18`,
+              border: `1px solid ${accentColor}40`,
+              borderRadius: 3,
+              fontFamily: "monospace",
+              letterSpacing: "0.03em",
+            }}
           >
-            {label}
+            {label.toUpperCase()}
           </span>
           <span
-            className="text-[9px] px-1.5 py-0.5 rounded"
+            className="text-[9px] px-1.5 py-0.5"
             style={{
               color: "#8b949e",
-              background: "rgba(255,255,255,0.06)",
+              background: "rgba(255,255,255,0.05)",
               fontFamily: "monospace",
-              border: "1px solid rgba(255,255,255,0.08)",
+              border: "1px solid rgba(255,255,255,0.07)",
+              borderRadius: 3,
             }}
           >
             {toolLabel(finding.source)}
           </span>
         </div>
         {/* Message */}
-        <p className="text-[11px] ml-9 mb-2" style={{ color: "#8b949e" }}>
+        <p className="text-[11px] ml-9 mb-2.5 leading-relaxed" style={{ color: "#9ca3af" }}>
           {finding.message}
-          {finding.suggestion && ` → ${finding.suggestion}`}
+          {finding.suggestion && (
+            <span style={{ color: "#60a5fa" }}> → {finding.suggestion}</span>
+          )}
         </p>
         {/* Actions */}
-        <div className="flex flex-wrap gap-2 ml-9">
+        <div className="flex flex-wrap gap-1.5 ml-9">
           <button
-            className="text-[9px] font-semibold text-white px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: "rgba(127,119,221,0.9)" }}
+            className="text-[10px] font-semibold px-3 py-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(99,102,241,0.85)",
+              color: "#fff",
+              borderRadius: 4,
+              border: "1px solid rgba(129,140,248,0.4)",
+            }}
             onClick={onApply}
             disabled={!onApply}
           >
             Appliquer correction
           </button>
           <button
-            className="text-[9px] px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: "#21262e", color: "#8b949e" }}
+            className="text-[10px] px-3 py-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(255,255,255,0.05)",
+              color: "#9ca3af",
+              borderRadius: 4,
+              border: "1px solid rgba(255,255,255,0.08)",
+            }}
             onClick={onComment}
             disabled={!onComment}
           >
             Commenter
           </button>
           <button
-            className="text-[9px] px-3 py-1 rounded disabled:opacity-50 disabled:cursor-not-allowed"
-            style={{ background: "rgba(121,192,255,0.12)", color: "#79c0ff", border: "1px solid rgba(121,192,255,0.3)" }}
+            className="text-[10px] px-3 py-1 flex items-center gap-1 transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+            style={{
+              background: "rgba(96,165,250,0.1)",
+              color: "#60a5fa",
+              borderRadius: 4,
+              border: "1px solid rgba(96,165,250,0.25)",
+            }}
             onClick={onRequestCall}
             disabled={!onRequestCall}
           >
-            <PhoneCall className="mr-1 h-3 w-3" />
+            <PhoneCall className="h-3 w-3" />
             Appel
           </button>
           <button
-            className="text-[9px] px-3 py-1 rounded"
-            style={{ background: "#21262e", color: "#8b949e" }}
+            className="text-[10px] px-3 py-1 transition-all"
+            style={{
+              background: "transparent",
+              color: "#6b7280",
+              borderRadius: 4,
+              border: "1px solid rgba(255,255,255,0.06)",
+            }}
             onClick={onDismiss}
           >
             Ignorer
           </button>
         </div>
       </div>
-    </div>
+    </motion.div>
   )
 }
 
@@ -266,96 +360,110 @@ function DiffLine({
       f.lineStart != null &&
       f.lineStart <= lineNumber &&
       (f.lineEnd == null || f.lineEnd >= lineNumber) &&
-      // Only show at the start line
       f.lineStart === lineNumber
   )
 
-  let bgColor = "transparent"
-  let borderColor = "transparent"
-  let prefixColor = "#8b949e"
-  let prefix = " "
+  const isAdd = line.lineType === "add"
+  const isRemove = line.lineType === "remove"
+  const isHeader = line.lineType === "header"
 
-  if (line.lineType === "add") {
-    bgColor = "rgba(86,211,100,0.1)"
-    borderColor = "rgba(86,211,100,0.5)"
-    prefixColor = "#56d364"
-    prefix = "+"
-  } else if (line.lineType === "remove") {
-    bgColor = "rgba(255,123,114,0.1)"
-    borderColor = "rgba(255,123,114,0.5)"
-    prefixColor = "#ff7b72"
-    prefix = "-"
-  } else if (line.lineType === "header") {
-    bgColor = "rgba(121,192,255,0.07)"
-    borderColor = "rgba(121,192,255,0.3)"
-    prefix = "@"
-    prefixColor = "#79c0ff"
-  }
+  const bgColor = isAdd
+    ? "rgba(34,197,94,0.08)"
+    : isRemove
+    ? "rgba(239,68,68,0.08)"
+    : isHeader
+    ? "rgba(96,165,250,0.06)"
+    : "transparent"
 
-  const lineNumColor = line.lineType === "header" ? "#79c0ff" : "#6e7681"
+  const borderColor = isAdd
+    ? "rgba(34,197,94,0.5)"
+    : isRemove
+    ? "rgba(239,68,68,0.5)"
+    : isHeader
+    ? "rgba(96,165,250,0.4)"
+    : "transparent"
+
+  const prefix = isAdd ? "+" : isRemove ? "-" : isHeader ? "@" : " "
+  const prefixColor = isAdd ? "#22c55e" : isRemove ? "#ef4444" : isHeader ? "#60a5fa" : "transparent"
+  const lineNumColor = isHeader ? "#60a5fa" : "#4b5563"
+  const contentColor = isRemove ? "#fca5a5" : isHeader ? "#93c5fd" : "#e2e8f0"
 
   return (
     <>
       <div
-        className="group flex items-stretch"
-        style={{ background: bgColor, borderLeft: `3px solid ${borderColor}` }}
+        className="group flex items-stretch relative"
+        style={{
+          background: bgColor,
+          borderLeft: `2px solid ${borderColor}`,
+          minHeight: 22,
+        }}
       >
         {/* Old line number */}
         <span
-          className="w-[42px] text-right pr-2 select-none text-[11px] flex-shrink-0 border-r"
-          style={{ color: lineNumColor, borderColor: "rgba(48,54,61,0.6)" }}
+          className="w-[44px] text-right pr-2 select-none flex-shrink-0 flex items-center justify-end"
+          style={{ color: lineNumColor, fontSize: 11, fontFamily: "monospace", borderRight: "1px solid rgba(255,255,255,0.05)" }}
         >
-          {line.lineType !== "header" ? (line.oldLineNo ?? "") : ""}
+          {!isHeader ? (line.oldLineNo ?? "") : ""}
         </span>
         {/* New line number */}
         <span
-          className="w-[42px] text-right pr-2 select-none text-[11px] flex-shrink-0 border-r"
-          style={{ color: lineNumColor, borderColor: "rgba(48,54,61,0.6)" }}
+          className="w-[44px] text-right pr-2 select-none flex-shrink-0 flex items-center justify-end"
+          style={{ color: lineNumColor, fontSize: 11, fontFamily: "monospace", borderRight: "1px solid rgba(255,255,255,0.05)" }}
         >
-          {line.lineType !== "header" ? (line.newLineNo ?? "") : ""}
+          {!isHeader ? (line.newLineNo ?? "") : ""}
         </span>
         {/* Prefix */}
-        <span className="w-4 text-[12px] font-mono select-none flex-shrink-0 ml-1" style={{ color: prefixColor }}>
+        <span
+          className="w-5 flex items-center justify-center select-none flex-shrink-0 font-bold"
+          style={{ color: prefixColor, fontSize: 12, fontFamily: "monospace" }}
+        >
           {prefix}
         </span>
         {/* Content */}
         <span
-          className="flex-1 text-[12px] font-mono whitespace-pre overflow-x-auto"
-          style={{ color: line.lineType === "remove" ? "#ff7b72" : line.lineType === "header" ? "#79c0ff" : "#e6edf3" }}
+          className="flex-1 px-1 flex items-center"
+          style={{
+            color: contentColor,
+            fontSize: 12,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+            whiteSpace: "pre",
+            overflowX: "auto",
+          }}
         >
           {line.content}
         </span>
         {/* Inline comment trigger */}
-        {line.lineType !== "header" && (
+        {!isHeader && (
           <button
             onClick={() => onComment(lineNumber)}
-            className="mr-2 my-0.5 h-5 w-5 flex items-center justify-center rounded opacity-0 group-hover:opacity-100 transition"
+            className="mr-2 my-0.5 flex items-center justify-center flex-shrink-0 transition-all opacity-0 group-hover:opacity-100"
             style={{
-              color: isCommenting ? "#0d1117" : "#79c0ff",
-              background: isCommenting ? "#79c0ff" : "rgba(121,192,255,0.12)",
-              border: "1px solid rgba(121,192,255,0.3)",
+              width: 20,
+              height: 20,
+              borderRadius: 4,
+              color: isCommenting ? "#0d1117" : "#60a5fa",
+              background: isCommenting ? "#60a5fa" : "rgba(96,165,250,0.1)",
+              border: "1px solid rgba(96,165,250,0.2)",
             }}
             title="Comment this line"
           >
-            <MessageSquarePlus className="h-3.5 w-3.5" />
+            <MessageSquarePlus className="h-3 w-3" />
           </button>
         )}
       </div>
 
       {/* RAG comments after this line */}
-      {lineFindings.map((finding) => (
-        <RagComment
-          key={finding.id}
-          finding={finding}
-          onComment={
-            finding.lineStart != null
-              ? () => onComment(finding.lineStart)
-              : undefined
-          }
-          onDismiss={() => onDismiss(finding.id)}
-          onRequestCall={() => onRequestCall(finding)}
-        />
-      ))}
+      <AnimatePresence>
+        {lineFindings.map((finding) => (
+          <RagComment
+            key={finding.id}
+            finding={finding}
+            onComment={finding.lineStart != null ? () => onComment(finding.lineStart) : undefined}
+            onDismiss={() => onDismiss(finding.id)}
+            onRequestCall={() => onRequestCall(finding)}
+          />
+        ))}
+      </AnimatePresence>
     </>
   )
 }
@@ -445,13 +553,8 @@ export function AnnotatedDiff() {
 
   useEffect(() => {
     let cancelled = false
-
     const resolveBranch = async () => {
-      if (!analysis || !repoCoordinates) {
-        setActiveBranch("main")
-        return
-      }
-
+      if (!analysis || !repoCoordinates) { setActiveBranch("main"); return }
       setBranchLoading(true)
       try {
         const listBranchesResponse = await fetch("/api/dashboard/github", {
@@ -459,97 +562,35 @@ export function AnnotatedDiff() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "list_branches",
-            payload: {
-              owner: repoCoordinates.owner,
-              repo: repoCoordinates.repo,
-            },
+            payload: { owner: repoCoordinates.owner, repo: repoCoordinates.repo },
           }),
         })
         const listBranchesData = await listBranchesResponse.json().catch(() => ({}))
-        if (!listBranchesResponse.ok) {
-          throw new Error(
-            typeof listBranchesData?.error === "string"
-              ? listBranchesData.error
-              : "Failed to resolve repository branches",
-          )
-        }
-        const branches = Array.isArray(listBranchesData?.result)
-          ? listBranchesData.result
-          : []
-        const branchNames = (branches as { name?: unknown }[])
-          .map((branch) =>
-            typeof branch?.name === "string" ? branch.name.trim() : "",
-          )
-          .filter((name): name is string => name.length > 0)
-        const defaultBranch =
-          branchNames.find((name: string) => name === "main") ??
-          branchNames.find((name: string) => name === "master") ??
-          branchNames[0] ??
-          "main"
-
-        if (!analysis.prNumber) {
-          if (!cancelled) {
-            setActiveBranch(defaultBranch)
-          }
-          return
-        }
-
+        if (!listBranchesResponse.ok) throw new Error(typeof listBranchesData?.error === "string" ? listBranchesData.error : "Failed to resolve repository branches")
+        const branches = Array.isArray(listBranchesData?.result) ? listBranchesData.result : []
+        const branchNames = (branches as { name?: unknown }[]).map((b) => typeof b?.name === "string" ? b.name.trim() : "").filter((n): n is string => n.length > 0)
+        const defaultBranch = branchNames.find((n) => n === "main") ?? branchNames.find((n) => n === "master") ?? branchNames[0] ?? "main"
+        if (!analysis.prNumber) { if (!cancelled) setActiveBranch(defaultBranch); return }
         const response = await fetch("/api/dashboard/github", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "get_pr",
-            payload: {
-              owner: repoCoordinates.owner,
-              repo: repoCoordinates.repo,
-              pullNumber: analysis.prNumber,
-            },
-          }),
+          body: JSON.stringify({ action: "get_pr", payload: { owner: repoCoordinates.owner, repo: repoCoordinates.repo, pullNumber: analysis.prNumber } }),
         })
         const data = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          throw new Error(
-            typeof data?.error === "string"
-              ? data.error
-              : "Failed to resolve PR branch",
-          )
-        }
-
-        const prHeadRef =
-          typeof data?.result?.head?.ref === "string"
-            ? data.result.head.ref.trim()
-            : ""
-        const prBaseRef =
-          typeof data?.result?.base?.ref === "string"
-            ? data.result.base.ref.trim()
-            : ""
-        const resolvedBranch = prHeadRef || prBaseRef || defaultBranch
-        if (!cancelled) {
-          setActiveBranch(resolvedBranch)
-        }
+        if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Failed to resolve PR branch")
+        const prHeadRef = typeof data?.result?.head?.ref === "string" ? data.result.head.ref.trim() : ""
+        const prBaseRef = typeof data?.result?.base?.ref === "string" ? data.result.base.ref.trim() : ""
+        if (!cancelled) setActiveBranch(prHeadRef || prBaseRef || defaultBranch)
       } catch (error) {
         console.error("Failed to resolve PR branch:", error)
         if (!cancelled) {
           setActiveBranch("main")
-          setGithubActionMessage({
-            type: "error",
-            text:
-              error instanceof Error
-                ? error.message
-                : "Failed to resolve PR branch",
-          })
+          setGithubActionMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to resolve PR branch" })
         }
-      } finally {
-        if (!cancelled) {
-          setBranchLoading(false)
-        }
-      }
+      } finally { if (!cancelled) setBranchLoading(false) }
     }
-
     void resolveBranch()
-    return () => {
-      cancelled = true
-    }
+    return () => { cancelled = true }
   }, [analysis, repoCoordinates])
 
   const fileFindings = useMemo(() => {
@@ -608,46 +649,31 @@ export function AnnotatedDiff() {
         setPendingComments([])
         setShowSubmitDialog(false)
         const res = await fetch(`/api/reviews/comments?analysis_id=${id}`)
-        if (res.ok) {
-          const data = await res.json()
-          setExistingComments(data.comments || [])
-        }
+        if (res.ok) { const data = await res.json(); setExistingComments(data.comments || []) }
       }
     } catch (error) {
       console.error("Failed to submit review:", error)
-    } finally {
-      setIsSubmitting(false)
-    }
+    } finally { setIsSubmitting(false) }
   }
 
   const handleResolveComment = async (commentId: string) => {
     try {
       const response = await fetch(`/api/reviews/comments/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "resolved" }),
       })
-      if (response.ok) {
-        setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "resolved" } : c)))
-      }
-    } catch (error) {
-      console.error("Failed to resolve comment:", error)
-    }
+      if (response.ok) setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "resolved" } : c)))
+    } catch (error) { console.error("Failed to resolve comment:", error) }
   }
 
   const handleUnresolveComment = async (commentId: string) => {
     try {
       const response = await fetch(`/api/reviews/comments/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
+        method: "PATCH", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ status: "open" }),
       })
-      if (response.ok) {
-        setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "open" } : c)))
-      }
-    } catch (error) {
-      console.error("Failed to unresolve comment:", error)
-    }
+      if (response.ok) setExistingComments((prev) => prev.map((c) => (c.id === commentId ? { ...c, status: "open" } : c)))
+    } catch (error) { console.error("Failed to unresolve comment:", error) }
   }
 
   const handleReplyToComment = async (parentId: string, content: string) => {
@@ -656,24 +682,11 @@ export function AnnotatedDiff() {
     if (!parentComment) return
     try {
       const response = await fetch(`/api/reviews/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          analysis_id: id,
-          parent_id: parentId,
-          file_path: parentComment.file_path,
-          line_start: parentComment.line_start,
-          content,
-          comment_type: "comment",
-        }),
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ analysis_id: id, parent_id: parentId, file_path: parentComment.file_path, line_start: parentComment.line_start, content, comment_type: "comment" }),
       })
-      if (response.ok) {
-        const newComment = await response.json()
-        setExistingComments((prev) => [...prev, newComment])
-      }
-    } catch (error) {
-      console.error("Failed to reply to comment:", error)
-    }
+      if (response.ok) { const newComment = await response.json(); setExistingComments((prev) => [...prev, newComment]) }
+    } catch (error) { console.error("Failed to reply to comment:", error) }
   }
 
   const handleClarificationCommentCreated = useCallback((comment: ReviewComment) => {
@@ -682,101 +695,36 @@ export function AnnotatedDiff() {
 
   const handleEditorSaved = useCallback(() => {
     if (!selectedFilePath) return
-    setGithubActionMessage({
-      type: "success",
-      text: `Committed ${selectedFilePath} to ${activeBranch}.`,
-    })
+    setGithubActionMessage({ type: "success", text: `Committed ${selectedFilePath} to ${activeBranch}.` })
   }, [selectedFilePath, activeBranch])
 
   const handleToolbarSave = useCallback(() => {
-    if (!repoCoordinates) {
-      setGithubActionMessage({
-        type: "error",
-        text: "Repository information is missing (owner/repo).",
-      })
-      return
-    }
-    if (!selectedFilePath) {
-      setGithubActionMessage({
-        type: "error",
-        text: "Select a file before saving.",
-      })
-      return
-    }
+    if (!repoCoordinates) { setGithubActionMessage({ type: "error", text: "Repository information is missing (owner/repo)." }); return }
+    if (!selectedFilePath) { setGithubActionMessage({ type: "error", text: "Select a file before saving." }); return }
     setEditorSaveTrigger((value) => value + 1)
   }, [repoCoordinates, selectedFilePath])
 
   const submitGitHubReview = useCallback(
     async (event: "APPROVE" | "REQUEST_CHANGES") => {
-      if (!analysis?.prNumber) {
-        setGithubActionMessage({
-          type: "error",
-          text: "This analysis is not linked to a pull request.",
-        })
-        return
-      }
-      if (!repoCoordinates) {
-        setGithubActionMessage({
-          type: "error",
-          text: "Repository information is missing (owner/repo).",
-        })
-        return
-      }
-
+      if (!analysis?.prNumber) { setGithubActionMessage({ type: "error", text: "This analysis is not linked to a pull request." }); return }
+      if (!repoCoordinates) { setGithubActionMessage({ type: "error", text: "Repository information is missing (owner/repo)." }); return }
       setIsSubmittingGitHubReview(true)
-      setGithubActionMessage({
-        type: "info",
-        text:
-          event === "APPROVE"
-            ? "Submitting GitHub approval..."
-            : "Submitting GitHub change request...",
-      })
-
+      setGithubActionMessage({ type: "info", text: event === "APPROVE" ? "Submitting GitHub approval..." : "Submitting GitHub change request..." })
       try {
         const response = await fetch("/api/dashboard/github", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
+          method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "submit_pr_review",
-            payload: {
-              owner: repoCoordinates.owner,
-              repo: repoCoordinates.repo,
-              pullNumber: analysis.prNumber,
-              event,
-              body:
-                event === "APPROVE"
-                  ? "Approved from AI Code Review Platform."
-                  : "Changes requested from AI Code Review Platform.",
-            },
+            payload: { owner: repoCoordinates.owner, repo: repoCoordinates.repo, pullNumber: analysis.prNumber, event, body: event === "APPROVE" ? "Approved from AI Code Review Platform." : "Changes requested from AI Code Review Platform." },
           }),
         })
         const data = await response.json().catch(() => ({}))
-        if (!response.ok) {
-          throw new Error(
-            typeof data?.error === "string"
-              ? data.error
-              : "Failed to submit GitHub review",
-          )
-        }
-        setGithubActionMessage({
-          type: "success",
-          text:
-            event === "APPROVE"
-              ? `PR #${analysis.prNumber} approved on GitHub.`
-              : `Changes requested on PR #${analysis.prNumber}.`,
-        })
+        if (!response.ok) throw new Error(typeof data?.error === "string" ? data.error : "Failed to submit GitHub review")
+        setGithubActionMessage({ type: "success", text: event === "APPROVE" ? `PR #${analysis.prNumber} approved on GitHub.` : `Changes requested on PR #${analysis.prNumber}.` })
       } catch (error) {
         console.error("Failed to submit GitHub review:", error)
-        setGithubActionMessage({
-          type: "error",
-          text:
-            error instanceof Error
-              ? error.message
-              : "Failed to submit GitHub review",
-        })
-      } finally {
-        setIsSubmittingGitHubReview(false)
-      }
+        setGithubActionMessage({ type: "error", text: error instanceof Error ? error.message : "Failed to submit GitHub review" })
+      } finally { setIsSubmittingGitHubReview(false) }
     },
     [analysis?.prNumber, repoCoordinates],
   )
@@ -785,23 +733,39 @@ export function AnnotatedDiff() {
 
   if (loading) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
-        <Loader2 className="h-6 w-6 animate-spin text-[#7f77dd]" />
-        <span className="ml-3 text-[#8b949e] text-sm">Chargement de l'analyse...</span>
+      <div
+        className="flex h-full w-full flex-col items-center justify-center gap-4 rounded-xl border"
+        style={{ background: "linear-gradient(135deg, #0a0f1e 0%, #0d1117 100%)", borderColor: "#1e293b" }}
+      >
+        <motion.div
+          animate={{ rotate: 360 }}
+          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+        >
+          <Loader2 className="h-7 w-7" style={{ color: "#6366f1" }} />
+        </motion.div>
+        <motion.span
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="text-sm font-medium"
+          style={{ color: "var(--text-muted)" }}
+        >
+          Chargement de l'analyse...
+        </motion.span>
       </div>
     )
   }
 
   if (!analysis) {
     return (
-      <div className="flex h-full w-full items-center justify-center rounded-xl border" style={{ background: "#070c16", borderColor: "#23304a" }}>
-        <span className="text-[#8b949e]">Analyse non trouvée</span>
+      <div className="flex h-full w-full items-center justify-center rounded-xl border" style={{ background: "#0d1117", borderColor: "#1e293b" }}>
+        <span className="text-sm" style={{ color: "var(--text-muted)" }}>Analyse non trouvée</span>
       </div>
     )
   }
 
   const qualityScore = calculateQualityScore(analysis.findings)
   const scoreColor = getScoreColor(qualityScore)
+  const scoreGlow = getScoreGlow(qualityScore)
   const errorCount = analysis.findings.filter((f) => f.severity === "BLOCKER").length
   const warningCount = analysis.findings.filter((f) => f.severity === "WARN").length
   const totalAdditions = analysis.files.reduce((s, f) => s + (f.additionsCount ?? 0), 0)
@@ -810,14 +774,14 @@ export function AnnotatedDiff() {
   const selectedFileInfo = selectedFilePath ? getFileInfo(selectedFilePath) : null
   const coverage = Math.max(52, 96 - errorCount * 6 - warningCount * 2)
   const complexity = fileFindings.length > 16 ? "High" : fileFindings.length > 8 ? "Medium" : "Low"
-  const openThreadCount = existingComments.filter((comment) => !comment.parent_id && comment.status !== "resolved").length
+  const openThreadCount = existingComments.filter((c) => !c.parent_id && c.status !== "resolved").length
   const tabFiles = (() => {
     if (analysis.files.length <= 3) return analysis.files
-    const active = analysis.files.find((file) => file.pathNew === selectedFilePath)
+    const active = analysis.files.find((f) => f.pathNew === selectedFilePath)
     const picked: DashboardAnalysisDiffFile[] = []
     if (active) picked.push(active)
     for (const file of analysis.files) {
-      if (picked.some((entry) => entry.id === file.id)) continue
+      if (picked.some((e) => e.id === file.id)) continue
       picked.push(file)
       if (picked.length >= 3) break
     }
@@ -825,155 +789,236 @@ export function AnnotatedDiff() {
   })()
 
   return (
-    <div
-      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border"
-      style={{ background: "#0d1117", color: "#e6edf3", fontFamily: "Inter, sans-serif" }}
+    <motion.div
+      initial={{ opacity: 0, scale: 0.99 }}
+      animate={{ opacity: 1, scale: 1 }}
+      transition={{ duration: 0.3, ease: "easeOut" }}
+      className="relative flex h-full min-h-0 w-full flex-col overflow-hidden"
+      style={{
+        background: "var(--bg-page)",
+        color: "var(--text-primary)",
+        fontFamily: "Inter, system-ui, sans-serif",
+        borderRadius: 12,
+        border: "1px solid var(--border-card)",
+        boxShadow: "var(--shadow-elevated)",
+      }}
     >
-
+      {/* ── Top Menu Bar ─────────────────────────────────────────────── */}
       <div
-        className="flex h-8 flex-shrink-0 items-center border-b px-2"
-        style={{ background: "#0d1424", borderColor: "#23304a" }}
+        className="flex h-9 flex-shrink-0 items-center border-b px-3 select-none"
+        style={{
+          background: "var(--bg-card-inner)",
+          borderColor: "var(--border-card)",
+        }}
       >
-        <div className="mr-5 flex items-center gap-[6px]">
+        {/* Traffic lights */}
+        <div className="mr-6 flex items-center gap-[7px]">
           <Link href="/dashboard">
-            <div className="h-3 w-3 cursor-pointer rounded-full hover:opacity-80" style={{ background: "#ff5f57" }} />
+            <div
+              className="h-3 w-3 cursor-pointer rounded-full transition-all hover:brightness-110"
+              style={{ background: "#ff5f57", boxShadow: "0 0 6px rgba(255,95,87,0.4)" }}
+            />
           </Link>
           <div className="h-3 w-3 rounded-full" style={{ background: "#febc2e" }} />
           <div className="h-3 w-3 rounded-full" style={{ background: "#28c840" }} />
         </div>
+        {/* Menu items */}
         {["File", "Edit", "Selection", "View", "Go", "Run", "Terminal"].map((item) => (
-          <span key={item} className="mr-4 cursor-pointer text-[12px]" style={{ color: "#8ea1c7" }}>
+          <span
+            key={item}
+            className="mr-4 cursor-pointer text-[11.5px] transition-colors hover:text-white"
+            style={{ color: "var(--text-muted)" }}
+          >
             {item}
           </span>
         ))}
-        <span className="mr-4 cursor-pointer text-[12px] font-semibold" style={{ color: "#7f9dff" }}>
+        <span
+          className="mr-4 cursor-pointer text-[11.5px] font-semibold"
+          style={{ color: "#818cf8", textShadow: "0 0 10px rgba(129,140,248,0.4)" }}
+        >
           Review
         </span>
-        <span className="cursor-pointer text-[12px]" style={{ color: "#8ea1c7" }}>
+        <span className="cursor-pointer text-[11.5px] transition-colors hover:text-white" style={{ color: "var(--text-muted)" }}>
           Help
         </span>
-        <div className="ml-auto flex items-center gap-2 rounded-md border px-2 py-0.5" style={{ borderColor: "#2f4166", background: "#121c30" }}>
-          <GitPullRequest className="h-3.5 w-3.5" style={{ color: "#7f9dff" }} />
-          <span className="text-[11px]" style={{ color: "#9eb1d8" }}>
+        {/* Branch pill */}
+        <div
+          className="ml-auto flex items-center gap-2 px-3 py-1"
+          style={{
+            background: "var(--bg-elevated)",
+            border: "1px solid var(--border-default)",
+            borderRadius: 6,
+          }}
+        >
+          <GitPullRequest className="h-3.5 w-3.5" style={{ color: "#818cf8" }} />
+          <span className="text-[11px] font-medium" style={{ color: "var(--text-secondary)" }}>
             {prBranch}
           </span>
-          <div className="h-2 w-2 rounded-full" style={{ background: "#4bd38b" }} />
-          <span className="text-[11px] font-semibold" style={{ color: "#4bd38b" }}>
+          <div className="h-1.5 w-1.5 rounded-full" style={{ background: "#22c55e", boxShadow: "0 0 6px rgba(34,197,94,0.6)" }} />
+          <span className="text-[11px] font-bold" style={{ color: "#22c55e" }}>
             Open
           </span>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1">
+        {/* ── Activity Bar ─────────────────────────────────────────────── */}
         <div
-          className="flex w-11 flex-shrink-0 flex-col items-center border-r py-2"
-          style={{ background: "#0d1424", borderColor: "#23304a" }}
+          className="flex w-12 flex-shrink-0 flex-col items-center border-r py-2 gap-1"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
         >
           <button
-            className="mb-1 flex h-8 w-8 items-center justify-center rounded-md"
-            style={{ background: "rgba(127,157,255,0.16)", color: "#7f9dff" }}
+            className="flex h-9 w-9 items-center justify-center transition-all"
+            style={{
+              background: "rgba(99,102,241,0.15)",
+              color: "#818cf8",
+              borderRadius: 8,
+              border: "1px solid rgba(99,102,241,0.25)",
+              boxShadow: "0 0 10px rgba(99,102,241,0.2)",
+            }}
             title="Explorer"
           >
             <Files className="h-4.5 w-4.5" />
           </button>
           {[
-            { icon: Search, label: "Search" },
-            { icon: GitBranch, label: "Source control" },
-            { icon: Shield, label: "Security" },
-            { icon: Settings, label: "Settings" },
+            { icon: Search, label: "Search", color: "#60a5fa" },
+            { icon: GitBranch, label: "Source control", color: "#a78bfa" },
+            { icon: Shield, label: "Security", color: "#f87171" },
+            { icon: Settings, label: "Settings", color: "#94a3b8" },
           ].map((entry) => (
             <button
               key={entry.label}
-              className="mt-1 flex h-8 w-8 items-center justify-center rounded-md"
-              style={{ color: "#60739a" }}
+              className="flex h-9 w-9 items-center justify-center transition-all hover:bg-white/5"
+              style={{ color: "#475569", borderRadius: 8 }}
               title={entry.label}
+              onMouseEnter={(e) => { e.currentTarget.style.color = entry.color }}
+              onMouseLeave={(e) => { e.currentTarget.style.color = "#475569" }}
             >
               <entry.icon className="h-4.5 w-4.5" />
             </button>
           ))}
         </div>
 
+        {/* ── Left Sidebar: Explorer ───────────────────────────────────── */}
         <aside
-          className="hidden w-[250px] flex-shrink-0 flex-col border-r md:flex"
-          style={{ background: "#111a2d", borderColor: "#23304a" }}
+          className="hidden w-[240px] flex-shrink-0 flex-col border-r md:flex"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
         >
-          <div className="flex items-center justify-between border-b px-3 py-2" style={{ borderColor: "#23304a" }}>
-            <span className="text-[10px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
-              EXPLORER
+          {/* Section: Explorer */}
+          <div
+            className="flex items-center justify-between border-b px-3 py-2.5"
+            style={{ borderColor: "var(--border-card)" }}
+          >
+            <span className="text-[9.5px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--text-muted)" }}>
+              Explorer
             </span>
-            <Search className="h-3.5 w-3.5" style={{ color: "#7a8fb8" }} />
+            <Search className="h-3.5 w-3.5 cursor-pointer transition-colors hover:text-white" style={{ color: "var(--text-muted)" }} />
           </div>
 
-          <div className="border-b px-3 py-1.5" style={{ borderColor: "#23304a" }}>
-            <span className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
-              CHANGED FILES
+          {/* Changed Files */}
+          <div className="border-b px-3 py-1.5" style={{ borderColor: "var(--border-card)" }}>
+            <span className="text-[9px] font-bold tracking-[0.1em] uppercase" style={{ color: "var(--text-subtle)" }}>
+              Changed Files
             </span>
           </div>
-
-          <div className="max-h-[44%] overflow-y-auto py-1">
-            {analysis.files.map((file) => {
+          <div className="max-h-[42%] overflow-y-auto">
+            {analysis.files.map((file, i) => {
               const info = getFileInfo(file.pathNew)
               const isActive = selectedFilePath === file.pathNew
-              const hasAdditions = (file.additionsCount ?? 0) > 0
-              const hasDeletions = (file.deletionsCount ?? 0) > 0
-              const statusChar = hasAdditions && hasDeletions ? "M" : hasAdditions ? "A" : hasDeletions ? "D" : "M"
-              const statusColor = statusChar === "A" ? "#4bd38b" : statusChar === "D" ? "#ff8e8e" : "#f3c969"
+              const hasAdd = (file.additionsCount ?? 0) > 0
+              const hasDel = (file.deletionsCount ?? 0) > 0
+              const statusChar = hasAdd && hasDel ? "M" : hasAdd ? "A" : hasDel ? "D" : "M"
+              const statusColor = statusChar === "A" ? "#22c55e" : statusChar === "D" ? "#f87171" : "#f59e0b"
               return (
-                <button
+                <motion.button
                   key={file.id}
+                  initial={{ opacity: 0, x: -10 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  transition={{ delay: i * 0.04, duration: 0.2 }}
                   onClick={() => setSelectedFilePath(file.pathNew)}
-                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left"
-                  style={{ background: isActive ? "#4d56a526" : "transparent" }}
+                  className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-all"
+                  style={{
+                    background: isActive
+                      ? "linear-gradient(90deg, rgba(99,102,241,0.15) 0%, rgba(99,102,241,0.05) 100%)"
+                      : "transparent",
+                    borderLeft: isActive ? "2px solid #6366f1" : "2px solid transparent",
+                  }}
                 >
                   <ExtBadge ext={info.ext} color={info.extColor} />
-                  <span className="flex-1 truncate text-[11px]" style={{ color: isActive ? "#eef4ff" : "#9cb0d7" }}>
+                  <span
+                    className="flex-1 truncate text-[11px] font-medium"
+                    style={{ color: isActive ? "#e2e8f0" : "#64748b" }}
+                  >
                     {info.filename}
                   </span>
-                  <span className="text-[10px] font-semibold" style={{ color: statusColor }}>
+                  <span
+                    className="text-[9px] font-bold flex-shrink-0"
+                    style={{ color: statusColor }}
+                  >
                     {statusChar}
                   </span>
-                </button>
+                </motion.button>
               )
             })}
           </div>
 
-          <div className="border-y px-3 py-1.5" style={{ borderColor: "#23304a" }}>
-            <span className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
-              OUTLINE
+          {/* Outline */}
+          <div className="border-y px-3 py-1.5" style={{ borderColor: "var(--border-card)" }}>
+            <span className="text-[9px] font-bold tracking-[0.1em] uppercase" style={{ color: "var(--text-subtle)" }}>
+              Outline
             </span>
           </div>
-          <div className="space-y-1 px-3 py-2">
-            {fileFindings.slice(0, 5).map((finding) => (
-              <div key={finding.id} className="flex items-center gap-2">
-                <ChevronRight className="h-3.5 w-3.5" style={{ color: "#7f9dff" }} />
-                <span className="truncate text-[11px]" style={{ color: "#8ea1c7" }}>
+          <div className="space-y-0.5 px-3 py-2 overflow-y-auto flex-1">
+            {fileFindings.slice(0, 5).map((finding, i) => (
+              <motion.div
+                key={finding.id}
+                initial={{ opacity: 0, x: -6 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: 0.1 + i * 0.05 }}
+                className="flex items-center gap-2 py-0.5"
+              >
+                <div
+                  className="h-1.5 w-1.5 rounded-full flex-shrink-0"
+                  style={{
+                    background: finding.severity === "BLOCKER" ? "#f87171" : "#f59e0b",
+                    boxShadow: `0 0 5px ${finding.severity === "BLOCKER" ? "rgba(248,113,113,0.6)" : "rgba(245,158,11,0.6)"}`,
+                  }}
+                />
+                <span className="truncate text-[10.5px]" style={{ color: "var(--text-muted)" }}>
                   {finding.ruleId ?? finding.category}
                 </span>
-              </div>
+              </motion.div>
             ))}
             {fileFindings.length === 0 && (
-              <span className="text-[11px]" style={{ color: "#5f7197" }}>
+              <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>
                 No indexed symbols
               </span>
             )}
           </div>
 
-          <div className="mt-auto border-t px-3 py-2" style={{ borderColor: "#23304a" }}>
-            <div className="text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#6881b1" }}>
-              GIT BLAME
+          {/* Git Blame footer */}
+          <div className="border-t px-3 py-2.5" style={{ borderColor: "var(--border-card)" }}>
+            <div className="text-[9px] font-bold tracking-[0.1em] uppercase mb-1" style={{ color: "var(--text-subtle)" }}>
+              Git Blame
             </div>
-            <div className="mt-1 text-[11px] font-medium" style={{ color: "#a7b8da" }}>
+            <div className="text-[11px] font-semibold" style={{ color: "var(--text-secondary)" }}>
               {currentUser.name ?? "Developer"}
             </div>
-            <div className="text-[10px]" style={{ color: "#60739a" }}>
+            <div className="text-[10px] font-mono" style={{ color: "var(--text-muted)" }}>
               {analysis.commitSha ? analysis.commitSha.slice(0, 7) : "latest commit"}
             </div>
           </div>
         </aside>
 
+        {/* ── Main Editor Area ─────────────────────────────────────────── */}
         <div className="flex min-w-0 flex-1">
-          <div className="flex min-w-0 flex-1 flex-col" style={{ background: "#070c16" }}>
-            <div className="flex h-9 items-end overflow-x-auto border-b" style={{ background: "#0f182b", borderColor: "#23304a" }}>
+          <div className="flex min-w-0 flex-1 flex-col" style={{ background: "var(--bg-page)" }}>
+
+            {/* File Tabs */}
+            <div
+              className="flex h-10 items-end overflow-x-auto border-b flex-shrink-0"
+              style={{ background: "var(--bg-card-inner)", borderColor: "var(--border-card)" }}
+            >
               {tabFiles.map((file) => {
                 const info = getFileInfo(file.pathNew)
                 const isActive = selectedFilePath === file.pathNew
@@ -982,19 +1027,35 @@ export function AnnotatedDiff() {
                   <button
                     key={file.id}
                     onClick={() => setSelectedFilePath(file.pathNew)}
-                    className="flex h-full min-w-[180px] items-center gap-2 border-r px-3"
+                    className="relative flex h-full min-w-[160px] max-w-[200px] items-center gap-2 border-r px-3 transition-all group/tab"
                     style={{
-                      background: isActive ? "#070c16" : "#0f182b",
-                      borderColor: "#23304a",
-                      borderTop: isActive ? "2px solid #7f9dff" : "2px solid transparent",
+                      background: isActive ? "var(--bg-page)" : "transparent",
+                      borderColor: "var(--border-card)",
                     }}
                   >
+                    {isActive && (
+                      <motion.div
+                        layoutId="activeTab"
+                        className="absolute inset-x-0 top-0 h-0.5"
+                        style={{ background: "linear-gradient(90deg, #6366f1, #818cf8)" }}
+                        transition={{ type: "spring", stiffness: 500, damping: 40 }}
+                      />
+                    )}
                     <ExtBadge ext={info.ext} color={info.extColor} />
-                    <span className="truncate text-[11px]" style={{ color: isActive ? "#e8efff" : "#90a3cc" }}>
+                    <span
+                      className="flex-1 truncate text-left text-[11.5px] font-medium"
+                      style={{ color: isActive ? "#e2e8f0" : "#475569" }}
+                    >
                       {info.filename}
                     </span>
                     {changedCount > 0 && (
-                      <span className="ml-auto text-[10px]" style={{ color: "#f3c969" }}>
+                      <span
+                        className="text-[9px] font-bold px-1 py-0.5 rounded"
+                        style={{
+                          color: "#f59e0b",
+                          background: "rgba(245,158,11,0.1)",
+                        }}
+                      >
                         {changedCount}
                       </span>
                     )}
@@ -1003,456 +1064,550 @@ export function AnnotatedDiff() {
               })}
             </div>
 
-            <div className="flex h-8 items-center border-b px-2" style={{ background: "#0a1222", borderColor: "#23304a" }}>
-              <div className="flex items-center gap-1 overflow-hidden text-[10px]" style={{ color: "#7f8cab" }}>
-                <Search className="h-3.5 w-3.5 flex-shrink-0" />
-                <div className="truncate">
+            {/* Breadcrumb + Toolbar */}
+            <div
+              className="flex h-9 items-center border-b px-3 gap-2 flex-shrink-0"
+              style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
+            >
+              {/* Breadcrumb */}
+              <div className="flex items-center gap-1 overflow-hidden text-[10.5px] flex-1" style={{ color: "var(--text-muted)" }}>
+                <FileCode2 className="h-3.5 w-3.5 flex-shrink-0" style={{ color: "#6366f1" }} />
+                <div className="truncate flex items-center gap-0.5">
                   {selectedFilePath?.split("/").map((part, index, arr) => (
-                    <span key={`${part}-${index}`}>
-                      <span style={{ color: index === arr.length - 1 ? "#7f9dff" : "#6f82a8" }}>{part}</span>
-                      {index < arr.length - 1 && <span className="mx-1">/</span>}
+                    <span key={`${part}-${index}`} className="flex items-center gap-0.5">
+                      <span style={{ color: index === arr.length - 1 ? "#93c5fd" : "#334155" }}>{part}</span>
+                      {index < arr.length - 1 && <ChevronRight className="h-2.5 w-2.5 flex-shrink-0" style={{ color: "#1e293b" }} />}
                     </span>
                   ))}
                 </div>
               </div>
-              <div className="ml-auto flex items-center gap-1">
-                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#152036", color: "#8ea1c7" }}>
-                  <SplitSquareHorizontal className="h-3.5 w-3.5" />
-                  Split
-                </button>
-                <button
-                  onClick={() => setViewMode("diff")}
-                  className="flex h-6 items-center gap-1 rounded px-2 text-[10px]"
-                  style={{
-                    background: viewMode === "diff" ? "#253056" : "#152036",
-                    color: viewMode === "diff" ? "#9bb1df" : "#8ea1c7",
-                  }}
-                >
-                  <FileDiff className="h-3.5 w-3.5" />
-                  Diff
-                </button>
-                <button
-                  onClick={() => setViewMode("edit")}
-                  className="flex h-6 items-center gap-1 rounded px-2 text-[10px]"
-                  style={{
-                    background: viewMode === "edit" ? "#253056" : "#152036",
-                    color: viewMode === "edit" ? "#9bb1df" : "#8ea1c7",
-                  }}
-                >
-                  <Play className="h-3.5 w-3.5" />
-                  Edit
-                </button>
+              {/* Toolbar buttons */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {[
+                  { label: "Split", icon: SplitSquareHorizontal, action: undefined, active: false },
+                  { label: "Diff", icon: FileDiff, action: () => setViewMode("diff"), active: viewMode === "diff" },
+                  { label: "Edit", icon: Eye, action: () => setViewMode("edit"), active: viewMode === "edit" },
+                ].map((btn) => (
+                  <button
+                    key={btn.label}
+                    onClick={btn.action}
+                    className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-medium transition-all"
+                    style={{
+                      borderRadius: 5,
+                      background: btn.active
+                        ? "linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(129,140,248,0.15) 100%)"
+                        : "rgba(255,255,255,0.04)",
+                      color: btn.active ? "#a5b4fc" : "#475569",
+                      border: btn.active ? "1px solid rgba(99,102,241,0.35)" : "1px solid rgba(255,255,255,0.06)",
+                    }}
+                  >
+                    <btn.icon className="h-3 w-3" />
+                    {btn.label}
+                  </button>
+                ))}
                 <button
                   onClick={handleToolbarSave}
-                  disabled={
-                    viewMode !== "edit" ||
-                    !selectedFilePath ||
-                    !repoCoordinates ||
-                    branchLoading
-                  }
-                  className="flex h-6 items-center gap-1 rounded px-2 text-[10px] disabled:opacity-50 disabled:cursor-not-allowed"
-                  style={{ background: "#193024", color: "#63d69c" }}
+                  disabled={viewMode !== "edit" || !selectedFilePath || !repoCoordinates || branchLoading}
+                  className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  style={{
+                    borderRadius: 5,
+                    background: "rgba(34,197,94,0.15)",
+                    color: "#4ade80",
+                    border: "1px solid rgba(34,197,94,0.25)",
+                  }}
                 >
-                  <Save className="h-3.5 w-3.5" />
+                  <Save className="h-3 w-3" />
                   Save
                 </button>
-                <button className="flex h-6 items-center gap-1 rounded px-2 text-[10px]" style={{ background: "#2b2346", color: "#c0a9ff" }}>
-                  <Play className="h-3.5 w-3.5" />
+                <button
+                  className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-medium"
+                  style={{
+                    borderRadius: 5,
+                    background: "rgba(168,85,247,0.12)",
+                    color: "#c084fc",
+                    border: "1px solid rgba(168,85,247,0.2)",
+                  }}
+                >
+                  <Play className="h-3 w-3" />
                   Run
                 </button>
               </div>
             </div>
 
-            <div className="flex min-h-0 flex-1">
-              {viewMode === "edit" ? (
-                <div className="min-w-0 flex-1">
-                  {!repoCoordinates ? (
-                    <div className="p-8 text-[13px]" style={{ color: "#ff8e8e" }}>
-                      Cannot open editor: repository format is invalid.
-                    </div>
-                  ) : (
-                    <CodeEditor
-                      owner={repoCoordinates.owner}
-                      repo={repoCoordinates.repo}
-                      branch={activeBranch}
-                      filePath={selectedFilePath}
-                      onSaved={handleEditorSaved}
-                      saveTrigger={editorSaveTrigger}
-                      onBranchResolved={setActiveBranch}
-                    />
-                  )}
-                </div>
-              ) : (
-                <>
-                  <div className="min-w-0 flex-1 overflow-auto" style={{ background: "#070c16" }}>
-                    {!selectedFile || selectedFile.lines.length === 0 ? (
-                      <div className="p-8 text-[13px]" style={{ color: "#60739a" }}>
-                        No detailed diff is available for this file.
+            {/* Editor / Diff Content */}
+            <div className="flex min-h-0 flex-1 overflow-hidden">
+              <AnimatePresence mode="wait">
+                {viewMode === "edit" ? (
+                  <motion.div
+                    key="edit"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="min-w-0 flex-1"
+                  >
+                    {!repoCoordinates ? (
+                      <div className="p-8 text-[13px] flex items-center gap-3" style={{ color: "#f87171" }}>
+                        <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+                        Cannot open editor: repository format is invalid.
                       </div>
                     ) : (
-                      <div className="py-1">
-                        {selectedFile.lines.map((line, idx) => {
-                          const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
-                          return (
-                            <div key={`${selectedFile.id}-${idx}`}>
-                              <DiffLine
-                                line={line}
-                                lineNumber={lineNumber}
-                                findings={fileFindings}
-                                dismissedFindings={dismissedFindings}
-                                onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
-                                onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
-                                onRequestCall={(finding) => setClarificationTarget(finding)}
-                                isCommenting={activeCommentLine === lineNumber}
-                              />
-                              {commentsByLine.get(lineNumber)?.map((comment) => (
-                                <div key={comment.id} className="mx-4 my-2">
-                                  <CommentThread
-                                    rootComment={comment}
-                                    replies={getReplies(comment.id)}
-                                    authors={commentAuthors}
-                                    currentUserId={currentUser.id}
-                                    onReply={handleReplyToComment}
-                                    onResolve={handleResolveComment}
-                                    onUnresolve={handleUnresolveComment}
-                                  />
-                                </div>
-                              ))}
-                              <AnimatePresence>
-                                {activeCommentLine === lineNumber && (
-                                  <InlineCommentForm
-                                    analysisId={id!}
-                                    filePath={selectedFilePath!}
-                                    lineStart={lineNumber}
-                                    codeSnippet={line.content}
-                                    onSubmit={handleAddPendingComment}
-                                    onCancel={() => setActiveCommentLine(null)}
-                                  />
-                                )}
-                              </AnimatePresence>
-                            </div>
-                          )
-                        })}
-                      </div>
+                      <CodeEditor
+                        owner={repoCoordinates.owner}
+                        repo={repoCoordinates.repo}
+                        branch={activeBranch}
+                        filePath={selectedFilePath}
+                        onSaved={handleEditorSaved}
+                        saveTrigger={editorSaveTrigger}
+                        onBranchResolved={setActiveBranch}
+                      />
                     )}
-                  </div>
+                  </motion.div>
+                ) : (
+                  <motion.div
+                    key="diff"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex min-w-0 flex-1 overflow-hidden"
+                  >
+                    {/* Diff lines */}
+                    <div className="min-w-0 flex-1 overflow-auto" style={{ background: "var(--bg-page)" }}>
+                      {!selectedFile || selectedFile.lines.length === 0 ? (
+                        <div className="p-8 text-[13px]" style={{ color: "var(--text-subtle)" }}>
+                          No detailed diff is available for this file.
+                        </div>
+                      ) : (
+                        <div className="py-1">
+                          {selectedFile.lines.map((line, idx) => {
+                            const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
+                            return (
+                              <div key={`${selectedFile.id}-${idx}`}>
+                                <DiffLine
+                                  line={line}
+                                  lineNumber={lineNumber}
+                                  findings={fileFindings}
+                                  dismissedFindings={dismissedFindings}
+                                  onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
+                                  onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
+                                  onRequestCall={(finding) => setClarificationTarget(finding)}
+                                  isCommenting={activeCommentLine === lineNumber}
+                                />
+                                {commentsByLine.get(lineNumber)?.map((comment) => (
+                                  <div key={comment.id} className="mx-4 my-2">
+                                    <CommentThread
+                                      rootComment={comment}
+                                      replies={getReplies(comment.id)}
+                                      authors={commentAuthors}
+                                      currentUserId={currentUser.id}
+                                      onReply={handleReplyToComment}
+                                      onResolve={handleResolveComment}
+                                      onUnresolve={handleUnresolveComment}
+                                    />
+                                  </div>
+                                ))}
+                                <AnimatePresence>
+                                  {activeCommentLine === lineNumber && (
+                                    <InlineCommentForm
+                                      analysisId={id!}
+                                      filePath={selectedFilePath!}
+                                      lineStart={lineNumber}
+                                      codeSnippet={line.content}
+                                      onSubmit={handleAddPendingComment}
+                                      onCancel={() => setActiveCommentLine(null)}
+                                    />
+                                  )}
+                                </AnimatePresence>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      )}
+                    </div>
 
-                  <div className="w-[82px] flex-shrink-0 overflow-hidden border-l px-1.5 pt-2" style={{ background: "#0a1222", borderColor: "#23304a" }}>
-                    <div className="mb-2 h-14 rounded-md" style={{ background: "rgba(255,255,255,0.05)" }} />
-                    {fileFindings.slice(0, 14).map((finding, index) => {
-                      const color =
-                        finding.severity === "BLOCKER"
-                          ? "rgba(255,132,132,0.55)"
+                    {/* Mini-map / severity markers */}
+                    <div
+                      className="w-[70px] flex-shrink-0 overflow-hidden border-l px-1.5 pt-3"
+                      style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
+                    >
+                      <div
+                        className="mb-2.5 h-12 rounded-md"
+                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
+                      />
+                      {fileFindings.slice(0, 14).map((finding, index) => {
+                        const color = finding.severity === "BLOCKER"
+                          ? "rgba(248,113,113,0.7)"
                           : finding.severity === "WARN"
-                            ? "rgba(243,201,105,0.55)"
-                            : "rgba(127,157,255,0.55)"
-                      const width = 24 + (((finding.lineStart ?? index + 1) * 17) % 34)
-                      return (
-                        <div
-                          key={finding.id}
-                          className="mb-[6px] rounded"
-                          style={{ height: 3, width: `${width}px`, background: color }}
-                        />
-                      )
-                    })}
-                  </div>
-                </>
-              )}
+                          ? "rgba(251,191,36,0.7)"
+                          : "rgba(99,102,241,0.7)"
+                        const width = 20 + (((finding.lineStart ?? index + 1) * 17) % 30)
+                        return (
+                          <motion.div
+                            key={finding.id}
+                            initial={{ opacity: 0, scaleX: 0 }}
+                            animate={{ opacity: 1, scaleX: 1 }}
+                            transition={{ delay: index * 0.06, duration: 0.3 }}
+                            className="mb-[5px] rounded-full origin-left"
+                            style={{ height: 3, width: `${width}px`, background: color }}
+                          />
+                        )
+                      })}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
           </div>
 
+          {/* ── Right Panel: Quality & Actions ───────────────────────── */}
           <aside
-            className="hidden w-[280px] flex-shrink-0 flex-col overflow-y-auto border-l lg:flex"
-            style={{ background: "#111a2d", borderColor: "#23304a" }}
+            className="hidden w-[270px] flex-shrink-0 flex-col overflow-y-auto border-l lg:flex"
+            style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
           >
             <div className="p-4">
-              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
-                CODE QUALITY
-              </div>
-              <div className="mb-2 flex items-end gap-1">
-                <span className="text-[36px] font-bold leading-none" style={{ color: "#f0f5ff" }}>
-                  {qualityScore}
+              {/* Code Quality Header */}
+              <div className="mb-3 flex items-center gap-2">
+                <TrendingUp className="h-3.5 w-3.5" style={{ color: "#6366f1" }} />
+                <span className="text-[9.5px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--text-subtle)" }}>
+                  Code Quality
                 </span>
-                <span className="mb-1 text-[12px]" style={{ color: "#7085af" }}>
-                  / 100
-                </span>
-              </div>
-              <div className="mb-3 h-[6px] rounded" style={{ background: "#1e2a43" }}>
-                <div className="h-full rounded" style={{ width: `${qualityScore}%`, background: scoreColor }} />
               </div>
 
-              {[
-                { label: "Errors", value: String(errorCount), color: errorCount > 0 ? "#ff8e8e" : "#4bd38b" },
-                { label: "Warnings", value: String(warningCount), color: warningCount > 0 ? "#f3c969" : "#4bd38b" },
-                { label: "Complexity", value: complexity, color: "#8fb1ff" },
-                { label: "Coverage", value: `${coverage}%`, color: "#4bd38b" },
-              ].map((metric) => (
-                <div key={metric.label} className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[11px]" style={{ color: "#8ea1c7" }}>
-                    {metric.label}
-                  </span>
-                  <span className="text-[11px] font-semibold" style={{ color: metric.color }}>
-                    {metric.value}
-                  </span>
+              {/* Score Ring */}
+              <div className="flex items-center gap-3 mb-4">
+                <div style={{ filter: scoreGlow }}>
+                  <ScoreRing score={qualityScore} color={scoreColor} />
                 </div>
-              ))}
-
-              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
-
-              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
-                RAG ISSUES
+                <div className="flex-1">
+                  <div className="text-[10px] mb-1" style={{ color: "var(--text-muted)" }}>Overall score</div>
+                  {[
+                    { label: "Errors", value: String(errorCount), color: errorCount > 0 ? "#f87171" : "#22c55e" },
+                    { label: "Warnings", value: String(warningCount), color: warningCount > 0 ? "#f59e0b" : "#22c55e" },
+                    { label: "Complexity", value: complexity, color: complexity === "High" ? "#f87171" : complexity === "Medium" ? "#f59e0b" : "#22c55e" },
+                    { label: "Coverage", value: `${coverage}%`, color: "#22c55e" },
+                  ].map((metric) => (
+                    <div key={metric.label} className="flex items-center justify-between mb-0.5">
+                      <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>{metric.label}</span>
+                      <span className="text-[10px] font-bold" style={{ color: metric.color }}>{metric.value}</span>
+                    </div>
+                  ))}
+                </div>
               </div>
-              <div className="space-y-2">
-                {fileFindings.slice(0, 6).map((finding) => (
-                  <div key={finding.id} className="flex items-start gap-2">
+
+              {/* Divider */}
+              <div className="mb-3 h-px" style={{ background: "linear-gradient(90deg, transparent, #1e293b, transparent)" }} />
+
+              {/* RAG Issues */}
+              <div className="mb-2 flex items-center gap-2">
+                <Zap className="h-3.5 w-3.5" style={{ color: "#f59e0b" }} />
+                <span className="text-[9.5px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--text-subtle)" }}>
+                  RAG Issues
+                </span>
+                {fileFindings.length > 0 && (
+                  <span
+                    className="ml-auto text-[9px] font-bold px-1.5 py-0.5 rounded-full"
+                    style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b" }}
+                  >
+                    {fileFindings.length}
+                  </span>
+                )}
+              </div>
+              <div className="space-y-1.5 mb-3">
+                {fileFindings.slice(0, 5).map((finding, i) => (
+                  <motion.div
+                    key={finding.id}
+                    initial={{ opacity: 0, x: 10 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.07, duration: 0.2 }}
+                    className="flex items-start gap-2 p-2 rounded-lg"
+                    style={{
+                      background: finding.severity === "BLOCKER"
+                        ? "rgba(248,113,113,0.06)"
+                        : "rgba(245,158,11,0.06)",
+                      border: `1px solid ${finding.severity === "BLOCKER" ? "rgba(248,113,113,0.15)" : "rgba(245,158,11,0.12)"}`,
+                    }}
+                  >
                     <AlertTriangle
-                      className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
-                      style={{ color: finding.severity === "BLOCKER" ? "#ff8e8e" : "#f3c969" }}
+                      className="mt-0.5 h-3 w-3 flex-shrink-0"
+                      style={{ color: finding.severity === "BLOCKER" ? "#f87171" : "#f59e0b" }}
                     />
-                    <span className="text-[10px] leading-snug" style={{ color: "#95a8d0" }}>
-                      {finding.message.length > 46 ? `${finding.message.slice(0, 46)}...` : finding.message}
-                      {finding.lineStart != null && ` l.${finding.lineStart}`}
+                    <span className="text-[10px] leading-relaxed" style={{ color: "var(--text-muted)" }}>
+                      {finding.message.length > 44 ? `${finding.message.slice(0, 44)}...` : finding.message}
+                      {finding.lineStart != null && (
+                        <span style={{ color: "var(--text-subtle)" }}>{` l.${finding.lineStart}`}</span>
+                      )}
                     </span>
-                  </div>
+                  </motion.div>
                 ))}
                 {fileFindings.length === 0 && (
-                  <span className="text-[10px]" style={{ color: "#60739a" }}>
-                    No open findings on this file.
-                  </span>
+                  <div className="flex items-center gap-2 py-2">
+                    <CheckCircle2 className="h-3.5 w-3.5" style={{ color: "#22c55e" }} />
+                    <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>No open findings.</span>
+                  </div>
                 )}
               </div>
 
-              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
+              {/* Divider */}
+              <div className="mb-3 h-px" style={{ background: "linear-gradient(90deg, transparent, #1e293b, transparent)" }} />
 
-              <div className="mb-2 text-[9px] font-semibold tracking-[0.08em]" style={{ color: "#7a8fb8" }}>
-                PR INFO
+              {/* PR Info */}
+              <div className="mb-2 flex items-center gap-2">
+                <GitPullRequest className="h-3.5 w-3.5" style={{ color: "#818cf8" }} />
+                <span className="text-[9.5px] font-bold tracking-[0.12em] uppercase" style={{ color: "var(--text-subtle)" }}>
+                  PR Info
+                </span>
               </div>
-              {[
-                { label: "+lines", value: `+${totalAdditions}`, color: "#4bd38b" },
-                { label: "-lines", value: `-${totalDeletions}`, color: "#ff8e8e" },
-                { label: "Files", value: String(analysis.files.length), color: "#8fb1ff" },
-                { label: "Threads", value: String(openThreadCount), color: "#c4b0ff" },
-              ].map((metric) => (
-                <div key={metric.label} className="mb-1.5 flex items-center justify-between">
-                  <span className="text-[11px]" style={{ color: "#8ea1c7" }}>
-                    {metric.label}
-                  </span>
-                  <span className="text-[11px] font-semibold" style={{ color: metric.color }}>
-                    {metric.value}
-                  </span>
+              <div className="grid grid-cols-2 gap-1.5 mb-3">
+                {[
+                  { label: "+lines", value: `+${totalAdditions}`, color: "#22c55e", bg: "rgba(34,197,94,0.08)" },
+                  { label: "-lines", value: `-${totalDeletions}`, color: "#f87171", bg: "rgba(248,113,113,0.08)" },
+                  { label: "Files", value: String(analysis.files.length), color: "#818cf8", bg: "rgba(99,102,241,0.08)" },
+                  { label: "Threads", value: String(openThreadCount), color: "#c084fc", bg: "rgba(192,132,252,0.08)" },
+                ].map((metric) => (
+                  <div
+                    key={metric.label}
+                    className="flex flex-col gap-0.5 rounded-lg p-2"
+                    style={{ background: metric.bg, border: `1px solid ${metric.color}20` }}
+                  >
+                    <span className="text-[9px]" style={{ color: "var(--text-subtle)" }}>{metric.label}</span>
+                    <span className="text-[13px] font-bold" style={{ color: metric.color }}>{metric.value}</span>
+                  </div>
+                ))}
+              </div>
+
+              {/* Branch Info */}
+              <div
+                className="mb-3 rounded-lg px-3 py-2"
+                style={{ background: "var(--bg-card-inner)", border: "1px solid var(--border-card)" }}
+              >
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <GitBranch className="h-3 w-3" style={{ color: "var(--text-muted)" }} />
+                  <span className="text-[9px] font-bold" style={{ color: "var(--text-subtle)" }}>Branch</span>
                 </div>
-              ))}
-
-              <div className="my-3 border-t" style={{ borderColor: "#23304a" }} />
-
-              <div className="mb-2 rounded-md border px-2 py-2 text-[10px]" style={{ borderColor: "#2f4166", background: "#0d1424", color: "#9db1da" }}>
-                Branch: <span className="font-semibold" style={{ color: "#d6ddff" }}>{prBranch}</span>
+                <span className="text-[11px] font-semibold" style={{ color: "#93c5fd" }}>{prBranch}</span>
                 {repoCoordinates ? (
-                  <span> · {repoCoordinates.owner}/{repoCoordinates.repo}</span>
+                  <div className="text-[9px] mt-0.5" style={{ color: "var(--text-subtle)" }}>
+                    {repoCoordinates.owner}/{repoCoordinates.repo}
+                  </div>
                 ) : (
-                  <span style={{ color: "#ff8e8e" }}> · invalid repository</span>
+                  <div className="text-[9px] mt-0.5" style={{ color: "#f87171" }}>invalid repository</div>
                 )}
               </div>
 
-              {githubActionMessage && (
-                <div
-                  className="mb-2 rounded-md border px-2 py-2 text-[10px]"
+              {/* Action message */}
+              <AnimatePresence>
+                {githubActionMessage && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -8 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -8 }}
+                    className="mb-3 rounded-lg px-3 py-2 flex items-start gap-2"
+                    style={{
+                      background: githubActionMessage.type === "error"
+                        ? "rgba(248,113,113,0.08)"
+                        : githubActionMessage.type === "success"
+                        ? "rgba(34,197,94,0.08)"
+                        : "rgba(96,165,250,0.08)",
+                      border: `1px solid ${githubActionMessage.type === "error" ? "rgba(248,113,113,0.25)" : githubActionMessage.type === "success" ? "rgba(34,197,94,0.25)" : "rgba(96,165,250,0.25)"}`,
+                    }}
+                  >
+                    <div
+                      className="h-1.5 w-1.5 rounded-full flex-shrink-0 mt-1"
+                      style={{
+                        background: githubActionMessage.type === "error" ? "#f87171" : githubActionMessage.type === "success" ? "#22c55e" : "#60a5fa",
+                      }}
+                    />
+                    <span
+                      className="text-[10px] leading-relaxed"
+                      style={{
+                        color: githubActionMessage.type === "error" ? "#fca5a5" : githubActionMessage.type === "success" ? "#86efac" : "#93c5fd",
+                      }}
+                    >
+                      {githubActionMessage.text}
+                    </span>
+                    <button
+                      onClick={() => setGithubActionMessage(null)}
+                      className="ml-auto flex-shrink-0 opacity-60 hover:opacity-100"
+                    >
+                      <X className="h-3 w-3" style={{ color: "var(--text-muted)" }} />
+                    </button>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+
+              {/* Action Buttons */}
+              <div className="flex flex-col gap-2">
+                <motion.button
+                  whileHover={{ scale: 1.01 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={handleToolbarSave}
+                  disabled={viewMode !== "edit" || !selectedFilePath || !repoCoordinates || branchLoading}
+                  className="flex h-9 w-full items-center justify-center gap-2 text-[12px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    borderColor:
-                      githubActionMessage.type === "error"
-                        ? "rgba(255,142,142,0.45)"
-                        : githubActionMessage.type === "success"
-                          ? "rgba(75,211,139,0.45)"
-                          : "rgba(143,177,255,0.45)",
-                    background:
-                      githubActionMessage.type === "error"
-                        ? "rgba(255,142,142,0.08)"
-                        : githubActionMessage.type === "success"
-                          ? "rgba(75,211,139,0.08)"
-                          : "rgba(143,177,255,0.08)",
-                    color:
-                      githubActionMessage.type === "error"
-                        ? "#ffb3b3"
-                        : githubActionMessage.type === "success"
-                          ? "#9ef0c4"
-                          : "#b6c9f0",
+                    borderRadius: 8,
+                    background: "linear-gradient(135deg, #16a34a 0%, #15803d 100%)",
+                    color: "#dcfce7",
+                    boxShadow: "0 0 16px rgba(34,197,94,0.25), 0 2px 4px rgba(0,0,0,0.3)",
+                    border: "1px solid rgba(34,197,94,0.3)",
                   }}
                 >
-                  {githubActionMessage.text}
+                  <Save className="h-3.5 w-3.5" />
+                  Save changes
+                </motion.button>
+
+                {canReview && (
+                  <>
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => void submitGitHubReview("APPROVE")}
+                      disabled={isSubmittingGitHubReview || !analysis.prNumber || !repoCoordinates}
+                      className="flex h-9 w-full items-center justify-center gap-2 text-[12px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{
+                        borderRadius: 8,
+                        background: "linear-gradient(135deg, #4338ca 0%, #3730a3 100%)",
+                        color: "#e0e7ff",
+                        boxShadow: "0 0 16px rgba(99,102,241,0.25), 0 2px 4px rgba(0,0,0,0.3)",
+                        border: "1px solid rgba(99,102,241,0.3)",
+                      }}
+                    >
+                      {isSubmittingGitHubReview ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      )}
+                      Approve PR
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => void submitGitHubReview("REQUEST_CHANGES")}
+                      disabled={isSubmittingGitHubReview || !analysis.prNumber || !repoCoordinates}
+                      className="flex h-9 w-full items-center justify-center gap-2 text-[12px] font-medium transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                      style={{
+                        borderRadius: 8,
+                        background: "rgba(255,255,255,0.04)",
+                        color: "#94a3b8",
+                        border: "1px solid #1e293b",
+                      }}
+                    >
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Request changes
+                    </motion.button>
+
+                    <motion.button
+                      whileHover={{ scale: 1.01 }}
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setShowSubmitDialog(true)}
+                      className="flex h-8 w-full items-center justify-center gap-2 text-[11px] font-medium transition-all"
+                      style={{
+                        borderRadius: 8,
+                        background: "rgba(255,255,255,0.02)",
+                        color: "#475569",
+                        border: "1px solid #1e293b",
+                      }}
+                    >
+                      <MessageSquarePlus className="h-3.5 w-3.5" />
+                      Internal review notes
+                    </motion.button>
+                  </>
+                )}
+
+                {/* Navigation links */}
+                <div className="mt-1 flex flex-col gap-1.5">
+                  <Link
+                    href={`/dashboard/report/${id}`}
+                    className="rounded-lg px-3 py-1.5 text-center text-[10.5px] font-medium transition-all hover:brightness-125"
+                    style={{ background: "rgba(99,102,241,0.1)", color: "#818cf8", border: "1px solid rgba(99,102,241,0.15)" }}
+                  >
+                    Open full report
+                  </Link>
+                  <Link
+                    href={`/dashboard/history/${id}`}
+                    className="rounded-lg px-3 py-1.5 text-center text-[10.5px] transition-all hover:brightness-125"
+                    style={{ background: "rgba(255,255,255,0.03)", color: "#475569", border: "1px solid #1e293b" }}
+                  >
+                    View history
+                  </Link>
                 </div>
-              )}
-
-              <button
-                onClick={handleToolbarSave}
-                disabled={
-                  viewMode !== "edit" ||
-                  !selectedFilePath ||
-                  !repoCoordinates ||
-                  branchLoading
-                }
-                className="mb-2 flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-semibold"
-                style={{
-                  background: "#1f6a46",
-                  color: "#d4ffe8",
-                  border: "1px solid #2f9b66",
-                  opacity:
-                    viewMode !== "edit" ||
-                    !selectedFilePath ||
-                    !repoCoordinates ||
-                    branchLoading
-                      ? 0.5
-                      : 1,
-                }}
-              >
-                <Save className="h-3.5 w-3.5" />
-                Save changes
-              </button>
-              {canReview && (
-                <>
-                  <button
-                    onClick={() => void submitGitHubReview("APPROVE")}
-                    disabled={
-                      isSubmittingGitHubReview ||
-                      !analysis.prNumber ||
-                      !repoCoordinates
-                    }
-                    className="mb-2 flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-semibold"
-                    style={{
-                      background: "#2b2f68",
-                      color: "#d6ddff",
-                      border: "1px solid #4f56a5",
-                      opacity:
-                        isSubmittingGitHubReview ||
-                        !analysis.prNumber ||
-                        !repoCoordinates
-                          ? 0.5
-                          : 1,
-                    }}
-                  >
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    Approve PR
-                  </button>
-                  <button
-                    onClick={() => void submitGitHubReview("REQUEST_CHANGES")}
-                    disabled={
-                      isSubmittingGitHubReview ||
-                      !analysis.prNumber ||
-                      !repoCoordinates
-                    }
-                    className="flex h-9 w-full items-center justify-center gap-1 rounded-md text-[12px] font-medium"
-                    style={{
-                      background: "#1e2a43",
-                      color: "#9db1da",
-                      border: "1px solid #2f4166",
-                      opacity:
-                        isSubmittingGitHubReview ||
-                        !analysis.prNumber ||
-                        !repoCoordinates
-                          ? 0.5
-                          : 1,
-                    }}
-                  >
-                    <AlertTriangle className="h-3.5 w-3.5" />
-                    Request changes
-                  </button>
-                  <button
-                    onClick={() => setShowSubmitDialog(true)}
-                    className="mt-2 flex h-8 w-full items-center justify-center gap-1 rounded-md text-[11px] font-medium"
-                    style={{ background: "#172033", color: "#90a3cc", border: "1px solid #2f4166" }}
-                  >
-                    <MessageSquarePlus className="h-3.5 w-3.5" />
-                    Internal review notes
-                  </button>
-                </>
-              )}
-
-              <div className="mt-3 flex flex-col gap-1.5">
-                <Link
-                  href={`/dashboard/report/${id}`}
-                  className="rounded px-2 py-1 text-center text-[10px]"
-                  style={{ background: "#1e2a43", color: "#8fb1ff" }}
-                >
-                  Open full report
-                </Link>
-                <Link
-                  href={`/dashboard/history/${id}`}
-                  className="rounded px-2 py-1 text-center text-[10px]"
-                  style={{ background: "#172033", color: "#90a3cc" }}
-                >
-                  View history
-                </Link>
               </div>
             </div>
           </aside>
         </div>
       </div>
 
-      {/* ── StatusBar ────────────────────────────────────────────────── */}
+      {/* ── Status Bar ───────────────────────────────────────────────── */}
       <div
-        className="flex-shrink-0 flex items-center gap-2 border-t px-3"
-        style={{ height: 24, background: "#0d1424", borderColor: "#23304a" }}
+        className="flex-shrink-0 flex items-center gap-3 border-t px-3"
+        style={{
+          height: 26,
+          background: "var(--bg-card-inner)",
+          borderColor: "var(--border-card)",
+        }}
       >
         <div className="flex items-center gap-1.5">
-          <div className="h-2 w-2 rounded-sm" style={{ background: "#4bd38b" }} />
-          <span className="text-[10px] font-medium" style={{ color: "#4bd38b" }}>
+          <div
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: "#22c55e", boxShadow: "0 0 5px rgba(34,197,94,0.6)" }}
+          />
+          <span className="text-[10px] font-medium" style={{ color: "#22c55e" }}>
             RAG connected
           </span>
         </div>
-        <span style={{ color: "#60739a" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#60739a" }}>
+        <span style={{ color: "#1e293b" }}>│</span>
+        <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>
           {selectedFileInfo?.ext === "TS" || selectedFileInfo?.ext === "TX"
             ? "TypeScript 5.4"
             : selectedFileInfo?.ext === "PY"
-              ? "Python 3.11"
-              : selectedFileInfo?.filename?.split(".").pop() ?? "Text"}
+            ? "Python 3.11"
+            : selectedFileInfo?.filename?.split(".").pop() ?? "Text"}
         </span>
-        <span style={{ color: "#60739a" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#60739a" }}>
-          UTF-8 LF
-        </span>
-        <span style={{ color: "#60739a" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#60739a" }}>
-          Spaces: 2
-        </span>
+        <span style={{ color: "#1e293b" }}>│</span>
+        <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>UTF-8 LF</span>
+        <span style={{ color: "#1e293b" }}>│</span>
+        <span className="text-[10px]" style={{ color: "var(--text-subtle)" }}>Spaces: 2</span>
         <div className="flex-1" />
         {(errorCount > 0 || warningCount > 0) && (
-          <span className="text-[10px] font-medium" style={{ color: "#f3c969" }}>
+          <span className="text-[10px] font-semibold" style={{ color: "#f59e0b" }}>
             {errorCount > 0 ? `${errorCount} error${errorCount > 1 ? "s" : ""}` : ""}
             {errorCount > 0 && warningCount > 0 ? " · " : ""}
             {warningCount > 0 ? `${warningCount} warning${warningCount > 1 ? "s" : ""}` : ""}
           </span>
         )}
-        <span style={{ color: "#60739a" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#8ea1c7" }}>
+        <span style={{ color: "#1e293b" }}>│</span>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
           {analysis.prNumber ? `${analysis.prLabel} · ${prBranch}` : prBranch}
         </span>
-        <span style={{ color: "#60739a" }}>|</span>
-        <span className="text-[10px]" style={{ color: "#8ea1c7" }}>
-          {analysis.commitSha ? `${analysis.commitSha.slice(0, 7)}` : "Ln 1, Col 1"}
+        <span style={{ color: "#1e293b" }}>│</span>
+        <span className="text-[10px]" style={{ color: "var(--text-muted)" }}>
+          {analysis.commitSha ? analysis.commitSha.slice(0, 7) : "Ln 1, Col 1"}
         </span>
       </div>
 
-      {/* ── Review dialogs ───────────────────────────────────────────── */}
+      {/* ── Review Dialogs & Overlays ────────────────────────────────── */}
       <AnimatePresence>
         {pendingComments.length > 0 && (
-          <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            className="absolute bottom-10 left-1/2 -translate-x-1/2 z-10"
+          >
             <PendingReviewBanner
               pendingComments={pendingComments}
               onFinishReview={() => setShowSubmitDialog(true)}
               onClearAll={handleClearAllPendingComments}
               onRemoveComment={handleRemovePendingComment}
             />
-          </div>
+          </motion.div>
         )}
       </AnimatePresence>
 
       <ClarificationCallDialog
         open={clarificationTarget !== null}
-        onOpenChange={(open) => {
-          if (!open) {
-            setClarificationTarget(null)
-          }
-        }}
+        onOpenChange={(open) => { if (!open) setClarificationTarget(null) }}
         analysisId={analysis.id}
         repoName={analysis.repo}
         authorName={analysis.author}
@@ -1470,6 +1625,6 @@ export function AnnotatedDiff() {
         onRemoveComment={handleRemovePendingComment}
         isSubmitting={isSubmitting}
       />
-    </div>
+    </motion.div>
   )
 }
