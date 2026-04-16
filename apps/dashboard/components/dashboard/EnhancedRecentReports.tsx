@@ -256,7 +256,8 @@ function FindingBadge({ type, count }: { type: "blocker" | "warn" | "info"; coun
 }
 
 // Premium Score Ring Component with Glow Effect
-function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
+function ScoreRing(props: { score: number; size?: number }) {
+  const { score, size = 48 } = props
   let color = "#10b981"
   let label = "Excellent"
   let Icon = TrendingUp
@@ -335,7 +336,7 @@ function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
           animate={{ strokeDashoffset: circumference - progress }}
           transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
         />
-      </motion.svg>
+      </svg>
 
       {/* Center content */}
       <div className="flex flex-col items-center justify-center z-10">
@@ -705,12 +706,14 @@ interface EnhancedRecentReportsProps {
   limit?: number
   showHeader?: boolean
   className?: string
+  defaultPeriod?: string
 }
 
 export function EnhancedRecentReports({
   limit = 20,
   showHeader = true,
   className,
+  defaultPeriod = "all",
 }: EnhancedRecentReportsProps) {
   const [reports, setReports] = useState<RecentReport[]>([])
   const [loading, setLoading] = useState(true)
@@ -719,7 +722,7 @@ export function EnhancedRecentReports({
   // Filter States
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [periodFilter, setPeriodFilter] = useState("all")
+  const [periodFilter, setPeriodFilter] = useState(defaultPeriod)
   const [sortBy, setSortBy] = useState("createdAt")
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid")

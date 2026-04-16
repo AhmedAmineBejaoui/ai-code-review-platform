@@ -20,6 +20,7 @@ from app.core.summarization import SummaryService
 from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+from app.data.repos.repo_context_chunks_repo import RepoContextChunksRepo
 from app.settings import settings
 from app.core.knowledge_base.document_ingestion import (
     DocumentSectionInput,
@@ -989,6 +990,130 @@ async def list_sources(
             for item in items
         ],
         observability=await asyncio.to_thread(source_observability_summary, repo_id=repo_id),
+    )
+
+
+class GraphNode(BaseModel):
+    id: str
+    label: str
+    type: str  # 'file', 'function', 'class', 'module'
+    path: str | None = None
+    size: int = 1
+
+
+class GraphEdge(BaseModel):
+    source: str
+    target: str
+    type: str  # 'imports', 'calls', 'extends', 'references'
+    weight: float = 1.0
+
+
+class KnowledgeGraphResponse(BaseModel):
+    repo_id: str
+    nodes: list[GraphNode]
+    edges: list[GraphEdge]
+    total_nodes: int
+    total_edges: int
+
+
+@router.get("/repos/{repo_id}/graph", response_model=KnowledgeGraphResponse)
+async def get_knowledge_graph(
+    repo_id: str = Path(min_length=1, max_length=255),
+    limit: int = 100,
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+) -> KnowledgeGraphResponse:
+    """
+    Get the knowledge graph for a repository showing relationships between code entities.
+    Returns nodes (files, functions, classes) and edges (imports, calls, references).
+    """
+    chunks_repo = RepoContextChunksRepo()
+    
+    # Get all chunks for the repo (limited)
+    chunks = await asyncio.to_thread(
+        chunks_repo.list_repo_chunks,
+        repo_id=repo_id,
+        limit=limit,
+    )
+    
+    nodes: list[GraphNode] = []
+    edges: list[GraphEdge] = []
+    node_ids = set()
+    
+    # Build nodes from chunks
+    for chunk in chunks:
+        # Extract metadata
+        metadata = chunk.metadata or {}
+        path = chunk.path or metadata.get("file_path", "unknown")
+        chunk_type = metadata.get("chunk_type", "file")
+        
+        # Create node ID
+        node_id = f"{path}::{chunk.id}"
+        if node_id not in node_ids:
+            node_ids.add(node_id)
+            nodes.append(
+                GraphNode(
+                    id=node_id,
+                    label=path.split("/")[-1] if "/" in path else path,
+                    type=chunk_type,
+                    path=path,
+                    size=len(chunk.content) if chunk.content else 1,
+                )
+            )
+        
+        # Extract references from metadata to build edges
+        refs = metadata.get("references", [])
+        imports = metadata.get("imports", [])
+        
+        for ref in refs:
+            target_id = f"{ref}::{chunk.id}"
+            if target_id not in node_ids:
+                node_ids.add(target_id)
+                nodes.append(
+                    GraphNode(
+                        id=target_id,
+                        label=ref.split("/")[-1] if "/" in ref else ref,
+                        type="file",
+                        path=ref,
+                        size=1,
+                    )
+                )
+            edges.append(
+                GraphEdge(
+                    source=node_id,
+                    target=target_id,
+                    type="references",
+                    weight=1.0,
+                )
+            )
+        
+        for imp in imports:
+            target_id = f"{imp}::import"
+            if target_id not in node_ids:
+                node_ids.add(target_id)
+                nodes.append(
+                    GraphNode(
+                        id=target_id,
+                        label=imp.split("/")[-1] if "/" in imp else imp,
+                        type="module",
+                        path=imp,
+                        size=1,
+                    )
+                )
+            edges.append(
+                GraphEdge(
+                    source=node_id,
+                    target=target_id,
+                    type="imports",
+                    weight=0.5,
+                )
+            )
+    
+    return KnowledgeGraphResponse(
+        repo_id=repo_id,
+        nodes=nodes,
+        edges=edges,
+        total_nodes=len(nodes),
+        total_edges=len(edges),
     )
 
 

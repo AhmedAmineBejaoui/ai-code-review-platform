@@ -22,6 +22,117 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.data.base import Base
 
 
+class ReviewStateORM(Base):
+    """Review state machine tracking"""
+    __tablename__ = "review_states"
+    __table_args__ = (
+        UniqueConstraint("analysis_id", name="uq_review_states_analysis"),
+        CheckConstraint(
+            "current_state IN ('draft', 'ready_for_review', 'assigning_reviewers', 'pending_review', "
+            "'in_review', 'waiting_for_changes', 'changes_requested', 'approved', 'approved_with_suggestions', "
+            "'merged', 'closed', 'abandoned', 'blocked', 'failed')",
+            name="ck_review_states_current_state",
+        ),
+        CheckConstraint(
+            "previous_state IS NULL OR previous_state IN ('draft', 'ready_for_review', 'assigning_reviewers', "
+            "'pending_review', 'in_review', 'waiting_for_changes', 'changes_requested', 'approved', "
+            "'approved_with_suggestions', 'merged', 'closed', 'abandoned', 'blocked', 'failed')",
+            name="ck_review_states_previous_state",
+        ),
+        CheckConstraint(
+            "transition_reason IS NULL OR transition_reason IN ('submit_for_review', 'request_review', "
+            "'update_changes', 'address_feedback', 'abandon', 'start_review', 'request_changes', 'approve', "
+            "'approve_with_suggestions', 'block', 'reassign', 'auto_assign', 'merge', 'close', 'timeout', "
+            "'error', 'restart_review')",
+            name="ck_review_states_transition_reason",
+        ),
+        Index("idx_review_states_analysis", "analysis_id"),
+        Index("idx_review_states_current", "current_state"),
+        Index("idx_review_states_transitioned", "transitioned_at"),
+        Index("idx_review_states_overdue", "is_overdue", "sla_deadline"),
+        Index("idx_review_states_assignees", "reviewers_assigned"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    analysis_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    current_state: Mapped[str] = mapped_column(Text, nullable=False)
+    previous_state: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transition_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    transitioned_by: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    transitioned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    
+    # Review progress tracking
+    reviewers_assigned: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    reviewers_completed: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False, server_default="{}")
+    blocking_comments: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    change_requests: Mapped[int] = mapped_column(Integer, nullable=False, server_default="0")
+    
+    # Timing metrics
+    time_in_current_state: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    total_review_time: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    sla_deadline: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    is_overdue: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default="false")
+    
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
+class ReviewStateHistoryORM(Base):
+    """Review state transition history"""
+    __tablename__ = "review_state_history"
+    __table_args__ = (
+        CheckConstraint(
+            "from_state IS NULL OR from_state IN ('draft', 'ready_for_review', 'assigning_reviewers', "
+            "'pending_review', 'in_review', 'waiting_for_changes', 'changes_requested', 'approved', "
+            "'approved_with_suggestions', 'merged', 'closed', 'abandoned', 'blocked', 'failed')",
+            name="ck_review_state_history_from_state",
+        ),
+        CheckConstraint(
+            "to_state IN ('draft', 'ready_for_review', 'assigning_reviewers', 'pending_review', "
+            "'in_review', 'waiting_for_changes', 'changes_requested', 'approved', 'approved_with_suggestions', "
+            "'merged', 'closed', 'abandoned', 'blocked', 'failed')",
+            name="ck_review_state_history_to_state",
+        ),
+        CheckConstraint(
+            "transition_reason IN ('submit_for_review', 'request_review', 'update_changes', 'address_feedback', "
+            "'abandon', 'start_review', 'request_changes', 'approve', 'approve_with_suggestions', 'block', "
+            "'reassign', 'auto_assign', 'merge', 'close', 'timeout', 'error', 'restart_review')",
+            name="ck_review_state_history_transition_reason",
+        ),
+        Index("idx_review_state_history_analysis", "analysis_id", "transitioned_at"),
+        Index("idx_review_state_history_state", "analysis_id", "to_state"),
+        Index("idx_review_state_history_user", "transitioned_by", "transitioned_at"),
+    )
+
+    id: Mapped[str] = mapped_column(Text, primary_key=True)
+    analysis_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("analyses.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    from_state: Mapped[str | None] = mapped_column(Text, nullable=True)  # NULL for initial state
+    to_state: Mapped[str] = mapped_column(Text, nullable=False)
+    transition_reason: Mapped[str] = mapped_column(Text, nullable=False)
+    transitioned_by: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("users.id"),
+        nullable=True,
+    )
+    transitioned_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, server_default="{}")
+    duration_in_previous_state: Mapped[float | None] = mapped_column(Numeric(10, 3), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class ReviewAssignmentORM(Base):
     """Review assignment to reviewer"""
     __tablename__ = "review_assignments"

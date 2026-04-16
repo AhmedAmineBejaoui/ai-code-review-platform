@@ -37,6 +37,7 @@ class AdminUserUpdateRequest(BaseModel):
 
     role: Literal["admin", "reviewer_lead", "reviewer_senior", "reviewer_junior", "reviewer", "developer", "viewer"] | None = None
     isActive: bool | None = None
+    customPermissions: list[str] | None = None
 
 
 class PolicyRepoRule(BaseModel):
@@ -305,7 +306,7 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
             conn.execute(
                 text(
                     """
-                    SELECT id, email, display_name, is_active, created_at
+                    SELECT id, email, display_name, is_active, custom_permissions, created_at
                     FROM users
                     ORDER BY created_at DESC
                     LIMIT :limit
@@ -433,8 +434,21 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
         )
 
     users: list[dict[str, Any]] = []
+    import json
     for row in users_rows:
         user_id = str(row["id"])
+        
+        # Parse custom_permissions from JSONB
+        custom_perms = row.get("custom_permissions")
+        if custom_perms is None:
+            custom_perms_list = []
+        elif isinstance(custom_perms, str):
+            custom_perms_list = json.loads(custom_perms) if custom_perms else []
+        elif isinstance(custom_perms, list):
+            custom_perms_list = custom_perms
+        else:
+            custom_perms_list = []
+        
         users.append(
             {
                 "id": user_id,
@@ -444,6 +458,7 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
                 "createdAt": _to_iso(row.get("created_at")),
                 "roles": sorted(set(roles_by_user.get(user_id, []))),
                 "permissions": sorted(set(permissions_by_user.get(user_id, []))),
+                "customPermissions": custom_perms_list,
                 "organizationMemberships": memberships_by_user.get(user_id, []),
             }
         )
@@ -477,7 +492,7 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
         conn.execute(
             text(
                 """
-                SELECT id, email, display_name, is_active, created_at
+                SELECT id, email, display_name, is_active, custom_permissions, created_at
                 FROM users
                 WHERE id = :user_id
                 LIMIT 1
@@ -540,6 +555,19 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
         .mappings()
         .all()
     )
+    
+    # Parse custom_permissions from JSONB
+    import json
+    custom_perms = row.get("custom_permissions")
+    if custom_perms is None:
+        custom_perms_list = []
+    elif isinstance(custom_perms, str):
+        custom_perms_list = json.loads(custom_perms) if custom_perms else []
+    elif isinstance(custom_perms, list):
+        custom_perms_list = custom_perms
+    else:
+        custom_perms_list = []
+    
     return {
         "id": str(row["id"]),
         "email": str(row["email"]),
@@ -548,6 +576,7 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
         "createdAt": _to_iso(row.get("created_at")),
         "roles": [str(item["code"]) for item in role_rows],
         "permissions": [str(item["code"]) for item in permission_rows],
+        "customPermissions": custom_perms_list,
         "organizationMemberships": [
             {
                 "organizationId": str(item["organization_id"]),
@@ -700,6 +729,8 @@ def _cascade_delete_user(user_id: str, actor_id: str) -> dict[str, Any]:
 
 
 def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: str) -> dict[str, Any]:
+    from app.api.middleware.auth import invalidate_principal_cache
+    
     engine = get_engine()
     with engine.begin() as conn:
         existing = _fetch_user_by_id(conn, user_id)
@@ -758,6 +789,13 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
                 },
             )
 
+        if payload.customPermissions is not None:
+            import json
+            conn.execute(
+                text("UPDATE users SET custom_permissions = :perms WHERE id = :user_id"),
+                {"perms": json.dumps(payload.customPermissions), "user_id": user_id},
+            )
+
         _insert_audit_log(
             conn,
             actor=actor_id,
@@ -767,6 +805,7 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
             meta={
                 "role": payload.role,
                 "isActive": payload.isActive,
+                "customPermissions": payload.customPermissions,
             },
         )
 
@@ -778,6 +817,10 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
                 message="User not found",
                 details={"user_id": user_id},
             )
+        
+        # Invalidate the principal cache for this user after successful update
+        invalidate_principal_cache(user_id)
+        
         return updated
 
 
@@ -1593,7 +1636,7 @@ async def patch_admin_user(
     user_id: str = Path(min_length=1, max_length=255),
     principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
 ):
-    if payload.role is None and payload.isActive is None:
+    if payload.role is None and payload.isActive is None and payload.customPermissions is None:
         raise ApiError(
             status_code=400,
             code="EMPTY_UPDATE",

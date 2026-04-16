@@ -64,7 +64,9 @@
       "Bash(python -m json.tool \"/c/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/.claude/worktrees/objective-kepler/infra/observability/grafana/dashboards/analysis_pipeline.json\")",
       "Bash(dir \"C:\\\\Users\\\\Ahmed Amin Bejoui\\\\Desktop\\\\ai-code-review-platform\\\\apps\\\\dashboard\\\\components\\\\dashboard\\\\\" 2>&1 | findstr \"Layout\\\\|layout\")",
       "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); console.log\\('TrendingEqual' in lucide\\);\")",
-      "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); const icons = ['Hexagon','CircleDot','Waves','Keyboard','Sparkles','Target']; icons.forEach\\(i => console.log\\(i, i in lucide\\)\\);\")"
+      "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); const icons = ['Hexagon','CircleDot','Waves','Keyboard','Sparkles','Target']; icons.forEach\\(i => console.log\\(i, i in lucide\\)\\);\")",
+      "Bash(gh pr create --title 'feat: GraphRAG pipeline + microservices + enhanced dashboard' --body ':*)",
+      "Bash(gh auth:*)"
     ]
   }
 }

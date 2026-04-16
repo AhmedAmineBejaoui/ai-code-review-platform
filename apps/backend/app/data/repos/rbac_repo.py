@@ -236,7 +236,7 @@ class RBACRepo:
                 conn.execute(
                     text(
                         """
-                        SELECT id, email, display_name, is_active
+                        SELECT id, email, display_name, is_active, custom_permissions
                         FROM users
                         WHERE id = :user_id
                         LIMIT 1
@@ -307,13 +307,29 @@ class RBACRepo:
                 .all()
             )
 
+        # Parse custom_permissions from JSONB and merge with role permissions
+        import json
+        custom_perms = user_row.get("custom_permissions")
+        if custom_perms is None:
+            custom_perms_list = []
+        elif isinstance(custom_perms, str):
+            custom_perms_list = json.loads(custom_perms) if custom_perms else []
+        elif isinstance(custom_perms, list):
+            custom_perms_list = custom_perms
+        else:
+            custom_perms_list = []
+        
+        # Combine role permissions with custom permissions (custom permissions override)
+        role_permissions = [str(row["code"]) for row in permission_rows]
+        all_permissions = sorted(set(role_permissions + custom_perms_list))
+
         return RBACUser(
             id=str(user_row["id"]),
             email=str(user_row["email"]),
             display_name=user_row.get("display_name"),
             is_active=bool(user_row.get("is_active", False)),
             roles=[str(row["code"]) for row in role_rows],
-            permissions=[str(row["code"]) for row in permission_rows],
+            permissions=all_permissions,
             organization_memberships=[
                 RBACOrganizationMembership(
                     organization_id=str(row["organization_id"]),

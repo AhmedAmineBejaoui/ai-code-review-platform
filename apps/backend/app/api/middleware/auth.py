@@ -52,6 +52,16 @@ def _cache_principal(user_id: str, org_id: str | None, principal: "Authenticated
                 del _principal_cache[k]
 
 
+def invalidate_principal_cache(user_id: str) -> None:
+    """Invalidate all cached principals for a given user (across all orgs)."""
+    with _cache_lock:
+        keys_to_remove = [key for key in _principal_cache if key[0] == user_id]
+        for key in keys_to_remove:
+            del _principal_cache[key]
+    logger.info(f"Invalidated principal cache for user {user_id} ({len(keys_to_remove)} entries)")
+
+
+
 class AuthenticatedPrincipal(BaseModel):
     user_id: str
     email: str
@@ -73,13 +83,13 @@ _ROLE_ALIASES: dict[str, str] = {
     "superadmin": "admin",
     "super-admin": "admin",
     "super_admin": "admin",
-    # Tech Lead role
-    "tech_lead": "tech_lead",
-    "tech-lead": "tech_lead",
-    "techlead": "tech_lead",
-    "lead": "tech_lead",
-    "team_lead": "tech_lead",
-    "team-lead": "tech_lead",
+    # Tech Lead role - mapped to admin
+    "tech_lead": "admin",
+    "tech-lead": "admin",
+    "techlead": "admin",
+    "lead": "admin",
+    "team_lead": "admin",
+    "team-lead": "admin",
     # Reviewers normalized to 'reviewer'
     "reviewer": "reviewer",
     "review": "reviewer",
@@ -109,7 +119,6 @@ _ROLE_PERMISSIONS: dict[str, set[str]] = {
     "developer": {"analyses.read", "analyses.create"},
     "reviewer": {"analyses.read", "analyses.write"},
     "admin": {"analyses.create", "analyses.read", "analyses.write"},
-    "tech_lead": {"analyses.create", "analyses.read", "analyses.write"},
 }
 
 
@@ -478,6 +487,115 @@ async def get_current_principal(
         org_name=None,
         org_role=None,
     )
+
+
+def get_user_team_role(user_id: str, project_id: str, repo: RBACRepo) -> str | None:
+    """
+    Get user's role from team membership for a specific project.
+    
+    Role resolution order (highest priority first):
+    1. Team member role (project-scoped)
+    2. Organization member role  
+    3. User platform role
+    
+    Returns None if user has no access to the project.
+    """
+    from sqlalchemy import text
+    from app.data.database import get_engine
+    
+    engine = get_engine()
+    
+    try:
+        with engine.connect() as conn:
+            # Get user's team role for this project
+            result = conn.execute(
+                text("""
+                    SELECT tm.role, tm.permissions
+                    FROM team_members tm
+                    JOIN teams t ON t.id = tm.team_id
+                    WHERE t.project_id = :project_id
+                    AND tm.user_id = :user_id
+                    LIMIT 1
+                """),
+                {"project_id": project_id, "user_id": user_id}
+            ).first()
+            
+            if result:
+                logger.debug(f"User {user_id} has team role '{result.role}' for project {project_id}")
+                return result.role
+            
+            # Check if user has org-level access to this project's organization
+            org_result = conn.execute(
+                text("""
+                    SELECT om.role
+                    FROM organization_memberships om
+                    JOIN project_profiles pp ON pp.org_id = om.organization_id
+                    WHERE pp.id = :project_id
+                    AND om.user_id = :user_id
+                    AND om.status = 'active'
+                    LIMIT 1
+                """),
+                {"project_id": project_id, "user_id": user_id}
+            ).first()
+            
+            if org_result:
+                # Map org role to project role
+                org_role = org_result.role
+                if org_role in ('owner', 'admin'):
+                    logger.debug(f"User {user_id} has org role '{org_role}', granting admin access to project {project_id}")
+                    return "admin"
+                else:
+                    logger.debug(f"User {user_id} has org role '{org_role}', granting developer access to project {project_id}")
+                    return "developer"
+            
+            logger.debug(f"User {user_id} has no team or org role for project {project_id}")
+            return None
+    except Exception as exc:
+        logger.warning(f"Failed to get team role for user {user_id} and project {project_id}: {exc}")
+        return None
+
+
+def enrich_principal_with_project_role(
+    principal: AuthenticatedPrincipal,
+    project_id: str | None,
+    repo: RBACRepo
+) -> AuthenticatedPrincipal:
+    """
+    Enrich principal with project-specific role if project_id is provided.
+    
+    This updates the principal's roles and permissions based on their team membership.
+    Platform admin role always overrides project-level roles.
+    """
+    if not project_id:
+        return principal
+    
+    # Platform admins always keep their admin role
+    if "admin" in principal.roles:
+        return principal
+    
+    # Get project-specific role from team membership
+    team_role = get_user_team_role(principal.user_id, project_id, repo)
+    
+    if team_role:
+        # Update principal with project-specific role
+        normalized_role = _ROLE_ALIASES.get(team_role, team_role)
+        new_roles = [normalized_role] if normalized_role else principal.roles
+        new_permissions = _permissions_for_roles(new_roles)
+        
+        return AuthenticatedPrincipal(
+            user_id=principal.user_id,
+            email=principal.email,
+            display_name=principal.display_name,
+            roles=new_roles,
+            permissions=new_permissions,
+            org_id=principal.org_id,
+            org_slug=principal.org_slug,
+            org_name=principal.org_name,
+            org_role=principal.org_role,
+        )
+    
+    # User has no access to this project
+    return principal
 
 
 def require_auth(principal: AuthenticatedPrincipal | None = Depends(get_current_principal)) -> AuthenticatedPrincipal | None:

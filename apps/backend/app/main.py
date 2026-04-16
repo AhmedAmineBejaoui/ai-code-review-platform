@@ -15,16 +15,21 @@ from app.api.http import (
     branch_protection,
     branches,
     internal_analysis_engine,
+    jira_integration,
     knowledge_base,
     notifications,
     object_storage,
+    observability,
+    organizations,
     project_comprehension,
     project_settings,
     project_roles,
     projects,
+    rag_evaluation,
     rag_feedback,
     rag_query,
     repositories,
+    review_states,
     reviewer_metrics,
     review_queue,
     reviews,
@@ -74,6 +79,10 @@ app = FastAPI(
         {"name": "projects", "description": "Project comprehension and context management APIs."},
         {"name": "project-settings", "description": "Project settings including auto-analysis toggle management."},
         {"name": "rag", "description": "RAG query and intelligent code analysis APIs."},
+        {"name": "rag-evaluation", "description": "RAG performance evaluation and benchmarking APIs."},
+        {"name": "observability", "description": "System monitoring and observability APIs."},
+        {"name": "jira", "description": "Jira integration for issue creation and linking APIs."},
+        {"name": "review-states", "description": "Review state machine and workflow management APIs."},
     ],
 )
 register_exception_handlers(app)
@@ -150,6 +159,7 @@ app.include_router(branch_protection.router)
 app.include_router(branch_policies.router)
 app.include_router(reviews.router)
 app.include_router(review_queue.router)
+app.include_router(review_states.router)
 app.include_router(reviewer_metrics.router)
 app.include_router(notifications.router)
 app.include_router(knowledge_base.router)
@@ -157,14 +167,18 @@ app.include_router(admin.router)
 app.include_router(internal_analysis_engine.router)
 app.include_router(project_comprehension.router)
 app.include_router(project_settings.router, prefix="/api/v1", tags=["project-settings"])
+app.include_router(rag_evaluation.router)
 app.include_router(rag_feedback.router)
 app.include_router(rag_query.router)
 app.include_router(repositories.router)
 app.include_router(projects.router)
+app.include_router(organizations.router, prefix="/v1")
 app.include_router(statistics.router)
 app.include_router(security.router)
 app.include_router(teams.router)
 app.include_router(object_storage.router)
+app.include_router(observability.router)
+app.include_router(jira_integration.router)
 app.include_router(integrations.router)
 app.include_router(project_roles.router)
 app.include_router(role_permissions.router)

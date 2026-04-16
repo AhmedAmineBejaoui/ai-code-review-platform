@@ -255,6 +255,21 @@ class FindingsRepo:
         
         return counts
 
+    def update_finding_jira_issue(self, finding_id: str, jira_issue_key: str) -> bool:
+        """Update a finding's linked Jira issue key."""
+        query = text("""
+            UPDATE findings 
+            SET jira_issue_key = :jira_issue_key 
+            WHERE id = :id
+        """)
+        
+        with self._engine.begin() as conn:
+            result = conn.execute(query, {
+                "id": finding_id,
+                "jira_issue_key": jira_issue_key
+            })
+            return result.rowcount > 0
+
     def delete_findings_by_analysis(self, analysis_id: str) -> int:
         """Delete all findings for an analysis. Returns count deleted."""
         query = text("""
@@ -304,4 +319,5 @@ class FindingsRepo:
             evidence_json=row.get("evidence_json") or "{}",
             fingerprint=str(row.get("fingerprint") or ""),
             created_at=row["created_at"].isoformat() if isinstance(row.get("created_at"), datetime) else str(row.get("created_at", "")),
+            jira_issue_key=row.get("jira_issue_key"),
         )
