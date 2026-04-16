@@ -8,6 +8,11 @@ global:
     env: "local"
     project: "ai-code-review"
 
+# ─── Alerting Rules ───────────────────────────────────────────────────────────
+
+rule_files:
+  - "/etc/prometheus/alerts.yml"
+
 # ─── Scrape Configurations ────────────────────────────────────────────────────
 
 scrape_configs:
@@ -22,7 +27,7 @@ scrape_configs:
     metrics_path: "/metrics"
     scrape_interval: 15s
 
-  # Celery worker metrics via Flower
+  # Celery worker metrics via Flower (task counts, states)
   - job_name: "celery-flower"
     static_configs:
       - targets: ["flower:5555"]
@@ -30,6 +35,17 @@ scrape_configs:
           service: "worker"
     metrics_path: "/metrics"
     scrape_interval: 30s
+
+  # Celery worker custom business metrics via Pushgateway
+  # Workers push pipeline metrics (duration, findings, LLM calls, etc.) here
+  # after each task completion. honor_labels preserves the job/instance set by workers.
+  - job_name: "celery-pushgateway"
+    honor_labels: true
+    static_configs:
+      - targets: ["pushgateway:9091"]
+        labels:
+          service: "worker"
+    scrape_interval: 15s
 
   # Redis metrics via redis_exporter
   - job_name: "redis"

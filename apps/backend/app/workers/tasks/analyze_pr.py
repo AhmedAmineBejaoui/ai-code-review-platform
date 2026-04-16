@@ -4,6 +4,7 @@ import asyncio
 import hashlib
 import time
 import uuid
+from contextlib import contextmanager
 from datetime import datetime, timezone
 from typing import Any
 
@@ -11,6 +12,19 @@ from analysis.langGraph.models import LangGraphAnalysisRequest
 from analysis.langGraph.pipeline import run_langgraph_analysis
 from app.core.change_classification import ChangeClassifier
 from app.core.knowledge_base.repo_path_resolver import resolve_repo_context_repo_path
+from app.core.observability.metrics import (
+    ANALYSIS_COMPLETED,
+    ANALYSIS_DURATION,
+    ANALYSIS_STARTED,
+    PIPELINE_STEP_DURATION,
+    PIPELINE_STEP_ERRORS,
+    RAG_QUERIES,
+    RAG_QUERY_DURATION,
+    SECRETS_FOUND,
+    SECRETS_REDACTED,
+    STATIC_FINDINGS,
+    push_worker_metrics,
+)
 from app.core.review_intelligence.change_explainer import ChangeExplainer
 from app.core.review_intelligence.pr_summary_service import PRSummaryService
 from app.core.review_intelligence.risk_detector import RiskDetector
@@ -30,6 +44,19 @@ from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.celery_app import celery_app
+
+
+@contextmanager
+def _timed_step(step_name: str):
+    """Measure a pipeline step's duration and count errors into Prometheus."""
+    start = time.perf_counter()
+    try:
+        yield
+        PIPELINE_STEP_DURATION.labels(step=step_name).observe(time.perf_counter() - start)
+    except Exception as exc:
+        PIPELINE_STEP_DURATION.labels(step=step_name).observe(time.perf_counter() - start)
+        PIPELINE_STEP_ERRORS.labels(step=step_name, error_type=type(exc).__name__).inc()
+        raise
 
 _CHANGE_CLASSIFIER = ChangeClassifier()
 _SUMMARY_SERVICE = SummaryService(
@@ -273,6 +300,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 "running_task_id": current_task_id,
             }
 
+    ANALYSIS_STARTED.labels(source="api").inc()
+
     try:
         repo.update_status(
             analysis_id=analysis_id,
@@ -282,7 +311,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             metadata_updates={"pipeline": {"task_id": self.request.id, "started": True}},
         )
 
-        parsed = parse_unified_diff(analysis.diff_raw)
+        with _timed_step("diff_parse"):
+            parsed = parse_unified_diff(analysis.diff_raw)
         files_count, additions_total, deletions_total = repo.replace_parsed_diff(analysis_id, parsed)
 
         kb_context_preview: str | None = None
@@ -306,17 +336,18 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
         if settings.SECRET_SCAN_ENABLED:
             try:
-                scan_result = scan_parsed_diff_for_secrets(
-                    parsed,
-                    min_token_len=settings.SECRET_SCAN_MIN_TOKEN_LEN,
-                    entropy_threshold=settings.SECRET_SCAN_ENTROPY_THRESHOLD,
-                    max_findings=settings.SECRET_SCAN_MAX_FINDINGS,
-                )
-                redaction_result = redact_unified_diff_added_lines(
-                    analysis.diff_raw,
-                    min_token_len=settings.SECRET_SCAN_MIN_TOKEN_LEN,
-                    entropy_threshold=settings.SECRET_SCAN_ENTROPY_THRESHOLD,
-                )
+                with _timed_step("secret_scan"):
+                    scan_result = scan_parsed_diff_for_secrets(
+                        parsed,
+                        min_token_len=settings.SECRET_SCAN_MIN_TOKEN_LEN,
+                        entropy_threshold=settings.SECRET_SCAN_ENTROPY_THRESHOLD,
+                        max_findings=settings.SECRET_SCAN_MAX_FINDINGS,
+                    )
+                    redaction_result = redact_unified_diff_added_lines(
+                        analysis.diff_raw,
+                        min_token_len=settings.SECRET_SCAN_MIN_TOKEN_LEN,
+                        entropy_threshold=settings.SECRET_SCAN_ENTROPY_THRESHOLD,
+                    )
 
                 diff_redacted = redaction_result.diff_redacted
                 has_secrets = scan_result.has_secrets or redaction_result.has_secrets
@@ -328,6 +359,11 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     "scanner_version": redaction_result.scanner_version,
                     "findings_count": len(scan_result.detections),
                 }
+
+                if redaction_result.masked_count > 0:
+                    SECRETS_REDACTED.inc(redaction_result.masked_count)
+                for detection in scan_result.detections:
+                    SECRETS_FOUND.labels(rule_id=detection.match.rule_id).inc()
 
                 for detection in scan_result.detections:
                     evidence = {
@@ -399,10 +435,11 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         change_type_confidence: float | None = None
         change_type_source: str | None = None
         try:
-            classification = _CHANGE_CLASSIFIER.classify(
-                metadata=analysis.metadata,
-                parsed_diff=parsed,
-            )
+            with _timed_step("change_classification"):
+                classification = _CHANGE_CLASSIFIER.classify(
+                    metadata=analysis.metadata,
+                    parsed_diff=parsed,
+                )
             repo.update_change_classification(
                 analysis_id=analysis_id,
                 change_type=classification.change_type,
@@ -429,12 +466,13 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         static_warnings: list[str] = []
         static_tool_runs: list[CreateToolRunInput] = []
         try:
-            static_result = run_static_analysis_stage(
-                parsed,
-                repo_name=analysis.repo,
-                commit_sha=analysis.commit_sha,
-                metadata=analysis.metadata,
-            )
+            with _timed_step("static_analysis"):
+                static_result = run_static_analysis_stage(
+                    parsed,
+                    repo_name=analysis.repo,
+                    commit_sha=analysis.commit_sha,
+                    metadata=analysis.metadata,
+                )
             static_stats = static_result.stats
             static_warnings = static_result.warnings
             static_tool_runs = [
@@ -494,6 +532,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         )
                     )
                     static_findings_count += 1
+                    STATIC_FINDINGS.labels(
+                        tool=finding.source,
+                        severity=(finding.severity or "unknown").lower(),
+                    ).inc()
                 except Exception:
                     continue
         except Exception:
@@ -514,6 +556,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             repo_path = resolve_repo_context_repo_path(repo=analysis.repo, metadata=analysis.metadata)
             if repo_path:
                 try:
+                    _rag_start = time.perf_counter()
                     langgraph_request = LangGraphAnalysisRequest(
                         analysis_id=analysis_id,
                         repo_id=analysis.repo,
@@ -527,7 +570,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                             **(analysis.metadata or {}),
                         },
                     )
-                    langgraph_result = asyncio.run(run_langgraph_analysis(request=langgraph_request))
+                    with _timed_step("langgraph_rag"):
+                        langgraph_result = asyncio.run(run_langgraph_analysis(request=langgraph_request))
+                    RAG_QUERY_DURATION.observe(time.perf_counter() - _rag_start)
+                    RAG_QUERIES.labels(status="success").inc()
                     langgraph_pipeline_payload = {**langgraph_result.to_dict(), "enabled": True}
 
                     kb_context_preview = langgraph_result.retrieval.context_text
@@ -578,6 +624,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                             except Exception:
                                 continue
                 except Exception as exc:
+                    RAG_QUERIES.labels(status="failed").inc()
                     langgraph_pipeline_payload = {
                         "status": "failed",
                         "enabled": True,
@@ -645,6 +692,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                 allow_non_qdrant_grounding=True,
             )
             try:
+                _ri_start = time.perf_counter()
                 if can_use_graph_rag:
                     review_output, review_generation_ms = _timed_call(
                         _REVIEW_INTELLIGENCE_SERVICE.generate,
@@ -679,6 +727,9 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     review_output_source = "rule_engine"
                     review_qdrant_required = False
 
+                PIPELINE_STEP_DURATION.labels(step="review_intelligence").observe(
+                    time.perf_counter() - _ri_start
+                )
                 review_output_status = "completed" if review_output_source == "graph_rag" else "rule_engine"
                 review_merge_status = review_output.merge_readiness.status
                 review_risk_count = len(review_output.risk_findings)
@@ -853,6 +904,11 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             deletions_total=deletions_total,
             metadata_updates={"pipeline": metrics},
         )
+
+        ANALYSIS_COMPLETED.labels(status="completed").inc()
+        ANALYSIS_DURATION.observe(duration_ms / 1000)
+        push_worker_metrics()
+
         return {"analysis_id": analysis_id, "status": "COMPLETED", "metrics": metrics}
     except Exception:
         duration_ms = int((time.perf_counter() - started_at) * 1000)
@@ -865,4 +921,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             error_message="Pipeline execution failed",
             metadata_updates={"pipeline": {"duration_ms": duration_ms, "failed": True}},
         )
+        ANALYSIS_COMPLETED.labels(status="failed").inc()
+        ANALYSIS_DURATION.observe(duration_ms / 1000)
+        push_worker_metrics()
         raise
