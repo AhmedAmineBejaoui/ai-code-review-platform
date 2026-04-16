@@ -29,6 +29,7 @@ volumes:
   minio_data:       # MinIO object storage
   prometheus_data:  # Prometheus time-series data (15 days)
   grafana_data:     # Grafana dashboards + config
+  pushgateway_data: # Pushgateway persistence
 
 services:
 
@@ -215,6 +216,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       MINIO_SECURE: "false"
+      PROMETHEUS_PUSHGATEWAY_URL: http://pushgateway:9091
     volumes:
       - ../../:/workspace:ro
     depends_on:
@@ -226,6 +228,8 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+      pushgateway:
+        condition: service_started
     networks:
       - ai-review-net
     logging:
@@ -296,12 +300,31 @@ services:
   #  OBSERVABILITY STACK
   # ═══════════════════════════════════════════════════════════════════════════
 
+  # Prometheus Pushgateway — receives metrics pushed by Celery workers.
+  # Workers cannot expose /metrics themselves (no HTTP server), so they push
+  # their metrics here after each task. Prometheus scrapes this endpoint.
+  # UI: http://localhost:9091
+  pushgateway:
+    image: prom/pushgateway:v1.8.0
+    container_name: ai-review-pushgateway
+    restart: unless-stopped
+    ports:
+      - "9091:9091"
+    networks:
+      - ai-review-net
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+
   prometheus:
     image: prom/prometheus:v2.51.0
     container_name: ai-review-prometheus
     restart: unless-stopped
     volumes:
       - ../observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../observability/alerts.yml:/etc/prometheus/alerts.yml:ro
       - prometheus_data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
