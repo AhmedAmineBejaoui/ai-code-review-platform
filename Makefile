@@ -6,9 +6,12 @@
         migrate-create logs logs-api logs-worker test test-ci api-shell \
         worker-shell generate-fernet-key ps clean db-shell dev-backend-ngrok \
         dev-backend-cloudflare infra-core-up infra-core-down host-migrate \
-        host-api host-api-prod host-worker \
+        host-api host-api-prod host-worker legacy-api \
         prod-build prod-up prod-down prod-logs prod-migrate \
-        langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback
+        langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback \
+        svc-install svc-gateway svc-up svc-down svc-build svc-logs svc-ps \
+        svc-health svc-routes \
+        svc-run-analysis svc-run-kb svc-run-reviews svc-run-org svc-run-config svc-run-notifications
 
 COMPOSE_FILE = infra/local/docker-compose.yml
 COMPOSE_MINIMAL_FILE = infra/local/docker-compose.minimal.yml
@@ -18,9 +21,14 @@ PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
 PROD_ENV_FILE = infra/cloud/oracle/.env.prod
 PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
 BACKEND_DIR  = apps/backend
-# Microservices
-MICRO_COMPOSE_FILE = services/docker-compose.yml
+# Microservices (legacy attempt, kept for reference — will be deleted after full migration)
+MICRO_COMPOSE_FILE = services-legacy-attempt/docker-compose.yml
 MICRO_COMPOSE = docker compose --env-file .env -f $(MICRO_COMPOSE_FILE)
+
+# Microservices (new strangler-fig migration — step 1 of the refactor)
+SVC_DIR              = apps/services
+SVC_COMPOSE_FILE     = docker-compose.services.yml
+SVC_COMPOSE          = docker compose --env-file .env -f $(SVC_COMPOSE_FILE)
 MINIO_API_PORT ?= 9000
 MINIO_CONSOLE_PORT ?= 9001
 GRAFANA_PORT ?= 3000
@@ -81,14 +89,25 @@ help:
 	@echo "  -----------------------------------------------------"
 	@echo "  make generate-fernet-key  Generate SECRETS_ENCRYPTION_KEY"
 	@echo ""
-	@echo "  Microservices (NEW)"
+	@echo "  Microservices (legacy attempt — services-legacy-attempt/)"
 	@echo "  -----------------------------------------------------"
-	@echo "  make micro-build        Build all microservice images"
-	@echo "  make micro-up           Start microservices stack"
-	@echo "  make micro-down         Stop microservices stack"
-	@echo "  make micro-logs         Show microservices logs"
-	@echo "  make micro-validate     Validate microservices health"
-	@echo "  make micro-migrate      Run microservices migrations"
+	@echo "  make micro-build        Build legacy-attempt microservice images"
+	@echo "  make micro-up           Start legacy-attempt microservices stack"
+	@echo "  make micro-down         Stop legacy-attempt microservices stack"
+	@echo "  make micro-logs         Show legacy-attempt microservices logs"
+	@echo "  make micro-validate     Validate legacy-attempt microservices health"
+	@echo ""
+	@echo "  Microservices v2 — strangler-fig (apps/services/)"
+	@echo "  -----------------------------------------------------"
+	@echo "  make svc-install        Poetry-install apps/services deps"
+	@echo "  make legacy-api         Run legacy monolith on :8100 (for gateway use)"
+	@echo "  make svc-gateway        Run API gateway on :8000 (host, reload)"
+	@echo "  make svc-run-<svc>      Run a single service host-side (analysis|kb|reviews|org|config|notifications)"
+	@echo "  make svc-build          docker compose build (all services v2)"
+	@echo "  make svc-up             docker compose up -d (all services v2)"
+	@echo "  make svc-down           docker compose down (all services v2)"
+	@echo "  make svc-logs           Tail services v2 logs"
+	@echo "  make svc-health         Smoke-test gateway + every stub"
 	@echo ""
 
 # ─── Stack Control ────────────────────────────────────────────────────────────
@@ -187,6 +206,11 @@ host-api-prod:
 host-worker:
 	cd $(BACKEND_DIR) && poetry run python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
 
+# Legacy monolith on :8100 — used together with the new API gateway on :8000.
+# Keeps `make host-api` unchanged so existing workflows are not disrupted.
+legacy-api:
+	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --reload --port $${LEGACY_BACKEND_PORT:-8100}
+
 langchain-parity:
 	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_parity_report.py
 
@@ -270,7 +294,71 @@ micro-logs:
 	$(MICRO_COMPOSE) logs -f
 
 micro-validate:
-	@bash services/scripts/validate-system.sh
+	@bash services-legacy-attempt/scripts/validate-system.sh
 
 micro-migrate:
 	$(MICRO_COMPOSE) exec auth-service python -c "from app.data.models import Base; from sqlalchemy import create_engine; import os; Base.metadata.create_all(create_engine(os.getenv('DATABASE_URL')))"
+
+# ——— Microservices v2 — strangler-fig migration ———————————————————————
+# Layout: apps/services/{api_gateway,analysis_service,kb_service,...}
+# Gateway: :8000 (what the frontend already talks to)
+# Legacy monolith: :8100 (run via `make legacy-api`)
+
+svc-install:
+	cd $(SVC_DIR) && poetry install --no-root
+
+# Host-native runs (each in its own terminal).
+svc-gateway:
+	cd $(SVC_DIR) && poetry run uvicorn api_gateway.main:app --reload --port $${GATEWAY_PORT:-8000}
+
+svc-run-analysis:
+	cd $(SVC_DIR) && poetry run uvicorn analysis_service.main:app --reload --port $${ANALYSIS_SERVICE_PORT:-8001}
+
+svc-run-kb:
+	cd $(SVC_DIR) && poetry run uvicorn kb_service.main:app --reload --port $${KB_SERVICE_PORT:-8002}
+
+svc-run-reviews:
+	cd $(SVC_DIR) && poetry run uvicorn reviews_service.main:app --reload --port $${REVIEWS_SERVICE_PORT:-8003}
+
+svc-run-org:
+	cd $(SVC_DIR) && poetry run uvicorn org_service.main:app --reload --port $${ORG_SERVICE_PORT:-8004}
+
+svc-run-config:
+	cd $(SVC_DIR) && poetry run uvicorn config_service.main:app --reload --port $${CONFIG_SERVICE_PORT:-8005}
+
+svc-run-notifications:
+	cd $(SVC_DIR) && poetry run uvicorn notifications_service.main:app --reload --port $${NOTIFICATIONS_SERVICE_PORT:-8006}
+
+# Docker runs.
+svc-build:
+	$(SVC_COMPOSE) build
+
+svc-up:
+	$(SVC_COMPOSE) up -d
+	@echo ""
+	@echo "  Services v2 started (docker):"
+	@echo "  -------------------------------------------------------"
+	@echo "  API Gateway:         http://localhost:$${GATEWAY_PORT:-8000}"
+	@echo "  Analysis stub:       http://localhost:$${ANALYSIS_SERVICE_PORT:-8001}/healthz"
+	@echo "  KB stub:             http://localhost:$${KB_SERVICE_PORT:-8002}/healthz"
+	@echo "  Reviews stub:        http://localhost:$${REVIEWS_SERVICE_PORT:-8003}/healthz"
+	@echo "  Org stub:            http://localhost:$${ORG_SERVICE_PORT:-8004}/healthz"
+	@echo "  Config stub:         http://localhost:$${CONFIG_SERVICE_PORT:-8005}/healthz"
+	@echo "  Notifications stub:  http://localhost:$${NOTIFICATIONS_SERVICE_PORT:-8006}/healthz"
+	@echo "  -------------------------------------------------------"
+	@echo "  Hint: the gateway expects the legacy monolith on :$${LEGACY_BACKEND_PORT:-8100}."
+	@echo "        Start it with 'make legacy-api' in another terminal."
+	@echo ""
+
+svc-down:
+	$(SVC_COMPOSE) down
+
+svc-logs:
+	$(SVC_COMPOSE) logs -f
+
+svc-ps:
+	$(SVC_COMPOSE) ps
+
+# Lightweight smoke test — hits /healthz on the gateway + each stub.
+svc-health:
+	@python3 $(SVC_DIR)/scripts/smoke_test.py
