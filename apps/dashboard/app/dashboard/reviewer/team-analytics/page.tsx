@@ -81,8 +81,8 @@ export default function TeamAnalyticsPage() {
     try {
       setLoading(true)
       const [teamResponse, leaderboardResponse] = await Promise.all([
-        fetch(`/api/v1/reviews/metrics/team?period_days=${period}`),
-        fetch(`/api/v1/reviews/metrics/leaderboard?metric=${leaderboardMetric}&period_days=${period}&limit=20`)
+        fetch(`/api/dashboard/reviewer/team-metrics?period_days=${period}`),
+        fetch(`/api/dashboard/reviewer/leaderboard?metric=${leaderboardMetric}&period_days=${period}&limit=20`)
       ])
 
       if (!teamResponse.ok || !leaderboardResponse.ok) {

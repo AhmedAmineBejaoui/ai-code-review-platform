@@ -1,53 +1,115 @@
 """
-╔══════════════════════════════════════════════════════╗
-║         SERVICE 3 — ANALYSIS SERVICE                 ║
-║  Port: 8002  (internal)                              ║
-║  Role: Analysis CRUD, findings, projects,            ║
-║        GitHub webhooks, Celery job enqueueing.       ║
-║  DB:   Owns analyses, findings, project_profiles,    ║
-║        tool_runs, review_outputs tables.             ║
-╚══════════════════════════════════════════════════════╝
+Analysis Service - Main FastAPI Application
+
+Handles:
+- Code analysis requests
+- Findings management
+- Tool runs tracking
+- Static analysis integration
 """
-from __future__ import annotations
 
 import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
-from app.api.analyses import router as analyses_router
-from app.api.webhook  import router as webhook_router
-from app.settings     import settings
-from shared.errors import register_exception_handlers
+from .config import get_settings
+from .database import check_database_health
+from .routes import analyses
 
-logging.basicConfig(level=logging.INFO)
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    from app.data.analyses_repo import init_db
-    init_db()
-    logging.getLogger(__name__).info("Analysis Service started")
+    """Application lifespan handler."""
+    settings = get_settings()
+    logger.info(
+        "Analysis Service starting on %s:%d",
+        settings.HOST,
+        settings.PORT,
+    )
+    
+    # Check database connectivity
+    if check_database_health():
+        logger.info("Database connection successful")
+    else:
+        logger.warning("Database connection failed - some features may not work")
+    
     yield
+    
+    logger.info("Analysis Service shutting down")
 
 
 app = FastAPI(
-    title="AI Code Review — Analysis Service",
+    title="AI Code Review Platform - Analysis Service",
+    description="Code analysis, findings, and tool runs management",
     version="1.0.0",
-    description="Manages analysis lifecycle, findings, and project profiles.",
     lifespan=lifespan,
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
-register_exception_handlers(app)
+# CORS Configuration
+settings = get_settings()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://localhost:3001",
+        "http://127.0.0.1:3000",
+        "http://127.0.0.1:3001",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-app.include_router(analyses_router)
-app.include_router(webhook_router)
 
+# ============ Health Endpoints ============
 
-@app.get("/healthz", tags=["observability"])
-async def health():
+@app.get("/healthz", tags=["health"])
+async def health_check():
+    """Health check endpoint."""
+    db_healthy = check_database_health()
+    
     return {
-        "status":  "ok",
+        "status": "healthy" if db_healthy else "degraded",
         "service": "analysis-service",
-        "queue":   settings.ANALYSIS_QUEUE_NAME,
+        "database": "connected" if db_healthy else "disconnected",
     }
+
+
+@app.get("/", tags=["health"])
+async def root():
+    """Root endpoint."""
+    return {
+        "service": "analysis-service",
+        "version": settings.SERVICE_VERSION,
+        "status": "running",
+    }
+
+
+# ============ Include Routers ============
+
+app.include_router(analyses.router)
+
+
+# ============ Entry Point ============
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    settings = get_settings()
+    uvicorn.run(
+        "app.main:app",
+        host=settings.HOST,
+        port=settings.PORT,
+        reload=settings.DEBUG,
+    )

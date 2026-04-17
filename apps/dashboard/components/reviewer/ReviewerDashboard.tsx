@@ -29,7 +29,7 @@ import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
-import { isReviewerLead, type AppRole } from "@/lib/roles"
+import { isAdmin, type AppRole } from "@/lib/roles"
 import {
   fetchReviewerDashboardData,
   createReviewerDashboardPoller,
@@ -37,35 +37,9 @@ import {
   type ReviewerDashboardData,
 } from "@/lib/reviewer-dashboard"
 
-// Role-specific capabilities
+// Role-specific capabilities (simplified to admin, reviewer, developer)
 const ROLE_CAPABILITIES = {
-  reviewer_junior: {
-    canApprove: true,
-    canBlock: false,
-    canAssign: false,
-    canDelegate: false,
-    canAccessTeamAnalytics: false,
-    canCreateTemplates: false,
-    canEscalate: true,
-    label: "Junior Reviewer",
-    description: "Peut approuver, suggerer des changements, et escalader les reviews complexes",
-    color: "from-blue-500 to-cyan-500",
-    icon: Star,
-  },
-  reviewer_senior: {
-    canApprove: true,
-    canBlock: true,
-    canAssign: false,
-    canDelegate: false,
-    canAccessTeamAnalytics: false,
-    canCreateTemplates: false,
-    canEscalate: true,
-    label: "Senior Reviewer",
-    description: "Peut approuver, bloquer, et demander des changements obligatoires",
-    color: "from-purple-500 to-pink-500",
-    icon: Shield,
-  },
-  reviewer_lead: {
+  reviewer: {
     canApprove: true,
     canBlock: true,
     canAssign: true,
@@ -73,18 +47,47 @@ const ROLE_CAPABILITIES = {
     canAccessTeamAnalytics: true,
     canCreateTemplates: true,
     canEscalate: false,
-    label: "Lead Reviewer",
-    description: "Acces complet: gestion d'equipe, assignations, templates et analytics",
+    label: "Reviewer",
+    description: "Peut approuver, bloquer, assigner et accéder aux analytics",
+    color: "from-purple-500 to-pink-500",
+    icon: Shield,
+  },
+  admin: {
+    canApprove: true,
+    canBlock: true,
+    canAssign: true,
+    canDelegate: true,
+    canAccessTeamAnalytics: true,
+    canCreateTemplates: true,
+    canEscalate: false,
+    label: "Admin",
+    description: "Accès complet: gestion d'équipe, assignations, templates et analytics",
     color: "from-amber-500 to-orange-500",
     icon: Crown,
+  },
+  developer: {
+    canApprove: false,
+    canBlock: false,
+    canAssign: false,
+    canDelegate: false,
+    canAccessTeamAnalytics: false,
+    canCreateTemplates: false,
+    canEscalate: true,
+    label: "Developer",
+    description: "Peut soumettre du code et consulter les reviews",
+    color: "from-blue-500 to-cyan-500",
+    icon: Star,
   },
 }
 
 function getRoleCapabilities(role: AppRole) {
-  if (role === "reviewer_lead" || role === "reviewer_senior" || role === "reviewer_junior") {
-    return ROLE_CAPABILITIES[role]
+  if (role === "admin") {
+    return ROLE_CAPABILITIES.admin
   }
-  return ROLE_CAPABILITIES.reviewer_junior
+  if (role === "reviewer") {
+    return ROLE_CAPABILITIES.reviewer
+  }
+  return ROLE_CAPABILITIES.developer
 }
 
 export function ReviewerDashboard() {
@@ -96,7 +99,7 @@ export function ReviewerDashboard() {
   const pollerRef = useRef<ReturnType<typeof createReviewerDashboardPoller> | null>(null)
 
   const capabilities = getRoleCapabilities(currentUser.role)
-  const isLead = isReviewerLead(currentUser.role)
+  const isLead = isAdmin(currentUser.role) || currentUser.role === "reviewer"
   const RoleIcon = capabilities.icon
 
   // Fetch data on mount and setup polling
@@ -429,7 +432,7 @@ export function ReviewerDashboard() {
                         <div>
                           <p className="font-medium">{member.name}</p>
                           <Badge variant="outline" className="text-xs">
-                            {member.role === "reviewer_senior" ? "Senior" : "Junior"}
+                            {member.role === "admin" ? "Admin" : member.role === "reviewer" ? "Reviewer" : "Developer"}
                           </Badge>
                         </div>
                       </div>

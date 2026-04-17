@@ -5,9 +5,7 @@ export const dynamic = "force-dynamic"
 
 /**
  * GET /api/dashboard/repositories
- * 
- * Fetches list of repositories with their metadata, CI status, and recent activity.
- * Combines data from the backend and GitHub API.
+ * Returns empty list when backend is unavailable.
  */
 export async function GET(request: Request) {
   const authContext = await requireBackendAuth()
@@ -22,7 +20,6 @@ export async function GET(request: Request) {
   const visibility = searchParams.get("visibility") || ""
   const search = searchParams.get("search") || ""
 
-  // Build query string
   const queryParams = new URLSearchParams({
     page,
     limit,
@@ -31,18 +28,22 @@ export async function GET(request: Request) {
     ...(search && { search }),
   })
 
-  return proxyBackendRequest({
+  const proxied = await proxyBackendRequest({
     method: "GET",
     path: `/api/v1/repositories?${queryParams.toString()}`,
     token: authContext.token,
     userId: authContext.userId,
   })
+
+  if (proxied.status >= 500 || proxied.status === 502) {
+    return NextResponse.json({ items: [], total: 0, page: 1, limit: 20 }, { status: 200 })
+  }
+
+  return proxied
 }
 
 /**
  * POST /api/dashboard/repositories
- * 
- * Import/register a new repository for analysis.
  */
 export async function POST(request: Request) {
   const authContext = await requireBackendAuth()

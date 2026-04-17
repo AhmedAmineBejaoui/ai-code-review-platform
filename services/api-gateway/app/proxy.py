@@ -1,138 +1,152 @@
 """
-API Gateway — reverse proxy engine
-────────────────────────────────────
-Forwards every request to the appropriate downstream service,
-propagating auth headers, request ID, and the original body/params.
+Proxy middleware for forwarding requests to downstream services.
 """
-from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Optional
 
 import httpx
-from fastapi import Request
-from fastapi.responses import Response, StreamingResponse
+from fastapi import Request, Response
+from starlette.background import BackgroundTask
 
-from app.settings import settings
+from .config import get_settings
+from .routing import RouteConfig, find_route, get_service_url
 
 logger = logging.getLogger(__name__)
 
-# ── Route table : (method_prefix, path_prefix) → service URL ─────────────────
-# Order matters — first match wins.
-_ROUTE_TABLE: list[tuple[str | None, str, str]] = [
-    # method  path-prefix                           service
-    (None,    "/v1/auth",                           settings.AUTH_SERVICE_URL),
-    (None,    "/v1/users",                          settings.AUTH_SERVICE_URL),
-    (None,    "/v1/rbac",                           settings.AUTH_SERVICE_URL),
-    (None,    "/v1/admin/users",                    settings.AUTH_SERVICE_URL),
-    (None,    "/v1/admin/organizations",            settings.AUTH_SERVICE_URL),
 
-    (None,    "/v1/analyses",                       settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/projects",                       settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/statistics",                     settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/branches",                       settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/branch-policies",                settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/branch-protection",              settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/webhooks",                       settings.ANALYSIS_SERVICE_URL),
-    (None,    "/api/v1/project-settings",           settings.ANALYSIS_SERVICE_URL),
-
-    (None,    "/api/v1/reviews",                    settings.REVIEW_SERVICE_URL),
-    (None,    "/v1/review",                         settings.REVIEW_SERVICE_URL),
-
-    (None,    "/v1/kb",                             settings.RAG_SERVICE_URL),
-    (None,    "/v1/rag",                            settings.RAG_SERVICE_URL),
-
-    (None,    "/v1/admin/integrations",             settings.ANALYSIS_SERVICE_URL),
-    (None,    "/v1/admin",                          settings.AUTH_SERVICE_URL),
-
-    (None,    "/v1/notify",                         settings.NOTIFICATION_SERVICE_URL),
-    (None,    "/v1/notifications",                  settings.NOTIFICATION_SERVICE_URL),
-]
-
-
-def _resolve_service(method: str, path: str) -> str | None:
-    for route_method, prefix, service_url in _ROUTE_TABLE:
-        if route_method and route_method.upper() != method.upper():
-            continue
-        if path.startswith(prefix):
-            return service_url
-    return None
-
-
-async def proxy_request(request: Request) -> Response:
-    """Forward the request to the correct downstream service."""
-    path    = request.url.path
-    method  = request.method
-    service = _resolve_service(method, path)
-
-    if service is None:
-        return Response(
-            content='{"error":{"code":"NOT_FOUND","message":"No service handles this route"}}',
-            status_code=404,
-            media_type="application/json",
-        )
-
-    # Build target URL (preserve query string)
-    qs     = str(request.url.query)
-    target = f"{service}{path}" + (f"?{qs}" if qs else "")
-
-    # Build headers — forward originals + inject principal headers
-    headers: dict[str, str] = dict(request.headers)
-    headers.pop("host", None)           # prevent host leakage
-    headers.pop("content-length", None) # httpx recalculates this
-
-    # Inject principal headers added by AuthMiddleware
-    principal_headers: dict[str, str] = getattr(request.state, "principal_headers", {})
-    headers.update(principal_headers)
-
-    # Read body
-    body = await request.body()
-
-    timeout = httpx.Timeout(
-        connect=5.0,
-        read=settings.PROXY_READ_TIMEOUT_S,
-        write=settings.PROXY_WRITE_TIMEOUT_S,
-        pool=5.0,
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=timeout, follow_redirects=False) as client:
-            upstream = await client.request(
-                method=method,
-                url=target,
-                headers=headers,
-                content=body,
+class ProxyClient:
+    """HTTP client for proxying requests to downstream services."""
+    
+    def __init__(self):
+        self.settings = get_settings()
+        self._client: Optional[httpx.AsyncClient] = None
+    
+    async def get_client(self) -> httpx.AsyncClient:
+        if self._client is None:
+            self._client = httpx.AsyncClient(
+                timeout=httpx.Timeout(
+                    connect=self.settings.CONNECT_TIMEOUT,
+                    read=self.settings.PROXY_TIMEOUT,
+                    write=self.settings.PROXY_TIMEOUT,
+                    pool=self.settings.PROXY_TIMEOUT,
+                ),
+                follow_redirects=True,
             )
-    except httpx.TimeoutException:
-        logger.error("Timeout proxying %s %s → %s", method, path, service)
+        return self._client
+    
+    async def close(self):
+        if self._client:
+            await self._client.aclose()
+            self._client = None
+
+
+# Global proxy client instance
+proxy_client = ProxyClient()
+
+
+async def proxy_request(
+    request: Request,
+    route_config: RouteConfig,
+    user_id: Optional[str] = None,
+) -> Response:
+    """
+    Proxy a request to the downstream service.
+    
+    Args:
+        request: The incoming FastAPI request
+        route_config: The route configuration for this request
+        user_id: Optional authenticated user ID to pass to downstream service
+    
+    Returns:
+        Response from the downstream service
+    """
+    settings = get_settings()
+    client = await proxy_client.get_client()
+    
+    # Build the target URL
+    service_url = get_service_url(route_config.service, settings)
+    path = request.url.path
+    
+    # Optionally strip prefix
+    if route_config.strip_prefix:
+        path = path[len(route_config.prefix):]
+        if not path.startswith("/"):
+            path = "/" + path
+    
+    # Include query string
+    target_url = f"{service_url}{path}"
+    if request.url.query:
+        target_url = f"{target_url}?{request.url.query}"
+    
+    # Build headers, forwarding most but setting some gateway-specific ones
+    headers = dict(request.headers)
+    
+    # Remove hop-by-hop headers
+    hop_by_hop = ["connection", "keep-alive", "transfer-encoding", "te", "trailer", "upgrade"]
+    for h in hop_by_hop:
+        headers.pop(h, None)
+    
+    # Add gateway headers
+    headers["X-Forwarded-For"] = request.client.host if request.client else "unknown"
+    headers["X-Forwarded-Proto"] = request.url.scheme
+    headers["X-Forwarded-Host"] = request.url.hostname or "localhost"
+    headers["X-Gateway-Service"] = "api-gateway"
+    
+    # Add authenticated user info if available
+    if user_id:
+        headers["X-User-ID"] = user_id
+    
+    # Get request body
+    body = await request.body()
+    
+    logger.debug(
+        "Proxying %s %s -> %s",
+        request.method,
+        request.url.path,
+        target_url,
+    )
+    
+    try:
+        # Make the proxy request
+        response = await client.request(
+            method=request.method,
+            url=target_url,
+            headers=headers,
+            content=body,
+        )
+        
+        # Build response headers, excluding hop-by-hop headers
+        response_headers = {}
+        for key, value in response.headers.items():
+            if key.lower() not in hop_by_hop + ["content-encoding", "content-length"]:
+                response_headers[key] = value
+        
         return Response(
-            content='{"error":{"code":"UPSTREAM_TIMEOUT","message":"Upstream service timed out"}}',
+            content=response.content,
+            status_code=response.status_code,
+            headers=response_headers,
+            media_type=response.headers.get("content-type"),
+        )
+        
+    except httpx.TimeoutException:
+        logger.error("Timeout proxying to %s", target_url)
+        return Response(
+            content='{"error": "Service timeout", "detail": "The downstream service did not respond in time"}',
             status_code=504,
             media_type="application/json",
         )
     except httpx.ConnectError:
-        logger.error("Cannot connect to service %s for %s %s", service, method, path)
+        logger.error("Connection error proxying to %s", target_url)
         return Response(
-            content='{"error":{"code":"SERVICE_UNAVAILABLE","message":"Downstream service unavailable"}}',
+            content='{"error": "Service unavailable", "detail": "Could not connect to downstream service"}',
             status_code=503,
             media_type="application/json",
         )
-    except Exception as exc:
-        logger.exception("Proxy error for %s %s: %s", method, path, exc)
+    except Exception as e:
+        logger.exception("Error proxying to %s: %s", target_url, str(e))
         return Response(
-            content='{"error":{"code":"PROXY_ERROR","message":"Internal proxy error"}}',
-            status_code=500,
+            content='{"error": "Internal gateway error", "detail": "An unexpected error occurred"}',
+            status_code=502,
             media_type="application/json",
         )
-
-    # Stream response back to client
-    response_headers = dict(upstream.headers)
-    response_headers.pop("content-encoding", None)  # httpx decompresses automatically
-    response_headers.pop("transfer-encoding", None)
-
-    return Response(
-        content=upstream.content,
-        status_code=upstream.status_code,
-        headers=response_headers,
-        media_type=upstream.headers.get("content-type", "application/json"),
-    )

@@ -57,7 +57,7 @@ export default function ReviewerAnalyticsPage() {
   const fetchMetrics = async () => {
     try {
       setLoading(true)
-      const response = await fetch(`/api/v1/reviews/metrics/personal?period_days=${period}`)
+      const response = await fetch(`/api/dashboard/reviewer/metrics?period_days=${period}`)
 
       if (!response.ok) {
         throw new Error("Failed to fetch metrics")
@@ -159,38 +159,38 @@ export default function ReviewerAnalyticsPage() {
 
   const slaStatus = getSLAStatus(metrics.current_period.sla_compliance_rate)
 
-  // Role-based badge
+  // Role-based badge (simplified roles)
   const getRoleBadge = () => {
-    if (currentUser.role === "reviewer_junior") {
+    if (currentUser.role === "developer") {
       return (
         <Badge className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white border-none">
           <Star className="h-3 w-3 mr-1" />
-          Junior Reviewer
+          Developer
         </Badge>
       )
     }
-    if (currentUser.role === "reviewer_senior") {
+    if (currentUser.role === "reviewer") {
       return (
         <Badge className="bg-gradient-to-r from-purple-500 to-pink-500 text-white border-none">
           <Shield className="h-3 w-3 mr-1" />
-          Senior Reviewer
+          Reviewer
         </Badge>
       )
     }
-    if (currentUser.role === "reviewer_lead") {
+    if (currentUser.role === "admin") {
       return (
         <Badge className="bg-gradient-to-r from-amber-500 to-orange-500 text-white border-none">
           <Crown className="h-3 w-3 mr-1" />
-          Lead Reviewer
+          Admin
         </Badge>
       )
     }
     return null
   }
 
-  // Role-specific insights
+  // Role-specific insights (simplified)
   const getRoleSpecificInsight = () => {
-    if (currentUser.role === "reviewer_junior") {
+    if (currentUser.role === "developer") {
       return (
         <Card className="border-teal-500/30 bg-teal-500/10">
           <CardContent className="pt-6">
@@ -198,11 +198,11 @@ export default function ReviewerAnalyticsPage() {
               <Star className="h-5 w-5 text-teal-400 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
-                  Junior Reviewer Progress
+                  Developer Analytics
                 </h4>
                 <p className="text-sm text-blue-800 dark:text-blue-200">
-                  Great work! Complete {50 - metrics.current_period.reviews_completed} more reviews to 
-                  unlock Senior Reviewer recommendations. Focus on maintaining your SLA compliance above 90%.
+                  Track your code submissions and review feedback. Focus on reducing review iterations 
+                  by following code quality guidelines.
                 </p>
               </div>
             </div>
@@ -210,7 +210,7 @@ export default function ReviewerAnalyticsPage() {
         </Card>
       )
     }
-    if (currentUser.role === "reviewer_senior") {
+    if (currentUser.role === "reviewer") {
       const blockRate = metrics.current_period.blocks > 0 
         ? ((metrics.current_period.blocks / metrics.current_period.reviews_completed) * 100).toFixed(1)
         : "0.0"
@@ -221,7 +221,7 @@ export default function ReviewerAnalyticsPage() {
               <Shield className="h-5 w-5 text-purple-600 mt-0.5" />
               <div>
                 <h4 className="font-semibold text-purple-900 dark:text-purple-100 mb-1">
-                  Senior Reviewer Impact
+                  Reviewer Impact
                 </h4>
                 <p className="text-sm text-purple-800 dark:text-purple-200">
                   You&apos;ve blocked {blockRate}% of PRs this period, demonstrating strong code quality enforcement. 
@@ -233,7 +233,7 @@ export default function ReviewerAnalyticsPage() {
         </Card>
       )
     }
-    if (currentUser.role === "reviewer_lead") {
+    if (currentUser.role === "admin") {
       return (
         <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
           <CardContent className="pt-6">
@@ -528,15 +528,15 @@ export default function ReviewerAnalyticsPage() {
               </div>
               <div className="text-sm text-muted-foreground mt-1">Warnings</div>
             </div>
-            {/* Only show blocks for Senior and Lead reviewers */}
-            {(currentUser.role === "reviewer_senior" || currentUser.role === "reviewer_lead") && (
+            {/* Only show blocks for Reviewers and Admins */}
+            {(currentUser.role === "reviewer" || currentUser.role === "admin") && (
               <div className="text-center">
                 <div className="text-2xl font-bold text-destructive">
                   {metrics.current_period.blocks}
                 </div>
                 <div className="text-sm text-muted-foreground mt-1">Blocks</div>
                 <Badge variant="outline" className="mt-1 text-xs">
-                  Senior+ Only
+                  Reviewer+
                 </Badge>
               </div>
             )}

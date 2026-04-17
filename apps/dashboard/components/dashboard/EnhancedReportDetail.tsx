@@ -42,6 +42,7 @@ import {
   MessageSquare,
   BookOpen,
   Cpu,
+  Lock,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -417,94 +418,68 @@ function FileRow({
 }
 
 // Main Report Detail Component
-export function EnhancedReportDetail() {
+export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
   const params = useParams()
-  const id = Array.isArray(params.id) ? params.id[0] : params.id
+  const id = analysisId || (Array.isArray(params.id) ? params.id[0] : params.id)
 
   const [report, setReport] = useState<ReportDetails | null>(null)
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
 
-  // Mock data - replace with actual API call
+  // Fetch real analysis data from API
   useEffect(() => {
+    if (!id) return
+
     setLoading(true)
-    // Simulated API call
-    setTimeout(() => {
-      setReport({
-        id: id || "report-1",
-        repo: "owner/repo",
-        prLabel: "PR #42",
-        commitSha: "a1b2c3d4e5f6",
-        status: "completed",
-        createdAt: new Date(Date.now() - 3600000).toISOString(),
-        completedAt: new Date().toISOString(),
-        duration: "2m 34s",
-        author: "johndoe",
-        branch: "feature/add-validation",
-        files: [
-          {
-            path: "src/auth/validate.ts",
-            changeType: "modified",
-            additions: 45,
-            deletions: 12,
-            language: "typescript",
-            findings: [
-              {
-                id: "find-1",
-                severity: "BLOCKER",
-                category: "security",
-                message: "SQL injection vulnerability detected in user input",
-                description:
-                  "The query uses string concatenation to build SQL statements. This allows attackers to inject malicious SQL code through user input.",
-                filePath: "src/auth/validate.ts",
-                lineNumber: 45,
-                codeSnippet: `const query = "SELECT * FROM users WHERE id = '" + userId + "'";`,
-                cwe: "89",
-                suggestion:
-                  "Use parameterized queries or an ORM to prevent SQL injection.",
-              },
-              {
-                id: "find-2",
-                severity: "WARN",
-                category: "best-practice",
-                message: "Missing input validation on function parameter",
-                filePath: "src/auth/validate.ts",
-                lineNumber: 12,
-                suggestion: "Add type checking and validation for all parameters.",
-              },
-            ],
-          },
-          {
-            path: "src/api/routes.ts",
-            changeType: "modified",
-            additions: 23,
-            deletions: 5,
-            language: "typescript",
-            findings: [
-              {
-                id: "find-3",
-                severity: "INFO",
-                category: "style",
-                message: "Inconsistent naming convention",
-                description: "Use camelCase for function names",
-                filePath: "src/api/routes.ts",
-                lineNumber: 8,
-                suggestion: "Rename to use camelCase.",
-              },
-            ],
-          },
-        ],
-        summary: {
-          totalFindings: 3,
-          blocker: 1,
-          warn: 1,
-          info: 1,
-          securityScore: 72,
-          codeQuality: 85,
-        },
+    setError(null)
+
+    fetch(`/api/dashboard/analyses/${id}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}))
+          throw new Error(errorData.error || `HTTP ${response.status}`)
+        }
+        return response.json()
       })
-      setLoading(false)
-    }, 1000)
+      .then((data) => {
+        // Transform the backend data to match our component's expected format
+        setReport({
+          id: data.id,
+          repo: data.repo,
+          prLabel: data.prLabel || "Commit",
+          commitSha: data.commitSha || "unknown",
+          status: data.status || "completed",
+          createdAt: data.createdAt,
+          completedAt: data.updatedAt,
+          duration: "N/A", // Backend doesn't provide duration
+          author: data.author || "Unknown",
+          branch: data.prNumber ? `PR #${data.prNumber}` : "main",
+          files: data.files?.map((file: any) => ({
+            path: file.pathNew,
+            changeType: file.changeType,
+            additions: file.additionsCount,
+            deletions: file.deletionsCount,
+            language: "unknown", // Backend doesn't provide language per file
+            findings: data.findings?.filter((finding: any) => finding.filePath === file.pathNew) || [],
+          })) || [],
+          summary: {
+            totalFindings: data.findings?.length || 0,
+            blocker: data.findings?.filter((f: any) => f.severity === "BLOCKER").length || 0,
+            warn: data.findings?.filter((f: any) => f.severity === "WARN").length || 0,
+            info: data.findings?.filter((f: any) => f.severity === "INFO").length || 0,
+            securityScore: 75, // Placeholder
+            codeQuality: 80, // Placeholder
+          },
+        })
+      })
+      .catch((err) => {
+        console.error("Failed to fetch analysis:", err)
+        setError(err.message)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
   }, [id])
 
   const stats = useMemo(() => {
@@ -543,11 +518,21 @@ export function EnhancedReportDetail() {
     )
   }
 
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16">
+        <XCircle className="h-12 w-12 text-destructive mb-4" />
+        <p className="text-lg font-medium">Failed to load analysis</p>
+        <p className="text-sm text-muted-foreground mt-2">{error}</p>
+      </div>
+    )
+  }
+
   if (!report) {
     return (
       <div className="flex flex-col items-center justify-center py-16">
         <XCircle className="h-12 w-12 text-destructive mb-4" />
-        <p className="text-lg font-medium">Report not found</p>
+        <p className="text-lg font-medium">Analysis not found</p>
       </div>
     )
   }

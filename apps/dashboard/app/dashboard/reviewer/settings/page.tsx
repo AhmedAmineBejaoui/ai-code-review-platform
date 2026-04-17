@@ -95,7 +95,7 @@ export default function ReviewerSettingsPage() {
       } else {
         // Return default empty settings if API not available
         const defaultSettings: ReviewerSettings = {
-          reviewer_level: currentUser.role || "reviewer_junior",
+          reviewer_level: currentUser.role || "reviewer",
           reviewer_capacity: 5,
           reviewer_specialties: [],
           availability_status: "available",
@@ -129,7 +129,7 @@ export default function ReviewerSettingsPage() {
     } catch (err) {
       // Return default empty settings if API not available
       const defaultSettings: ReviewerSettings = {
-        reviewer_level: currentUser.role || "reviewer_junior",
+        reviewer_level: currentUser.role || "reviewer",
         reviewer_capacity: 5,
         reviewer_specialties: [],
         availability_status: "available",

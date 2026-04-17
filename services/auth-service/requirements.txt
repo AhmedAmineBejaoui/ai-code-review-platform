@@ -1,6 +1,8 @@
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-pydantic-settings==2.0.3
-pyjwt[crypto]==2.8.0
-httpx==0.25.2
-cryptography==41.0.7
+# Auth Service dependencies
+fastapi>=0.109.0,<0.120.0
+uvicorn[standard]>=0.27.0,<0.30.0
+pydantic>=2.5.0,<3.0.0
+pydantic-settings>=2.1.0,<3.0.0
+sqlalchemy>=2.0.0,<3.0.0
+psycopg[binary]>=3.1.0,<4.0.0
+python-jose[cryptography]>=3.3.0,<4.0.0

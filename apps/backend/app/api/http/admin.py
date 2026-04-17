@@ -1785,3 +1785,493 @@ async def delete_admin_knowledge_base_repo(
 ):
     result = await _delete_kb_repo(repo_id, principal.user_id)
     return result
+
+
+# ============================================================================
+# User Permissions CRUD Endpoints
+# ============================================================================
+
+class GrantPermissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    permission_code: str = Field(..., min_length=1, max_length=255)
+    reason: str | None = None
+    expires_at: datetime | None = None
+
+
+class UpdatePermissionRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    is_active: bool | None = None
+    expires_at: datetime | None = None
+    reason: str | None = None
+
+
+@router.get("/users/{user_id}/permissions")
+async def get_user_permissions(
+    user_id: str = Path(min_length=1, max_length=255),
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """Get all permissions for a user, including role-based and direct grants."""
+    result = await asyncio.to_thread(_get_user_permissions, user_id)
+    return result
+
+
+@router.post("/users/{user_id}/permissions")
+async def grant_user_permission(
+    payload: GrantPermissionRequest,
+    user_id: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """Grant a permission directly to a user."""
+    result = await asyncio.to_thread(
+        _grant_user_permission, 
+        user_id, 
+        payload.permission_code,
+        principal.user_id,
+        payload.reason,
+        payload.expires_at
+    )
+    return result
+
+
+@router.patch("/users/{user_id}/permissions/{permission_code}")
+async def update_user_permission(
+    payload: UpdatePermissionRequest,
+    user_id: str = Path(min_length=1, max_length=255),
+    permission_code: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """Update a user's direct permission grant."""
+    result = await asyncio.to_thread(
+        _update_user_permission,
+        user_id,
+        permission_code,
+        principal.user_id,
+        payload.is_active,
+        payload.expires_at,
+        payload.reason
+    )
+    return result
+
+
+@router.delete("/users/{user_id}/permissions/{permission_code}")
+async def revoke_user_permission(
+    user_id: str = Path(min_length=1, max_length=255),
+    permission_code: str = Path(min_length=1, max_length=255),
+    principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """Revoke a permission from a user."""
+    result = await asyncio.to_thread(
+        _revoke_user_permission,
+        user_id,
+        permission_code,
+        principal.user_id
+    )
+    return result
+
+
+def _get_user_permissions(user_id: str) -> dict[str, Any]:
+    """Get all permissions for a user."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        # Check user exists
+        user = conn.execute(
+            text("SELECT id, email, display_name FROM users WHERE id = :user_id"),
+            {"user_id": user_id}
+        ).mappings().first()
+        
+        if not user:
+            raise ApiError(status=404, code="USER_NOT_FOUND", message="User not found")
+        
+        # Get role-based permissions
+        role_permissions = conn.execute(
+            text("""
+                SELECT DISTINCT p.code, p.description, r.code as role_code
+                FROM permissions p
+                JOIN role_permissions rp ON rp.permission_id = p.id
+                JOIN roles r ON r.id = rp.role_id
+                JOIN user_roles ur ON ur.role_id = r.id
+                WHERE ur.user_id = :user_id
+                ORDER BY p.code
+            """),
+            {"user_id": user_id}
+        ).mappings().all()
+        
+        # Get direct user permissions
+        direct_permissions = conn.execute(
+            text("""
+                SELECT 
+                    up.id,
+                    p.code,
+                    p.description,
+                    up.granted_by,
+                    up.granted_at,
+                    up.expires_at,
+                    up.reason,
+                    up.is_active,
+                    g.display_name as granted_by_name
+                FROM user_permissions up
+                JOIN permissions p ON p.id = up.permission_id
+                LEFT JOIN users g ON g.id = up.granted_by
+                WHERE up.user_id = :user_id
+                ORDER BY up.granted_at DESC
+            """),
+            {"user_id": user_id}
+        ).mappings().all()
+        
+        return {
+            "user": {
+                "id": user["id"],
+                "email": user["email"],
+                "displayName": user["display_name"],
+            },
+            "rolePermissions": [
+                {
+                    "code": p["code"],
+                    "description": p["description"],
+                    "fromRole": p["role_code"],
+                }
+                for p in role_permissions
+            ],
+            "directPermissions": [
+                {
+                    "id": p["id"],
+                    "code": p["code"],
+                    "description": p["description"],
+                    "grantedBy": p["granted_by"],
+                    "grantedByName": p["granted_by_name"],
+                    "grantedAt": p["granted_at"].isoformat() if p["granted_at"] else None,
+                    "expiresAt": p["expires_at"].isoformat() if p["expires_at"] else None,
+                    "reason": p["reason"],
+                    "isActive": p["is_active"],
+                }
+                for p in direct_permissions
+            ],
+        }
+
+
+def _grant_user_permission(
+    user_id: str,
+    permission_code: str,
+    granted_by: str,
+    reason: str | None,
+    expires_at: datetime | None
+) -> dict[str, Any]:
+    """Grant a permission directly to a user."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Check user exists
+        user = conn.execute(
+            text("SELECT id FROM users WHERE id = :user_id"),
+            {"user_id": user_id}
+        ).first()
+        
+        if not user:
+            raise ApiError(status=404, code="USER_NOT_FOUND", message="User not found")
+        
+        # Get permission ID
+        permission = conn.execute(
+            text("SELECT id FROM permissions WHERE code = :code"),
+            {"code": permission_code}
+        ).first()
+        
+        if not permission:
+            raise ApiError(status=404, code="PERMISSION_NOT_FOUND", message=f"Permission '{permission_code}' not found")
+        
+        permission_id = permission[0]
+        
+        # Check if already granted
+        existing = conn.execute(
+            text("""
+                SELECT id FROM user_permissions 
+                WHERE user_id = :user_id AND permission_id = :permission_id
+            """),
+            {"user_id": user_id, "permission_id": permission_id}
+        ).first()
+        
+        if existing:
+            # Update existing grant
+            conn.execute(
+                text("""
+                    UPDATE user_permissions 
+                    SET is_active = TRUE, 
+                        granted_by = :granted_by,
+                        granted_at = NOW(),
+                        expires_at = :expires_at,
+                        reason = :reason,
+                        updated_at = NOW()
+                    WHERE user_id = :user_id AND permission_id = :permission_id
+                """),
+                {
+                    "user_id": user_id,
+                    "permission_id": permission_id,
+                    "granted_by": granted_by,
+                    "expires_at": expires_at,
+                    "reason": reason,
+                }
+            )
+            grant_id = existing[0]
+        else:
+            # Create new grant
+            grant_id = str(uuid.uuid4())
+            conn.execute(
+                text("""
+                    INSERT INTO user_permissions (
+                        id, user_id, permission_id, granted_by, 
+                        expires_at, reason, is_active
+                    )
+                    VALUES (
+                        :id, :user_id, :permission_id, :granted_by,
+                        :expires_at, :reason, TRUE
+                    )
+                """),
+                {
+                    "id": grant_id,
+                    "user_id": user_id,
+                    "permission_id": permission_id,
+                    "granted_by": granted_by,
+                    "expires_at": expires_at,
+                    "reason": reason,
+                }
+            )
+        
+        # Log to audit
+        audit_id = str(uuid.uuid4())
+        conn.execute(
+            text("""
+                INSERT INTO user_permissions_audit (
+                    id, user_permission_id, user_id, permission_id,
+                    action, performed_by, reason, new_values
+                )
+                VALUES (
+                    :id, :user_permission_id, :user_id, :permission_id,
+                    'granted', :performed_by, :reason,
+                    :new_values::jsonb
+                )
+            """),
+            {
+                "id": audit_id,
+                "user_permission_id": grant_id,
+                "user_id": user_id,
+                "permission_id": permission_id,
+                "performed_by": granted_by,
+                "reason": reason,
+                "new_values": json.dumps({
+                    "expires_at": expires_at.isoformat() if expires_at else None,
+                    "is_active": True,
+                }),
+            }
+        )
+        
+        return {
+            "id": grant_id,
+            "permissionCode": permission_code,
+            "userId": user_id,
+            "granted": True,
+        }
+
+
+def _update_user_permission(
+    user_id: str,
+    permission_code: str,
+    updated_by: str,
+    is_active: bool | None,
+    expires_at: datetime | None,
+    reason: str | None
+) -> dict[str, Any]:
+    """Update a user's direct permission grant."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Get permission ID
+        permission = conn.execute(
+            text("SELECT id FROM permissions WHERE code = :code"),
+            {"code": permission_code}
+        ).first()
+        
+        if not permission:
+            raise ApiError(status=404, code="PERMISSION_NOT_FOUND", message=f"Permission '{permission_code}' not found")
+        
+        permission_id = permission[0]
+        
+        # Check if grant exists
+        existing = conn.execute(
+            text("""
+                SELECT id, is_active, expires_at, reason 
+                FROM user_permissions 
+                WHERE user_id = :user_id AND permission_id = :permission_id
+            """),
+            {"user_id": user_id, "permission_id": permission_id}
+        ).mappings().first()
+        
+        if not existing:
+            raise ApiError(status=404, code="GRANT_NOT_FOUND", message="Permission grant not found")
+        
+        # Build update
+        updates = ["updated_at = NOW()"]
+        params = {"user_id": user_id, "permission_id": permission_id}
+        
+        old_values = {
+            "is_active": existing["is_active"],
+            "expires_at": existing["expires_at"].isoformat() if existing["expires_at"] else None,
+            "reason": existing["reason"],
+        }
+        new_values = {}
+        
+        if is_active is not None:
+            updates.append("is_active = :is_active")
+            params["is_active"] = is_active
+            new_values["is_active"] = is_active
+        
+        if expires_at is not None:
+            updates.append("expires_at = :expires_at")
+            params["expires_at"] = expires_at
+            new_values["expires_at"] = expires_at.isoformat()
+        
+        if reason is not None:
+            updates.append("reason = :reason")
+            params["reason"] = reason
+            new_values["reason"] = reason
+        
+        conn.execute(
+            text(f"""
+                UPDATE user_permissions 
+                SET {', '.join(updates)}
+                WHERE user_id = :user_id AND permission_id = :permission_id
+            """),
+            params
+        )
+        
+        # Log to audit
+        audit_id = str(uuid.uuid4())
+        conn.execute(
+            text("""
+                INSERT INTO user_permissions_audit (
+                    id, user_permission_id, user_id, permission_id,
+                    action, performed_by, reason, old_values, new_values
+                )
+                VALUES (
+                    :id, :user_permission_id, :user_id, :permission_id,
+                    'modified', :performed_by, :reason,
+                    :old_values::jsonb, :new_values::jsonb
+                )
+            """),
+            {
+                "id": audit_id,
+                "user_permission_id": existing["id"],
+                "user_id": user_id,
+                "permission_id": permission_id,
+                "performed_by": updated_by,
+                "reason": reason,
+                "old_values": json.dumps(old_values),
+                "new_values": json.dumps(new_values),
+            }
+        )
+        
+        return {
+            "id": existing["id"],
+            "permissionCode": permission_code,
+            "userId": user_id,
+            "updated": True,
+        }
+
+
+def _revoke_user_permission(
+    user_id: str,
+    permission_code: str,
+    revoked_by: str
+) -> dict[str, Any]:
+    """Revoke a permission from a user."""
+    engine = get_engine()
+    with engine.begin() as conn:
+        # Get permission ID
+        permission = conn.execute(
+            text("SELECT id FROM permissions WHERE code = :code"),
+            {"code": permission_code}
+        ).first()
+        
+        if not permission:
+            raise ApiError(status=404, code="PERMISSION_NOT_FOUND", message=f"Permission '{permission_code}' not found")
+        
+        permission_id = permission[0]
+        
+        # Check if grant exists
+        existing = conn.execute(
+            text("""
+                SELECT id FROM user_permissions 
+                WHERE user_id = :user_id AND permission_id = :permission_id
+            """),
+            {"user_id": user_id, "permission_id": permission_id}
+        ).first()
+        
+        if not existing:
+            raise ApiError(status=404, code="GRANT_NOT_FOUND", message="Permission grant not found")
+        
+        # Delete the grant
+        conn.execute(
+            text("""
+                DELETE FROM user_permissions 
+                WHERE user_id = :user_id AND permission_id = :permission_id
+            """),
+            {"user_id": user_id, "permission_id": permission_id}
+        )
+        
+        # Log to audit
+        audit_id = str(uuid.uuid4())
+        conn.execute(
+            text("""
+                INSERT INTO user_permissions_audit (
+                    id, user_permission_id, user_id, permission_id,
+                    action, performed_by
+                )
+                VALUES (
+                    :id, :user_permission_id, :user_id, :permission_id,
+                    'revoked', :performed_by
+                )
+            """),
+            {
+                "id": audit_id,
+                "user_permission_id": existing[0],
+                "user_id": user_id,
+                "permission_id": permission_id,
+                "performed_by": revoked_by,
+            }
+        )
+        
+        return {
+            "permissionCode": permission_code,
+            "userId": user_id,
+            "revoked": True,
+        }
+
+
+@router.get("/permissions/catalog")
+async def get_permissions_catalog(
+    _principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
+):
+    """Get all available permissions."""
+    result = await asyncio.to_thread(_get_permissions_catalog)
+    return result
+
+
+def _get_permissions_catalog() -> dict[str, Any]:
+    """Get all available permissions."""
+    engine = get_engine()
+    with engine.connect() as conn:
+        permissions = conn.execute(
+            text("""
+                SELECT id, code, description
+                FROM permissions
+                ORDER BY code
+            """)
+        ).mappings().all()
+        
+        return {
+            "items": [
+                {
+                    "id": p["id"],
+                    "code": p["code"],
+                    "description": p["description"],
+                }
+                for p in permissions
+            ],
+            "total": len(permissions),
+        }

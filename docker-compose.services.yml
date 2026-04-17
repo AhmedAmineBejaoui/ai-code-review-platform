@@ -1,0 +1,107 @@
+# ============================================================================
+# Microservices stack — step 1 (scaffolding).
+# ----------------------------------------------------------------------------
+# Brings up gateway + 6 service stubs. Infra (Postgres/Redis/Qdrant) and the
+# legacy monolith are expected to run from the existing `apps/backend/` compose
+# files. Use:
+#
+#   docker compose -f apps/backend/docker-compose.yml -f docker-compose.services.yml up --build
+#
+# Or run infra from backend, then:
+#
+#   docker compose -f docker-compose.services.yml up --build
+# ============================================================================
+
+services:
+  api-gateway:
+    build:
+      context: apps/services
+      dockerfile: api_gateway/Dockerfile
+    image: ai-cr/api-gateway:dev
+    container_name: api-gateway
+    env_file: .env
+    environment:
+      # Inside docker-compose, services reach each other by container name.
+      LEGACY_BACKEND_HOST: ${LEGACY_BACKEND_HOST:-legacy-backend}
+      ANALYSIS_SERVICE_HOST: analysis-service
+      KB_SERVICE_HOST: kb-service
+      REVIEWS_SERVICE_HOST: reviews-service
+      ORG_SERVICE_HOST: org-service
+      CONFIG_SERVICE_HOST: config-service
+      NOTIFICATIONS_SERVICE_HOST: notifications-service
+    ports:
+      - "${GATEWAY_PORT:-8000}:8000"
+    depends_on:
+      - analysis-service
+      - kb-service
+      - reviews-service
+      - org-service
+      - config-service
+      - notifications-service
+    restart: unless-stopped
+
+  analysis-service:
+    build:
+      context: apps/services
+      dockerfile: analysis_service/Dockerfile
+    image: ai-cr/analysis-service:dev
+    container_name: analysis-service
+    env_file: .env
+    ports:
+      - "${ANALYSIS_SERVICE_PORT:-8001}:8001"
+    restart: unless-stopped
+
+  kb-service:
+    build:
+      context: apps/services
+      dockerfile: kb_service/Dockerfile
+    image: ai-cr/kb-service:dev
+    container_name: kb-service
+    env_file: .env
+    ports:
+      - "${KB_SERVICE_PORT:-8002}:8002"
+    restart: unless-stopped
+
+  reviews-service:
+    build:
+      context: apps/services
+      dockerfile: reviews_service/Dockerfile
+    image: ai-cr/reviews-service:dev
+    container_name: reviews-service
+    env_file: .env
+    ports:
+      - "${REVIEWS_SERVICE_PORT:-8003}:8003"
+    restart: unless-stopped
+
+  org-service:
+    build:
+      context: apps/services
+      dockerfile: org_service/Dockerfile
+    image: ai-cr/org-service:dev
+    container_name: org-service
+    env_file: .env
+    ports:
+      - "${ORG_SERVICE_PORT:-8004}:8004"
+    restart: unless-stopped
+
+  config-service:
+    build:
+      context: apps/services
+      dockerfile: config_service/Dockerfile
+    image: ai-cr/config-service:dev
+    container_name: config-service
+    env_file: .env
+    ports:
+      - "${CONFIG_SERVICE_PORT:-8005}:8005"
+    restart: unless-stopped
+
+  notifications-service:
+    build:
+      context: apps/services
+      dockerfile: notifications_service/Dockerfile
+    image: ai-cr/notifications-service:dev
+    container_name: notifications-service
+    env_file: .env
+    ports:
+      - "${NOTIFICATIONS_SERVICE_PORT:-8006}:8006"
+    restart: unless-stopped

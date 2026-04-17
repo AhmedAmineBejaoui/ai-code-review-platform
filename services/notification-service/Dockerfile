@@ -2,16 +2,15 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+# Install dependencies
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
 
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN pip install --no-cache-dir fastapi uvicorn pydantic-settings httpx
-
+# Copy application code
 COPY app/ ./app/
 
-EXPOSE 8005
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8005"]
+# Expose port
+EXPOSE 4007
+
+# Run the application
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "4007"]

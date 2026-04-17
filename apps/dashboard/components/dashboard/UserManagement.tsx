@@ -70,11 +70,8 @@ type IntegrationsPayload = {
 
 type RoleValue =
   | "admin"
-  | "reviewer_lead"
-  | "reviewer_senior"
-  | "reviewer_junior"
+  | "reviewer"
   | "developer"
-  | "viewer"
 
 type RoleOption = {
   value: RoleValue
@@ -87,15 +84,6 @@ type RoleOption = {
 
 const ROLE_OPTIONS: RoleOption[] = [
   {
-    value: "viewer",
-    label: "Viewer",
-    description: "Accès en lecture seule aux projets et analyses.",
-    chips: ["Consulter", "Surveiller"],
-    indicatorClass: "bg-muted-foreground",
-    badgeClass:
-      "font-mono text-[11px] uppercase tracking-wider border border-[--border-card] text-muted-foreground bg-transparent",
-  },
-  {
     value: "developer",
     label: "Developer",
     description: "Peut soumettre des PRs pour analyse et consulter les résultats détaillés.",
@@ -105,37 +93,19 @@ const ROLE_OPTIONS: RoleOption[] = [
       "font-mono text-[11px] uppercase tracking-wider border border-[#17f0c4]/40 text-[#17f0c4] bg-[#17f0c4]/10",
   },
   {
-    value: "reviewer_junior",
-    label: "Jr. Reviewer",
-    description: "Peut approuver les PRs, suggérer des changements et escalader les cas complexes.",
-    chips: ["Approuver", "Suggérer", "Escalader"],
-    indicatorClass: "bg-sky-400",
-    badgeClass:
-      "font-mono text-[11px] uppercase tracking-wider border border-sky-400/40 text-sky-400 bg-sky-400/10",
-  },
-  {
-    value: "reviewer_senior",
-    label: "Sr. Reviewer",
-    description: "Peut approuver, bloquer les PRs et demander des changements obligatoires.",
-    chips: ["Approuver", "Bloquer", "Demander changements"],
+    value: "reviewer",
+    label: "Reviewer",
+    description: "Peut approuver, bloquer les PRs et demander des changements. Accès aux outils de review.",
+    chips: ["Approuver", "Bloquer", "Demander changements", "Review"],
     indicatorClass: "bg-violet-400",
     badgeClass:
       "font-mono text-[11px] uppercase tracking-wider border border-violet-400/40 text-violet-400 bg-violet-400/10",
   },
   {
-    value: "reviewer_lead",
-    label: "Lead Reviewer",
-    description: "Accès complet pour gérer l'équipe, assigner les reviews et piloter les templates.",
-    chips: ["Assigner", "Déléguer", "Templates", "Analytics"],
-    indicatorClass: "bg-amber-400",
-    badgeClass:
-      "font-mono text-[11px] uppercase tracking-wider border border-amber-400/40 text-amber-400 bg-amber-400/10",
-  },
-  {
     value: "admin",
     label: "Admin",
     description: "Accès complet à toutes les fonctionnalités de la plateforme.",
-    chips: ["Utilisateurs", "Intégrations", "Paramètres"],
+    chips: ["Utilisateurs", "Intégrations", "Paramètres", "Organisation"],
     indicatorClass: "bg-[--orange]",
     badgeClass:
       "font-mono text-[11px] uppercase tracking-wider border border-[--border-accent] text-[--orange] bg-[--orange-glow]",
@@ -146,11 +116,10 @@ const ROLE_LOOKUP = new Map(ROLE_OPTIONS.map((option) => [option.value, option])
 
 function normalizeRole(role: string): RoleValue {
   if (role === "admin") return "admin"
-  if (role === "reviewer_lead") return "reviewer_lead"
-  if (role === "reviewer_senior" || role === "reviewer") return "reviewer_senior"
-  if (role === "reviewer_junior") return "reviewer_junior"
-  if (role === "developer") return "developer"
-  return "viewer"
+  // Map all reviewer variants to "reviewer"
+  if (role === "reviewer" || role.startsWith("reviewer_")) return "reviewer"
+  if (role === "developer" || role === "viewer" || role === "member") return "developer"
+  return "developer"
 }
 
 function extractApiErrorMessage(payload: unknown, fallback: string): string {
@@ -212,19 +181,14 @@ function primaryRole(user: AdminUser): RoleValue {
   if (user.roles.includes("admin")) {
     return "admin"
   }
-  if (user.roles.includes("reviewer_lead")) {
-    return "reviewer_lead"
-  }
-  if (user.roles.includes("reviewer_senior") || user.roles.includes("reviewer")) {
-    return "reviewer_senior"
-  }
-  if (user.roles.includes("reviewer_junior")) {
-    return "reviewer_junior"
+  // Map all reviewer variants to "reviewer"
+  if (user.roles.some((role) => role === "reviewer" || role.startsWith("reviewer_"))) {
+    return "reviewer"
   }
   if (user.roles.includes("developer")) {
     return "developer"
   }
-  return normalizeRole(user.roles[0] ?? "viewer")
+  return normalizeRole(user.roles[0] ?? "developer")
 }
 
 function getRoleMeta(role: string) {

@@ -27,6 +27,7 @@ import {
   ChevronLeft,
   Users,
   Mail,
+  Filter,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -275,12 +276,10 @@ function RepositoryRowSkeleton() {
   )
 }
 
-// Role options for project members
+// Role options for project members (simplified)
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
-  { value: "tech_lead", label: "Tech Lead" },
-  { value: "reviewer_senior", label: "Senior Reviewer" },
-  { value: "reviewer_junior", label: "Junior Reviewer" },
+  { value: "reviewer", label: "Reviewer" },
   { value: "developer", label: "Developer" },
 ]
 
@@ -950,118 +949,195 @@ export default function RepositoriesPage() {
         </Card>
       )}
 
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+      {/* Sidebar + Table layout */}
+      <div className="flex gap-4">
+        {/* ── Sidebar ── */}
+        <aside className="w-52 flex-shrink-0 rounded-xl border border-border bg-card overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-3 border-b border-border">
+            <Filter className="h-3.5 w-3.5 text-primary" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Filtres</span>
+            {(searchQuery || languageFilter !== "all" || visibilityFilter !== "all") && (
+              <button
+                onClick={() => { setSearchQuery(""); setLanguageFilter("all"); setVisibilityFilter("all"); setPage(1); }}
+                className="ml-auto text-[10px] text-muted-foreground hover:text-primary transition-colors"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+
+          {/* Search */}
+          <div className="px-3 py-3 border-b border-border">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
-                placeholder="Search repositories..."
+                placeholder="Rechercher..."
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
+                className="h-8 pl-8 text-xs"
               />
             </div>
-            <Select value={languageFilter} onValueChange={(v) => { setLanguageFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Language" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Languages</SelectItem>
-                {languages.map(lang => (
-                  <SelectItem key={lang} value={lang}>{lang}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Select value={visibilityFilter} onValueChange={(v) => { setVisibilityFilter(v); setPage(1); }}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Visibility" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All</SelectItem>
-                <SelectItem value="private">Private</SelectItem>
-                <SelectItem value="public">Public</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Repositories Table */}
-      <Card>
-        <CardContent className="p-0">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead className="w-[300px]">Repository</TableHead>
-                <TableHead>Language</TableHead>
-                <TableHead>CI Status</TableHead>
-                <TableHead>Stats</TableHead>
-                <TableHead>Last Activity</TableHead>
-                <TableHead className="w-[100px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <RepositoryRowSkeleton key={i} />
-                ))
-              ) : (
-                filteredRepos.map((repo) => (
-                  <RepositoryRow
-                    key={repo.id}
-                    repo={repo}
-                    onViewRepository={handleViewRepository}
-                    onCopyCloneUrl={handleCopyCloneUrl}
-                    onOpenGitHub={handleOpenGitHub}
-                    onOpenSettings={handleOpenSettings}
-                  />
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1 || loading}
-          >
-            Previous
-          </Button>
-          <span className="text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages || loading}
-          >
-            Next
-          </Button>
-        </div>
-      )}
-
-      {!loading && filteredRepos.length === 0 && !error && (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No repositories found</h3>
-            <p className="text-muted-foreground mt-1">
-              {searchQuery || languageFilter !== "all" || visibilityFilter !== "all"
-                ? "Try adjusting your filters"
-                : "Run an analysis to see repositories here"}
+          {/* Code reviews section */}
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 px-1">
+              Code Reviews
             </p>
-          </CardContent>
-        </Card>
-      )}
+            {[
+              { label: "All Analyses", value: "all", icon: GitBranch },
+              { label: "Recent", value: "recent", icon: RefreshCw },
+              { label: "Pending Review", value: "pending", icon: AlertCircle },
+            ].map((item) => (
+              <button
+                key={item.value}
+                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
+              >
+                <item.icon className="h-3.5 w-3.5 flex-shrink-0" />
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Visibility */}
+          <div className="px-3 py-2 border-b border-border">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 px-1">
+              Visibilité
+            </p>
+            {[
+              { label: "Tous", value: "all" },
+              { label: "Privés", value: "private" },
+              { label: "Publics", value: "public" },
+            ].map((item) => (
+              <button
+                key={item.value}
+                onClick={() => { setVisibilityFilter(item.value); setPage(1); }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-all ${
+                  visibilityFilter === item.value
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+                  visibilityFilter === item.value ? "bg-primary" : "bg-muted-foreground/30"
+                }`} />
+                {item.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Language */}
+          <div className="px-3 py-2">
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground mb-1.5 px-1">
+              Langage
+            </p>
+            <button
+              onClick={() => { setLanguageFilter("all"); setPage(1); }}
+              className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-all ${
+                languageFilter === "all"
+                  ? "bg-primary/10 text-primary font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+              }`}
+            >
+              <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${languageFilter === "all" ? "bg-primary" : "bg-muted-foreground/30"}`} />
+              Tous
+            </button>
+            {languages.map((lang) => (
+              <button
+                key={lang}
+                onClick={() => { setLanguageFilter(lang); setPage(1); }}
+                className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs transition-all ${
+                  languageFilter === lang
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
+                  languageColors[lang] ? languageColors[lang].replace("bg-", "bg-") : "bg-muted-foreground/30"
+                }`} />
+                {lang}
+              </button>
+            ))}
+          </div>
+        </aside>
+
+        {/* ── Main table ── */}
+        <div className="flex-1 min-w-0">
+          <Card>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[300px]">Repository</TableHead>
+                    <TableHead>Language</TableHead>
+                    <TableHead>CI Status</TableHead>
+                    <TableHead>Stats</TableHead>
+                    <TableHead>Last Activity</TableHead>
+                    <TableHead className="w-[100px]"></TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {loading ? (
+                    Array.from({ length: 5 }).map((_, i) => (
+                      <RepositoryRowSkeleton key={i} />
+                    ))
+                  ) : (
+                    filteredRepos.map((repo) => (
+                      <RepositoryRow
+                        key={repo.id}
+                        repo={repo}
+                        onViewRepository={handleViewRepository}
+                        onCopyCloneUrl={handleCopyCloneUrl}
+                        onOpenGitHub={handleOpenGitHub}
+                        onOpenSettings={handleOpenSettings}
+                      />
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-4">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page === 1 || loading}
+              >
+                Previous
+              </Button>
+              <span className="text-sm text-muted-foreground">
+                Page {page} of {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                disabled={page === totalPages || loading}
+              >
+                Next
+              </Button>
+            </div>
+          )}
+
+          {!loading && filteredRepos.length === 0 && !error && (
+            <Card className="mt-4 py-12">
+              <CardContent className="text-center">
+                <Code2 className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+                <h3 className="text-lg font-medium">No repositories found</h3>
+                <p className="text-muted-foreground mt-1">
+                  {searchQuery || languageFilter !== "all" || visibilityFilter !== "all"
+                    ? "Try adjusting your filters"
+                    : "Run an analysis to see repositories here"}
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>{/* end main table div */}
+      </div>{/* end sidebar+table flex */}
     </div>
   )
 }

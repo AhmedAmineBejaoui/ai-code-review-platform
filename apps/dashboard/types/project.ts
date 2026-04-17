@@ -1,12 +1,14 @@
 /**
  * Project-related type definitions
+ * 
+ * Simplified role system: admin, reviewer, developer only
  */
 
 // Project status types
 export type ProjectStatus = "active" | "maintenance" | "archived"
 
-// Project role types for team members
-export type ProjectRole = "developer" | "junior_reviewer" | "senior_reviewer" | "tech_lead" | "admin"
+// Project role types for team members - SIMPLIFIED
+export type ProjectRole = "admin" | "reviewer" | "developer"
 
 // Language colors for UI consistency
 export const LANGUAGE_COLORS: Record<string, string> = {
@@ -41,32 +43,22 @@ export const STATUS_CONFIG: Record<ProjectStatus, { label: string; className: st
   },
 }
 
-// Role configuration for UI
+// Role configuration for UI - SIMPLIFIED to 3 roles only
 export const ROLE_CONFIG: Record<ProjectRole, { label: string; color: string; description: string }> = {
-  developer: {
-    label: "Developer",
-    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
-    description: "Can view code and submit for review",
-  },
-  junior_reviewer: {
-    label: "Junior Reviewer",
-    color: "bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400",
-    description: "Can review code with mentorship",
-  },
-  senior_reviewer: {
-    label: "Senior Reviewer",
-    color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    description: "Can review and approve code changes",
-  },
-  tech_lead: {
-    label: "Tech Lead",
-    color: "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400",
-    description: "Can manage project settings and team",
-  },
   admin: {
     label: "Admin",
     color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     description: "Full project access and management",
+  },
+  reviewer: {
+    label: "Reviewer",
+    color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
+    description: "Can review and approve code changes",
+  },
+  developer: {
+    label: "Developer",
+    color: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+    description: "Can view code and submit for review",
   },
 }
 

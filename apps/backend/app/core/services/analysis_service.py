@@ -195,6 +195,53 @@ class AnalysisService:
             project_id=validated_project_id,
         )
 
+    async def _ensure_project_profile_for_repo(self, repo: str) -> str:
+        """Ensure a project profile exists for the given repository.
+        
+        This is used as a fallback when analyses exist but don't have project profiles,
+        typically for legacy analyses created before the project_id system was implemented.
+        
+        Returns the project_profiles.id for the repository.
+        """
+        
+        def _ensure_profile() -> str:
+            from sqlalchemy import text as _text
+            from app.data.database import get_engine as _get_engine
+            import uuid
+            
+            engine = _get_engine()
+            normalized_repo = repo.strip().lower()
+            
+            with engine.begin() as conn:
+                # First check if a profile already exists
+                row = conn.execute(
+                    _text("SELECT id FROM project_profiles WHERE repo_id = :repo_id LIMIT 1"),
+                    {"repo_id": normalized_repo},
+                ).mappings().first()
+                
+                if row and row.get("id"):
+                    return str(row["id"])
+                
+                # Create a new project profile
+                new_id = str(uuid.uuid4())
+                conn.execute(
+                    _text('''
+                        INSERT INTO project_profiles (
+                            id, repo_id, context_version, analysis_status, 
+                            created_at, last_analyzed_at
+                        ) VALUES (
+                            :id, :repo_id, 1, 'pending', now(), now()
+                        )
+                        ON CONFLICT (repo_id) DO UPDATE
+                        SET last_analyzed_at = now()
+                        RETURNING id
+                    '''),
+                    {"id": new_id, "repo_id": normalized_repo}
+                )
+                return new_id
+        
+        return await asyncio.to_thread(_ensure_profile)
+
     async def _validate_project_id(self, project_id: str | None) -> str | None:
         """Enforce that analyses are tied to an existing project.
 
@@ -381,6 +428,31 @@ class AnalysisService:
                 status_code=404,
                 details={"analysis_id": analysis_id},
             )
+        
+        # Auto-backfill project_id for legacy analyses that don't have one
+        if analysis.project_id is None and analysis.repo:
+            try:
+                project_id = await self._ensure_project_profile_for_repo(analysis.repo)
+                # Update the analysis with the project_id
+                def _update_project_id():
+                    from sqlalchemy import text as _text
+                    from app.data.database import get_engine as _get_engine
+                    
+                    engine = _get_engine()
+                    with engine.begin() as conn:
+                        conn.execute(
+                            _text("UPDATE analyses SET project_id = :project_id WHERE id = :analysis_id"),
+                            {"project_id": project_id, "analysis_id": analysis_id}
+                        )
+                
+                await asyncio.to_thread(_update_project_id)
+                # Refresh the analysis object to include the new project_id
+                analysis = await asyncio.to_thread(self._repo_store.get_by_id, analysis_id)
+            except Exception:
+                # Non-fatal: if backfill fails, still return the analysis
+                # but log the issue for debugging
+                pass
+                
         return analysis
 
     async def update_analysis_status(self, command: UpdateAnalysisStatusCommand) -> Analysis:
