@@ -1,6 +1,6 @@
 # Auth Service dependencies
 fastapi>=0.109.0,<0.120.0
-uvicorn[standard]>=0.27.0,<0.30.0
+uvicorn[standard]>=0.27.0,<0.45.0
 pydantic>=2.5.0,<3.0.0
 pydantic-settings>=2.1.0,<3.0.0
 sqlalchemy>=2.0.0,<3.0.0
