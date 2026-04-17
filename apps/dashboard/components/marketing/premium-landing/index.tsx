@@ -13,6 +13,7 @@ import { AnimatedReviewShowcase } from './animated-review-showcase';
 import { ContainerScroll } from '@/components/ui/container-scroll-animation';
 import { PremiumFooter } from './premium-footer';
 import { PremiumNavbar } from './premium-navbar';
+import { GraphiteSections } from './graphite-sections';
 
 type PremiumLandingPageProps = {
   displayClassName?: string;
@@ -191,6 +192,8 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
       </section>
 
       <AnimatedReviewShowcase />
+
+      <GraphiteSections monoClassName={monoClassName} displayClassName={displayClassName} />
 
       <section className="px-6 py-16">
         <div className="mx-auto max-w-7xl border border-border p-8">

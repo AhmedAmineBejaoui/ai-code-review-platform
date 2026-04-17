@@ -10,8 +10,17 @@ import {
   CheckCircle2,
   Undo2,
   X,
+  Sparkles,
+  Wand2,
 } from "lucide-react"
 import { extractApiErrorMessage } from "@/lib/display"
+import { 
+  logGitHubError, 
+  validateRepoCoordinates, 
+  callGitHubAPI, 
+  showGitHubErrorToast,
+  collectDebugInfo
+} from "@/lib/github-debug"
 
 const MonacoEditor = dynamic(() => import("@monaco-editor/react"), {
   ssr: false,
@@ -33,9 +42,11 @@ interface CodeEditorProps {
   onSaved?: () => void
   saveTrigger?: number
   onBranchResolved?: (branch: string) => void
+  findingId?: string | null
+  findingDescription?: string | null
 }
 
-type EditorStatus = "idle" | "loading" | "saving" | "saved" | "error" | "conflict"
+type EditorStatus = "idle" | "loading" | "saving" | "saved" | "error" | "conflict" | "ai-fixing"
 
 // ── Language detection ───────────────────────────────────────────────────────
 
@@ -106,6 +117,14 @@ function statusChip(status: EditorStatus): {
       background: "rgba(143,177,255,0.1)",
     }
   }
+  if (status === "ai-fixing") {
+    return {
+      label: "AI Fixing...",
+      color: "#c084fc",
+      border: "rgba(192,132,252,0.4)",
+      background: "rgba(192,132,252,0.12)",
+    }
+  }
   if (status === "saved") {
     return {
       label: "Saved",
@@ -140,6 +159,8 @@ export function CodeEditor({
   onSaved,
   saveTrigger,
   onBranchResolved,
+  findingId,
+  findingDescription,
 }: CodeEditorProps) {
   const [content, setContent] = useState("")
   const [originalContent, setOriginalContent] = useState("")
@@ -148,6 +169,7 @@ export function CodeEditor({
   const [isDirty, setIsDirty] = useState(false)
   const [commitMessage, setCommitMessage] = useState("")
   const [effectiveBranch, setEffectiveBranch] = useState(branch)
+  const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
   const editorRef = useRef<unknown>(null)
   const lastExternalSaveTrigger = useRef<number | undefined>(saveTrigger)
 
@@ -155,17 +177,40 @@ export function CodeEditor({
     setEffectiveBranch(branch)
   }, [branch])
 
+  // Validate repository coordinates on mount
+  useEffect(() => {
+    const repoString = `${owner}/${repo}`
+    const validation = validateRepoCoordinates(repoString)
+    
+    if (!validation.isValid) {
+      console.error("[CodeEditor] Invalid repository coordinates:", {
+        input: repoString,
+        error: validation.error,
+        normalized: validation.normalized
+      })
+      setStatus("error")
+      setStatusMessage(`Invalid repository format: ${validation.error}`)
+      return
+    }
+    
+    console.log("[CodeEditor] Repository validation passed:", validation)
+  }, [owner, repo])
+
   const ghPost = useCallback(
     async (action: string, payload: Record<string, unknown>) => {
-      const response = await fetch("/api/dashboard/github", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action, payload }),
-      })
-      const data = await response.json().catch(() => ({}))
-      return { response, data }
+      const repoString = `${owner}/${repo}`
+      
+      try {
+        return await callGitHubAPI(action, payload, {
+          repository: repoString,
+          operation: action
+        })
+      } catch (error) {
+        // Enhanced error logging is already handled in callGitHubAPI
+        throw error
+      }
     },
-    [],
+    [owner, repo],
   )
 
   // Load file content when filePath changes
@@ -259,10 +304,26 @@ export function CodeEditor({
         }
       } catch (err) {
         if (cancelled) return
+        
+        // Enhanced error logging with context
+        logGitHubError(err, {
+          operation: "load_file",
+          owner,
+          repo,
+          filePath,
+          branch,
+          additionalInfo: {
+            effectiveBranch,
+            debugInfo: collectDebugInfo({ repo: `${owner}/${repo}` }, { owner, repo })
+          }
+        })
+        
         setStatus("error")
-        setStatusMessage(
-          err instanceof Error ? err.message : "Failed to load file",
-        )
+        const errorMessage = err instanceof Error ? err.message : "Failed to load file"
+        setStatusMessage(errorMessage)
+        
+        // Show user-friendly error toast
+        showGitHubErrorToast(err as any, { operation: "load file" })
       }
     }
 
@@ -290,25 +351,19 @@ export function CodeEditor({
     setStatusMessage("Committing to GitHub...")
 
     try {
-      const res = await fetch("/api/dashboard/github", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "commit_file",
-          payload: {
-            owner,
-            repo,
-            path: filePath,
-            content,
-            branch: effectiveBranch,
-            message:
-              commitMessage.trim() ||
-              `Update ${filePath.split("/").pop()} via AI Code Review Platform`,
-          },
-        }),
+      const { response: res, data } = await callGitHubAPI("commit_file", {
+        owner,
+        repo,
+        path: filePath,
+        content,
+        branch: effectiveBranch,
+        message:
+          commitMessage.trim() ||
+          `Update ${filePath.split("/").pop()} via AI Code Review Platform`,
+      }, {
+        repository: `${owner}/${repo}`,
+        operation: "commit_file"
       })
-
-      const data = await res.json()
 
       if (res.status === 409) {
         setStatus("conflict")
@@ -331,10 +386,26 @@ export function CodeEditor({
         setStatus((current) => (current === "saved" ? "idle" : current))
       }, 3000)
     } catch (err) {
+      // Enhanced error logging with context
+      logGitHubError(err, {
+        operation: "commit_file",
+        owner,
+        repo,
+        filePath,
+        branch: effectiveBranch,
+        additionalInfo: {
+          contentLength: content.length,
+          commitMessage: commitMessage.trim(),
+          debugInfo: collectDebugInfo({ repo: `${owner}/${repo}` }, { owner, repo })
+        }
+      })
+      
       setStatus("error")
-      setStatusMessage(
-        err instanceof Error ? err.message : "Failed to save file",
-      )
+      const errorMessage = err instanceof Error ? err.message : "Failed to save file"
+      setStatusMessage(errorMessage)
+      
+      // Show user-friendly error toast
+      showGitHubErrorToast(err as any, { operation: "save file" })
     }
   }, [filePath, isDirty, content, owner, repo, effectiveBranch, commitMessage, onSaved])
 
@@ -423,7 +494,75 @@ export function CodeEditor({
     setIsDirty(false)
     setStatus("idle")
     setStatusMessage("")
+    setAiSuggestion(null)
   }, [originalContent])
+
+  // Fix with AI
+  const handleAiFix = useCallback(async () => {
+    if (!filePath || !content) return
+
+    setStatus("ai-fixing")
+    setStatusMessage("AI is analyzing and fixing the code...")
+
+    try {
+      const res = await fetch("/api/dashboard/ai/fix-code", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filePath,
+          content,
+          language: detectLanguage(filePath),
+          findingId,
+          findingDescription,
+          context: {
+            owner,
+            repo,
+            branch: effectiveBranch,
+          },
+        }),
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(extractApiErrorMessage(data, "AI fix failed"))
+      }
+
+      if (data.fixedContent && data.fixedContent !== content) {
+        setAiSuggestion(data.fixedContent)
+        setContent(data.fixedContent)
+        setIsDirty(true)
+        setStatus("idle")
+        setStatusMessage("")
+        setCommitMessage(data.commitMessage || `AI fix: ${findingDescription || 'Code improvement'}`)
+      } else {
+        setStatus("idle")
+        setStatusMessage("No changes suggested by AI")
+        window.setTimeout(() => setStatusMessage(""), 3000)
+      }
+    } catch (err) {
+      setStatus("error")
+      setStatusMessage(
+        err instanceof Error ? err.message : "AI fix failed",
+      )
+    }
+  }, [filePath, content, findingId, findingDescription, owner, repo, effectiveBranch])
+
+  // Accept AI suggestion
+  const handleAcceptAiSuggestion = useCallback(() => {
+    // Already applied in handleAiFix
+    setAiSuggestion(null)
+  }, [])
+
+  // Reject AI suggestion
+  const handleRejectAiSuggestion = useCallback(() => {
+    if (aiSuggestion) {
+      setContent(originalContent)
+      setIsDirty(false)
+      setAiSuggestion(null)
+      setCommitMessage("")
+    }
+  }, [aiSuggestion, originalContent])
 
   if (!filePath) {
     return (
@@ -444,7 +583,7 @@ export function CodeEditor({
   const language = detectLanguage(filePath)
   const fileName = getFileName(filePath)
   const statusInfo =
-    status === "error" || status === "conflict" || status === "loading" || status === "saving" || status === "saved"
+    status === "error" || status === "conflict" || status === "loading" || status === "saving" || status === "saved" || status === "ai-fixing"
       ? statusChip(status)
       : null
 
@@ -599,7 +738,62 @@ export function CodeEditor({
           disabled={!isDirty || status === "saving"}
         />
 
-        {isDirty && (
+        {/* AI Fix Button */}
+        <button
+          type="button"
+          className="inline-flex h-8 items-center gap-1 rounded border px-2 text-xs font-medium disabled:opacity-50"
+          style={{
+            borderColor: "rgba(168,85,247,0.4)",
+            background: "rgba(168,85,247,0.15)",
+            color: "#c084fc",
+          }}
+          onClick={handleAiFix}
+          disabled={status === "saving" || status === "loading" || status === "ai-fixing" || !content}
+          title="Fix code issues with AI"
+        >
+          {status === "ai-fixing" ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : (
+            <Wand2 className="h-3.5 w-3.5" />
+          )}
+          Fix with AI
+        </button>
+
+        {/* AI Suggestion Actions */}
+        {aiSuggestion && (
+          <>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1 rounded border px-2 text-xs"
+              style={{
+                borderColor: "rgba(76,175,80,0.4)",
+                background: "rgba(76,175,80,0.12)",
+                color: "#8ce6ad",
+              }}
+              onClick={handleAcceptAiSuggestion}
+              title="Accept AI suggestion"
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              Accept
+            </button>
+            <button
+              type="button"
+              className="inline-flex h-8 items-center gap-1 rounded border px-2 text-xs"
+              style={{
+                borderColor: "rgba(255,95,87,0.35)",
+                background: "rgba(255,95,87,0.1)",
+                color: "#ffb4b0",
+              }}
+              onClick={handleRejectAiSuggestion}
+              title="Reject AI suggestion"
+            >
+              <X className="h-3.5 w-3.5" />
+              Reject
+            </button>
+          </>
+        )}
+
+        {isDirty && !aiSuggestion && (
           <button
             type="button"
             className="inline-flex h-8 items-center gap-1 rounded border px-2 text-xs"

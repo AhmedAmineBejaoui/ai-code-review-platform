@@ -10,6 +10,7 @@ from app.api.errors import register_exception_handlers
 from app.api.middleware.rate_limit import RateLimitMiddleware
 from app.api.http import (
     admin,
+    ai,
     analyses,
     branch_policies,
     branch_protection,
@@ -21,6 +22,7 @@ from app.api.http import (
     object_storage,
     observability,
     organizations,
+    org_structure,
     project_comprehension,
     project_settings,
     project_roles,
@@ -173,6 +175,7 @@ app.include_router(rag_query.router)
 app.include_router(repositories.router)
 app.include_router(projects.router)
 app.include_router(organizations.router, prefix="/v1")
+app.include_router(org_structure.router)
 app.include_router(statistics.router)
 app.include_router(security.router)
 app.include_router(teams.router)
@@ -182,6 +185,7 @@ app.include_router(jira_integration.router)
 app.include_router(integrations.router)
 app.include_router(project_roles.router)
 app.include_router(role_permissions.router)
+app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
 app.include_router(graphrag_router)

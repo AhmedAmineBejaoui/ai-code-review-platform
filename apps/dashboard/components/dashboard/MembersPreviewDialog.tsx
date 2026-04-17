@@ -40,17 +40,13 @@ export interface ImportMemberConfig {
 
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin", description: "Full project management access" },
-  { value: "tech_lead", label: "Tech Lead", description: "Technical leadership and code review" },
-  { value: "senior_reviewer", label: "Senior Reviewer", description: "Senior code review responsibilities" },
-  { value: "junior_reviewer", label: "Junior Reviewer", description: "Code review with guidance" },
+  { value: "reviewer", label: "Reviewer", description: "Code review and approval responsibilities" },
   { value: "developer", label: "Developer", description: "Standard development access" },
 ]
 
 const ROLE_COLORS = {
   admin: "destructive",
-  tech_lead: "default", 
-  senior_reviewer: "secondary",
-  junior_reviewer: "outline",
+  reviewer: "secondary",
   developer: "outline",
 } as const
 

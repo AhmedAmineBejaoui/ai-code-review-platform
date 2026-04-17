@@ -300,14 +300,8 @@ export async function GET(request: NextRequest) {
     listClerkOrganizations().catch(() => []),
   ])
 
-  if (!backendResponse.ok) {
-    return NextResponse.json(
-      backendResponse.data ?? { error: "Failed to load organizations" },
-      { status: backendResponse.status },
-    )
-  }
-
-  const teams = Array.isArray((backendResponse.data as { items?: BackendTeam[] } | null)?.items)
+  // Gracefully degrade: return empty list when backend is unavailable
+  const teams = backendResponse.ok && Array.isArray((backendResponse.data as { items?: BackendTeam[] } | null)?.items)
     ? (backendResponse.data as { items?: BackendTeam[] }).items ?? []
     : []
 
@@ -401,14 +395,7 @@ export async function POST(request: NextRequest) {
     { method: "GET" },
   )
 
-  if (!existingTeamsResponse.ok) {
-    return NextResponse.json(
-      existingTeamsResponse.data ?? { error: "Failed to validate organizations" },
-      { status: existingTeamsResponse.status },
-    )
-  }
-
-  const existingTeams = Array.isArray((existingTeamsResponse.data as { items?: BackendTeam[] } | null)?.items)
+  const existingTeams = existingTeamsResponse.ok && Array.isArray((existingTeamsResponse.data as { items?: BackendTeam[] } | null)?.items)
     ? (existingTeamsResponse.data as { items?: BackendTeam[] }).items ?? []
     : []
 

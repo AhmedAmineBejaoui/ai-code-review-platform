@@ -59,17 +59,9 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
     )
   }
 
-  // Render appropriate interface based on role
-  if (currentUser.role === "reviewer_junior") {
-    return (
-      <JuniorReviewInterface 
-        analysisId={analysisId} 
-        assignmentId={assignmentId}
-      />
-    )
-  }
-
-  if (currentUser.role === "reviewer_senior") {
+  // Render appropriate interface based on role (simplified roles)
+  // All reviewers now use the SeniorReviewInterface as the standard
+  if (currentUser.role === "reviewer" || currentUser.role === "admin") {
     return (
       <SeniorReviewInterface 
         analysisId={analysisId} 
@@ -78,9 +70,10 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
     )
   }
 
-  if (currentUser.role === "reviewer_lead") {
+  // Developers see a limited view
+  if (currentUser.role === "developer") {
     return (
-      <LeadReviewInterface 
+      <JuniorReviewInterface 
         analysisId={analysisId} 
         assignmentId={assignmentId}
       />
@@ -95,7 +88,7 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
           <AlertTriangle className="h-16 w-16 text-yellow-400 mx-auto mb-4" />
           <h2 className="text-2xl font-bold mb-2">Unknown Role</h2>
           <p className="text-muted-foreground">
-            Your reviewer role is not recognized. Please contact an administrator.
+            Your role is not recognized. Please contact an administrator.
           </p>
         </CardContent>
       </Card>

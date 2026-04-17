@@ -1,35 +1,56 @@
 """
 Teams API endpoints.
 
-Provides team management and team member operations.
+Implements the Teams Hierarchy:
+Organization → Project → Team → Repo → Branch → Commit
+
+Role resolution order:
+1. team_members.role (highest priority)
+2. org_members.role (mid priority)
+3. users.role (lowest priority)
 """
 
 from __future__ import annotations
 
-import uuid
+import logging
 from datetime import datetime, timezone
-from typing import Any, Literal
+from typing import Any, List, Literal, Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel, ConfigDict, Field
+from sqlalchemy import text
 
-from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    get_current_principal,
+)
 from app.data.database import get_engine
+from app.data.models.team import TeamRole, TeamPermission
+from app.data.repos.teams_repo import TeamsRepo
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/teams", tags=["teams"])
 
 
-class TeamMember(BaseModel):
-    """Team member model."""
+# ─────────────────────────────────────────────────────────────────────────────
+# REQUEST/RESPONSE MODELS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+class TeamMemberResponse(BaseModel):
+    """Team member response model."""
+    model_config = ConfigDict(extra="forbid")
+
+    id: str
     user_id: str
-    email: str
-    display_name: str | None
-    role: Literal["owner", "admin", "member", "viewer"]
-    joined_at: str
-    
-    # Activity stats
-    reviews_completed: int = 0
-    avg_review_time_hours: float | None = None
+    email: str | None = None
+    display_name: str | None = None
+    role: Literal["admin", "reviewer", "developer"]
+    permissions: List[str] = Field(default_factory=list)
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class TeamResponse(BaseModel):
@@ -38,45 +59,39 @@ class TeamResponse(BaseModel):
 
     id: str
     name: str
-    slug: str | None
+    project_id: str
+    project_name: str | None = None
     description: str | None = None
-    clerk_org_id: str | None = None
-    github_org_id: str | None = None
-    github_org_login: str | None = None
-    source: str = "platform"
-    sync_status: str = "local_only"
+    is_active: bool = True
+    member_count: int = 0
+    repo_count: int = 0
+    members: List[TeamMemberResponse] = Field(default_factory=list)
     
-    member_count: int
-    members: list[TeamMember] = Field(default_factory=list)
-    
-    # Team metrics
-    total_reviews: int = 0
+    # Stats
+    admin_count: int = 0
+    reviewer_count: int = 0
+    developer_count: int = 0
     active_reviews: int = 0
-    avg_review_time_hours: float | None = None
+    total_reviews: int = 0
+    avg_review_time_hours: float = 0.0
     
-    created_at: str
-    updated_at: str
+    created_at: str | None = None
+    updated_at: str | None = None
 
 
 class TeamListResponse(BaseModel):
     """Response model for team list."""
-    items: list[TeamResponse]
+    items: List[TeamResponse]
     total: int
 
 
 class CreateTeamRequest(BaseModel):
-    """Request to create a team."""
+    """Request to create a team under a project."""
     model_config = ConfigDict(extra="forbid")
 
-    id: str | None = Field(None, min_length=2, max_length=128)
     name: str = Field(min_length=1, max_length=100)
-    slug: str | None = Field(None, max_length=50, pattern=r"^[a-z0-9-]+$")
+    project_id: str = Field(min_length=1, max_length=128)
     description: str | None = Field(None, max_length=500)
-    clerk_org_id: str | None = Field(None, max_length=128)
-    github_org_id: str | None = Field(None, max_length=128)
-    github_org_login: str | None = Field(None, max_length=100)
-    source: Literal["platform", "github_import", "clerk_sync", "legacy"] = "platform"
-    sync_status: Literal["linked", "clerk_only", "github_only", "local_only", "error"] = "local_only"
 
 
 class UpdateTeamRequest(BaseModel):
@@ -84,13 +99,8 @@ class UpdateTeamRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str | None = Field(None, min_length=1, max_length=100)
-    slug: str | None = Field(None, max_length=50, pattern=r"^[a-z0-9-]+$")
     description: str | None = Field(None, max_length=500)
-    clerk_org_id: str | None = Field(None, max_length=128)
-    github_org_id: str | None = Field(None, max_length=128)
-    github_org_login: str | None = Field(None, max_length=100)
-    source: Literal["platform", "github_import", "clerk_sync", "legacy"] | None = None
-    sync_status: Literal["linked", "clerk_only", "github_only", "local_only", "error"] | None = None
+    is_active: bool | None = None
 
 
 class AddMemberRequest(BaseModel):
@@ -98,40 +108,81 @@ class AddMemberRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     user_id: str
-    role: Literal["admin", "member", "viewer"] = "member"
+    role: Literal["admin", "reviewer", "developer"] = "developer"
+    permissions: List[str] = Field(default_factory=list)
 
 
-def _slugify(value: str) -> str:
-    normalized = "".join(char.lower() if char.isalnum() else "-" for char in value.strip())
-    collapsed = "-".join(part for part in normalized.split("-") if part)
-    return collapsed[:50] or f"team-{uuid.uuid4().hex[:8]}"
+class UpdateMemberRequest(BaseModel):
+    """Request to update a team member's role or permissions."""
+    model_config = ConfigDict(extra="forbid")
+
+    role: Literal["admin", "reviewer", "developer"] | None = None
+    permissions: List[str] | None = None
 
 
-def _serialize_datetime(value: Any) -> str:
+class UserProjectAccessResponse(BaseModel):
+    """Response for user's resolved access in a project."""
+    model_config = ConfigDict(extra="forbid")
+
+    user_id: str
+    project_id: str
+    team_id: str | None = None
+    team_name: str | None = None
+    role: Literal["admin", "reviewer", "developer"]
+    permissions: List[str] = Field(default_factory=list)
+    source: Literal["team", "org", "platform", "none"]
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# HELPER FUNCTIONS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def _serialize_datetime(value: Any) -> str | None:
     if isinstance(value, datetime):
         return value.isoformat()
-    return str(value or "")
+    return str(value) if value else None
 
 
-def _resolve_sync_status(
-    clerk_org_id: str | None,
-    github_org_login: str | None,
-    explicit: str | None = None,
-) -> str:
-    if explicit:
-        return explicit
-    if clerk_org_id and github_org_login:
-        return "linked"
-    if clerk_org_id:
-        return "clerk_only"
-    if github_org_login:
-        return "github_only"
-    return "local_only"
+def _team_to_response(team, members=None, stats=None) -> TeamResponse:
+    """Convert Team model to response."""
+    member_responses = []
+    if members:
+        for m in members:
+            member_responses.append(TeamMemberResponse(
+                id=m.id,
+                user_id=m.user_id,
+                email=m.user_email,
+                display_name=m.user_display_name,
+                role=m.role.value,
+                permissions=m.permissions or [],
+                created_at=_serialize_datetime(m.created_at),
+                updated_at=_serialize_datetime(m.updated_at),
+            ))
+    
+    return TeamResponse(
+        id=team.id,
+        name=team.name,
+        project_id=team.project_id,
+        project_name=team.project_name,
+        description=team.description,
+        is_active=team.is_active,
+        member_count=team.member_count if hasattr(team, 'member_count') else len(member_responses),
+        repo_count=team.repo_count if hasattr(team, 'repo_count') else 0,
+        members=member_responses,
+        admin_count=stats.admin_count if stats else 0,
+        reviewer_count=stats.reviewer_count if stats else 0,
+        developer_count=stats.developer_count if stats else 0,
+        active_reviews=stats.active_reviews if stats else 0,
+        total_reviews=stats.total_reviews if stats else 0,
+        avg_review_time_hours=stats.avg_review_time_hours if stats else 0.0,
+        created_at=_serialize_datetime(team.created_at),
+        updated_at=_serialize_datetime(team.updated_at),
+    )
 
 
 def _ensure_user_record(engine, principal: AuthenticatedPrincipal) -> None:
-    from sqlalchemy import text
-
+    """Ensure the user exists in the users table."""
     email = principal.email.strip() if isinstance(principal.email, str) and principal.email.strip() else None
     display_name = (
         principal.display_name.strip()
@@ -141,16 +192,14 @@ def _ensure_user_record(engine, principal: AuthenticatedPrincipal) -> None:
 
     with engine.begin() as conn:
         conn.execute(
-            text(
-                """
+            text("""
                 INSERT INTO users (id, email, display_name, is_active, created_at)
                 VALUES (:id, :email, :display_name, true, :created_at)
                 ON CONFLICT (id) DO UPDATE
                 SET email = COALESCE(EXCLUDED.email, users.email),
                     display_name = COALESCE(EXCLUDED.display_name, users.display_name),
                     is_active = true
-                """
-            ),
+            """),
             {
                 "id": principal.user_id,
                 "email": email or f"{principal.user_id}@clerk.local",
@@ -160,374 +209,203 @@ def _ensure_user_record(engine, principal: AuthenticatedPrincipal) -> None:
         )
 
 
-def _team_response_from_data(
-    team_data: dict[str, Any],
-    members: list[TeamMember],
-    metrics: dict[str, Any],
-) -> TeamResponse:
-    return TeamResponse(
-        id=team_data["id"],
-        name=team_data["name"],
-        slug=team_data.get("slug"),
-        description=team_data.get("description"),
-        clerk_org_id=team_data.get("clerk_org_id"),
-        github_org_id=team_data.get("github_org_id"),
-        github_org_login=team_data.get("github_org_login"),
-        source=team_data.get("source") or "platform",
-        sync_status=team_data.get("sync_status") or "local_only",
-        member_count=team_data.get("member_count", len(members)),
-        members=members,
-        total_reviews=metrics["total_reviews"],
-        active_reviews=metrics["active_reviews"],
-        avg_review_time_hours=metrics["avg_review_time_hours"],
-        created_at=team_data["created_at"],
-        updated_at=team_data["updated_at"],
-    )
-
-
-def _get_organization_teams(engine, org_id: str | None) -> list[dict[str, Any]]:
-    """Get teams (organizations) from database."""
-    from sqlalchemy import text
+def _check_team_admin_access(
+    engine,
+    team_id: str,
+    user_id: str,
+    platform_role: str,
+) -> bool:
+    """Check if user has admin access to a team."""
+    # Platform admins always have access
+    if platform_role == "admin":
+        return True
     
-    # If org_id is provided, get that specific org
-    if org_id:
-        query = text("""
-            SELECT 
-                o.id,
-                o.name,
-                o.slug,
-                o.description,
-                o.clerk_org_id,
-                o.github_org_id,
-                o.github_org_login,
-                o.source,
-                o.sync_status,
-                o.created_at,
-                o.updated_at,
-                COUNT(DISTINCT om.user_id) as member_count
-            FROM organizations o
-            LEFT JOIN organization_memberships om ON o.id = om.organization_id
-            WHERE o.id = :org_id AND o.is_active = true
-            GROUP BY 
-                o.id,
-                o.name,
-                o.slug,
-                o.description,
-                o.clerk_org_id,
-                o.github_org_id,
-                o.github_org_login,
-                o.source,
-                o.sync_status,
-                o.created_at,
-                o.updated_at
-        """)
-        params = {"org_id": org_id}
-    else:
-        # Get all organizations
-        query = text("""
-            SELECT 
-                o.id,
-                o.name,
-                o.slug,
-                o.description,
-                o.clerk_org_id,
-                o.github_org_id,
-                o.github_org_login,
-                o.source,
-                o.sync_status,
-                o.created_at,
-                o.updated_at,
-                COUNT(DISTINCT om.user_id) as member_count
-            FROM organizations o
-            LEFT JOIN organization_memberships om ON o.id = om.organization_id
-            WHERE o.is_active = true
-            GROUP BY
-                o.id,
-                o.name,
-                o.slug,
-                o.description,
-                o.clerk_org_id,
-                o.github_org_id,
-                o.github_org_login,
-                o.source,
-                o.sync_status,
-                o.created_at,
-                o.updated_at
-            ORDER BY o.name
-        """)
-        params = {}
-    
-    teams = []
+    # Check team membership
     with engine.connect() as conn:
-        result = conn.execute(query, params)
-        for row in result.mappings():
-            teams.append({
-                "id": row["id"],
-                "name": row["name"],
-                "slug": row.get("slug"),
-                "description": row.get("description"),
-                "clerk_org_id": row.get("clerk_org_id"),
-                "github_org_id": row.get("github_org_id"),
-                "github_org_login": row.get("github_org_login"),
-                "source": row.get("source") or "platform",
-                "sync_status": row.get("sync_status") or "local_only",
-                "created_at": _serialize_datetime(row.get("created_at")),
-                "updated_at": _serialize_datetime(row.get("updated_at")),
-                "member_count": row.get("member_count") or 0,
-            })
+        row = conn.execute(
+            text("""
+                SELECT tm.role
+                FROM team_members tm
+                WHERE tm.team_id = :team_id AND tm.user_id = :user_id
+            """),
+            {"team_id": team_id, "user_id": user_id}
+        ).mappings().first()
+        
+        if row and row["role"] == "admin":
+            return True
+        
+        # Check org-level admin access
+        org_row = conn.execute(
+            text("""
+                SELECT om.role
+                FROM organization_memberships om
+                JOIN project_profiles pp ON pp.organization_id = om.organization_id
+                JOIN teams t ON t.project_id = pp.id
+                WHERE t.id = :team_id AND om.user_id = :user_id AND om.status = 'active'
+            """),
+            {"team_id": team_id, "user_id": user_id}
+        ).mappings().first()
+        
+        if org_row and org_row["role"] in ("owner", "admin"):
+            return True
     
-    return teams
+    return False
 
 
-def _get_team_members(engine, team_id: str) -> list[TeamMember]:
-    """Get members of a team."""
-    from sqlalchemy import text
+def _check_project_access(
+    engine,
+    project_id: str,
+    user_id: str,
+    platform_role: str,
+) -> bool:
+    """Check if user has access to create teams in a project."""
+    if platform_role == "admin":
+        return True
     
-    query = text("""
-        SELECT 
-            u.id as user_id,
-            u.email,
-            u.display_name,
-            om.role,
-            om.created_at as joined_at
-        FROM organization_memberships om
-        JOIN users u ON om.user_id = u.id
-        WHERE om.organization_id = :team_id
-        AND om.status = 'active'
-        ORDER BY om.role, u.display_name
-    """)
-    
-    members = []
     with engine.connect() as conn:
-        result = conn.execute(query, {"team_id": team_id})
-        for row in result.mappings():
-            members.append(TeamMember(
-                user_id=row["user_id"],
-                email=row["email"],
-                display_name=row.get("display_name"),
-                role=row.get("role", "member"),
-                joined_at=row["joined_at"].isoformat() if isinstance(row.get("joined_at"), datetime) else str(row.get("joined_at", "")),
-                reviews_completed=0,  # Could be enhanced with actual stats
-                avg_review_time_hours=None,
-            ))
+        # Check team membership in the project
+        team_row = conn.execute(
+            text("""
+                SELECT tm.role
+                FROM team_members tm
+                JOIN teams t ON t.id = tm.team_id
+                WHERE t.project_id = :project_id AND tm.user_id = :user_id AND t.is_active = TRUE
+            """),
+            {"project_id": project_id, "user_id": user_id}
+        ).mappings().first()
+        
+        if team_row and team_row["role"] == "admin":
+            return True
+        
+        # Check org-level access
+        org_row = conn.execute(
+            text("""
+                SELECT om.role
+                FROM organization_memberships om
+                JOIN project_profiles pp ON pp.organization_id = om.organization_id
+                WHERE pp.id = :project_id AND om.user_id = :user_id AND om.status = 'active'
+            """),
+            {"project_id": project_id, "user_id": user_id}
+        ).mappings().first()
+        
+        if org_row and org_row["role"] in ("owner", "admin"):
+            return True
     
-    return members
+    return False
 
 
-def _get_team_metrics(engine, team_id: str) -> dict[str, Any]:
-    """Get team review metrics."""
-    from sqlalchemy import text
-    
-    query = text("""
-        SELECT 
-            COUNT(*) as total_reviews,
-            SUM(CASE WHEN ra.status = 'pending' OR ra.status = 'in_progress' THEN 1 ELSE 0 END) as active_reviews,
-            AVG(EXTRACT(EPOCH FROM (COALESCE(ra.completed_at, NOW()) - ra.assigned_at)) / 3600) as avg_time_hours
-        FROM review_assignments ra
-        JOIN organization_memberships om ON ra.reviewer_id = om.user_id
-        WHERE om.organization_id = :team_id
-    """)
-    
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(query, {"team_id": team_id})
-            row = result.mappings().first()
-            
-            if row:
-                return {
-                    "total_reviews": row.get("total_reviews") or 0,
-                    "active_reviews": row.get("active_reviews") or 0,
-                    "avg_review_time_hours": float(row["avg_time_hours"]) if row.get("avg_time_hours") else None,
-                }
-    except Exception:
-        # Table might not exist
-        pass
-    
-    return {
-        "total_reviews": 0,
-        "active_reviews": 0,
-        "avg_review_time_hours": None,
-    }
+# ─────────────────────────────────────────────────────────────────────────────
+# TEAM ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
 
 
 @router.get("", response_model=TeamListResponse)
 async def list_teams(
-    team_id: str | None = Query(None, description="Filter by specific team ID"),
+    project_id: str | None = Query(None, description="Filter by project ID"),
+    include_members: bool = Query(False, description="Include team members"),
+    include_stats: bool = Query(False, description="Include team statistics"),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> TeamListResponse:
+):
     """
-    List teams (organizations) accessible to the current user.
+    List teams. Optionally filter by project.
     
-    Returns teams with member counts and basic metrics.
+    If project_id is provided, returns teams for that project.
+    Otherwise returns all teams the user has access to.
     """
-    enforce_permission(principal, "analyses.read")
-    
     engine = get_engine()
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
     
-    # Get teams
-    teams_data = _get_organization_teams(engine, team_id)
+    if project_id:
+        teams = repo.get_teams_by_project(project_id)
+    else:
+        # Get all teams user is a member of
+        user_teams = repo.get_user_teams(principal.user_id)
+        teams = [t[0] for t in user_teams]
     
     items = []
-    for team_data in teams_data:
-        members = _get_team_members(engine, team_data["id"])
-        metrics = _get_team_metrics(engine, team_data["id"])
-        items.append(_team_response_from_data(team_data, members, metrics))
+    for team in teams:
+        members = repo.get_team_members(team.id) if include_members else None
+        stats = repo.get_team_with_stats(team.id) if include_stats else None
+        items.append(_team_to_response(team, members, stats))
     
-    return TeamListResponse(
-        items=items,
-        total=len(items),
-    )
+    return TeamListResponse(items=items, total=len(items))
 
 
 @router.get("/{team_id}", response_model=TeamResponse)
 async def get_team(
     team_id: str,
+    include_members: bool = Query(True, description="Include team members"),
+    include_stats: bool = Query(True, description="Include team statistics"),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> TeamResponse:
-    """
-    Get a specific team by ID.
-    """
-    enforce_permission(principal, "analyses.read")
-    
+):
+    """Get a specific team by ID with members and stats."""
     engine = get_engine()
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
     
-    teams_data = _get_organization_teams(engine, team_id)
-    
-    if not teams_data:
+    team = repo.get_team(team_id)
+    if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     
-    team_data = teams_data[0]
-    members = _get_team_members(engine, team_id)
-    metrics = _get_team_metrics(engine, team_id)
+    members = repo.get_team_members(team_id) if include_members else None
+    stats = repo.get_team_with_stats(team_id) if include_stats else None
     
-    return _team_response_from_data(team_data, members, metrics)
+    return _team_to_response(team, members, stats)
 
 
 @router.post("", response_model=TeamResponse, status_code=status.HTTP_201_CREATED)
 async def create_team(
     request: CreateTeamRequest,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> TeamResponse:
+):
     """
-    Create a new team (organization).
-    """
-    enforce_permission(principal, "admin.write")
+    Create a new team under a project.
     
+    Requires admin access to the project (via team or org membership).
+    """
     engine = get_engine()
-    from sqlalchemy import text
-    
     _ensure_user_record(engine, principal)
-
-    team_id = request.id or request.clerk_org_id or str(uuid.uuid4())
-    slug = request.slug or _slugify(request.name)
-    clerk_org_id = request.clerk_org_id or (team_id if team_id.startswith("org_") else None)
-    github_org_id = request.github_org_id.strip() if isinstance(request.github_org_id, str) and request.github_org_id.strip() else None
-    github_org_login = (
-        request.github_org_login.strip()
-        if isinstance(request.github_org_login, str) and request.github_org_login.strip()
-        else None
-    )
-    sync_status = _resolve_sync_status(clerk_org_id, github_org_login, request.sync_status)
-    now = datetime.now(timezone.utc)
     
-    # Create organization
-    insert_query = text("""
-        INSERT INTO organizations (
-            id,
-            name,
-            slug,
-            description,
-            clerk_org_id,
-            github_org_id,
-            github_org_login,
-            source,
-            sync_status,
-            is_active,
-            created_at,
-            updated_at
+    # Check project access
+    if not _check_project_access(engine, request.project_id, principal.user_id, principal.role):
+        raise HTTPException(
+            status_code=403,
+            detail="You don't have permission to create teams in this project"
         )
-        VALUES (
-            :id,
-            :name,
-            :slug,
-            :description,
-            :clerk_org_id,
-            :github_org_id,
-            :github_org_login,
-            :source,
-            :sync_status,
-            true,
-            :created_at,
-            :updated_at
-        )
-        ON CONFLICT (id) DO UPDATE
-        SET name = EXCLUDED.name,
-            slug = EXCLUDED.slug,
-            description = EXCLUDED.description,
-            clerk_org_id = EXCLUDED.clerk_org_id,
-            github_org_id = EXCLUDED.github_org_id,
-            github_org_login = EXCLUDED.github_org_login,
-            source = EXCLUDED.source,
-            sync_status = EXCLUDED.sync_status,
-            is_active = true,
-            updated_at = EXCLUDED.updated_at
-        RETURNING *
-    """)
     
-    with engine.begin() as conn:
-        result = conn.execute(insert_query, {
-            "id": team_id,
-            "name": request.name,
-            "slug": slug,
-            "description": request.description,
-            "clerk_org_id": clerk_org_id,
-            "github_org_id": github_org_id,
-            "github_org_login": github_org_login,
-            "source": request.source,
-            "sync_status": sync_status,
-            "created_at": now,
-            "updated_at": now,
-        })
-        row = result.mappings().first()
+    # Verify project exists
+    with engine.connect() as conn:
+        project = conn.execute(
+            text("SELECT id, name FROM project_profiles WHERE id = :id"),
+            {"id": request.project_id}
+        ).mappings().first()
         
-        if not row:
-            raise HTTPException(status_code=500, detail="Failed to create team")
-        
-        # Add creator as owner
-        membership_id = str(uuid.uuid4())
-        membership_query = text("""
-            INSERT INTO organization_memberships (id, organization_id, user_id, role, status, created_at, updated_at)
-            VALUES (:id, :org_id, :user_id, 'owner', 'active', :created_at, :updated_at)
-            ON CONFLICT (organization_id, user_id) DO UPDATE
-            SET role = 'owner', status = 'active', updated_at = EXCLUDED.updated_at
-        """)
-        
-        conn.execute(membership_query, {
-            "id": membership_id,
-            "org_id": team_id,
-            "user_id": principal.user_id,
-            "created_at": now,
-            "updated_at": now,
-        })
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
     
-    return TeamResponse(
-        id=team_id,
+    repo = TeamsRepo(engine)
+    
+    # Create team
+    team = repo.create_team(
         name=request.name,
-        slug=slug,
+        project_id=request.project_id,
         description=request.description,
-        clerk_org_id=clerk_org_id,
-        github_org_id=github_org_id,
-        github_org_login=github_org_login,
-        source=request.source,
-        sync_status=sync_status,
-        member_count=1,
-        members=[],
-        total_reviews=0,
-        active_reviews=0,
-        avg_review_time_hours=None,
-        created_at=now.isoformat(),
-        updated_at=now.isoformat(),
     )
+    
+    # Add creator as admin
+    repo.add_member(
+        team_id=team.id,
+        user_id=principal.user_id,
+        role=TeamRole.ADMIN,
+    )
+    
+    # Refresh team data
+    team = repo.get_team(team.id)
+    members = repo.get_team_members(team.id)
+    stats = repo.get_team_with_stats(team.id)
+    
+    return _team_to_response(team, members, stats)
 
 
 @router.patch("/{team_id}", response_model=TeamResponse)
@@ -535,204 +413,190 @@ async def update_team(
     team_id: str,
     request: UpdateTeamRequest,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> TeamResponse:
-    """
-    Update a team.
-    """
-    enforce_permission(principal, "admin.write")
-    
+):
+    """Update a team's details. Requires admin access."""
     engine = get_engine()
-    from sqlalchemy import text
+    _ensure_user_record(engine, principal)
     
-    # Check team exists
-    teams_data = _get_organization_teams(engine, team_id)
-    if not teams_data:
+    if not _check_team_admin_access(engine, team_id, principal.user_id, principal.role):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    repo = TeamsRepo(engine)
+    
+    team = repo.update_team(
+        team_id=team_id,
+        name=request.name,
+        description=request.description,
+        is_active=request.is_active,
+    )
+    
+    if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     
-    # Build update
-    updates = []
-    params: dict[str, Any] = {"team_id": team_id, "updated_at": datetime.now(timezone.utc)}
+    members = repo.get_team_members(team_id)
+    stats = repo.get_team_with_stats(team_id)
     
-    if request.name is not None:
-        updates.append("name = :name")
-        params["name"] = request.name
-
-    if request.slug is not None:
-        updates.append("slug = :slug")
-        params["slug"] = request.slug or None
-
-    if request.description is not None:
-        updates.append("description = :description")
-        params["description"] = request.description
-
-    if request.clerk_org_id is not None:
-        updates.append("clerk_org_id = :clerk_org_id")
-        params["clerk_org_id"] = request.clerk_org_id or None
-
-    if request.github_org_id is not None:
-        updates.append("github_org_id = :github_org_id")
-        params["github_org_id"] = request.github_org_id or None
-
-    if request.github_org_login is not None:
-        updates.append("github_org_login = :github_org_login")
-        params["github_org_login"] = request.github_org_login or None
-
-    if request.source is not None:
-        updates.append("source = :source")
-        params["source"] = request.source
-
-    if request.sync_status is not None:
-        updates.append("sync_status = :sync_status")
-        params["sync_status"] = request.sync_status
-    elif (
-        request.clerk_org_id is not None
-        or request.github_org_login is not None
-        or request.github_org_id is not None
-    ):
-        resolved_clerk_org_id = (
-            request.clerk_org_id
-            if request.clerk_org_id is not None
-            else teams_data[0].get("clerk_org_id")
-        )
-        resolved_github_org_login = (
-            request.github_org_login
-            if request.github_org_login is not None
-            else teams_data[0].get("github_org_login")
-        )
-        updates.append("sync_status = :sync_status")
-        params["sync_status"] = _resolve_sync_status(
-            resolved_clerk_org_id,
-            resolved_github_org_login,
-        )
-    
-    if not updates:
-        # Nothing to update, return current team
-        return await get_team(team_id, principal)
-    
-    updates.append("updated_at = :updated_at")
-    
-    query = text(f"""
-        UPDATE organizations
-        SET {", ".join(updates)}
-        WHERE id = :team_id
-        RETURNING *
-    """)
-    
-    with engine.begin() as conn:
-        result = conn.execute(query, params)
-        row = result.mappings().first()
-        
-        if not row:
-            raise HTTPException(status_code=500, detail="Failed to update team")
-    
-    return await get_team(team_id, principal)
+    return _team_to_response(team, members, stats)
 
 
 @router.delete("/{team_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_team(
     team_id: str,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> Response:
-    """
-    Archive a team by marking the backing organization inactive.
-    """
-    enforce_permission(principal, "admin.write")
-
+):
+    """Delete a team. Requires admin access."""
     engine = get_engine()
-    from sqlalchemy import text
-
-    teams_data = _get_organization_teams(engine, team_id)
-    if not teams_data:
+    _ensure_user_record(engine, principal)
+    
+    if not _check_team_admin_access(engine, team_id, principal.user_id, principal.role):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    repo = TeamsRepo(engine)
+    
+    if not repo.delete_team(team_id):
         raise HTTPException(status_code=404, detail="Team not found")
 
-    now = datetime.now(timezone.utc)
-    with engine.begin() as conn:
-        conn.execute(
-            text(
-                """
-                UPDATE organizations
-                SET is_active = false, updated_at = :updated_at
-                WHERE id = :team_id
-                """
-            ),
-            {"team_id": team_id, "updated_at": now},
+
+# ─────────────────────────────────────────────────────────────────────────────
+# TEAM MEMBER ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/{team_id}/members", response_model=List[TeamMemberResponse])
+async def list_team_members(
+    team_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """Get all members of a team."""
+    engine = get_engine()
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
+    
+    # Verify team exists
+    team = repo.get_team(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    members = repo.get_team_members(team_id)
+    
+    return [
+        TeamMemberResponse(
+            id=m.id,
+            user_id=m.user_id,
+            email=m.user_email,
+            display_name=m.user_display_name,
+            role=m.role.value,
+            permissions=m.permissions or [],
+            created_at=_serialize_datetime(m.created_at),
+            updated_at=_serialize_datetime(m.updated_at),
         )
-        conn.execute(
-            text(
-                """
-                UPDATE organization_memberships
-                SET status = 'revoked', updated_at = :updated_at
-                WHERE organization_id = :team_id
-                """
-            ),
-            {"team_id": team_id, "updated_at": now},
-        )
-
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
+        for m in members
+    ]
 
 
-@router.post("/{team_id}/members", response_model=TeamMember, status_code=status.HTTP_201_CREATED)
+@router.post("/{team_id}/members", response_model=TeamMemberResponse, status_code=status.HTTP_201_CREATED)
 async def add_team_member(
     team_id: str,
     request: AddMemberRequest,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> TeamMember:
-    """
-    Add a member to a team.
-    """
-    enforce_permission(principal, "admin.write")
-    
+):
+    """Add a member to a team. Requires admin access."""
     engine = get_engine()
-    from sqlalchemy import text
+    _ensure_user_record(engine, principal)
     
-    # Check team exists
-    teams_data = _get_organization_teams(engine, team_id)
-    if not teams_data:
+    if not _check_team_admin_access(engine, team_id, principal.user_id, principal.role):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    repo = TeamsRepo(engine)
+    
+    # Verify team exists
+    team = repo.get_team(team_id)
+    if not team:
         raise HTTPException(status_code=404, detail="Team not found")
     
-    # Check user exists
-    user_query = text("SELECT id, email, display_name FROM users WHERE id = :user_id")
+    # Verify user exists
     with engine.connect() as conn:
-        result = conn.execute(user_query, {"user_id": request.user_id})
-        user_row = result.mappings().first()
+        user = conn.execute(
+            text("SELECT id FROM users WHERE id = :id"),
+            {"id": request.user_id}
+        ).first()
         
-        if not user_row:
+        if not user:
             raise HTTPException(status_code=404, detail="User not found")
     
-    # Add membership
-    now = datetime.now(timezone.utc)
-    membership_id = str(uuid.uuid4())
-    
-    insert_query = text("""
-        INSERT INTO organization_memberships (id, organization_id, user_id, role, status, created_at, updated_at)
-        VALUES (:id, :org_id, :user_id, :role, 'active', :created_at, :updated_at)
-        ON CONFLICT (organization_id, user_id) DO UPDATE
-        SET role = EXCLUDED.role, status = 'active', updated_at = EXCLUDED.updated_at
-        RETURNING *
-    """)
-    
-    with engine.begin() as conn:
-        result = conn.execute(insert_query, {
-            "id": membership_id,
-            "org_id": team_id,
-            "user_id": request.user_id,
-            "role": request.role,
-            "created_at": now,
-            "updated_at": now,
-        })
-        row = result.mappings().first()
-        
-        if not row:
-            raise HTTPException(status_code=500, detail="Failed to add member")
-    
-    return TeamMember(
+    member = repo.add_member(
+        team_id=team_id,
         user_id=request.user_id,
-        email=user_row["email"],
-        display_name=user_row.get("display_name"),
-        role=request.role,
-        joined_at=now.isoformat(),
-        reviews_completed=0,
-        avg_review_time_hours=None,
+        role=TeamRole(request.role),
+        permissions=request.permissions,
+    )
+    
+    # Refresh to get user details
+    member = repo.get_member(team_id, request.user_id)
+    
+    return TeamMemberResponse(
+        id=member.id,
+        user_id=member.user_id,
+        email=member.user_email,
+        display_name=member.user_display_name,
+        role=member.role.value,
+        permissions=member.permissions or [],
+        created_at=_serialize_datetime(member.created_at),
+        updated_at=_serialize_datetime(member.updated_at),
+    )
+
+
+@router.patch("/{team_id}/members/{user_id}", response_model=TeamMemberResponse)
+async def update_team_member(
+    team_id: str,
+    user_id: str,
+    request: UpdateMemberRequest,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Update a team member's role or permissions.
+    
+    Requires admin access to the team.
+    """
+    engine = get_engine()
+    _ensure_user_record(engine, principal)
+    
+    if not _check_team_admin_access(engine, team_id, principal.user_id, principal.role):
+        raise HTTPException(status_code=403, detail="Admin access required")
+    
+    repo = TeamsRepo(engine)
+    
+    # Verify team exists
+    team = repo.get_team(team_id)
+    if not team:
+        raise HTTPException(status_code=404, detail="Team not found")
+    
+    # Verify member exists
+    existing = repo.get_member(team_id, user_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Team member not found")
+    
+    # Update member
+    role = TeamRole(request.role) if request.role else None
+    member = repo.update_member(
+        team_id=team_id,
+        user_id=user_id,
+        role=role,
+        permissions=request.permissions,
+    )
+    
+    if not member:
+        raise HTTPException(status_code=404, detail="Failed to update member")
+    
+    return TeamMemberResponse(
+        id=member.id,
+        user_id=member.user_id,
+        email=member.user_email,
+        display_name=member.user_display_name,
+        role=member.role.value,
+        permissions=member.permissions or [],
+        created_at=_serialize_datetime(member.created_at),
+        updated_at=_serialize_datetime(member.updated_at),
     )
 
 
@@ -742,118 +606,128 @@ async def remove_team_member(
     user_id: str,
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
 ):
-    """
-    Remove a member from a team.
-    """
-    enforce_permission(principal, "admin.write")
-    
+    """Remove a member from a team. Requires admin access."""
     engine = get_engine()
-    from sqlalchemy import text
+    _ensure_user_record(engine, principal)
     
-    # Check team exists
-    teams_data = _get_organization_teams(engine, team_id)
-    if not teams_data:
-        raise HTTPException(status_code=404, detail="Team not found")
+    if not _check_team_admin_access(engine, team_id, principal.user_id, principal.role):
+        raise HTTPException(status_code=403, detail="Admin access required")
     
-    # Remove membership (or set status to revoked)
-    query = text("""
-        UPDATE organization_memberships
-        SET status = 'revoked', updated_at = :updated_at
-        WHERE organization_id = :team_id AND user_id = :user_id
-    """)
+    repo = TeamsRepo(engine)
     
-    with engine.begin() as conn:
-        conn.execute(query, {
-            "team_id": team_id,
-            "user_id": user_id,
-            "updated_at": datetime.now(timezone.utc),
-        })
+    if not repo.remove_member(team_id, user_id):
+        raise HTTPException(status_code=404, detail="Team member not found")
 
 
-class OrganizationResponse(BaseModel):
-    """Organization (GitHub) response model."""
-    model_config = ConfigDict(extra="forbid")
-    
-    id: str
-    name: str
-    slug: str | None
-    description: str | None = None
-    
-    repos_count: int = 0
-    members_count: int = 0
-    teams_count: int = 0
-    
-    created_at: str
-    updated_at: str
+# ─────────────────────────────────────────────────────────────────────────────
+# PROJECT TEAM ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
 
 
-@router.get("/organization", response_model=OrganizationResponse)
-async def get_organization(
+@router.get("/project/{project_id}", response_model=TeamListResponse)
+async def get_project_teams(
+    project_id: str,
+    include_members: bool = Query(True, description="Include team members"),
+    include_stats: bool = Query(False, description="Include team statistics"),
     principal: AuthenticatedPrincipal = Depends(get_current_principal),
-) -> OrganizationResponse:
+):
     """
-    Get the primary organization for the current user.
+    Get all teams for a project.
     
-    Returns the user's primary organization with repos, members, and team counts.
+    This is the main endpoint for the Project → Team hierarchy.
     """
-    enforce_permission(principal, "analyses.read")
-    
     engine = get_engine()
-    from sqlalchemy import text
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
     
-    # Get user's primary organization (first one they're a member of)
-    org_query = text("""
-        SELECT 
-            o.id,
-            o.name,
-            o.slug,
-            o.created_at,
-            o.updated_at,
-            COUNT(DISTINCT om.user_id) as members_count,
-            COUNT(DISTINCT r.id) as repos_count
-        FROM organizations o
-        LEFT JOIN organization_memberships om ON o.id = om.organization_id AND om.status = 'active'
-        LEFT JOIN repositories r ON o.id = r.organization_id
-        WHERE o.is_active = true
-        AND (
-            o.id IN (SELECT organization_id FROM organization_memberships WHERE user_id = :user_id AND status = 'active')
-            OR EXISTS (SELECT 1 FROM organization_memberships WHERE organization_id = o.id LIMIT 1)
-        )
-        GROUP BY o.id, o.name, o.slug, o.created_at, o.updated_at
-        ORDER BY o.created_at DESC
-        LIMIT 1
-    """)
+    # Verify project exists
+    with engine.connect() as conn:
+        project = conn.execute(
+            text("SELECT id FROM project_profiles WHERE id = :id"),
+            {"id": project_id}
+        ).first()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
     
-    try:
-        with engine.connect() as conn:
-            result = conn.execute(org_query, {"user_id": principal.user_id})
-            row = result.mappings().first()
-            
-            if row:
-                return OrganizationResponse(
-                    id=row["id"],
-                    name=row["name"],
-                    slug=row.get("slug"),
-                    description=None,
-                    repos_count=row.get("repos_count") or 0,
-                    members_count=row.get("members_count") or 0,
-                    teams_count=1,  # Default to 1
-                    created_at=row["created_at"].isoformat() if isinstance(row.get("created_at"), datetime) else str(row.get("created_at", "")),
-                    updated_at=row["updated_at"].isoformat() if isinstance(row.get("updated_at"), datetime) else str(row.get("updated_at", "")),
-                )
-    except Exception:
-        pass
+    teams = repo.get_teams_by_project(project_id)
     
-    # Return empty org if none found
-    now = datetime.now(timezone.utc)
-    return OrganizationResponse(
-        id="default",
-        name="Default Organization",
-        slug="default",
-        description=None,
-        repos_count=0,
-        members_count=0,
-        teams_count=0,
-        created_at=now.isoformat(),
-        updated_at=now.isoformat(),
+    items = []
+    for team in teams:
+        members = repo.get_team_members(team.id) if include_members else None
+        stats = repo.get_team_with_stats(team.id) if include_stats else None
+        items.append(_team_to_response(team, members, stats))
+    
+    return TeamListResponse(items=items, total=len(items))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# USER ACCESS ENDPOINTS
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/access/project/{project_id}", response_model=UserProjectAccessResponse)
+async def get_user_project_access(
+    project_id: str,
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """
+    Get the current user's resolved access for a project.
+    
+    Role resolution order:
+    1. team_members.role (highest priority)
+    2. org_members.role (mid priority)
+    3. users.role (lowest priority)
+    """
+    engine = get_engine()
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
+    
+    access = repo.get_user_project_access(principal.user_id, project_id)
+    
+    return UserProjectAccessResponse(
+        user_id=access.user_id,
+        project_id=access.project_id,
+        team_id=access.team_id,
+        team_name=access.team_name,
+        role=access.role.value,
+        permissions=access.permissions,
+        source=access.source,
     )
+
+
+@router.get("/my-teams", response_model=TeamListResponse)
+async def get_my_teams(
+    include_stats: bool = Query(False, description="Include team statistics"),
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """Get all teams the current user is a member of."""
+    engine = get_engine()
+    _ensure_user_record(engine, principal)
+    repo = TeamsRepo(engine)
+    
+    user_teams = repo.get_user_teams(principal.user_id)
+    
+    items = []
+    for team, member in user_teams:
+        stats = repo.get_team_with_stats(team.id) if include_stats else None
+        response = _team_to_response(team, [member], stats)
+        items.append(response)
+    
+    return TeamListResponse(items=items, total=len(items))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AVAILABLE PERMISSIONS ENDPOINT
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+@router.get("/permissions/available", response_model=List[dict])
+async def get_available_permissions(
+    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+):
+    """Get list of available granular permissions for teams."""
+    return [
+        {"value": p.value, "label": p.value.replace("_", " ").title()}
+        for p in TeamPermission
+    ]

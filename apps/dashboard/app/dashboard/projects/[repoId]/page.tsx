@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Image from "next/image"
-import { useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import {
   AlertTriangle,
   ArrowLeft,
@@ -20,6 +20,8 @@ import { Badge } from "@/components/ui/badge"
 import { BADGE_SUCCESS, BADGE_WARNING, BADGE_SECONDARY } from "@/lib/design-tokens"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { TeamManagement } from "@/components/dashboard/TeamManagement"
 import { extractApiErrorMessage } from "@/lib/display"
 import { formatCompactRelativeTime } from "@/lib/domain/dates"
 import { normalizeRepositoryId } from "@/lib/repository-links"
@@ -150,9 +152,11 @@ async function fetchOwnerRepos(ownerName: string, accountType: "user" | "org"): 
 export default function ProjectDetailPage() {
   const params = useParams() as { repoId?: string | string[] }
   const router = useRouter()
+  const searchParams = useSearchParams()
   const projectId = normalizeRepositoryId(
     Array.isArray(params.repoId) ? params.repoId[0] ?? "" : params.repoId ?? "",
   )
+  const initialTab = searchParams.get("tab") || "overview"
 
   const [project, setProject] = useState<ProjectViewModel | null>(null)
   const [githubRepos, setGithubRepos] = useState<GithubRepo[]>([])
@@ -306,240 +310,261 @@ export default function ProjectDetailPage() {
         </div>
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Folder className="h-5 w-5" />
-              Overview
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Status</span>
-              <Badge variant={status.variant as "success" | "warning" | "secondary"}>
-                {status.label}
-              </Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Language</span>
-              <Badge variant="outline">{project.language || "N/A"}</Badge>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Team</span>
-              <span className="text-sm font-medium">{project.teamName || "N/A"}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Auto Analysis</span>
-              <Badge variant={project.autoAnalysisEnabled ? "default" : "secondary"}>
-                {project.autoAnalysisEnabled ? "Enabled" : "Disabled"}
-              </Badge>
-            </div>
-          </CardContent>
-        </Card>
+      <Tabs defaultValue={initialTab} className="w-full">
+        <TabsList>
+          <TabsTrigger value="overview">
+            <Folder className="mr-2 h-4 w-4" />
+            Overview
+          </TabsTrigger>
+          <TabsTrigger value="team">
+            <Users className="mr-2 h-4 w-4" />
+            Team
+          </TabsTrigger>
+        </TabsList>
 
-        <Card>
-          <CardHeader>
-            <CardTitle>Health Score</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-center">
-              <div
-                className={`text-4xl font-bold ${
-                  project.healthScore >= 90
-                    ? "text-[color:var(--green-status)]"
-                    : project.healthScore >= 70
-                      ? "text-[color:var(--orange)]"
-                      : "text-destructive"
-                }`}
-              >
-                {project.healthScore}%
-              </div>
-              <div className="mt-2">
-                <div className="h-2 w-full rounded-full bg-gray-200">
-                  <div
-                    className={`h-2 rounded-full ${
-                      project.healthScore >= 90
-                        ? "bg-green-500"
-                        : project.healthScore >= 70
-                          ? "bg-yellow-500"
-                          : "bg-red-500"
-                    }`}
-                    style={{ width: `${project.healthScore}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Activity</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <GitBranch className="h-4 w-4" />
-                Branches
-              </span>
-              <span className="font-medium">{project.branchCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <ShieldCheck className="h-4 w-4" />
-                Analyses
-              </span>
-              <span className="font-medium">{project.analysisCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Users className="h-4 w-4" />
-                Team Members
-              </span>
-              <span className="font-medium">{project.contributorCount}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                Last Analysis
-              </span>
-              <span className="font-medium">{project.lastActivity}</span>
-            </div>
-          </CardContent>
-        </Card>
-
-        {githubOrgInfo && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Users className="h-5 w-5" />
-                GitHub Organization
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center gap-3">
-                {githubOrgInfo.avatarUrl && (
-                  <Image
-                    src={githubOrgInfo.avatarUrl}
-                    alt={githubOrgInfo.name || githubOrgInfo.login || "Organization"}
-                    width={40}
-                    height={40}
-                    className="h-10 w-10 rounded-full"
-                  />
-                )}
-                <div className="min-w-0 flex-1">
-                  <h3 className="font-semibold">{githubOrgInfo.name || githubOrgInfo.login}</h3>
-                  <p className="text-sm text-muted-foreground">
-                    {githubOrgInfo.description || "No description"}
-                  </p>
-                </div>
-                {githubOrgInfo.htmlUrl && (
-                  <Button variant="outline" size="sm" asChild>
-                    <a href={githubOrgInfo.htmlUrl} target="_blank" rel="noopener noreferrer">
-                      <ExternalLink className="h-4 w-4" />
-                    </a>
-                  </Button>
-                )}
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Public Repos</span>
-                <span className="font-medium">{githubOrgInfo.publicRepos || 0}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Members</span>
-                <span className="font-medium">{githubOrgInfo.members.length}</span>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Github className="h-5 w-5" />
-            GitHub Repositories
-            {loadingGithub && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {githubRepos.length > 0 ? (
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {githubRepos.map((repo) => (
-                <div key={repo.id} className="rounded-lg border p-4">
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <h3 className="truncate text-sm font-semibold">{repo.name}</h3>
-                      <p className="truncate text-xs text-muted-foreground">
-                        {repo.fullName}
-                      </p>
-                    </div>
-                    {repo.htmlUrl && (
-                      <Button variant="ghost" size="sm" asChild className="h-6 w-6 p-0">
-                        <a href={repo.htmlUrl} target="_blank" rel="noopener noreferrer">
-                          <ExternalLink className="h-3 w-3" />
-                        </a>
-                      </Button>
-                    )}
-                  </div>
-                  {repo.description && (
-                    <p className="mb-2 text-xs text-muted-foreground line-clamp-2">
-                      {repo.description}
-                    </p>
-                  )}
-                  <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                    {repo.language && (
-                      <div className="flex items-center gap-1">
-                        <div className="h-2 w-2 rounded-full bg-blue-500" />
-                        {repo.language}
-                      </div>
-                    )}
-                    <Badge variant={repo.private ? "secondary" : "outline"} className="text-xs">
-                      {repo.private ? "Private" : "Public"}
+        <TabsContent value="overview" className="mt-6">
+          <div className="space-y-6">
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Folder className="h-5 w-5" />
+                    Overview
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Status</span>
+                    <Badge variant={status.variant as "success" | "warning" | "secondary"}>
+                      {status.label}
                     </Badge>
-                    {repo.defaultBranch && <span>default: {repo.defaultBranch}</span>}
                   </div>
-                  {repo.updatedAt && (
-                    <p className="mt-2 text-xs text-muted-foreground">
-                      Updated {formatCompactRelativeTime(repo.updatedAt)}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="py-8 text-center">
-              <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-              <h3 className="text-lg font-medium">No GitHub repositories loaded</h3>
-              <p className="mt-1 text-muted-foreground">
-                Repository metadata will appear here when the connected GitHub account can access
-                the owner profile.
-              </p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Language</span>
+                    <Badge variant="outline">{project.language || "N/A"}</Badge>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Team</span>
+                    <span className="text-sm font-medium">{project.teamName || "N/A"}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm text-muted-foreground">Auto Analysis</span>
+                    <Badge variant={project.autoAnalysisEnabled ? "default" : "secondary"}>
+                      {project.autoAnalysisEnabled ? "Enabled" : "Disabled"}
+                    </Badge>
+                  </div>
+                </CardContent>
+              </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Knowledge Base</CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Index and manage knowledge sources for this project.
-          </p>
-        </CardHeader>
-        <CardContent>
-          <div className="py-8 text-center">
-            <Folder className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
-            <h3 className="mb-2 text-lg font-medium">Knowledge Base Management</h3>
-            <p className="mb-4 text-muted-foreground">
-              Index repositories, documents, and other sources to build the knowledge base for
-              AI-powered code reviews.
-            </p>
-            <Button variant="outline">Manage Knowledge Base</Button>
+              <Card>
+                <CardHeader>
+                  <CardTitle>Health Score</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-center">
+                    <div
+                      className={`text-4xl font-bold ${
+                        project.healthScore >= 90
+                          ? "text-[color:var(--green-status)]"
+                          : project.healthScore >= 70
+                            ? "text-[color:var(--orange)]"
+                            : "text-destructive"
+                      }`}
+                    >
+                      {project.healthScore}%
+                    </div>
+                    <div className="mt-2">
+                      <div className="h-2 w-full rounded-full bg-gray-200">
+                        <div
+                          className={`h-2 rounded-full ${
+                            project.healthScore >= 90
+                              ? "bg-green-500"
+                              : project.healthScore >= 70
+                                ? "bg-yellow-500"
+                                : "bg-red-500"
+                          }`}
+                          style={{ width: `${project.healthScore}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Activity</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <GitBranch className="h-4 w-4" />
+                      Branches
+                    </span>
+                    <span className="font-medium">{project.branchCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <ShieldCheck className="h-4 w-4" />
+                      Analyses
+                    </span>
+                    <span className="font-medium">{project.analysisCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Users className="h-4 w-4" />
+                      Team Members
+                    </span>
+                    <span className="font-medium">{project.contributorCount}</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <Clock className="h-4 w-4" />
+                      Last Analysis
+                    </span>
+                    <span className="font-medium">{project.lastActivity}</span>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {githubOrgInfo && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Users className="h-5 w-5" />
+                      GitHub Organization
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-3">
+                      {githubOrgInfo.avatarUrl && (
+                        <Image
+                          src={githubOrgInfo.avatarUrl}
+                          alt={githubOrgInfo.name || githubOrgInfo.login || "Organization"}
+                          width={40}
+                          height={40}
+                          className="h-10 w-10 rounded-full"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <h3 className="font-semibold">{githubOrgInfo.name || githubOrgInfo.login}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {githubOrgInfo.description || "No description"}
+                        </p>
+                      </div>
+                      {githubOrgInfo.htmlUrl && (
+                        <Button variant="outline" size="sm" asChild>
+                          <a href={githubOrgInfo.htmlUrl} target="_blank" rel="noopener noreferrer">
+                            <ExternalLink className="h-4 w-4" />
+                          </a>
+                        </Button>
+                      )}
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Public Repos</span>
+                      <span className="font-medium">{githubOrgInfo.publicRepos || 0}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm text-muted-foreground">Members</span>
+                      <span className="font-medium">{githubOrgInfo.members.length}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Github className="h-5 w-5" />
+                  GitHub Repositories
+                  {loadingGithub && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {githubRepos.length > 0 ? (
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {githubRepos.map((repo) => (
+                      <div key={repo.id} className="rounded-lg border p-4">
+                        <div className="mb-2 flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
+                            <h3 className="truncate text-sm font-semibold">{repo.name}</h3>
+                            <p className="truncate text-xs text-muted-foreground">
+                              {repo.fullName}
+                            </p>
+                          </div>
+                          {repo.htmlUrl && (
+                            <Button variant="ghost" size="sm" asChild className="h-6 w-6 p-0">
+                              <a href={repo.htmlUrl} target="_blank" rel="noopener noreferrer">
+                                <ExternalLink className="h-3 w-3" />
+                              </a>
+                            </Button>
+                          )}
+                        </div>
+                        {repo.description && (
+                          <p className="mb-2 text-xs text-muted-foreground line-clamp-2">
+                            {repo.description}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                          {repo.language && (
+                            <div className="flex items-center gap-1">
+                              <div className="h-2 w-2 rounded-full bg-blue-500" />
+                              {repo.language}
+                            </div>
+                          )}
+                          <Badge variant={repo.private ? "secondary" : "outline"} className="text-xs">
+                            {repo.private ? "Private" : "Public"}
+                          </Badge>
+                          {repo.defaultBranch && <span>default: {repo.defaultBranch}</span>}
+                        </div>
+                        {repo.updatedAt && (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Updated {formatCompactRelativeTime(repo.updatedAt)}
+                          </p>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="py-8 text-center">
+                    <Github className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                    <h3 className="text-lg font-medium">No GitHub repositories loaded</h3>
+                    <p className="mt-1 text-muted-foreground">
+                      Repository metadata will appear here when the connected GitHub account can access
+                      the owner profile.
+                    </p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle>Knowledge Base</CardTitle>
+                <p className="text-sm text-muted-foreground">
+                  Index and manage knowledge sources for this project.
+                </p>
+              </CardHeader>
+              <CardContent>
+                <div className="py-8 text-center">
+                  <Folder className="mx-auto mb-4 h-12 w-12 text-muted-foreground" />
+                  <h3 className="mb-2 text-lg font-medium">Knowledge Base Management</h3>
+                  <p className="mb-4 text-muted-foreground">
+                    Index repositories, documents, and other sources to build the knowledge base for
+                    AI-powered code reviews.
+                  </p>
+                  <Button variant="outline">Manage Knowledge Base</Button>
+                </div>
+              </CardContent>
+            </Card>
           </div>
-        </CardContent>
-      </Card>
+        </TabsContent>
+
+        <TabsContent value="team" className="mt-6">
+          <TeamManagement projectId={projectId} />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

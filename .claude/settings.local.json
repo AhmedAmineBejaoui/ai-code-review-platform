@@ -66,7 +66,12 @@
       "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); console.log\\('TrendingEqual' in lucide\\);\")",
       "Bash(node -e \"const lucide = require\\('C:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/node_modules/lucide-react'\\); const icons = ['Hexagon','CircleDot','Waves','Keyboard','Sparkles','Target']; icons.forEach\\(i => console.log\\(i, i in lucide\\)\\);\")",
       "Bash(gh pr create --title 'feat: GraphRAG pipeline + microservices + enhanced dashboard' --body ':*)",
-      "Bash(gh auth:*)"
+      "Bash(gh auth:*)",
+      "Bash(npm install:*)",
+      "Bash(find . -type f -name \"*.py\" -exec wc -l {} +)",
+      "Bash(poetry --version)",
+      "Bash(del nul *)",
+      "Bash(rm -f nul)"
     ]
   }
 }

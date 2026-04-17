@@ -570,6 +570,136 @@ function getSidebarContent(
       ],
     },
 
+    "review-status": {
+      title: "Review Status",
+      sections: [
+        {
+          title: "Monitoring",
+          items: [
+            {
+              icon: <Activity size={16} className="text-sidebar-foreground" />,
+              label: "Dashboard",
+              href: "/dashboard/review-status",
+              isActive: pathname === "/dashboard/review-status",
+            },
+          ],
+        },
+        {
+          title: "Views",
+          items: [
+            {
+              icon: <Time size={16} className="text-sidebar-foreground" />,
+              label: "Timeline View",
+              href: "/dashboard/review-status?tab=timeline",
+              isActive: pathname.startsWith("/dashboard/review-status"),
+            },
+            {
+              icon: <Badge size={16} className="text-sidebar-foreground" />,
+              label: "Notifications",
+              href: "/dashboard/review-status?tab=notifications", 
+              isActive: pathname.startsWith("/dashboard/review-status"),
+            },
+            {
+              icon: <ChartBar size={16} className="text-sidebar-foreground" />,
+              label: "Analytics",
+              href: "/dashboard/review-status?tab=analytics",
+              isActive: pathname.startsWith("/dashboard/review-status"),
+            },
+          ],
+        },
+      ],
+    },
+
+    jira: {
+      title: "Jira Integration",
+      sections: [
+        {
+          title: "Management",
+          items: [
+            {
+              icon: <Integration size={16} className="text-sidebar-foreground" />,
+              label: "Dashboard",
+              href: "/dashboard/jira",
+              isActive: pathname === "/dashboard/jira",
+            },
+          ],
+        },
+        {
+          title: "Workflows",
+          items: [
+            {
+              icon: <Activity size={16} className="text-sidebar-foreground" />,
+              label: "Kanban Board",
+              href: "/dashboard/jira?tab=kanban",
+              isActive: pathname.startsWith("/dashboard/jira"),
+            },
+            {
+              icon: <DocumentTasks size={16} className="text-sidebar-foreground" />,
+              label: "Issue List", 
+              href: "/dashboard/jira?tab=issues",
+              isActive: pathname.startsWith("/dashboard/jira"),
+            },
+          ],
+        },
+        {
+          title: "Configuration",
+          items: [
+            {
+              icon: <SettingsIcon size={16} className="text-sidebar-foreground" />,
+              label: "Setup & OAuth",
+              href: "/dashboard/jira?tab=setup",
+              isActive: pathname.startsWith("/dashboard/jira"),
+            },
+          ],
+        },
+      ],
+    },
+
+    observability: {
+      title: "Observability",
+      sections: [
+        {
+          title: "Monitoring",
+          items: [
+            {
+              icon: <Activity size={16} className="text-sidebar-foreground" />,
+              label: "Dashboard",
+              href: "/dashboard/observability",
+              isActive: pathname === "/dashboard/observability",
+            },
+          ],
+        },
+        {
+          title: "Analytics",
+          items: [
+            {
+              icon: <ChartBar size={16} className="text-sidebar-foreground" />,
+              label: "System Metrics",
+              href: "/dashboard/observability?tab=services",
+              isActive: pathname.startsWith("/dashboard/observability"),
+            },
+            {
+              icon: <Time size={16} className="text-sidebar-foreground" />,
+              label: "Timeline View", 
+              href: "/dashboard/observability?tab=timeline",
+              isActive: pathname.startsWith("/dashboard/observability"),
+            },
+          ],
+        },
+        {
+          title: "Alerts",
+          items: [
+            {
+              icon: <Badge size={16} className="text-sidebar-foreground" />,
+              label: "Alert Management",
+              href: "/dashboard/observability?tab=alerts",
+              isActive: pathname.startsWith("/dashboard/observability"),
+            },
+          ],
+        },
+      ],
+    },
+
     admin: {
       title: "Administration",
       sections: [
@@ -732,6 +862,9 @@ function IconNavigation({
     { id: "editor", icon: <Terminal size={18} />, label: "Editor" },
     { id: "pulls", icon: <RequestQuote size={18} />, label: "PRs" },
     { id: "reviews", icon: <DocumentTasks size={18} />, label: "Reviews", requiresReviewer: true },
+    { id: "review-status", icon: <Activity size={18} />, label: "Review Status" },
+    { id: "observability", icon: <ChartBar size={18} />, label: "Observability" },
+    { id: "jira", icon: <Integration size={18} />, label: "Jira" },
     { id: "admin", icon: <Security size={18} />, label: "Admin", requiresAdmin: true },
   ];
 
@@ -1217,6 +1350,9 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
     if (pathname.startsWith("/dashboard/analyses")) return "analyses";
     if (pathname.startsWith("/dashboard/editor")) return "editor";
     if (pathname.startsWith("/dashboard/pulls")) return "pulls";
+    if (pathname.startsWith("/dashboard/review-status")) return "review-status";
+    if (pathname.startsWith("/dashboard/observability")) return "observability";
+    if (pathname.startsWith("/dashboard/jira")) return "jira";
     if (pathname.startsWith("/dashboard/statistics") || pathname.startsWith("/dashboard/insights")) return "dashboard";
     return "dashboard";
   });

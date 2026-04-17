@@ -1,39 +1,47 @@
-export const APP_ROLES = [
-  "admin",
-  "tech_lead",
-  "reviewer_lead",
-  "reviewer_senior",
-  "reviewer_junior",
-  "developer"
-] as const
+/**
+ * Simplified role system: admin, reviewer, developer
+ * - admin: Full access, can manage organizations, projects, teams, and users
+ * - reviewer: Can review code, approve/reject PRs, manage reviews
+ * - developer: Can submit code for review, view own analyses
+ */
+
+export const APP_ROLES = ["admin", "reviewer", "developer"] as const
 
 export type AppRole = (typeof APP_ROLES)[number]
 
-// Reviewer levels for easier checking
-export const REVIEWER_ROLES = ["reviewer_lead", "reviewer_senior", "reviewer_junior"] as const
-export type ReviewerRole = (typeof REVIEWER_ROLES)[number]
+// Roles that can perform reviews
+export const REVIEW_ROLES = ["admin", "reviewer"] as const
+export type ReviewRole = (typeof REVIEW_ROLES)[number]
 
 // Roles that can modify project settings
-export const PROJECT_SETTINGS_WRITE_ROLES = ["admin", "tech_lead"] as const
+export const PROJECT_SETTINGS_WRITE_ROLES = ["admin"] as const
 export type ProjectSettingsWriteRole = (typeof PROJECT_SETTINGS_WRITE_ROLES)[number]
 
 // Helper functions
-export function isReviewer(role: AppRole): role is ReviewerRole {
-  return REVIEWER_ROLES.includes(role as ReviewerRole)
+export function isReviewer(role: AppRole): boolean {
+  return role === "reviewer" || role === "admin"
 }
 
-export function isReviewerSeniorOrLead(role: AppRole): boolean {
-  return role === "reviewer_senior" || role === "reviewer_lead"
-}
-
-export function isReviewerLead(role: AppRole): boolean {
-  return role === "reviewer_lead"
+export function canReview(role: AppRole): boolean {
+  return REVIEW_ROLES.includes(role as ReviewRole)
 }
 
 export function canModifyProjectSettings(role: AppRole): boolean {
-  return PROJECT_SETTINGS_WRITE_ROLES.includes(role as ProjectSettingsWriteRole)
+  return role === "admin"
 }
 
+export function isAdmin(role: AppRole): boolean {
+  return role === "admin"
+}
+
+export function isReviewerLead(role: AppRole): boolean {
+  return role === "admin"
+}
+
+/**
+ * Role aliases for normalization
+ * Maps various role strings to the simplified role system
+ */
 const ROLE_ALIASES: Record<string, AppRole> = {
   // Admin aliases
   admin: "admin",
@@ -42,36 +50,30 @@ const ROLE_ALIASES: Record<string, AppRole> = {
   superadmin: "admin",
   "super-admin": "admin",
   super_admin: "admin",
+  tech_lead: "admin", // Legacy: tech_lead → admin
+  "tech-lead": "admin",
+  techlead: "admin",
+  lead: "admin",
+  team_lead: "admin",
+  "team-lead": "admin",
 
-  // Tech Lead aliases
-  tech_lead: "tech_lead",
-  "tech-lead": "tech_lead",
-  techlead: "tech_lead",
-  lead: "tech_lead",
-  team_lead: "tech_lead",
-  "team-lead": "tech_lead",
-
-  // Reviewer level aliases
-  reviewer_lead: "reviewer_lead",
-  "reviewer-lead": "reviewer_lead",
-  lead_reviewer: "reviewer_lead",
-  "lead-reviewer": "reviewer_lead",
-
-  reviewer_senior: "reviewer_senior",
-  "reviewer-senior": "reviewer_senior",
-  senior_reviewer: "reviewer_senior",
-  "senior-reviewer": "reviewer_senior",
-
-  reviewer_junior: "reviewer_junior",
-  "reviewer-junior": "reviewer_junior",
-  junior_reviewer: "reviewer_junior",
-  "junior-reviewer": "reviewer_junior",
-
-  // Generic reviewer (maps to senior for backward compatibility)
-  reviewer: "reviewer_senior",
-  review: "reviewer_senior",
-  "code-reviewer": "reviewer_senior",
-  code_reviewer: "reviewer_senior",
+  // Reviewer aliases (all reviewer levels map to reviewer)
+  reviewer: "reviewer",
+  review: "reviewer",
+  "code-reviewer": "reviewer",
+  code_reviewer: "reviewer",
+  reviewer_lead: "reviewer", // Legacy
+  "reviewer-lead": "reviewer",
+  lead_reviewer: "reviewer",
+  "lead-reviewer": "reviewer",
+  reviewer_senior: "reviewer", // Legacy
+  "reviewer-senior": "reviewer",
+  senior_reviewer: "reviewer",
+  "senior-reviewer": "reviewer",
+  reviewer_junior: "reviewer", // Legacy
+  "reviewer-junior": "reviewer",
+  junior_reviewer: "reviewer",
+  "junior-reviewer": "reviewer",
 
   // Developer aliases
   developer: "developer",
@@ -156,11 +158,7 @@ export function getRoleHomePath(role: AppRole): string {
   switch (role) {
     case "admin":
       return "/dashboard/admin/knowledge-base"
-    case "tech_lead":
-      return "/dashboard/admin/knowledge-base"
-    case "reviewer_lead":
-    case "reviewer_senior":
-    case "reviewer_junior":
+    case "reviewer":
       return "/dashboard/reviewer"
     default:
       return "/dashboard"
@@ -171,15 +169,32 @@ export function formatRoleLabel(role: AppRole): string {
   switch (role) {
     case "admin":
       return "Admin"
-    case "tech_lead":
-      return "Tech Lead"
-    case "reviewer_lead":
-      return "Lead Reviewer"
-    case "reviewer_senior":
-      return "Senior Reviewer"
-    case "reviewer_junior":
-      return "Junior Reviewer"
+    case "reviewer":
+      return "Reviewer"
     default:
       return "Developer"
   }
+}
+
+/**
+ * Get role priority for comparison (higher = more privileged)
+ */
+export function getRolePriority(role: AppRole): number {
+  switch (role) {
+    case "admin":
+      return 100
+    case "reviewer":
+      return 50
+    case "developer":
+      return 10
+    default:
+      return 0
+  }
+}
+
+/**
+ * Compare two roles and return the higher privileged one
+ */
+export function getHigherRole(role1: AppRole, role2: AppRole): AppRole {
+  return getRolePriority(role1) >= getRolePriority(role2) ? role1 : role2
 }

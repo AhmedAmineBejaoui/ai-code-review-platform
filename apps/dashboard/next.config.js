@@ -17,17 +17,15 @@ const nextConfig = {
     ],
   },
 
-  // Ignore ESLint errors during build
-  eslint: {
-    ignoreDuringBuilds: true,
-  },
-
   // Ignore TypeScript errors during build
   typescript: {
     ignoreBuildErrors: true,
   },
 
-  // Webpack configuration
+  // Empty turbopack config to silence the webpack/turbopack conflict warning
+  turbopack: {},
+
+  // Webpack configuration (used when running with --webpack flag)
   webpack: (config, { dev, isServer }) => {
     // Use memory cache in dev mode (Windows is sensitive to file cache)
     if (dev) {

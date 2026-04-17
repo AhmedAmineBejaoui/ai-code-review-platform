@@ -4,9 +4,9 @@ Organizations API endpoints for managing multi-tenant organizations.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from typing import Any, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Body
+from fastapi import APIRouter, Depends, HTTPException, Path, Body, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
@@ -34,6 +34,17 @@ class UpdateOrganizationRequest(BaseModel):
     slug: str | None = Field(None, max_length=255)
     github_org_id: int | None = None
     github_org_name: str | None = Field(None, max_length=255)
+
+
+class AddMemberRequest(BaseModel):
+    user_id: str = Field(..., min_length=1, max_length=255)
+    role: Literal["admin", "reviewer", "developer"] = Field(default="developer")
+    status: Literal["active", "invited", "revoked"] = Field(default="active")
+
+
+class UpdateMemberRequest(BaseModel):
+    role: Literal["admin", "reviewer", "developer"] | None = None
+    status: Literal["active", "invited", "revoked"] | None = None
 
 
 def _to_iso(dt: Any) -> str | None:
@@ -257,3 +268,256 @@ async def list_organizations(
                 for row in rows
             ]
         }
+
+
+# ============================================================================
+# Organization Members Endpoints
+# ============================================================================
+
+@router.get("/{org_id}/members")
+async def list_organization_members(
+    org_id: str = Path(..., min_length=1),
+):
+    """List all members of an organization."""
+    engine = get_engine()
+    
+    with engine.connect() as conn:
+        # Check org exists
+        org = conn.execute(
+            text("SELECT id FROM organizations WHERE id = :org_id LIMIT 1"),
+            {"org_id": org_id}
+        ).first()
+        
+        if not org:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        # Get members with user details
+        rows = conn.execute(
+            text("""
+                SELECT 
+                    om.id as membership_id,
+                    om.user_id,
+                    om.role,
+                    om.status,
+                    om.created_at,
+                    u.email,
+                    u.display_name,
+                    u.avatar_url
+                FROM organization_memberships om
+                LEFT JOIN users u ON u.id = om.user_id
+                WHERE om.organization_id = :org_id
+                ORDER BY om.created_at ASC
+            """),
+            {"org_id": org_id}
+        ).mappings().all()
+        
+        return {
+            "items": [
+                {
+                    "id": str(row["membership_id"]),
+                    "userId": str(row["user_id"]),
+                    "role": str(row["role"]),
+                    "status": str(row["status"]),
+                    "createdAt": _to_iso(row.get("created_at")),
+                    "user": {
+                        "id": str(row["user_id"]),
+                        "email": str(row.get("email") or ""),
+                        "displayName": str(row.get("display_name") or ""),
+                        "avatarUrl": str(row.get("avatar_url") or ""),
+                    } if row.get("email") else None,
+                }
+                for row in rows
+            ],
+            "total": len(rows),
+        }
+
+
+@router.post("/{org_id}/members")
+async def add_organization_member(
+    request: AddMemberRequest,
+    org_id: str = Path(..., min_length=1),
+):
+    """Add a member to an organization."""
+    engine = get_engine()
+    
+    with engine.begin() as conn:
+        # Check org exists
+        org = conn.execute(
+            text("SELECT id FROM organizations WHERE id = :org_id LIMIT 1"),
+            {"org_id": org_id}
+        ).first()
+        
+        if not org:
+            raise HTTPException(status_code=404, detail="Organization not found")
+        
+        # Check if user exists
+        user = conn.execute(
+            text("SELECT id FROM users WHERE id = :user_id LIMIT 1"),
+            {"user_id": request.user_id}
+        ).first()
+        
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Check if membership already exists
+        existing = conn.execute(
+            text("""
+                SELECT id FROM organization_memberships 
+                WHERE organization_id = :org_id AND user_id = :user_id
+                LIMIT 1
+            """),
+            {"org_id": org_id, "user_id": request.user_id}
+        ).first()
+        
+        if existing:
+            # Update existing membership
+            conn.execute(
+                text("""
+                    UPDATE organization_memberships
+                    SET role = :role, status = :status, updated_at = NOW()
+                    WHERE organization_id = :org_id AND user_id = :user_id
+                """),
+                {
+                    "org_id": org_id,
+                    "user_id": request.user_id,
+                    "role": _map_platform_role_to_db_role(request.role),
+                    "status": request.status,
+                }
+            )
+            logger.info(f"Updated membership: user={request.user_id} org={org_id}")
+            return {"id": str(existing[0]), "updated": True}
+        
+        # Create new membership
+        membership_id = str(uuid.uuid4())
+        conn.execute(
+            text("""
+                INSERT INTO organization_memberships (
+                    id, organization_id, user_id, role, status, created_at, updated_at
+                )
+                VALUES (
+                    :id, :org_id, :user_id, :role, :status, NOW(), NOW()
+                )
+            """),
+            {
+                "id": membership_id,
+                "org_id": org_id,
+                "user_id": request.user_id,
+                "role": _map_platform_role_to_db_role(request.role),
+                "status": request.status,
+            }
+        )
+        
+        logger.info(f"Created membership: user={request.user_id} org={org_id} role={request.role}")
+        
+        return {
+            "id": membership_id,
+            "userId": request.user_id,
+            "organizationId": org_id,
+            "role": request.role,
+            "status": request.status,
+        }
+
+
+@router.patch("/{org_id}/members/{user_id}")
+async def update_organization_member(
+    request: UpdateMemberRequest,
+    org_id: str = Path(..., min_length=1),
+    user_id: str = Path(..., min_length=1),
+):
+    """Update a member's role or status in an organization."""
+    engine = get_engine()
+    
+    with engine.begin() as conn:
+        # Check membership exists
+        existing = conn.execute(
+            text("""
+                SELECT id, role, status FROM organization_memberships 
+                WHERE organization_id = :org_id AND user_id = :user_id
+                LIMIT 1
+            """),
+            {"org_id": org_id, "user_id": user_id}
+        ).mappings().first()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Membership not found")
+        
+        # Build update query
+        updates = ["updated_at = NOW()"]
+        params = {"org_id": org_id, "user_id": user_id}
+        
+        if request.role is not None:
+            updates.append("role = :role")
+            params["role"] = _map_platform_role_to_db_role(request.role)
+        
+        if request.status is not None:
+            updates.append("status = :status")
+            params["status"] = request.status
+        
+        conn.execute(
+            text(f"""
+                UPDATE organization_memberships 
+                SET {', '.join(updates)}
+                WHERE organization_id = :org_id AND user_id = :user_id
+            """),
+            params
+        )
+        
+        logger.info(f"Updated membership: user={user_id} org={org_id}")
+        
+        return {
+            "id": str(existing["id"]),
+            "userId": user_id,
+            "organizationId": org_id,
+            "role": request.role or str(existing["role"]),
+            "status": request.status or str(existing["status"]),
+            "updated": True,
+        }
+
+
+@router.delete("/{org_id}/members/{user_id}")
+async def remove_organization_member(
+    org_id: str = Path(..., min_length=1),
+    user_id: str = Path(..., min_length=1),
+):
+    """Remove a member from an organization."""
+    engine = get_engine()
+    
+    with engine.begin() as conn:
+        # Check membership exists
+        existing = conn.execute(
+            text("""
+                SELECT id FROM organization_memberships 
+                WHERE organization_id = :org_id AND user_id = :user_id
+                LIMIT 1
+            """),
+            {"org_id": org_id, "user_id": user_id}
+        ).first()
+        
+        if not existing:
+            raise HTTPException(status_code=404, detail="Membership not found")
+        
+        # Delete membership
+        conn.execute(
+            text("""
+                DELETE FROM organization_memberships 
+                WHERE organization_id = :org_id AND user_id = :user_id
+            """),
+            {"org_id": org_id, "user_id": user_id}
+        )
+        
+        logger.info(f"Deleted membership: user={user_id} org={org_id}")
+        
+        return {"deleted": True, "userId": user_id, "organizationId": org_id}
+
+
+def _map_platform_role_to_db_role(platform_role: str) -> str:
+    """
+    Map platform roles (admin, reviewer, developer) to DB roles (owner, admin, member).
+    The DB uses a different role vocabulary for historical reasons.
+    """
+    mapping = {
+        "admin": "admin",
+        "reviewer": "member",  # reviewers are members with elevated permissions
+        "developer": "member",
+    }
+    return mapping.get(platform_role, "member")

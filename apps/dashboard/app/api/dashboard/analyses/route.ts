@@ -908,15 +908,42 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const { userId, getToken, orgId, orgRole, orgSlug, sessionClaims } = await auth()
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
-  }
+  try {
+    const { userId, getToken, orgId, orgRole, orgSlug, sessionClaims } = await auth()
+    
+    if (!userId) {
+      console.error("POST /api/dashboard/analyses: No userId from auth()")
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
 
-  const token = await getToken()
-  if (!token) {
-    return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
-  }
+    console.log(`POST /api/dashboard/analyses: Authenticated user ${userId}, org: ${orgId}, role: ${orgRole}`)
+
+    let token: string | null = null
+    try {
+      token = await getToken()
+    } catch (tokenError) {
+      console.error("POST /api/dashboard/analyses: Token generation failed:", tokenError)
+      return NextResponse.json({ 
+        error: "Authentication token error",
+        details: tokenError instanceof Error ? tokenError.message : "Unknown token error"
+      }, { status: 401 })
+    }
+
+    if (!token) {
+      console.error("POST /api/dashboard/analyses: getToken() returned null")
+      return NextResponse.json({ 
+        error: "Missing Clerk token",
+        debug: {
+          userId: !!userId,
+          hasGetToken: typeof getToken === 'function',
+          orgId,
+          orgRole,
+          sessionExists: !!sessionClaims
+        }
+      }, { status: 401 })
+    }
+
+    console.log(`POST /api/dashboard/analyses: Got token (length: ${token.length})`)
 
   let rawBody: CreateAnalysisBody
   try {
@@ -1113,4 +1140,11 @@ export async function POST(request: NextRequest) {
   }
 
   return NextResponse.json(parsedBackendBody, { status: backendResponse.status })
+  } catch (error) {
+    console.error("POST /api/dashboard/analyses: Unexpected error:", error)
+    return NextResponse.json({ 
+      error: "Internal server error",
+      details: error instanceof Error ? error.message : "Unknown error"
+    }, { status: 500 })
+  }
 }

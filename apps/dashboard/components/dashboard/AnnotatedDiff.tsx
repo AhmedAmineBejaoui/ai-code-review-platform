@@ -41,7 +41,7 @@ import { CommentThread } from "@/components/review/CommentThread"
 import { PendingReviewBanner } from "@/components/review/PendingReviewBanner"
 import { ClarificationCallDialog } from "@/components/review/ClarificationCallDialog"
 import { ReviewSubmissionDialog } from "@/components/review/ReviewSubmissionDialog"
-import { CodeEditor } from "@/components/editor/CodeEditor"
+import { EnhancedFuturisticDiffEditor } from "@/components/editor/EnhancedFuturisticDiffEditor"
 import type { PendingComment, ReviewComment, CommentAuthor, ReviewVerdict } from "@/lib/review-types"
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -1152,7 +1152,7 @@ export function AnnotatedDiff() {
                         Cannot open editor: repository format is invalid.
                       </div>
                     ) : (
-                      <CodeEditor
+                      <EnhancedFuturisticDiffEditor
                         owner={repoCoordinates.owner}
                         repo={repoCoordinates.repo}
                         branch={activeBranch}
@@ -1160,6 +1160,15 @@ export function AnnotatedDiff() {
                         onSaved={handleEditorSaved}
                         saveTrigger={editorSaveTrigger}
                         onBranchResolved={setActiveBranch}
+                        originalContent={selectedFile?.lines?.map(l => l.content).join('\n') || ""}
+                        modifiedContent={selectedFile?.lines?.filter(l => l.type !== 'removed').map(l => l.content).join('\n') || ""}
+                        findingId={selectedFinding?.id}
+                        findingDescription={selectedFinding?.title}
+                        diffMode="side-by-side"
+                        collaborativeMode={true}
+                        showMinimap={true}
+                        showLineNumbers={true}
+                        fontSize={14}
                       />
                     )}
                   </motion.div>
