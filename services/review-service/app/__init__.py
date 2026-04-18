@@ -1,3 +1,0 @@
-"""
-Review Service package.
-"""

@@ -1,3 +1,0 @@
-"""
-Project Service package.
-"""

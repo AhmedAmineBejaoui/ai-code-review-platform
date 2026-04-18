@@ -1,3 +1,0 @@
-"""
-Notification Service package.
-"""
