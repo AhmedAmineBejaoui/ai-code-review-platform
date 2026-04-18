@@ -4318,19 +4318,19 @@ sqlcipher = ["sqlcipher3_binary"]
 
 [[package]]
 name = "sqlfluff"
-version = "3.5.0"
+version = "4.1.0"
 description = "The SQL Linter for Humans"
 optional = false
 python-versions = ">=3.9"
 groups = ["main"]
 files = [
-    {file = "sqlfluff-3.5.0-py3-none-any.whl", hash = "sha256:6e5fb7a0c491676ded68912245fc0627e88f8b0e6290bd4b54a65ce735f69716"},
-    {file = "sqlfluff-3.5.0.tar.gz", hash = "sha256:2d0a546078ffb021de7021b9a6c2a50e5eef590daa820d5f1b082d24a1d5e1d4"},
+    {file = "sqlfluff-4.1.0-py3-none-any.whl", hash = "sha256:ae11123ca4a697abadbd2783f85f04e58c36e7dd26ae8024f400efccc6a44631"},
+    {file = "sqlfluff-4.1.0.tar.gz", hash = "sha256:83dd4c081afb48c0af861833015a18b13d52726bfe52a286246dbd7a64b7d111"},
 ]
 
 [package.dependencies]
 chardet = "*"
-click = "<=8.3.0"
+click = "<8.4.0"
 colorama = ">=0.3"
 diff-cover = ">=2.5.0"
 Jinja2 = "*"
@@ -4341,6 +4341,9 @@ pyyaml = ">=5.1"
 regex = "*"
 tblib = "*"
 tqdm = "*"
+
+[package.extras]
+rs = ["sqlfluffrs (==4.1.0)"]
 
 [[package]]
 name = "starlette"
@@ -5430,4 +5433,4 @@ cffi = ["cffi (>=1.17,<2.0) ; platform_python_implementation != \"PyPy\" and pyt
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.11"
-content-hash = "9f52383efc76a0379b36482b28769bd879d9dd87888d1a782e5c81f753ffa483"
+content-hash = "62f1d635d7b1527b566e44033d907e37a9eaaf09a94fd1f21c8494359bac3bca"
