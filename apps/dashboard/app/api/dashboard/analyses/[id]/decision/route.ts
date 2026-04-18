@@ -25,8 +25,8 @@ async function refreshDashboardAuth(request: Request): Promise<void> {
   }
 }
 
-export async function POST(request: Request, context: { params: { id: string } }) {
-  const analysisId = context.params.id
+export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: analysisId } = await context.params
   if (!analysisId || analysisId.trim().length === 0) {
     return NextResponse.json({ error: "Invalid analysis id" }, { status: 400 })
   }

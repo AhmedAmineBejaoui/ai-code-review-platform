@@ -2,8 +2,12 @@ import { NextResponse } from "next/server"
 
 import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 
-export async function DELETE(_request: Request, context: { params: { repoId: string } }) {
-  const repoId = context.params.repoId
+type RepoRouteContext = {
+  params: Promise<{ repoId: string }>
+}
+
+export async function DELETE(_request: Request, context: RepoRouteContext) {
+  const { repoId } = await context.params
   if (!repoId || repoId.trim().length === 0) {
     return NextResponse.json({ error: "Invalid repo id" }, { status: 400 })
   }

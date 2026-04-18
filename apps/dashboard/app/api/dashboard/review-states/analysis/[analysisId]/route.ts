@@ -6,7 +6,7 @@ const DEFAULT_TIMEOUT = parseInt(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS 
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { analysisId: string } }
+  context: { params: Promise<{ analysisId: string }> },
 ) {
   try {
     const { getToken } = await auth();
@@ -16,7 +16,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { analysisId } = params;
+    const { analysisId } = await context.params;
     
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), DEFAULT_TIMEOUT);

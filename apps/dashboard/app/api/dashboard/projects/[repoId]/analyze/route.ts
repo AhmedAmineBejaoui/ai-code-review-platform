@@ -4,7 +4,7 @@ import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 // POST /api/dashboard/projects/[repoId]/analyze
 export async function POST(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   const authResult = await requireBackendAuth()
   if (!authResult.ok) {
@@ -12,9 +12,10 @@ export async function POST(
   }
 
   try {
+    const { repoId } = await context.params
     const body = await request.json().catch(() => ({}))
     return proxyBackendRequest({
-      path: `/api/v1/projects/${params.repoId}/analyze`,
+      path: `/api/v1/projects/${repoId}/analyze`,
       method: "POST",
       token: authResult.token,
       userId: authResult.userId,

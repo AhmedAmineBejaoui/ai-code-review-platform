@@ -22,7 +22,7 @@ type UpdateBranchBody = {
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { userId, getToken } = await auth()
@@ -31,7 +31,7 @@ export async function GET(
     }
 
     const token = await getToken()
-    const branchId = params.id
+    const { id: branchId } = await context.params
 
     const backendUrl = `${BACKEND_API_BASE_URL}/v1/branches/${branchId}`
 
@@ -82,7 +82,7 @@ export async function GET(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { userId, getToken } = await auth()
@@ -91,7 +91,7 @@ export async function PATCH(
     }
 
     const token = await getToken()
-    const branchId = params.id
+    const { id: branchId } = await context.params
     const body: UpdateBranchBody = await request.json()
 
     const backendUrl = `${BACKEND_API_BASE_URL}/v1/branches/${branchId}`
@@ -144,7 +144,7 @@ export async function PATCH(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> },
 ) {
   try {
     const { userId, getToken } = await auth()
@@ -153,7 +153,7 @@ export async function DELETE(
     }
 
     const token = await getToken()
-    const branchId = params.id
+    const { id: branchId } = await context.params
     const searchParams = request.nextUrl.searchParams
     const force = searchParams.get("force") === "true"
 

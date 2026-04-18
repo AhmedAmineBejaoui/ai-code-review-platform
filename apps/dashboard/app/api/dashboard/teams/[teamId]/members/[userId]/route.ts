@@ -11,16 +11,17 @@ export const dynamic = "force-dynamic"
  */
 export async function PATCH(
   request: Request,
-  { params }: { params: { teamId: string; userId: string } },
+  context: { params: Promise<{ teamId: string; userId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
   try {
+    const { teamId, userId } = await context.params
     const body = await request.json()
     return proxyBackendRequest({
       method: "PATCH",
-      path: `/api/v1/teams/${encodeURIComponent(params.teamId)}/members/${encodeURIComponent(params.userId)}`,
+      path: `/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
       token: authContext.token,
       userId: authContext.userId,
       body,
@@ -37,14 +38,16 @@ export async function PATCH(
  */
 export async function DELETE(
   _request: Request,
-  { params }: { params: { teamId: string; userId: string } },
+  context: { params: Promise<{ teamId: string; userId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
+  const { teamId, userId } = await context.params
+
   return proxyBackendRequest({
     method: "DELETE",
-    path: `/api/v1/teams/${encodeURIComponent(params.teamId)}/members/${encodeURIComponent(params.userId)}`,
+    path: `/api/v1/teams/${encodeURIComponent(teamId)}/members/${encodeURIComponent(userId)}`,
     token: authContext.token,
     userId: authContext.userId,
   })

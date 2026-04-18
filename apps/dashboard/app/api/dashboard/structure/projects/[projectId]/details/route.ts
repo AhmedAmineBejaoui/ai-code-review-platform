@@ -3,11 +3,14 @@ import { NextRequest } from "next/server"
 
 export const dynamic = "force-dynamic"
 
-export async function GET(request: NextRequest, { params }: { params: { projectId: string } }) {
+export async function GET(
+  request: NextRequest,
+  context: { params: Promise<{ projectId: string }> },
+) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
-  const { projectId } = params
+  const { projectId } = await context.params
 
   return proxyBackendRequest({
     method: "GET",

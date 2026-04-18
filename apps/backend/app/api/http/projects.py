@@ -7,6 +7,7 @@ team assignment, and branch configuration.
 
 from __future__ import annotations
 
+import logging
 import uuid
 from datetime import datetime, timezone
 from typing import Any, Literal
@@ -21,6 +22,7 @@ from app.data.repos.rbac_repo import RBACRepo
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
+logger = logging.getLogger(__name__)
 
 
 # ── Request/Response Models ─────────────────────────────────────────────────────
@@ -428,138 +430,173 @@ async def create_project(
     5. Branch configurations (if provided)
     """
     enforce_permission(principal, "analyses.create")
-
-    engine = get_engine()
-    repo_profiles = RepoProfilesRepo()
-    settings_repo = ProjectSettingsRepo()
-    rbac_repo = RBACRepo()
-
-    repo_id = request.full_name.strip().lower()
-    now = datetime.now(timezone.utc)
-
-    # 1. Create canonical project_profiles row (authoritative id for analyses FK)
-    #    This row's `id` is the UUID that AnalyzeRequest.project_id must reference.
-    project_id = _ensure_project_profile(
-        engine,
-        repo_id=repo_id,
-        org_id=request.team_id,
-        display_name=request.name,
-        description=request.description,
-        primary_language=request.language,
-        visibility=request.visibility,
-    )
-
-    # 2. Create repository profile (legacy table, keyed by repo_id)
-    repo_profiles.upsert_profile(
-        repo_id=repo_id,
-        repo_path=None,
-        indexed_commit=None,
-        default_branch=request.default_branch,
-        profile={
-            "name": request.name,
-            "description": request.description,
-            "primary_language": request.language,
-            "github_id": request.github_id,
-            "visibility": request.visibility,
-        },
-    )
-    
-    # 3. Create project settings (keyed by legacy repo_id for backward compat)
-    settings = settings_repo.get_or_create_settings(
-        project_id=repo_id,
-        organization_id=request.team_id,
-    )
-
-    # Update auto-analysis if different from default
-    if not request.auto_analysis_enabled:
-        settings_repo.set_auto_analysis_enabled(
-            project_id=repo_id,
-            enabled=False,
-            changed_by=principal.user_id,
-            reason="Disabled on project creation",
-        )
-
-    # 4. Assign team members
-    assigned_members: list[ProjectMember] = []
-
-    # Always add the creator as admin
     try:
-        rbac_repo.assign_project_role(
-            user_id=principal.user_id,
-            project_id=repo_id,
-            role_code="admin",
-            assigned_by=principal.user_id,
-            notes="Project creator",
-        )
-        assigned_members.append(ProjectMember(
-            user_id=principal.user_id,
-            email=principal.email,
-            display_name=principal.display_name,
-            role="admin",
-        ))
-    except Exception:
-        pass
+        engine = get_engine()
+        repo_profiles = RepoProfilesRepo()
+        settings_repo = ProjectSettingsRepo()
+        rbac_repo = RBACRepo()
 
-    # Add additional members
-    for member in request.members:
-        if member is not None and member.user_id != principal.user_id:  # Skip if already added
-            try:
-                rbac_repo.assign_project_role(
-                    user_id=member.user_id,
+        repo_id = request.full_name.strip().lower()
+        now = datetime.now(timezone.utc)
+        normalized_team_id = request.team_id.strip() if request.team_id and request.team_id.strip() else None
+
+        # 1. Create canonical project_profiles row (authoritative id for analyses FK)
+        #    This row's `id` is the UUID that AnalyzeRequest.project_id must reference.
+        try:
+            project_id = _ensure_project_profile(
+                engine,
+                repo_id=repo_id,
+                org_id=normalized_team_id,
+                display_name=request.name,
+                description=request.description,
+                primary_language=request.language,
+                visibility=request.visibility,
+            )
+        except Exception:
+            if normalized_team_id is not None:
+                try:
+                    # Some legacy schemas reject org/team ids in this table.
+                    # Retry without org_id to preserve project creation.
+                    project_id = _ensure_project_profile(
+                        engine,
+                        repo_id=repo_id,
+                        org_id=None,
+                        display_name=request.name,
+                        description=request.description,
+                        primary_language=request.language,
+                        visibility=request.visibility,
+                    )
+                except Exception:
+                    project_id = repo_id
+            else:
+                project_id = repo_id
+
+        # 2. Create repository profile (legacy table, keyed by repo_id)
+        try:
+            repo_profiles.upsert_profile(
+                repo_id=repo_id,
+                repo_path=None,
+                indexed_commit=None,
+                default_branch=request.default_branch,
+                profile={
+                    "name": request.name,
+                    "description": request.description,
+                    "primary_language": request.language,
+                    "github_id": request.github_id,
+                    "visibility": request.visibility,
+                },
+            )
+        except Exception:
+            # Keep project creation available even when legacy profile tables are not yet migrated.
+            pass
+        
+        # 3. Create project settings (keyed by legacy repo_id for backward compat)
+        try:
+            settings_repo.get_or_create_settings(
+                project_id=repo_id,
+                organization_id=normalized_team_id,
+            )
+
+            # Update auto-analysis if different from default
+            if not request.auto_analysis_enabled:
+                settings_repo.update_auto_analysis_enabled(
                     project_id=repo_id,
-                    role_code=member.role,
-                    assigned_by=principal.user_id,
+                    enabled=False,
+                    user_id=principal.user_id,
+                    user_email=principal.email or "unknown@example.local",
+                    user_display_name=principal.display_name,
+                    reason="Disabled on project creation",
                 )
-                assigned_members.append(member)
-            except Exception:
-                pass
+        except Exception:
+            # Non-critical in bootstrap environments where project_settings tables are pending.
+            pass
 
-    # 5. Create branches
-    created_branches: list[BranchConfig] = []
+        # 4. Assign team members
+        assigned_members: list[ProjectMember] = []
 
-    # Always create default branch
-    default_branch_config = BranchConfig(
-        name=request.default_branch,
-        is_default=True,
-        is_protected=True,
-        require_reviews=1,
-    )
-    _create_branch(engine, repo_id, default_branch_config, request.team_id)
-    created_branches.append(default_branch_config)
+        # Always add the creator as admin
+        try:
+            rbac_repo.assign_project_role(
+                user_id=principal.user_id,
+                project_id=repo_id,
+                role_code="admin",
+                assigned_by=principal.user_id,
+                notes="Project creator",
+            )
+            assigned_members.append(ProjectMember(
+                user_id=principal.user_id,
+                email=principal.email,
+                display_name=principal.display_name,
+                role="admin",
+            ))
+        except Exception:
+            pass
 
-    # Create additional branches
-    for branch in request.branches:
-        if branch.name != request.default_branch:
-            _create_branch(engine, repo_id, branch, request.team_id)
-            created_branches.append(branch)
+        # Add additional members
+        for member in request.members:
+            if member is not None and member.user_id != principal.user_id:  # Skip if already added
+                try:
+                    rbac_repo.assign_project_role(
+                        user_id=member.user_id,
+                        project_id=repo_id,
+                        role_code=member.role,
+                        assigned_by=principal.user_id,
+                    )
+                    assigned_members.append(member)
+                except Exception:
+                    pass
 
-    # Get team info
-    team_id, team_name = _get_team_info(engine, request.team_id)
+        # 5. Create branches
+        created_branches: list[BranchConfig] = []
 
-    # IMPORTANT: the response `id` must be the project_profiles UUID so the
-    # dashboard can pass it back as AnalyzeRequest.project_id.
-    return ProjectResponse(
-        id=project_id,
-        name=request.name,
-        full_name=repo_id,
-        description=request.description,
-        language=request.language,
-        visibility=request.visibility,
-        default_branch=request.default_branch,
-        status="active",
-        team_id=team_id,
-        team_name=team_name,
-        member_count=len(assigned_members),
-        members=assigned_members,
-        branch_count=len(created_branches),
-        branches=created_branches,
-        auto_analysis_enabled=request.auto_analysis_enabled,
-        health_score=0,
-        analysis_count=0,
-        last_analysis_at=None,
-        created_at=now.isoformat(),
-        updated_at=now.isoformat(),
-    )
+        # Always create default branch
+        default_branch_config = BranchConfig(
+            name=request.default_branch,
+            is_default=True,
+            is_protected=True,
+            require_reviews=1,
+        )
+        _create_branch(engine, repo_id, default_branch_config, request.team_id)
+        created_branches.append(default_branch_config)
+
+        # Create additional branches
+        for branch in request.branches:
+            if branch.name != request.default_branch:
+                _create_branch(engine, repo_id, branch, request.team_id)
+                created_branches.append(branch)
+
+        # Get team info
+        team_id, team_name = _get_team_info(engine, normalized_team_id)
+
+        # IMPORTANT: the response `id` must be the project_profiles UUID so the
+        # dashboard can pass it back as AnalyzeRequest.project_id.
+        return ProjectResponse(
+            id=project_id,
+            name=request.name,
+            full_name=repo_id,
+            description=request.description,
+            language=request.language,
+            visibility=request.visibility,
+            default_branch=request.default_branch,
+            status="active",
+            team_id=team_id,
+            team_name=team_name,
+            member_count=len(assigned_members),
+            members=assigned_members,
+            branch_count=len(created_branches),
+            branches=created_branches,
+            auto_analysis_enabled=request.auto_analysis_enabled,
+            health_score=0,
+            analysis_count=0,
+            last_analysis_at=None,
+            created_at=now.isoformat(),
+            updated_at=now.isoformat(),
+        )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Project creation failed for repo=%s", request.full_name)
+        raise HTTPException(status_code=500, detail=f"Project creation failed: {exc}") from exc
 
 
 @router.get("", response_model=ProjectListResponse)
@@ -916,10 +953,12 @@ async def update_project(
     
     # Update settings if needed
     if request.auto_analysis_enabled is not None:
-        settings_repo.set_auto_analysis_enabled(
+        settings_repo.update_auto_analysis_enabled(
             project_id=project_id,
             enabled=request.auto_analysis_enabled,
-            changed_by=principal.user_id,
+            user_id=principal.user_id,
+            user_email=principal.email or "unknown@example.local",
+            user_display_name=principal.display_name,
             reason="Updated via API",
         )
     

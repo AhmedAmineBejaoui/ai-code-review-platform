@@ -5,16 +5,17 @@ export const dynamic = "force-dynamic"
 
 export async function PATCH(
   request: Request,
-  { params }: { params: { teamId: string } },
+  context: { params: Promise<{ teamId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
   try {
+    const { teamId } = await context.params
     const body = await request.json()
     return proxyBackendRequest({
       method: "PATCH",
-      path: `/api/v1/teams/${encodeURIComponent(params.teamId)}`,
+      path: `/api/v1/teams/${encodeURIComponent(teamId)}`,
       token: authContext.token,
       userId: authContext.userId,
       body,
@@ -26,14 +27,16 @@ export async function PATCH(
 
 export async function GET(
   _request: Request,
-  { params }: { params: { teamId: string } },
+  context: { params: Promise<{ teamId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
+  const { teamId } = await context.params
+
   return proxyBackendRequest({
     method: "GET",
-    path: `/api/v1/teams/${encodeURIComponent(params.teamId)}`,
+    path: `/api/v1/teams/${encodeURIComponent(teamId)}`,
     token: authContext.token,
     userId: authContext.userId,
   })

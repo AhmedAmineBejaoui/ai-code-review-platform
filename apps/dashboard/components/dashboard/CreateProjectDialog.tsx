@@ -201,8 +201,7 @@ export function CreateProjectDialog({
   const loadTeams = async () => {
     setLoadingTeams(true)
     try {
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-      const response = await fetch(`${backendUrl}/api/v1/teams`, {
+      const response = await fetch("/api/dashboard/teams", {
         headers: { "Content-Type": "application/json" },
       })
       if (response.ok) {

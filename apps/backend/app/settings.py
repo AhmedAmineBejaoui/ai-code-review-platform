@@ -25,8 +25,10 @@ class Settings(BaseSettings):
     CELERY_TASK_ALWAYS_EAGER: bool = False
     CELERY_TASK_EAGER_PROPAGATES: bool = True
     CELERY_WORKER_POOL: str | None = None
-    CELERY_ENQUEUE_REQUIRE_WORKER: bool = True
+    CELERY_ENQUEUE_REQUIRE_WORKER: bool = False
     CELERY_ENQUEUE_INSPECT_TIMEOUT_SECONDS: float = 1.5
+    CELERY_TIMEZONE: str = "UTC"
+    CELERY_ENABLE_UTC: bool = True
     KB_DOCUMENT_MAINTENANCE_SCHEDULE_MINUTES: int = 60
     ANALYSIS_QUEUE_NAME: str = "analyses"
     DATABASE_URL: str | None = None

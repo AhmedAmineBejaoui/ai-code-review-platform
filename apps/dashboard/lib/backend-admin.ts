@@ -41,24 +41,32 @@ function isHtmlPayload(rawBody: string, contentType: string | null): boolean {
 }
 
 export async function requireBackendAuth(): Promise<AuthContext> {
-  const { userId, getToken } = await auth()
-  if (!userId) {
+  try {
+    const { userId, getToken } = await auth()
+    if (!userId) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      }
+    }
+    const token = await getToken()
+    if (!token) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Missing Clerk token" }, { status: 401 }),
+      }
+    }
+    return {
+      ok: true,
+      userId,
+      token,
+    }
+  } catch (error) {
+    console.error("[backend-auth] Failed to resolve Clerk auth context", error)
     return {
       ok: false,
-      response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }),
+      response: NextResponse.json({ error: "Unable to resolve authentication" }, { status: 401 }),
     }
-  }
-  const token = await getToken()
-  if (!token) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Missing Clerk token" }, { status: 401 }),
-    }
-  }
-  return {
-    ok: true,
-    userId,
-    token,
   }
 }
 
@@ -98,7 +106,8 @@ export async function proxyBackendRequest(options: ProxyOptions): Promise<NextRe
       }
     }
     return NextResponse.json(parsedBody, { status: response.status })
-  } catch {
+  } catch (error) {
+    console.error(`[backend-proxy] ${method} ${path} failed`, error)
     return NextResponse.json({ error: "Backend unavailable" }, { status: 502 })
   } finally {
     clearTimeout(timeout)

@@ -6,7 +6,7 @@ import { clerkClient } from "@clerk/nextjs/server"
 
 let fallbackEnvCache: Record<string, string> | null = null
 
-const GITHUB_OAUTH_PROVIDERS = ["github", "oauth_github", "github_oauth"] as const
+const GITHUB_OAUTH_PROVIDERS = ["github"] as const
 const GITHUB_API_BASE_URL = getEnvValue("GITHUB_API_BASE_URL") || "https://api.github.com"
 const GITHUB_INSTALLATION_TOKEN_SAFETY_SECONDS = 60
 

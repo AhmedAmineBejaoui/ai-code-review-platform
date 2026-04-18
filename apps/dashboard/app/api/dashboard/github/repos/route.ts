@@ -67,7 +67,7 @@ function isGithubProvider(rawProvider: unknown): boolean {
   if (!provider) {
     return false
   }
-  return provider === "github" || provider === "oauth_github" || provider.includes("github")
+  return provider === "github" || provider.includes("github")
 }
 
 function normalizeGithubLoginCandidate(raw: unknown): string | null {

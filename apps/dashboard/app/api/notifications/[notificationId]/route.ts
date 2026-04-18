@@ -3,7 +3,7 @@ import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 export const dynamic = "force-dynamic"
 
 type RouteContext = {
-  params: { notificationId: string }
+  params: Promise<{ notificationId: string }>
 }
 
 /**
@@ -15,10 +15,11 @@ export async function DELETE(_request: Request, context: RouteContext) {
   if (!authContext.ok) {
     return authContext.response
   }
+  const { notificationId } = await context.params
 
   return proxyBackendRequest({
     method: "DELETE",
-    path: `/api/v1/notifications/${encodeURIComponent(context.params.notificationId)}`,
+    path: `/api/v1/notifications/${encodeURIComponent(notificationId)}`,
     token: authContext.token,
     userId: authContext.userId,
   })

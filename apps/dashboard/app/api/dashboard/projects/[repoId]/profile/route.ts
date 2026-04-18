@@ -4,7 +4,7 @@ import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 // GET /api/dashboard/projects/[repoId]/profile
 export async function GET(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   const authResult = await requireBackendAuth()
   if (!authResult.ok) {
@@ -12,8 +12,9 @@ export async function GET(
   }
 
   try {
+    const { repoId } = await context.params
     return proxyBackendRequest({
-      path: `/api/v1/projects/${params.repoId}/profile`,
+      path: `/api/v1/projects/${repoId}/profile`,
       method: "GET",
       token: authResult.token,
       userId: authResult.userId,

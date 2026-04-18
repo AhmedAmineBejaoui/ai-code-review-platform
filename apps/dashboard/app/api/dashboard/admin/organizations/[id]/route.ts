@@ -123,14 +123,14 @@ async function fetchBackendJson<T>(
  */
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) {
     return authContext.response
   }
 
-  const orgId = params.id
+  const { id: orgId } = await context.params
   if (!orgId) {
     return NextResponse.json({ error: "Organization ID is required" }, { status: 400 })
   }
@@ -296,14 +296,14 @@ export async function PATCH(
  */
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) {
     return authContext.response
   }
 
-  const orgId = params.id
+  const { id: orgId } = await context.params
   if (!orgId) {
     return NextResponse.json({ error: "Organization ID is required" }, { status: 400 })
   }

@@ -8,8 +8,8 @@ type UpdatePayload = {
   isActive?: boolean
 }
 
-export async function PATCH(request: Request, context: { params: { id: string } }) {
-  const userId = context.params.id
+export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: userId } = await context.params
   if (!userId || userId.trim().length === 0) {
     return NextResponse.json({ error: "Invalid user id" }, { status: 400 })
   }

@@ -456,8 +456,8 @@ function toDashboardDetails(payload: BackendAnalysisDetails): DashboardAnalysisD
   }
 }
 
-export async function GET(_request: Request, context: { params: { id: string } }) {
-  const analysisId = context.params.id
+export async function GET(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: analysisId } = await context.params
   if (!analysisId || analysisId.trim().length === 0) {
     return NextResponse.json({ error: "Invalid analysis id" }, { status: 400 })
   }
@@ -516,8 +516,8 @@ export async function GET(_request: Request, context: { params: { id: string } }
   return NextResponse.json(details, { status: 200 })
 }
 
-export async function DELETE(_request: Request, context: { params: { id: string } }) {
-  const analysisId = context.params.id
+export async function DELETE(_request: Request, context: { params: Promise<{ id: string }> }) {
+  const { id: analysisId } = await context.params
   if (!analysisId || analysisId.trim().length === 0) {
     return NextResponse.json({ error: "Invalid analysis id" }, { status: 400 })
   }

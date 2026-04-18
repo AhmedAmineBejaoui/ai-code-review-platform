@@ -191,11 +191,12 @@ export function CodeGraphVisual({
     container.addEventListener('pointerup', onPointerUp);
     container.addEventListener('pointerleave', onPointerUp);
 
-    const clock = new THREE.Clock();
+    const timer = new THREE.Timer();
     let frameId = 0;
 
-    const animate = () => {
-      const elapsed = clock.getElapsedTime();
+    const animate = (timestamp: number) => {
+      timer.update(timestamp);
+      const elapsed = timer.getElapsed();
       group.rotation.y = elapsed * 0.14 + pointer.x;
       group.rotation.x = Math.sin(elapsed * 0.35) * 0.14 + pointer.y;
       halo.rotation.y = elapsed * 0.18;

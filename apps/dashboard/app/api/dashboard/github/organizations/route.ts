@@ -7,7 +7,7 @@ const GITHUB_API = "https://api.github.com"
 
 async function getGithubToken(userId: string): Promise<string | null> {
   const client = await clerkClient()
-  for (const provider of ["github", "oauth_github"]) {
+  for (const provider of ["github"] as const) {
     try {
       const tokens = await client.users.getUserOauthAccessToken(userId, provider)
       const t = Array.isArray(tokens?.data)

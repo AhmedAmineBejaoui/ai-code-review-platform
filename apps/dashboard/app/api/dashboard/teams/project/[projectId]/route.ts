@@ -9,11 +9,12 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   request: Request,
-  { params }: { params: { projectId: string } },
+  context: { params: Promise<{ projectId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
+  const { projectId } = await context.params
   const { searchParams } = new URL(request.url)
   const includeMembers = searchParams.get("include_members") !== "false"
   const includeStats = searchParams.get("include_stats") === "true"
@@ -25,7 +26,7 @@ export async function GET(
 
   return proxyBackendRequest({
     method: "GET",
-    path: `/api/v1/teams/project/${encodeURIComponent(params.projectId)}?${queryParams.toString()}`,
+    path: `/api/v1/teams/project/${encodeURIComponent(projectId)}?${queryParams.toString()}`,
     token: authContext.token,
     userId: authContext.userId,
   })

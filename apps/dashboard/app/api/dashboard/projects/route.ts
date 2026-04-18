@@ -68,6 +68,18 @@ function normalizeProject(raw: BackendProjectItem): DashboardProjectItem | null 
   }
 }
 
+async function parseBackendBody(response: Response): Promise<unknown> {
+  const rawBody = await response.text()
+  if (!rawBody) {
+    return {}
+  }
+  try {
+    return JSON.parse(rawBody)
+  } catch {
+    return { detail: rawBody }
+  }
+}
+
 /**
  * GET /api/dashboard/projects
  *
@@ -151,4 +163,59 @@ export async function GET(request: NextRequest) {
       : items.length
 
   return NextResponse.json({ items, total }, { status: 200 })
+}
+
+/**
+ * POST /api/dashboard/projects
+ *
+ * Proxies project creation to backend with Clerk authentication.
+ */
+export async function POST(request: NextRequest) {
+  const { userId, getToken } = await auth()
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  const token = await getToken()
+  if (!token) {
+    return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
+  }
+
+  let payload: unknown
+  try {
+    payload = await request.json()
+  } catch {
+    return NextResponse.json({ error: "Invalid request body" }, { status: 400 })
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS)
+
+  try {
+    const backendResponse = await fetch(`${BACKEND_API_BASE_URL}/api/v1/projects`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-User-Id": userId,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+      cache: "no-store",
+    })
+
+    const parsedBody = await parseBackendBody(backendResponse)
+    if (!backendResponse.ok) {
+      console.error("[dashboard/projects][POST] backend error", {
+        status: backendResponse.status,
+        body: parsedBody,
+      })
+    }
+    return NextResponse.json(parsedBody, { status: backendResponse.status })
+  } catch {
+    return NextResponse.json({ error: "Backend timeout while creating project" }, { status: 504 })
+  } finally {
+    clearTimeout(timeout)
+  }
 }

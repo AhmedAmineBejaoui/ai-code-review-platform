@@ -10,14 +10,16 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   _request: Request,
-  { params }: { params: { teamId: string } },
+  context: { params: Promise<{ teamId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
+  const { teamId } = await context.params
+
   return proxyBackendRequest({
     method: "GET",
-    path: `/api/v1/teams/${encodeURIComponent(params.teamId)}/members`,
+    path: `/api/v1/teams/${encodeURIComponent(teamId)}/members`,
     token: authContext.token,
     userId: authContext.userId,
   })
@@ -31,16 +33,17 @@ export async function GET(
  */
 export async function POST(
   request: Request,
-  { params }: { params: { teamId: string } },
+  context: { params: Promise<{ teamId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
   try {
+    const { teamId } = await context.params
     const body = await request.json()
     return proxyBackendRequest({
       method: "POST",
-      path: `/api/v1/teams/${encodeURIComponent(params.teamId)}/members`,
+      path: `/api/v1/teams/${encodeURIComponent(teamId)}/members`,
       token: authContext.token,
       userId: authContext.userId,
       body,

@@ -10,14 +10,16 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   _request: Request,
-  { params }: { params: { projectId: string } },
+  context: { params: Promise<{ projectId: string }> },
 ) {
   const authContext = await requireBackendAuth()
   if (!authContext.ok) return authContext.response
 
+  const { projectId } = await context.params
+
   return proxyBackendRequest({
     method: "GET",
-    path: `/api/v1/teams/access/project/${encodeURIComponent(params.projectId)}`,
+    path: `/api/v1/teams/access/project/${encodeURIComponent(projectId)}`,
     token: authContext.token,
     userId: authContext.userId,
   })

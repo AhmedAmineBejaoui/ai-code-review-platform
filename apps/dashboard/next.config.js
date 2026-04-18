@@ -22,8 +22,10 @@ const nextConfig = {
     ignoreBuildErrors: true,
   },
 
-  // Empty turbopack config to silence the webpack/turbopack conflict warning
-  turbopack: {},
+  // Keep Turbopack scoped to this app to avoid parent lockfile inference on Windows.
+  turbopack: {
+    root: __dirname,
+  },
 
   // Webpack configuration (used when running with --webpack flag)
   webpack: (config, { dev, isServer }) => {

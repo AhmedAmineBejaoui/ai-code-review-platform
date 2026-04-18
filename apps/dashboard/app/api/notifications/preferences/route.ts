@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server"
 
 import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
+import { getDefaultNotificationPreferences } from "@/lib/notification-defaults"
 
 export const dynamic = "force-dynamic"
 
@@ -9,17 +10,29 @@ export const dynamic = "force-dynamic"
  * Fetch current user's notification preferences.
  */
 export async function GET() {
-  const authContext = await requireBackendAuth()
-  if (!authContext.ok) {
-    return authContext.response
-  }
+  try {
+    const authContext = await requireBackendAuth()
+    if (!authContext.ok) {
+      return authContext.response
+    }
 
-  return proxyBackendRequest({
-    method: "GET",
-    path: "/api/v1/notifications/preferences",
-    token: authContext.token,
-    userId: authContext.userId,
-  })
+    const proxied = await proxyBackendRequest({
+      method: "GET",
+      path: "/api/v1/notifications/preferences",
+      token: authContext.token,
+      userId: authContext.userId,
+    })
+
+    if (proxied.status >= 500 || proxied.status === 502) {
+      console.error("[notifications] Falling back to default notification preferences")
+      return NextResponse.json(getDefaultNotificationPreferences(), { status: 200 })
+    }
+
+    return proxied
+  } catch (error) {
+    console.error("[notifications] Unexpected failure in GET /api/notifications/preferences", error)
+    return NextResponse.json(getDefaultNotificationPreferences(), { status: 200 })
+  }
 }
 
 /**
@@ -72,4 +85,3 @@ export async function POST() {
     body: {},
   })
 }
-

@@ -16,10 +16,21 @@ def configure_celery_app() -> None:
     if result_backend:
         celery_app.conf.result_backend = result_backend
 
-    # Connection resilience / retries for unstable local Redis
+    celery_app.conf.timezone = settings.CELERY_TIMEZONE
+    celery_app.conf.enable_utc = settings.CELERY_ENABLE_UTC
+
+    # Connection resilience: limited retries + tight socket timeouts so that
+    # a missing Redis instance fails in <10s instead of hanging for ~30s.
     celery_app.conf.broker_connection_retry = True
-    celery_app.conf.broker_connection_max_retries = 10
-    celery_app.conf.broker_transport_options = {"max_retries": 3}
+    celery_app.conf.broker_connection_max_retries = 3
+    celery_app.conf.broker_transport_options = {
+        "max_retries": 2,
+        "interval_start": 0,
+        "interval_step": 0.5,
+        "interval_max": 1,
+        "socket_timeout": 5,
+        "socket_connect_timeout": 3,
+    }
     # Limit connection pool to avoid exhausting Redis on small local instances
     celery_app.conf.broker_pool_limit = 10
 

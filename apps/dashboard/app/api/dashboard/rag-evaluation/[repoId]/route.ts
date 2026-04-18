@@ -6,7 +6,7 @@ const TIMEOUT_MS = parseInt(process.env.DASHBOARD_BACKEND_WRITE_TIMEOUT_MS || "3
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   try {
     const { userId } = await auth()
@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { repoId } = params
+    const { repoId } = await context.params
     const { searchParams } = new URL(request.url)
     const testQueries = searchParams.get("testQueries") || "5"
 
@@ -67,7 +67,7 @@ export async function GET(
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   try {
     const { userId } = await auth()
@@ -75,7 +75,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { repoId } = params
+    const { repoId } = await context.params
 
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS)

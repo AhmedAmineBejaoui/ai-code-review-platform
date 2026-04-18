@@ -51,12 +51,12 @@ async function fetchBackend<T>(
  */
 export async function GET(
   _request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
   if (!auth.ok) return auth.response
 
-  const orgId = params.id
+  const { id: orgId } = await context.params
 
   // Backend members
   const backendRes = await fetchBackend<{ members?: unknown[] }>(
@@ -103,12 +103,12 @@ export async function GET(
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
   if (!auth.ok) return auth.response
 
-  const orgId = params.id
+  const { id: orgId } = await context.params
 
   let body: { email?: string; role?: string }
   try {
@@ -209,12 +209,12 @@ export async function POST(
  */
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } },
+  context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
   if (!auth.ok) return auth.response
 
-  const orgId = params.id
+  const { id: orgId } = await context.params
   const userId = request.nextUrl.searchParams.get("userId")
   if (!userId) {
     return NextResponse.json({ error: "userId query param is required" }, { status: 400 })

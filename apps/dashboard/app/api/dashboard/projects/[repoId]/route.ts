@@ -18,7 +18,7 @@ export const dynamic = "force-dynamic"
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   const { userId, getToken } = await auth()
   if (!userId) {
@@ -30,7 +30,7 @@ export async function GET(
     return NextResponse.json({ error: "Missing Clerk token" }, { status: 401 })
   }
 
-  const projectId = params.repoId
+  const { repoId: projectId } = await context.params
   if (!projectId) {
     return NextResponse.json({ error: "Project ID is required" }, { status: 400 })
   }

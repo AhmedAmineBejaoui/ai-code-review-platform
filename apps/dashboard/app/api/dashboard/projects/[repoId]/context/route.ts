@@ -4,7 +4,7 @@ import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 // GET /api/dashboard/projects/[repoId]/context/status
 export async function GET(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   const authResult = await requireBackendAuth()
   if (!authResult.ok) {
@@ -12,8 +12,9 @@ export async function GET(
   }
 
   try {
+    const { repoId } = await context.params
     return proxyBackendRequest({
-      path: `/api/v1/projects/${params.repoId}/context/status`,
+      path: `/api/v1/projects/${repoId}/context/status`,
       method: "GET",
       token: authResult.token,
       userId: authResult.userId,
@@ -30,7 +31,7 @@ export async function GET(
 // POST /api/dashboard/projects/[repoId]/context/refresh
 export async function POST(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   const authResult = await requireBackendAuth()
   if (!authResult.ok) {
@@ -38,8 +39,9 @@ export async function POST(
   }
 
   try {
+    const { repoId } = await context.params
     return proxyBackendRequest({
-      path: `/api/v1/projects/${params.repoId}/context/refresh`,
+      path: `/api/v1/projects/${repoId}/context/refresh`,
       method: "POST",
       token: authResult.token,
       userId: authResult.userId,

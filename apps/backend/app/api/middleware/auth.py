@@ -140,6 +140,21 @@ def _is_auth_enforced() -> bool:
     return settings.RBAC_ENFORCEMENT_ENABLED or settings.CLERK_AUTH_ENABLED
 
 
+def _build_local_dev_principal(user_id: str | None = None) -> AuthenticatedPrincipal:
+    normalized_user_id = (user_id or "").strip() or "local-dev-user"
+    return AuthenticatedPrincipal(
+        user_id=normalized_user_id,
+        email=f"{normalized_user_id}@local.dev",
+        display_name="Local Dev User",
+        roles=["admin"],
+        permissions=sorted(_ROLE_PERMISSIONS["admin"]),
+        org_id=None,
+        org_slug=None,
+        org_name=None,
+        org_role=None,
+    )
+
+
 def _first_non_empty_string(*values: Any) -> str | None:
     for value in values:
         if isinstance(value, str) and value.strip():
@@ -461,7 +476,7 @@ async def get_current_principal(
                 raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unable to validate bearer token") from exc
 
     if not _is_auth_enforced() and not x_user_id:
-        return None
+        return _build_local_dev_principal()
 
     if not x_user_id:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
@@ -471,7 +486,7 @@ async def get_current_principal(
         # When auth is not enforced, tolerate unknown users (e.g. first request
         # before /auth/sync has been called) instead of blocking the call.
         if not _is_auth_enforced():
-            return None
+            return _build_local_dev_principal(x_user_id)
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is missing or inactive")
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")

@@ -6,7 +6,7 @@ const WRITE_TIMEOUT = parseInt(process.env.DASHBOARD_BACKEND_WRITE_TIMEOUT_MS ||
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { analysisId: string } }
+  context: { params: Promise<{ analysisId: string }> },
 ) {
   try {
     const { getToken } = await auth();
@@ -16,7 +16,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { analysisId } = params;
+    const { analysisId } = await context.params;
     const body = await request.json();
     
     const controller = new AbortController();

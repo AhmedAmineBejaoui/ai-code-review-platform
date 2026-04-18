@@ -6,7 +6,7 @@ const TIMEOUT_MS = parseInt(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS || "1
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { repoId: string } }
+  context: { params: Promise<{ repoId: string }> },
 ) {
   try {
     const { userId } = await auth()
@@ -14,7 +14,7 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const { repoId } = params
+    const { repoId } = await context.params
     const { searchParams } = new URL(request.url)
     const limit = searchParams.get("limit") || "100"
 

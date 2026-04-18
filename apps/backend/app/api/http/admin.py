@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 import secrets
 import uuid
 from datetime import datetime, timezone
@@ -12,6 +13,7 @@ from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
+from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, require_permission
@@ -25,6 +27,7 @@ from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 from app.workers.tasks.ingest_kb import run_repo_onboarding
 
 router = APIRouter(prefix="/v1/admin", tags=["admin"])
+logger = logging.getLogger(__name__)
 
 _ADMIN_POLICY_REPO_KEY = "__admin_policy__"
 _ADMIN_INTEGRATIONS_REPO_KEY = "__admin_integrations__"
@@ -302,113 +305,130 @@ def _insert_audit_log(
 def _collect_admin_users(limit: int) -> dict[str, Any]:
     engine = get_engine()
     with engine.connect() as conn:
-        users_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT id, email, display_name, is_active, custom_permissions, created_at
-                    FROM users
-                    ORDER BY created_at DESC
-                    LIMIT :limit
-                    """
-                ),
+        def _query_all(
+            query: str,
+            params: dict[str, Any] | None = None,
+            *,
+            optional: bool = False,
+        ) -> list[dict[str, Any]]:
+            try:
+                return list(conn.execute(text(query), params or {}).mappings().all())
+            except SQLAlchemyError as exc:
+                if optional:
+                    logger.warning(
+                        "Skipping optional admin users query because schema is not ready: %s",
+                        exc,
+                    )
+                    return []
+                raise
+
+        users_query = """
+            SELECT id, email, display_name, is_active, custom_permissions, created_at
+            FROM users
+            ORDER BY created_at DESC
+            LIMIT :limit
+        """
+        try:
+            users_rows = _query_all(users_query, {"limit": limit})
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Falling back to minimal users projection in admin endpoint: %s",
+                exc,
+            )
+            users_rows = _query_all(
+                """
+                SELECT id, email, NULL AS display_name, TRUE AS is_active, NULL AS custom_permissions, created_at
+                FROM users
+                ORDER BY created_at DESC
+                LIMIT :limit
+                """,
                 {"limit": limit},
             )
-            .mappings()
-            .all()
+
+        role_rows = _query_all(
+            """
+            SELECT ur.user_id, r.code
+            FROM user_roles ur
+            JOIN roles r ON r.id = ur.role_id
+            ORDER BY ur.user_id ASC, r.code ASC
+            """,
+            optional=True,
         )
-        role_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT ur.user_id, r.code
-                    FROM user_roles ur
-                    JOIN roles r ON r.id = ur.role_id
-                    ORDER BY ur.user_id ASC, r.code ASC
-                    """
+        permission_rows = _query_all(
+            """
+            SELECT ur.user_id, p.code
+            FROM user_roles ur
+            JOIN role_permissions rp ON rp.role_id = ur.role_id
+            JOIN permissions p ON p.id = rp.permission_id
+            ORDER BY ur.user_id ASC, p.code ASC
+            """,
+            optional=True,
+        )
+        membership_rows = _query_all(
+            """
+            SELECT om.user_id, om.organization_id, om.role, om.status, o.name, o.slug
+            FROM organization_memberships om
+            JOIN organizations o ON o.id = om.organization_id
+            ORDER BY om.user_id ASC, o.name ASC
+            """,
+            optional=True,
+        )
+        permissions_catalog_rows = _query_all(
+            """
+            SELECT
+                p.code,
+                p.description,
+                COUNT(DISTINCT ur.user_id) AS user_count
+            FROM permissions p
+            LEFT JOIN role_permissions rp ON rp.permission_id = p.id
+            LEFT JOIN user_roles ur ON ur.role_id = rp.role_id
+            GROUP BY p.code, p.description
+            ORDER BY p.code ASC
+            """,
+            optional=True,
+        )
+        role_stat_rows = _query_all(
+            """
+            SELECT r.code, COUNT(DISTINCT ur.user_id) AS user_count
+            FROM roles r
+            LEFT JOIN user_roles ur ON ur.role_id = r.id
+            GROUP BY r.code
+            ORDER BY r.code ASC
+            """,
+            optional=True,
+        )
+        try:
+            total_row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT
+                            COUNT(*) AS total_users,
+                            SUM(CASE WHEN is_active THEN 1 ELSE 0 END) AS active_users,
+                            SUM(CASE WHEN is_active THEN 0 ELSE 1 END) AS inactive_users
+                        FROM users
+                        """
+                    )
                 )
+                .mappings()
+                .first()
             )
-            .mappings()
-            .all()
-        )
-        permission_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT ur.user_id, p.code
-                    FROM user_roles ur
-                    JOIN role_permissions rp ON rp.role_id = ur.role_id
-                    JOIN permissions p ON p.id = rp.permission_id
-                    ORDER BY ur.user_id ASC, p.code ASC
-                    """
-                )
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Falling back to total-only admin user stats because schema is not ready: %s",
+                exc,
             )
-            .mappings()
-            .all()
-        )
-        membership_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT om.user_id, om.organization_id, om.role, om.status, o.name, o.slug
-                    FROM organization_memberships om
-                    JOIN organizations o ON o.id = om.organization_id
-                    ORDER BY om.user_id ASC, o.name ASC
-                    """
-                )
+            fallback_total_row = (
+                conn.execute(text("SELECT COUNT(*) AS total_users FROM users"))
+                .mappings()
+                .first()
             )
-            .mappings()
-            .all()
-        )
-        permissions_catalog_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT
-                        p.code,
-                        p.description,
-                        COUNT(DISTINCT ur.user_id) AS user_count
-                    FROM permissions p
-                    LEFT JOIN role_permissions rp ON rp.permission_id = p.id
-                    LEFT JOIN user_roles ur ON ur.role_id = rp.role_id
-                    GROUP BY p.code, p.description
-                    ORDER BY p.code ASC
-                    """
-                )
-            )
-            .mappings()
-            .all()
-        )
-        role_stat_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT r.code, COUNT(DISTINCT ur.user_id) AS user_count
-                    FROM roles r
-                    LEFT JOIN user_roles ur ON ur.role_id = r.id
-                    GROUP BY r.code
-                    ORDER BY r.code ASC
-                    """
-                )
-            )
-            .mappings()
-            .all()
-        )
-        total_row = (
-            conn.execute(
-                text(
-                    """
-                    SELECT
-                        COUNT(*) AS total_users,
-                        SUM(CASE WHEN is_active THEN 1 ELSE 0 END) AS active_users,
-                        SUM(CASE WHEN is_active THEN 0 ELSE 1 END) AS inactive_users
-                    FROM users
-                    """
-                )
-            )
-            .mappings()
-            .first()
-        )
+            total_users = int((fallback_total_row or {}).get("total_users") or 0)
+            total_row = {
+                "total_users": total_users,
+                "active_users": total_users,
+                "inactive_users": 0,
+            }
 
     roles_by_user: dict[str, list[str]] = {}
     for row in role_rows:
@@ -434,7 +454,6 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
         )
 
     users: list[dict[str, Any]] = []
-    import json
     for row in users_rows:
         user_id = str(row["id"])
         
@@ -443,7 +462,11 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
         if custom_perms is None:
             custom_perms_list = []
         elif isinstance(custom_perms, str):
-            custom_perms_list = json.loads(custom_perms) if custom_perms else []
+            try:
+                loaded = json.loads(custom_perms) if custom_perms else []
+            except json.JSONDecodeError:
+                loaded = []
+            custom_perms_list = loaded if isinstance(loaded, list) else []
         elif isinstance(custom_perms, list):
             custom_perms_list = custom_perms
         else:

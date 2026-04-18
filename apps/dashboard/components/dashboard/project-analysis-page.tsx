@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -32,7 +32,7 @@ export function ProjectAnalysisPage({ repoId, repoPath }: ProjectAnalysisPagePro
   const [analyzing, setAnalyzing] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       setError(null)
       const [profileData, statusData] = await Promise.all([
@@ -46,14 +46,13 @@ export function ProjectAnalysisPage({ repoId, repoPath }: ProjectAnalysisPagePro
     } finally {
       setLoading(false)
     }
-  }
+  }, [repoId])
 
   const handleAnalyze = async () => {
     setAnalyzing(true)
     try {
       const success = await analyzeProject(repoId, repoPath)
       if (success) {
-        // Wait a bit then refresh data
         setTimeout(loadData, 2000)
       } else {
         setError("Failed to start project analysis")
@@ -70,7 +69,6 @@ export function ProjectAnalysisPage({ repoId, repoPath }: ProjectAnalysisPagePro
     try {
       const success = await refreshProjectContext(repoId)
       if (success) {
-        // Refresh data after context update
         setTimeout(loadData, 2000)
       } else {
         setError("Failed to refresh context")
@@ -83,8 +81,8 @@ export function ProjectAnalysisPage({ repoId, repoPath }: ProjectAnalysisPagePro
   }
 
   useEffect(() => {
-    loadData()
-  }, [repoId])
+    void loadData()
+  }, [loadData])
 
   const getStatusBadge = () => {
     if (!profile) return null

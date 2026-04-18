@@ -95,7 +95,7 @@ async function githubGetList<T>(path: string, token: string | null, maxPages = 5
 }
 
 async function resolveGithubToken(client: Awaited<ReturnType<typeof clerkClient>>, userId: string): Promise<string | null> {
-  for (const provider of ["github", "oauth_github"] as const) {
+  for (const provider of ["github"] as const) {
     try {
       const tokens = await client.users.getUserOauthAccessToken(userId, provider)
       const candidate = Array.isArray(tokens?.data)

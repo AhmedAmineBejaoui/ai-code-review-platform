@@ -593,6 +593,12 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
   const [analyses, setAnalyses] = useState<DashboardAnalysisItem[]>([])
   const [loading, setLoading] = useState(true)
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null)
+  const analysesRef = useRef<DashboardAnalysisItem[]>([])
+
+  // Keep ref in sync for the polling closure
+  useEffect(() => {
+    analysesRef.current = analyses
+  }, [analyses])
 
   // Fetch analyses
   const loadAnalyses = useCallback(async () => {
@@ -610,7 +616,7 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
     loadAnalyses()
   }, [loadAnalyses])
 
-  // Polling for active analyses
+  // Polling for active analyses — runs once, uses ref for latest data
   useEffect(() => {
     let cancelled = false
     let timeoutId: ReturnType<typeof setTimeout> | null = null
@@ -629,13 +635,13 @@ export function AnalysisTimeline({ period, onExportAll }: AnalysisTimelineProps)
       }
     }
 
-    timeoutId = setTimeout(refresh, hasActiveDashboardAnalysis(analyses) ? 8_000 : 30_000)
+    timeoutId = setTimeout(refresh, hasActiveDashboardAnalysis(analysesRef.current) ? 8_000 : 30_000)
 
     return () => {
       cancelled = true
       if (timeoutId) clearTimeout(timeoutId)
     }
-  }, [analyses])
+  }, [])
 
   // Filter by period
   const periodFiltered = useMemo(() => {
