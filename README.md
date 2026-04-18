@@ -851,19 +851,13 @@ Credentials locales par dÃ©faut : `admin / admin`.
 
 ## 16. Déploiement cloud
 
-Guide cloud central: `infra/cloud/README.md`.
+Guide VPS: `infra/vps/README.md`.
 
-Option recommandée (0$ strict):
+Première étape recommandée :
 
-- Frontend: Vercel Hobby
-- Backend API + Worker: Oracle Always Free VM (Docker Compose + Caddy)
-- PostgreSQL: Supabase Free
-- Redis: Upstash Free
-- Guide pas-a-pas: `infra/cloud/oracle/README.md`
-
-Option legacy:
-
-- Fly.io: `infra/cloud/fly/README.md`
+- déploiement monolithique conteneurisé sur un seul VPS,
+- reverse proxy TLS avec Caddy,
+- frontend + API + worker + PostgreSQL + Redis + Qdrant + MinIO dans Docker Compose.
 
 ---
 

@@ -293,33 +293,42 @@ export default function ProjectsPage() {
   const [createDialogOpen, setCreateDialogOpen] = useState(false)
 
   const fetchProjects = async () => {
+    let cancelled = false
+    
     try {
       setLoading(true)
       setError(null)
       
-      const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-      const response = await fetch(`${backendUrl}/api/v1/projects`, {
-        cache: 'no-store' // Disable browser caching
+      const response = await fetch("/api/dashboard/projects", {
+        cache: 'no-store'
       })
-      if (response.ok) {
-        const data = await response.json()
-        setProjects(data.items || []) // API returns {items: [...], total: ...}
-      } else {
-        // Return empty array if API not available
-        console.warn("Projects API not available:", response.status, response.statusText)
-        setProjects([])
+      
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`)
+      }
+      
+      const data = await response.json()
+      if (!cancelled) {
+        setProjects(data.items || [])
       }
     } catch (err) {
-      // Return empty array if API not available
-      console.warn("Failed to fetch projects:", err)
-      setProjects([])
+      if (!cancelled) {
+        setError(err instanceof Error ? err.message : "Failed to fetch projects")
+        console.error("Failed to fetch projects:", err)
+      }
     } finally {
-      setLoading(false)
+      if (!cancelled) {
+        setLoading(false)
+      }
+    }
+    
+    return () => {
+      cancelled = true
     }
   }
 
   useEffect(() => {
-    fetchProjects()
+    void fetchProjects()
   }, [])
 
   const filteredProjects = projects.filter((project) => {

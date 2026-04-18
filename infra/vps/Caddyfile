@@ -1,0 +1,13 @@
+{$APP_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy dashboard:3001
+}
+
+{$API_DOMAIN} {
+  encode gzip zstd
+  reverse_proxy api:8000
+}
+
+{$YJS_DOMAIN} {
+  reverse_proxy yjs:1234
+}

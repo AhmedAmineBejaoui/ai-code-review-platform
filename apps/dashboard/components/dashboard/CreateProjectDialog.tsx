@@ -149,7 +149,7 @@ export function CreateProjectDialog({
   const loadOrganizations = async () => {
     setLoadingOrgs(true)
     try {
-      const response = await fetch("/api/dashboard/github/orgs", {
+      const response = await fetch("/api/dashboard/github/organizations", {
         headers: { "Content-Type": "application/json" },
       })
       if (response.ok) {

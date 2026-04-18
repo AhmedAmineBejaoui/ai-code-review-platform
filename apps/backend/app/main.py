@@ -46,6 +46,7 @@ from app.api.websockets import notifications as notifications_ws
 from app.api.websockets import review_sessions as review_sessions_ws
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
+from app.settings import settings
 
 
 @asynccontextmanager
@@ -94,12 +95,7 @@ app.add_middleware(RateLimitMiddleware)
 # Allow requests from frontend (Next.js running on localhost:3000 or :3001)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "http://127.0.0.1:3000",
-        "http://127.0.0.1:3001",
-    ],
+    allow_origins=settings.cors_allowed_origins,
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
     allow_headers=[
@@ -120,10 +116,11 @@ app.add_middleware(
 Instrumentator(
     should_group_status_codes=True,
     should_ignore_untemplated=True,
-    excluded_handlers=["/metrics", "/healthz", "/__routes"],
+    excluded_handlers=["/metrics", "/health", "/healthz", "/__routes"],
 ).instrument(app).expose(app, include_in_schema=False, tags=["observability"])
 
 
+@app.get("/health")
 @app.get("/healthz")
 async def health():
     """Health check endpoint with service status."""

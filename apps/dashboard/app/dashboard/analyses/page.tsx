@@ -421,7 +421,7 @@ function AnalysesContent() {
   }, [])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   // Poll when there are active analyses

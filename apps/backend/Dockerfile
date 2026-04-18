@@ -37,11 +37,14 @@ RUN curl -sSfL \
 # runtime shells (semgrep, ruff, sqlfluff, etc.).
 ENV PATH="/usr/local/bin:${PATH}"
 
-COPY pyproject.toml /app/pyproject.toml
+COPY pyproject.toml poetry.lock /app/
 RUN pip install --no-cache-dir poetry \
     && poetry config virtualenvs.create false \
-    && poetry install --no-interaction --no-ansi --no-root
+    && poetry install --no-interaction --no-ansi --no-root \
+    && pip install --no-cache-dir minio
 
 COPY . /app
+
+EXPOSE 8000
 
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

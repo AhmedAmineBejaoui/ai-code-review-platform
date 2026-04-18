@@ -12,6 +12,7 @@ import {
   CheckCircle2,
   AlertCircle,
   Loader2,
+  FolderGit2,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
@@ -27,6 +28,20 @@ import {
 } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+
+interface Project {
+  id: string
+  name: string
+  repo: string
+  description?: string | null
+}
 
 interface TeamMember {
   user_id: string
@@ -214,6 +229,7 @@ function TeamsPageInner() {
   const [reloadTick, setReloadTick] = useState(0)
   const [inviteOpen, setInviteOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [createTeamOpen, setCreateTeamOpen] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("member")
   const [inviteBusy, setInviteBusy] = useState(false)
@@ -222,6 +238,13 @@ function TeamsPageInner() {
   const [settingsDesc, setSettingsDesc] = useState("")
   const [settingsBusy, setSettingsBusy] = useState(false)
   const [settingsMsg, setSettingsMsg] = useState<string | null>(null)
+  const [createTeamName, setCreateTeamName] = useState("")
+  const [createTeamDesc, setCreateTeamDesc] = useState("")
+  const [createTeamProjectId, setCreateTeamProjectId] = useState("")
+  const [createTeamBusy, setCreateTeamBusy] = useState(false)
+  const [createTeamMsg, setCreateTeamMsg] = useState<string | null>(null)
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loadingProjects, setLoadingProjects] = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -245,6 +268,34 @@ function TeamsPageInner() {
       cancelled = true
     }
   }, [reloadTick])
+
+  // Load projects when create team dialog opens
+  useEffect(() => {
+    if (!createTeamOpen) return
+    let cancelled = false
+    const loadProjects = async () => {
+      setLoadingProjects(true)
+      try {
+        const res = await fetch("/api/dashboard/projects")
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json()
+        if (cancelled) return
+        setProjects(data.items || [])
+        // Auto-select first project if available
+        if (data.items && data.items.length > 0 && !createTeamProjectId) {
+          setCreateTeamProjectId(data.items[0].id)
+        }
+      } catch (e) {
+        console.error("Failed to load projects:", e)
+      } finally {
+        if (!cancelled) setLoadingProjects(false)
+      }
+    }
+    void loadProjects()
+    return () => {
+      cancelled = true
+    }
+  }, [createTeamOpen, createTeamProjectId])
 
   const currentTeam = useMemo(() => {
     if (teams.length === 0) return null
@@ -294,7 +345,14 @@ function TeamsPageInner() {
           <p className="text-sm text-muted-foreground max-w-md">
             Create a team to start organizing members and reviews.
           </p>
-          <Button>
+          <Button
+            onClick={() => {
+              setCreateTeamName("")
+              setCreateTeamDesc("")
+              setCreateTeamMsg(null)
+              setCreateTeamOpen(true)
+            }}
+          >
             <UserPlus className="h-4 w-4 mr-2" />
             Create Team
           </Button>
@@ -338,6 +396,124 @@ function TeamsPageInner() {
           </Button>
         </div>
       </div>
+
+      <Dialog open={createTeamOpen} onOpenChange={setCreateTeamOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create a new team</DialogTitle>
+            <DialogDescription>
+              Teams help you organize members and manage code reviews together.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="create-team-project">Project</Label>
+              {loadingProjects ? (
+                <div className="flex items-center gap-2 h-9 px-3 text-sm text-muted-foreground">
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  Loading projects...
+                </div>
+              ) : projects.length === 0 ? (
+                <div className="flex items-center gap-2 p-3 rounded-md border border-amber-500/20 bg-amber-500/10 text-sm">
+                  <AlertCircle className="h-4 w-4 text-amber-500 shrink-0" />
+                  <div>
+                    <p className="font-medium text-amber-500">No projects found</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Please create a project first before creating a team.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <Select
+                  value={createTeamProjectId}
+                  onValueChange={setCreateTeamProjectId}
+                  disabled={createTeamBusy}
+                >
+                  <SelectTrigger id="create-team-project">
+                    <SelectValue placeholder="Select a project..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        <div className="flex items-center gap-2">
+                          <FolderGit2 className="h-3 w-3 text-muted-foreground" />
+                          {project.name}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="create-team-name">Team name</Label>
+              <Input
+                id="create-team-name"
+                placeholder="e.g., Development Team"
+                value={createTeamName}
+                onChange={(e) => setCreateTeamName(e.target.value)}
+                disabled={createTeamBusy}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="create-team-desc">Description (optional)</Label>
+              <Input
+                id="create-team-desc"
+                placeholder="What does this team work on?"
+                value={createTeamDesc}
+                onChange={(e) => setCreateTeamDesc(e.target.value)}
+                disabled={createTeamBusy}
+              />
+            </div>
+            {createTeamMsg && (
+              <p className="text-sm text-muted-foreground">{createTeamMsg}</p>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateTeamOpen(false)} disabled={createTeamBusy}>
+              Cancel
+            </Button>
+            <Button
+              disabled={createTeamBusy || !createTeamName.trim() || !createTeamProjectId || projects.length === 0}
+              onClick={async () => {
+                setCreateTeamBusy(true)
+                setCreateTeamMsg(null)
+                try {
+                  const res = await fetch("/api/dashboard/teams", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      name: createTeamName.trim(),
+                      project_id: createTeamProjectId,
+                      description: createTeamDesc.trim() || null,
+                    }),
+                  })
+                  const data = await res.json().catch(() => ({}))
+                  if (!res.ok) {
+                    setCreateTeamMsg(data?.error || data?.detail || `HTTP ${res.status}`)
+                  } else {
+                    setCreateTeamMsg("Team created successfully!")
+                    setReloadTick((t) => t + 1)
+                    setTimeout(() => {
+                      setCreateTeamOpen(false)
+                      setCreateTeamName("")
+                      setCreateTeamDesc("")
+                      setCreateTeamProjectId("")
+                    }, 800)
+                  }
+                } catch (e) {
+                  setCreateTeamMsg(e instanceof Error ? e.message : "Failed to create team")
+                } finally {
+                  setCreateTeamBusy(false)
+                }
+              }}
+            >
+              {createTeamBusy ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              Create Team
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={inviteOpen} onOpenChange={setInviteOpen}>
         <DialogContent>

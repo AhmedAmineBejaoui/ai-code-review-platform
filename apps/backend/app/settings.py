@@ -75,6 +75,7 @@ class Settings(BaseSettings):
     ADMIN_EMAILS: str | None = None
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100
+    CORS_ALLOWED_ORIGINS: str | None = None
 
     # ── LLM Integration (OpenAI) ──────────────────────────────────────────────
     LLM_ENABLED: bool = False
@@ -380,6 +381,21 @@ class Settings(BaseSettings):
         if raw is None or not raw.strip():
             return set()
         return {item.strip().lower() for item in raw.split(",") if item.strip()}
+
+    @property
+    def cors_allowed_origins(self) -> list[str]:
+        defaults = [
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+        ]
+        raw = self.CORS_ALLOWED_ORIGINS
+        if raw is None or not raw.strip():
+            return defaults
+
+        configured = [item.strip() for item in raw.split(",") if item.strip()]
+        return list(dict.fromkeys([*defaults, *configured]))
 
     @property
     def clean_code_excluded_repos(self) -> set[str]:

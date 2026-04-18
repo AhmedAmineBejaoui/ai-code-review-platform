@@ -7,13 +7,12 @@ import { ClerkAuthWrapper } from "@/components/ui/animated-auth"
 import { buildPathWithForwardedClerkAuthParamsFromRecord } from "@/lib/clerk-invitation"
 
 type SignInPageProps = {
-  searchParams?: {
-    [key: string]: string | string[] | undefined
-  }
+  searchParams: Promise<Record<string, string | string[] | undefined>>
 }
 
-export default function SignInPage({ searchParams }: SignInPageProps) {
-  const signUpUrl = buildPathWithForwardedClerkAuthParamsFromRecord("/sign-up", searchParams)
+export default async function SignInPage({ searchParams }: SignInPageProps) {
+  const params = await searchParams
+  const signUpUrl = buildPathWithForwardedClerkAuthParamsFromRecord("/sign-up", params)
 
   return (
     <AuthShell mode="sign-in">

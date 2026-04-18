@@ -357,7 +357,7 @@ export default function RepositoriesPage() {
   }, [page, searchQuery, languageFilter, visibilityFilter])
 
   useEffect(() => {
-    fetchRepositories()
+    void fetchRepositories()
   }, [fetchRepositories])
 
   // Debounce search
@@ -371,7 +371,8 @@ export default function RepositoriesPage() {
   // Load GitHub repos when dialog opens at step 1
   useEffect(() => {
     if (!importDialogOpen || wizardStep !== 1) return
-    loadGithubRepos()
+    void loadGithubRepos()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [importDialogOpen, wizardStep])
 
   const loadGithubRepos = async () => {

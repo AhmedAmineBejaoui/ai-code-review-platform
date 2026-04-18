@@ -6,7 +6,7 @@
         migrate-create logs logs-api logs-worker test test-ci api-shell \
         worker-shell generate-fernet-key ps clean db-shell dev-backend-ngrok \
         dev-backend-cloudflare infra-core-up infra-core-down host-migrate \
-        host-api host-api-prod host-worker legacy-api \
+        host-api host-api-no-reload host-api-prod host-worker legacy-api \
         prod-build prod-up prod-down prod-logs prod-migrate \
         langchain-parity langchain-qdrant-aliases langchain-promote langchain-rollback \
         svc-install svc-gateway svc-up svc-down svc-build svc-logs svc-ps \
@@ -17,9 +17,9 @@ COMPOSE_FILE = infra/local/docker-compose.yml
 COMPOSE_MINIMAL_FILE = infra/local/docker-compose.minimal.yml
 COMPOSE      = docker compose --env-file .env -f $(COMPOSE_FILE)
 COMPOSE_MINIMAL = docker compose --env-file .env -f $(COMPOSE_MINIMAL_FILE)
-PROD_COMPOSE_FILE = infra/cloud/oracle/docker-compose.prod.yml
-PROD_ENV_FILE = infra/cloud/oracle/.env.prod
-PROD_COMPOSE = docker compose -f $(PROD_COMPOSE_FILE) --env-file $(PROD_ENV_FILE)
+PROD_COMPOSE_FILE = infra/vps/docker-compose.yml
+PROD_ENV_FILE ?= infra/vps/.env.vps
+PROD_COMPOSE = docker compose --env-file $(PROD_ENV_FILE) -f $(PROD_COMPOSE_FILE)
 BACKEND_DIR  = apps/backend
 # Microservices (legacy attempt, kept for reference — will be deleted after full migration)
 MICRO_COMPOSE_FILE = services-legacy-attempt/docker-compose.yml
@@ -32,6 +32,8 @@ SVC_COMPOSE          = docker compose --env-file .env -f $(SVC_COMPOSE_FILE)
 MINIO_API_PORT ?= 9000
 MINIO_CONSOLE_PORT ?= 9001
 GRAFANA_PORT ?= 3000
+UVICORN_DEV_ENV = WATCHFILES_FORCE_POLLING=$${WATCHFILES_FORCE_POLLING:-true}
+UVICORN_RELOAD_ARGS = --reload --reload-dir app --reload-dir alembic --reload-exclude "__pycache__/*" --reload-exclude "*.py[cod]" --reload-exclude "*.log" --reload-exclude ".ruff_cache/*" --reload-exclude ".pytest_cache/*" --reload-exclude ".venv/*" --reload-delay 0.75
 
 # Default target
 help:
@@ -59,8 +61,9 @@ help:
 	@echo "  make infra-core-up      Start only db + redis + qdrant locally"
 	@echo "  make infra-core-down    Stop only db + redis + qdrant locally"
 	@echo "  make host-migrate       Run Alembic on the host Poetry env"
-	@echo "  make host-api           Run uvicorn on the host Poetry env with --reload"
-	@echo "  make host-api-prod      Run uvicorn on the host Poetry env without --reload"
+	@echo "  make host-api           Run uvicorn on the host Poetry env with stable reload"
+	@echo "  make host-api-no-reload Run uvicorn on the host Poetry env without reload"
+	@echo "  make host-api-prod      Alias for host-api-no-reload"
 	@echo "  make host-worker        Run the Celery worker on the Windows host with -P solo"
 	@echo "  make test               Run pytest (local Poetry env)"
 	@echo "  make langchain-parity   Build a corpus-wide LangChain parity report"
@@ -77,11 +80,11 @@ help:
 	@echo "  make worker-shell       Enter running worker container"
 	@echo "  make db-shell           psql in DB container"
 	@echo ""
-	@echo "  Production (Oracle)"
+	@echo "  Production / VPS"
 	@echo "  -----------------------------------------------------"
-	@echo "  make prod-build         Build prod API/worker images"
-	@echo "  make prod-migrate       Run Alembic migrations in prod stack"
-	@echo "  make prod-up            Start prod stack (api+worker+caddy)"
+	@echo "  make prod-build         Build VPS images"
+	@echo "  make prod-migrate       Run Alembic migrations in VPS stack"
+	@echo "  make prod-up            Start VPS stack (caddy+dashboard+api+worker)"
 	@echo "  make prod-down          Stop prod stack"
 	@echo "  make prod-logs          Tail prod stack logs"
 	@echo ""
@@ -198,10 +201,12 @@ host-migrate:
 	cd $(BACKEND_DIR) && poetry run alembic -c alembic.ini upgrade head
 
 host-api:
-	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --reload --port 8000
+	cd $(BACKEND_DIR) && $(UVICORN_DEV_ENV) poetry run uvicorn app.main:app $(UVICORN_RELOAD_ARGS) --port 8000
 
-host-api-prod:
+host-api-no-reload:
 	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --port 8000
+
+host-api-prod: host-api-no-reload
 
 host-worker:
 	cd $(BACKEND_DIR) && poetry run python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo
@@ -209,7 +214,7 @@ host-worker:
 # Legacy monolith on :8100 — used together with the new API gateway on :8000.
 # Keeps `make host-api` unchanged so existing workflows are not disrupted.
 legacy-api:
-	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --reload --port $${LEGACY_BACKEND_PORT:-8100}
+	cd $(BACKEND_DIR) && $(UVICORN_DEV_ENV) poetry run uvicorn app.main:app $(UVICORN_RELOAD_ARGS) --port $${LEGACY_BACKEND_PORT:-8100}
 
 langchain-parity:
 	cd $(BACKEND_DIR) && poetry run python ../../tools/kb/langchain_parity_report.py

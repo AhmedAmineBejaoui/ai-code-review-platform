@@ -3,17 +3,17 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync:clerk-assets": "node ../../tools/frontend/sync-clerk-assets.cjs",
-    "clean:next": "node ../../tools/frontend/reset-next-cache.cjs",
+    "sync:clerk-assets": "node ./scripts/sync-clerk-assets.cjs",
+    "clean:next": "node ./scripts/reset-next-cache.cjs",
     "predev": "npm run sync:clerk-assets",
     "predev:reset": "npm run sync:clerk-assets",
     "prebuild": "npm run sync:clerk-assets",
     "prestart": "npm run sync:clerk-assets",
     "dev": "npm run clean:next && next dev -p 3001",
-    "start:y-websocket": "node ../../tools/y-websocket-server.js",
+    "start:y-websocket": "node ./scripts/y-websocket-server.cjs",
     "dev:reset": "npm run clean:next && next dev -p 3001",
     "build": "npm run clean:next && next build",
-    "start": "next start -p 3001",
+    "start": "next start -H 0.0.0.0 -p 3001",
     "lint": "next lint"
   },
   "dependencies": {
