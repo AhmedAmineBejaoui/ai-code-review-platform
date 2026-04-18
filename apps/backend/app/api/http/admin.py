@@ -219,22 +219,31 @@ def _integration_defaults() -> dict[str, Any]:
 
 
 def _load_versioned_settings(conn: Connection, repo_key: str, defaults: dict[str, Any]) -> tuple[dict[str, Any], int, str | None]:
-    row = (
-        conn.execute(
-            text(
-                """
-                SELECT version, rules_json, created_at
-                FROM policies
-                WHERE repo = :repo
-                ORDER BY version DESC
-                LIMIT 1
-                """
-            ),
-            {"repo": repo_key},
+    try:
+        row = (
+            conn.execute(
+                text(
+                    """
+                    SELECT version, rules_json, created_at
+                    FROM policies
+                    WHERE repo = :repo
+                    ORDER BY version DESC
+                    LIMIT 1
+                    """
+                ),
+                {"repo": repo_key},
+            )
+            .mappings()
+            .first()
         )
-        .mappings()
-        .first()
-    )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Admin settings fallback: policies table is unavailable for '%s': %s",
+            repo_key,
+            exc,
+        )
+        return dict(defaults), 0, None
+
     if row is None:
         return dict(defaults), 0, None
 
@@ -247,32 +256,41 @@ def _load_versioned_settings(conn: Connection, repo_key: str, defaults: dict[str
 
 
 def _save_versioned_settings(conn: Connection, repo_key: str, payload: dict[str, Any], *, blocking_enabled: bool = False) -> tuple[int, str]:
-    version_row = (
-        conn.execute(
-            text("SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM policies WHERE repo = :repo"),
-            {"repo": repo_key},
-        )
-        .mappings()
-        .first()
-    )
-    next_version = int(version_row["next_version"] if version_row is not None else 1)
     created_at = _utc_iso_now()
-    conn.execute(
-        text(
-            """
-            INSERT INTO policies (id, repo, version, blocking_enabled, rules_json, created_at)
-            VALUES (:id, :repo, :version, :blocking_enabled, CAST(:rules_json AS jsonb), NOW())
-            """
-        ),
-        {
-            "id": f"policy_{uuid.uuid4().hex}",
-            "repo": repo_key,
-            "version": next_version,
-            "blocking_enabled": blocking_enabled,
-            "rules_json": json.dumps(payload),
-        },
-    )
-    return next_version, created_at
+    try:
+        version_row = (
+            conn.execute(
+                text("SELECT COALESCE(MAX(version), 0) + 1 AS next_version FROM policies WHERE repo = :repo"),
+                {"repo": repo_key},
+            )
+            .mappings()
+            .first()
+        )
+        next_version = int(version_row["next_version"] if version_row is not None else 1)
+        conn.execute(
+            text(
+                """
+                INSERT INTO policies (id, repo, version, blocking_enabled, rules_json, created_at)
+                VALUES (:id, :repo, :version, :blocking_enabled, CAST(:rules_json AS jsonb), NOW())
+                """
+            ),
+            {
+                "id": f"policy_{uuid.uuid4().hex}",
+                "repo": repo_key,
+                "version": next_version,
+                "blocking_enabled": blocking_enabled,
+                "rules_json": json.dumps(payload),
+            },
+        )
+        return next_version, created_at
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Admin settings persistence skipped for '%s' because policies table is unavailable: %s",
+            repo_key,
+            exc,
+        )
+        # Keep endpoint successful in partially-migrated environments.
+        return 0, created_at
 
 
 def _insert_audit_log(
@@ -284,22 +302,28 @@ def _insert_audit_log(
     target_id: str,
     meta: dict[str, Any] | None = None,
 ) -> None:
-    conn.execute(
-        text(
-            """
-            INSERT INTO audit_logs (id, actor, action, target_type, target_id, meta_json)
-            VALUES (:id, :actor, :action, :target_type, :target_id, CAST(:meta_json AS jsonb))
-            """
-        ),
-        {
-            "id": f"audit_{uuid.uuid4().hex}",
-            "actor": actor,
-            "action": action,
-            "target_type": target_type,
-            "target_id": target_id,
-            "meta_json": json.dumps(meta or {}),
-        },
-    )
+    try:
+        conn.execute(
+            text(
+                """
+                INSERT INTO audit_logs (id, actor, action, target_type, target_id, meta_json)
+                VALUES (:id, :actor, :action, :target_type, :target_id, CAST(:meta_json AS jsonb))
+                """
+            ),
+            {
+                "id": f"audit_{uuid.uuid4().hex}",
+                "actor": actor,
+                "action": action,
+                "target_type": target_type,
+                "target_id": target_id,
+                "meta_json": json.dumps(meta or {}),
+            },
+        )
+    except SQLAlchemyError as exc:
+        logger.warning(
+            "Skipping audit log insert because audit_logs table is unavailable: %s",
+            exc,
+        )
 
 
 def _collect_admin_users(limit: int) -> dict[str, Any]:
@@ -1377,21 +1401,28 @@ def _collect_integrations_payload() -> dict[str, Any]:
             _ADMIN_CI_TOKEN_REPO_KEY,
             {"revoked": True},
         )
-        webhook_rows = (
-            conn.execute(
-                text(
-                    """
-                    SELECT repo, source, created_at
-                    FROM analyses
-                    WHERE source ILIKE 'github%'
-                    ORDER BY created_at DESC
-                    LIMIT 20
-                    """
+        try:
+            webhook_rows = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT repo, source, created_at
+                        FROM analyses
+                        WHERE source ILIKE 'github%'
+                        ORDER BY created_at DESC
+                        LIMIT 20
+                        """
+                    )
                 )
+                .mappings()
+                .all()
             )
-            .mappings()
-            .all()
-        )
+        except SQLAlchemyError as exc:
+            logger.warning(
+                "Admin integrations webhook history unavailable because analyses query failed: %s",
+                exc,
+            )
+            webhook_rows = []
 
     token_revoked = bool(ci_token_settings.get("revoked", True))
     token_hash = str(ci_token_settings.get("tokenHash") or "")

@@ -10,46 +10,20 @@ import {
   parseGithubResponse,
 } from "@/lib/server/github/client"
 
-const BACKEND_API_BASE_URL =
-  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-
-const BACKEND_FETCH_TIMEOUT_MS = Math.max(
-  1_000,
-  Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
-)
+import {
+  asNumber,
+  asString,
+  ensureClerkOrganization,
+  fetchBackendJson,
+  findMatchingClerkOrganization,
+  listClerkOrganizations,
+  normalizeOrganization,
+  slugify,
+  type BackendOrganization,
+  type GithubOrganizationSummary,
+} from "./_shared"
 
 export const dynamic = "force-dynamic"
-
-type BackendTeam = {
-  id: string
-  name: string
-  slug?: string | null
-  description?: string | null
-  clerk_org_id?: string | null
-  github_org_id?: string | null
-  github_org_login?: string | null
-  source?: string | null
-  sync_status?: string | null
-  member_count?: number | null
-  created_at?: string | null
-  updated_at?: string | null
-}
-
-type GithubOrganizationSummary = {
-  id: string
-  login: string
-  name: string
-  description: string | null
-  avatarUrl: string | null
-  htmlUrl: string | null
-}
-
-type ClerkOrganizationSummary = {
-  id: string
-  name: string
-  slug: string | null
-  imageUrl: string | null
-}
 
 type CreateOrganizationBody = {
   mode?: "platform" | "github_import"
@@ -57,84 +31,6 @@ type CreateOrganizationBody = {
   slug?: string
   description?: string
   githubOrgLogin?: string
-}
-
-function slugify(value: string): string {
-  const collapsed = value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 50)
-  return collapsed || `organization-${Math.random().toString(36).slice(2, 8)}`
-}
-
-function asString(value: unknown): string | null {
-  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null
-}
-
-function asNumber(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return value
-  }
-  if (typeof value === "string" && value.trim()) {
-    const parsed = Number(value)
-    return Number.isFinite(parsed) ? parsed : null
-  }
-  return null
-}
-
-async function fetchBackendJson<T>(
-  token: string,
-  userId: string,
-  path: string,
-  init?: {
-    method?: "GET" | "POST" | "PATCH" | "DELETE"
-    body?: unknown
-  },
-): Promise<{ ok: boolean; status: number; data: T | { error: string; detail?: string } | null }> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), BACKEND_FETCH_TIMEOUT_MS)
-
-  try {
-    const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "X-User-Id": userId,
-        Accept: "application/json",
-        ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
-      cache: "no-store",
-    })
-
-    const rawBody = await response.text()
-    let parsed: unknown = null
-
-    if (rawBody) {
-      try {
-        parsed = JSON.parse(rawBody)
-      } catch {
-        parsed = { detail: rawBody }
-      }
-    }
-
-    return {
-      ok: response.ok,
-      status: response.status,
-      data: (parsed as T | { error: string; detail?: string } | null) ?? null,
-    }
-  } catch {
-    return {
-      ok: false,
-      status: 502,
-      data: { error: "Backend unavailable" },
-    }
-  } finally {
-    clearTimeout(timeout)
-  }
 }
 
 async function listGithubOrganizationsForUser(userId: string): Promise<GithubOrganizationSummary[]> {
@@ -196,86 +92,6 @@ async function fetchGithubOrganizationDetails(
   }
 }
 
-async function listClerkOrganizations(): Promise<ClerkOrganizationSummary[]> {
-  const client = await clerkClient()
-  const response = await client.organizations.getOrganizationList({ limit: 100 })
-  const items = Array.isArray(response?.data) ? response.data : []
-
-  return items.map((org) => ({
-    id: org.id,
-    name: org.name,
-    slug: org.slug ?? null,
-    imageUrl: org.imageUrl ?? null,
-  }))
-}
-
-function normalizeTeam(team: BackendTeam) {
-  return {
-    id: team.id,
-    name: team.name,
-    slug: team.slug ?? null,
-    description: team.description ?? null,
-    memberCount: team.member_count ?? 0,
-    createdAt: team.created_at ?? null,
-    updatedAt: team.updated_at ?? null,
-    clerkOrgId: team.clerk_org_id ?? null,
-    githubOrgId: team.github_org_id ?? null,
-    githubOrgLogin: team.github_org_login ?? null,
-    source: team.source ?? "platform",
-    syncStatus: team.sync_status ?? "local_only",
-  }
-}
-
-async function ensureClerkOrganization(args: {
-  userId: string
-  name: string
-  slug: string
-  description: string | null
-  githubOrg: GithubOrganizationSummary | null
-}) {
-  const client = await clerkClient()
-  const existing = await client.organizations.getOrganizationList({ limit: 100 })
-  const match = Array.isArray(existing?.data)
-    ? existing.data.find((item) => item.slug === args.slug)
-    : null
-
-  if (match) {
-    await client.organizations.updateOrganization(match.id, {
-      name: args.name,
-      slug: args.slug,
-      publicMetadata: {
-        github_org_login: args.githubOrg?.login ?? null,
-        github_org_id: args.githubOrg?.id ?? null,
-        description: args.description,
-      },
-    })
-    return { organization: match, created: false }
-  }
-
-  const created = await client.organizations.createOrganization({
-    name: args.name,
-    slug: args.slug,
-    createdBy: args.userId,
-    publicMetadata: {
-      github_org_login: args.githubOrg?.login ?? null,
-      github_org_id: args.githubOrg?.id ?? null,
-      description: args.description,
-    },
-  })
-
-  try {
-    await client.organizations.createOrganizationMembership({
-      organizationId: created.id,
-      userId: args.userId,
-      role: "org:admin",
-    })
-  } catch {
-    // Creator is often already a member in Clerk.
-  }
-
-  return { organization: created, created: true }
-}
-
 /**
  * GET /api/dashboard/admin/organizations
  *
@@ -290,23 +106,24 @@ export async function GET(request: NextRequest) {
   const search = asString(request.nextUrl.searchParams.get("search"))
 
   const [backendResponse, githubOrganizations, clerkOrganizations] = await Promise.all([
-    fetchBackendJson<{ items?: BackendTeam[] }>(
+    fetchBackendJson<{ items?: BackendOrganization[] }>(
       authContext.token,
       authContext.userId,
-      "/api/v1/teams",
+      "/v1/organizations",
       { method: "GET" },
     ),
     listGithubOrganizationsForUser(authContext.userId),
     listClerkOrganizations().catch(() => []),
   ])
 
-  // Gracefully degrade: return empty list when backend is unavailable
-  const teams = backendResponse.ok && Array.isArray((backendResponse.data as { items?: BackendTeam[] } | null)?.items)
-    ? (backendResponse.data as { items?: BackendTeam[] }).items ?? []
-    : []
+  const backendItems =
+    backendResponse.ok &&
+    Array.isArray((backendResponse.data as { items?: BackendOrganization[] } | null)?.items)
+      ? ((backendResponse.data as { items?: BackendOrganization[] }).items ?? [])
+      : []
 
-  const organizations = teams
-    .map(normalizeTeam)
+  const organizations = backendItems
+    .map((org) => normalizeOrganization(org, findMatchingClerkOrganization(org, clerkOrganizations)))
     .filter((org) => {
       if (!search) {
         return true
@@ -349,8 +166,6 @@ export async function POST(request: NextRequest) {
   }
 
   const mode = body.mode === "github_import" ? "github_import" : "platform"
-  // In platform mode, GitHub org is entirely optional and ignored even if the
-  // dropdown still holds a value from a previous interaction.
   const selectedGithubLogin = mode === "github_import" ? asString(body.githubOrgLogin) : null
 
   let githubOrg: GithubOrganizationSummary | null = null
@@ -372,36 +187,37 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const name =
-    asString(body.name) ??
-    githubOrg?.name ??
-    githubOrg?.login ??
-    null
-
+  const name = asString(body.name) ?? githubOrg?.name ?? githubOrg?.login ?? null
   if (!name) {
     return NextResponse.json({ error: "Organization name is required" }, { status: 400 })
   }
 
-  const slug =
-    asString(body.slug) ??
-    (githubOrg ? slugify(githubOrg.login) : slugify(name))
-
+  const slug = asString(body.slug) ?? (githubOrg ? slugify(githubOrg.login) : slugify(name))
   const description = asString(body.description) ?? githubOrg?.description ?? null
 
-  const existingTeamsResponse = await fetchBackendJson<{ items?: BackendTeam[] }>(
-    authContext.token,
-    authContext.userId,
-    "/api/v1/teams",
-    { method: "GET" },
+  const [existingResponse, existingClerkOrganizations] = await Promise.all([
+    fetchBackendJson<{ items?: BackendOrganization[] }>(
+      authContext.token,
+      authContext.userId,
+      "/v1/organizations",
+      { method: "GET" },
+    ),
+    listClerkOrganizations().catch(() => []),
+  ])
+
+  const existingOrgs =
+    existingResponse.ok &&
+    Array.isArray((existingResponse.data as { items?: BackendOrganization[] } | null)?.items)
+      ? ((existingResponse.data as { items?: BackendOrganization[] }).items ?? [])
+      : []
+
+  const normalizedExisting = existingOrgs.map((org) =>
+    normalizeOrganization(org, findMatchingClerkOrganization(org, existingClerkOrganizations)),
   )
 
-  const existingTeams = existingTeamsResponse.ok && Array.isArray((existingTeamsResponse.data as { items?: BackendTeam[] } | null)?.items)
-    ? (existingTeamsResponse.data as { items?: BackendTeam[] }).items ?? []
-    : []
-
   if (githubOrg) {
-    const duplicateGithubLink = existingTeams.find(
-      (team) => team.github_org_login?.toLowerCase() === githubOrg?.login.toLowerCase(),
+    const duplicateGithubLink = normalizedExisting.find(
+      (org) => org.githubOrgLogin?.toLowerCase() === githubOrg?.login.toLowerCase(),
     )
     if (duplicateGithubLink) {
       return NextResponse.json(
@@ -411,7 +227,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const duplicateSlug = existingTeams.find((team) => team.slug?.toLowerCase() === slug.toLowerCase())
+  const duplicateSlug = normalizedExisting.find((org) => org.slug?.toLowerCase() === slug.toLowerCase())
   if (duplicateSlug) {
     return NextResponse.json(
       { error: `Slug '${slug}' is already used by '${duplicateSlug.name}'.` },
@@ -420,30 +236,30 @@ export async function POST(request: NextRequest) {
   }
 
   let createdClerkOrganizationId: string | null = null
-  let clerkOrg: { id: string; name: string; slug: string | null; imageUrl: string | null } | null = null
+  let clerkOrganization:
+    | {
+        id: string
+        name: string
+        slug: string | null
+        imageUrl: string | null
+        description: string | null
+        githubOrgLogin: string | null
+        githubOrgId: string | null
+      }
+    | null = null
   const warnings: string[] = []
 
-  // Attempt Clerk organization creation — non-blocking.
-  // Clerk Organizations may be unavailable (plan restriction, missing permissions, etc.).
-  // In that case we fall back to a local UUID so the platform team can still be created.
   try {
-    const { organization: clerkOrganization, created } = await ensureClerkOrganization({
+    const { organization, created } = await ensureClerkOrganization({
       userId: authContext.userId,
       name,
       slug,
       description,
       githubOrg,
     })
-
-    createdClerkOrganizationId = created ? clerkOrganization.id : null
-    clerkOrg = {
-      id: clerkOrganization.id,
-      name: clerkOrganization.name,
-      slug: clerkOrganization.slug ?? null,
-      imageUrl: clerkOrganization.imageUrl ?? null,
-    }
+    createdClerkOrganizationId = created ? organization.id : null
+    clerkOrganization = organization
   } catch (clerkError) {
-    // Log for observability but do not abort — create a platform-only organization.
     console.warn(
       "[organizations] Clerk org creation skipped:",
       clerkError instanceof Error ? clerkError.message : clerkError,
@@ -455,71 +271,26 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // Use the Clerk org id when available, otherwise generate a stable local id.
   const { randomUUID } = await import("crypto")
-  const orgId = clerkOrg?.id ?? randomUUID()
+  const orgId = clerkOrganization?.id ?? `org_local_${randomUUID().replace(/-/g, "").slice(0, 20)}`
 
-  try {
-    const backendPayload = {
-      id: orgId,
-      name,
-      slug,
-      description,
-      clerk_org_id: clerkOrg?.id ?? null,
-      github_org_id: githubOrg?.id ?? null,
-      github_org_login: githubOrg?.login ?? null,
-      source: githubOrg ? "github_import" : "platform",
-      sync_status: clerkOrg
-        ? githubOrg
-          ? "linked"
-          : "clerk_only"
-        : "local_only",
-    }
-
-    const backendResponse = await fetchBackendJson<BackendTeam>(
-      authContext.token,
-      authContext.userId,
-      "/api/v1/teams",
-      {
-        method: "POST",
-        body: backendPayload,
+  const backendResponse = await fetchBackendJson<{ id: string; name: string; slug?: string | null }>(
+    authContext.token,
+    authContext.userId,
+    "/v1/organizations",
+    {
+      method: "POST",
+      body: {
+        clerk_organization_id: orgId,
+        name,
+        slug,
+        github_org_id: asNumber(githubOrg?.id),
+        github_org_name: githubOrg?.login ?? null,
       },
-    )
+    },
+  )
 
-    if (!backendResponse.ok || !backendResponse.data) {
-      // Roll back Clerk org if we created one.
-      if (createdClerkOrganizationId) {
-        try {
-          const client = await clerkClient()
-          await client.organizations.deleteOrganization(createdClerkOrganizationId)
-        } catch {
-          // Best-effort rollback.
-        }
-      }
-
-      return NextResponse.json(
-        backendResponse.data ?? { error: "Failed to create organization" },
-        { status: backendResponse.status },
-      )
-    }
-
-    if (!githubOrg) {
-      warnings.push(
-        "GitHub organization creation is not automatic. Link an existing GitHub organization later if needed.",
-      )
-    }
-
-    return NextResponse.json(
-      {
-        organization: normalizeTeam(backendResponse.data as BackendTeam),
-        clerkOrganization: clerkOrg,
-        githubOrganization: githubOrg,
-        warnings,
-      },
-      { status: 201 },
-    )
-  } catch (error) {
-    // Roll back Clerk org if we created one.
+  if (!backendResponse.ok || !backendResponse.data) {
     if (createdClerkOrganizationId) {
       try {
         const client = await clerkClient()
@@ -528,10 +299,60 @@ export async function POST(request: NextRequest) {
         // Best-effort rollback.
       }
     }
-
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Failed to create organization" },
-      { status: 500 },
+      backendResponse.data ?? { error: "Failed to create organization" },
+      { status: backendResponse.status },
     )
   }
+
+  const backendOrganization = backendResponse.data as { id: string; name: string; slug?: string | null }
+
+  // Best effort: ensure creator is an active admin member so non-admin users
+  // can see the organization in `/v1/organizations` list immediately.
+  try {
+    const membershipSyncResponse = await fetchBackendJson(
+      authContext.token,
+      authContext.userId,
+      `/v1/organizations/${encodeURIComponent(backendOrganization.id)}/members`,
+      {
+        method: "POST",
+        body: {
+          user_id: authContext.userId,
+          role: "admin",
+        },
+      },
+    )
+    if (!membershipSyncResponse.ok && membershipSyncResponse.status !== 409) {
+      warnings.push("Organization created, but creator membership sync failed.")
+    }
+  } catch {
+    warnings.push("Organization created, but creator membership sync failed.")
+  }
+
+  const normalized = normalizeOrganization(
+    {
+      id: backendOrganization.id,
+      name: backendOrganization.name ?? name,
+      slug: backendOrganization.slug ?? slug,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    clerkOrganization,
+  )
+
+  if (!githubOrg) {
+    warnings.push(
+      "GitHub organization creation is not automatic. Link an existing GitHub organization later if needed.",
+    )
+  }
+
+  return NextResponse.json(
+    {
+      organization: normalized,
+      clerkOrganization,
+      githubOrganization: githubOrg,
+      warnings,
+    },
+    { status: 201 },
+  )
 }

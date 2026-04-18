@@ -437,7 +437,7 @@ class GitHubImportRequest(BaseModel):
 
 
 class MemberToInvite(BaseModel):
-    email: str
+    email: str | None = None
     github_login: str | None = None
     role: str
     project_id: str

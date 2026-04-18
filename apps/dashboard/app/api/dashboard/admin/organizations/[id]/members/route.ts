@@ -3,110 +3,139 @@ import { NextResponse, type NextRequest } from "next/server"
 
 import { requireBackendAuth } from "@/lib/backend-admin"
 
-const BACKEND_API_BASE_URL =
-  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+import {
+  fetchBackendJson,
+  findMatchingClerkOrganization,
+  listClerkOrganizations,
+  type BackendOrganization,
+} from "../../_shared"
 
-const TIMEOUT_MS = Math.max(
-  1_000,
-  Number(process.env.DASHBOARD_BACKEND_FETCH_TIMEOUT_MS ?? "15000") || 15_000,
-)
+const MAX_USER_LOOKUP = 500
 
 export const dynamic = "force-dynamic"
 
-async function fetchBackend<T>(
+type OrganizationMembersResponse = {
+  items?: Array<{
+    userId?: string
+    role?: string
+    status?: string
+    createdAt?: string
+    user?: {
+      id?: string
+      email?: string
+      displayName?: string
+      avatarUrl?: string
+    } | null
+  }>
+}
+
+type OrgMember = {
+  user_id: string
+  email: string
+  display_name: string | null
+  role: string
+  joined_at: string
+}
+
+function mapRoleToBackend(role: string): "admin" | "reviewer" | "developer" {
+  if (role === "admin") {
+    return "admin"
+  }
+  if (role === "viewer") {
+    return "reviewer"
+  }
+  return "developer"
+}
+
+async function resolveClerkOrganizationId(
   token: string,
   userId: string,
-  path: string,
-  init?: { method?: "GET" | "POST" | "DELETE"; body?: unknown },
-): Promise<{ ok: boolean; status: number; data: T | null }> {
-  const controller = new AbortController()
-  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS)
-  try {
-    const res = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
-      method: init?.method ?? "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "X-User-Id": userId,
-        Accept: "application/json",
-        ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
-      },
-      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-      signal: controller.signal,
-      cache: "no-store",
-    })
-    const raw = await res.text()
-    let parsed: unknown = null
-    if (raw) { try { parsed = JSON.parse(raw) } catch { parsed = { detail: raw } } }
-    return { ok: res.ok, status: res.status, data: parsed as T | null }
-  } catch {
-    return { ok: false, status: 502, data: null }
-  } finally {
-    clearTimeout(timeout)
+  orgId: string,
+): Promise<string | null> {
+  const [orgResponse, clerkOrganizations] = await Promise.all([
+    fetchBackendJson<BackendOrganization>(token, userId, `/v1/organizations/${encodeURIComponent(orgId)}`),
+    listClerkOrganizations().catch(() => []),
+  ])
+
+  if (!orgResponse.ok || !orgResponse.data) {
+    return null
   }
+
+  const backendOrganization = orgResponse.data as BackendOrganization
+  const matched = findMatchingClerkOrganization(backendOrganization, clerkOrganizations)
+  return matched?.id ?? (orgId.startsWith("org_") ? orgId : null)
 }
 
 /**
  * GET /api/dashboard/admin/organizations/[id]/members
- * Returns the member list for this organization (from backend + Clerk pending invitations).
+ * Returns organization members and pending Clerk invitations.
  */
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
-  if (!auth.ok) return auth.response
+  if (!auth.ok) {
+    return auth.response
+  }
 
   const { id: orgId } = await context.params
 
-  // Backend members
-  const backendRes = await fetchBackend<{ members?: unknown[] }>(
+  const backendRes = await fetchBackendJson<OrganizationMembersResponse>(
     auth.token,
     auth.userId,
-    `/api/v1/teams/${encodeURIComponent(orgId)}`,
+    `/v1/organizations/${encodeURIComponent(orgId)}/members`,
+    { method: "GET" },
   )
 
-  const backendMembers = Array.isArray(
-    (backendRes.data as { members?: unknown[] } | null)?.members,
-  )
-    ? (backendRes.data as { members: unknown[] }).members
-    : []
+  const backendItems =
+    backendRes.ok && Array.isArray((backendRes.data as OrganizationMembersResponse | null)?.items)
+      ? ((backendRes.data as OrganizationMembersResponse).items ?? [])
+      : []
 
-  // Pending Clerk invitations (best-effort)
+  const members: OrgMember[] = backendItems.map((member) => ({
+    user_id: String(member.userId ?? member.user?.id ?? ""),
+    email: String(member.user?.email ?? ""),
+    display_name: member.user?.displayName ?? null,
+    role: String(member.role ?? "member"),
+    joined_at: String(member.createdAt ?? ""),
+  }))
+
   let pendingInvitations: { id: string; emailAddress: string; role: string; createdAt: number }[] = []
   try {
-    const clerkOrgId = (backendRes.data as { clerk_org_id?: string } | null)?.clerk_org_id
+    const clerkOrgId = await resolveClerkOrganizationId(auth.token, auth.userId, orgId)
     if (clerkOrgId && !clerkOrgId.startsWith("org_local_")) {
       const client = await clerkClient()
-      const invs = await client.organizations.getOrganizationInvitationList({
+      const invitations = await client.organizations.getOrganizationInvitationList({
         organizationId: clerkOrgId,
         status: ["pending"],
       })
-      pendingInvitations = (invs.data ?? []).map((inv) => ({
-        id: inv.id,
-        emailAddress: inv.emailAddress,
-        role: inv.role,
-        createdAt: inv.createdAt,
+      pendingInvitations = (invitations.data ?? []).map((invitation) => ({
+        id: invitation.id,
+        emailAddress: invitation.emailAddress,
+        role: invitation.role,
+        createdAt: invitation.createdAt,
       }))
     }
   } catch {
-    // Clerk invitations unavailable — not fatal
+    // Pending invitations are best-effort.
   }
 
-  return NextResponse.json({ members: backendMembers, pendingInvitations })
+  return NextResponse.json({ members, pendingInvitations })
 }
 
 /**
  * POST /api/dashboard/admin/organizations/[id]/members
- * Invite a user by email via Clerk + add to backend team.
- *
- * Body: { email: string, role?: "admin" | "member" | "viewer" }
+ * Invite a user by email via Clerk and add active memberships when user exists.
  */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
-  if (!auth.ok) return auth.response
+  if (!auth.ok) {
+    return auth.response
+  }
 
   const { id: orgId } = await context.params
 
@@ -122,74 +151,73 @@ export async function POST(
     return NextResponse.json({ error: "A valid email address is required" }, { status: 400 })
   }
 
-  const role = (body.role as "admin" | "member" | "viewer") ?? "member"
+  const requestedRole = typeof body.role === "string" ? body.role : "member"
+  const backendRole = mapRoleToBackend(requestedRole)
+  const warnings: string[] = []
 
-  // Fetch team to get clerkOrgId
-  const teamRes = await fetchBackend<{
-    id: string
-    clerk_org_id?: string | null
-  }>(auth.token, auth.userId, `/api/v1/teams/${encodeURIComponent(orgId)}`)
-
-  if (!teamRes.ok || !teamRes.data) {
-    return NextResponse.json({ error: "Organization not found" }, { status: 404 })
+  if (requestedRole === "viewer") {
+    warnings.push("Viewer is mapped to reviewer in backend role model.")
   }
 
-  const clerkOrgId = teamRes.data.clerk_org_id
-
   let clerkInvitation: { id: string; emailAddress: string } | null = null
-  let clerkWarning: string | null = null
-
-  // Send Clerk invitation if org is linked to a real Clerk org
-  if (clerkOrgId && !clerkOrgId.startsWith("org_local_")) {
-    try {
+  try {
+    const clerkOrgId = await resolveClerkOrganizationId(auth.token, auth.userId, orgId)
+    if (clerkOrgId && !clerkOrgId.startsWith("org_local_")) {
       const client = await clerkClient()
-      const clerkRole = role === "admin" ? "org:admin" : "org:member"
-      const inv = await client.organizations.createOrganizationInvitation({
+      const invitation = await client.organizations.createOrganizationInvitation({
         organizationId: clerkOrgId,
         emailAddress: email,
-        role: clerkRole,
+        role: requestedRole === "admin" ? "org:admin" : "org:member",
         inviterUserId: auth.userId,
         redirectUrl: `${process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3001"}/dashboard`,
       })
-      clerkInvitation = { id: inv.id, emailAddress: inv.emailAddress }
-    } catch (clerkError) {
-      clerkWarning =
-        clerkError instanceof Error
-          ? `Clerk invitation failed: ${clerkError.message}`
-          : "Clerk invitation could not be sent"
+      clerkInvitation = { id: invitation.id, emailAddress: invitation.emailAddress }
+    } else {
+      warnings.push("Clerk organization not linked, email invitation was skipped.")
     }
-  } else {
-    clerkWarning = "Clerk organization not linked — invitation email was not sent via Clerk. Link Clerk first to enable email invitations."
+  } catch (clerkError) {
+    warnings.push(
+      clerkError instanceof Error
+        ? `Clerk invitation failed: ${clerkError.message}`
+        : "Clerk invitation could not be sent",
+    )
   }
 
-  // Try to find the user in the backend by email and add them to the team.
-  // If they don't exist yet (pending invite), we record it differently.
   let backendMember: unknown = null
   try {
-    // Look up user by email
-    const usersRes = await fetchBackend<{ items?: Array<{ id: string; email: string }> }>(
+    const usersRes = await fetchBackendJson<{ items?: Array<{ id: string; email: string }> }>(
       auth.token,
       auth.userId,
-      `/v1/admin/users?limit=500`,
+      `/v1/admin/users?limit=${MAX_USER_LOOKUP}`,
+      { method: "GET" },
     )
-    const users = Array.isArray(
-      (usersRes.data as { items?: unknown[] } | null)?.items,
-    )
-      ? (usersRes.data as { items: Array<{ id: string; email: string }> }).items
-      : []
 
-    const found = users.find((u) => u.email?.toLowerCase() === email)
-    if (found) {
-      const addRes = await fetchBackend(
+    const users =
+      usersRes.ok && Array.isArray((usersRes.data as { items?: unknown[] } | null)?.items)
+        ? ((usersRes.data as { items: Array<{ id: string; email: string }> }).items ?? [])
+        : []
+
+    const matchedUser = users.find((user) => user.email?.toLowerCase() === email)
+    if (matchedUser) {
+      const addRes = await fetchBackendJson(
         auth.token,
         auth.userId,
-        `/api/v1/teams/${encodeURIComponent(orgId)}/members`,
-        { method: "POST", body: { user_id: found.id, role } },
+        `/v1/organizations/${encodeURIComponent(orgId)}/members`,
+        {
+          method: "POST",
+          body: { user_id: matchedUser.id, role: backendRole },
+        },
       )
-      if (addRes.ok) backendMember = addRes.data
+      if (addRes.ok) {
+        backendMember = addRes.data
+      } else if (addRes.status !== 404) {
+        warnings.push("Backend membership could not be created automatically.")
+      }
+    } else {
+      warnings.push("User does not exist yet in platform; membership will be created after signup.")
     }
   } catch {
-    // Non-fatal: user may not exist yet (pending invitation)
+    warnings.push("Backend user lookup failed; membership was not created.")
   }
 
   return NextResponse.json(
@@ -197,7 +225,7 @@ export async function POST(
       success: true,
       clerkInvitation,
       backendMember,
-      warnings: clerkWarning ? [clerkWarning] : [],
+      warnings,
     },
     { status: 201 },
   )
@@ -205,14 +233,16 @@ export async function POST(
 
 /**
  * DELETE /api/dashboard/admin/organizations/[id]/members?userId=xxx
- * Remove a member from the organization.
+ * Removes a member from the organization.
  */
 export async function DELETE(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireBackendAuth()
-  if (!auth.ok) return auth.response
+  if (!auth.ok) {
+    return auth.response
+  }
 
   const { id: orgId } = await context.params
   const userId = request.nextUrl.searchParams.get("userId")
@@ -220,15 +250,18 @@ export async function DELETE(
     return NextResponse.json({ error: "userId query param is required" }, { status: 400 })
   }
 
-  const res = await fetchBackend(
+  const res = await fetchBackendJson(
     auth.token,
     auth.userId,
-    `/api/v1/teams/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`,
+    `/v1/organizations/${encodeURIComponent(orgId)}/members/${encodeURIComponent(userId)}`,
     { method: "DELETE" },
   )
 
   if (!res.ok && res.status !== 204) {
-    return NextResponse.json({ error: "Failed to remove member" }, { status: res.status })
+    return NextResponse.json(
+      res.data ?? { error: "Failed to remove member" },
+      { status: res.status },
+    )
   }
 
   return new Response(null, { status: 204 })

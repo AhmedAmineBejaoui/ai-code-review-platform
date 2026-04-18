@@ -12,9 +12,14 @@ const MAX_COMMIT_PAGES = 10 // up to 1 000 commits per branch
 type MemberRoleOverride = { github_login: string; role: string }
 
 type ImportRequestBody = {
-  full_name: string
+  full_name?: string
   project_name?: string
   member_role_overrides?: MemberRoleOverride[]
+  // Backward-compatible camelCase payload used by the create-project modal.
+  repoFullName?: string
+  projectName?: string
+  memberRoleOverrides?: MemberRoleOverride[]
+  members?: Array<{ github_login?: string; role?: string; email?: string | null }>
 }
 
 type GithubBranchItem = {
@@ -78,7 +83,7 @@ async function githubGetList<T>(path: string, token: string | null, maxPages = 5
 
   while (url && page < maxPages) {
     page += 1
-    const res = await fetch(url, { headers: githubHeaders(token), cache: "no-store" })
+    const res: Response = await fetch(url, { headers: githubHeaders(token), cache: "no-store" })
     if (!res.ok) break
 
     const data = (await res.json().catch(() => [])) as unknown
@@ -87,8 +92,8 @@ async function githubGetList<T>(path: string, token: string | null, maxPages = 5
     }
 
     // Follow Link: <url>; rel="next" pagination
-    const linkHeader = res.headers.get("Link") ?? ""
-    const nextMatch = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
+    const linkHeader: string = res.headers.get("Link") ?? ""
+    const nextMatch: RegExpMatchArray | null = linkHeader.match(/<([^>]+)>;\s*rel="next"/)
     url = nextMatch ? nextMatch[1] : null
   }
   return results
@@ -125,7 +130,27 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
   }
 
-  const { full_name, project_name, member_role_overrides = [] } = body
+  const full_name = body.full_name ?? body.repoFullName
+  const project_name = body.project_name ?? body.projectName
+
+  const member_role_overrides: MemberRoleOverride[] = (() => {
+    if (Array.isArray(body.member_role_overrides)) {
+      return body.member_role_overrides
+    }
+    if (Array.isArray(body.memberRoleOverrides)) {
+      return body.memberRoleOverrides
+    }
+    if (Array.isArray(body.members)) {
+      return body.members
+        .filter((member) => typeof member.github_login === "string" && member.github_login.trim().length > 0)
+        .map((member) => ({
+          github_login: member.github_login!.trim(),
+          role: typeof member.role === "string" && member.role.trim().length > 0 ? member.role.trim() : "developer",
+        }))
+    }
+    return []
+  })()
+
   if (!full_name || typeof full_name !== "string") {
     return NextResponse.json({ error: "full_name is required" }, { status: 400 })
   }
