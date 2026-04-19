@@ -107,6 +107,7 @@ class RagChunkReference(BaseModel):
 
 class AnalysisResponse(BaseModel):
     analysis_id: str
+    project_id: str | None = None
     status: str
     stage: str | None
     progress: int | None
@@ -563,6 +564,7 @@ def _to_analysis_response(
     rag_chunks, rag_chunks_count, rag_mode = _extract_rag_context(model.metadata or {})
     return AnalysisResponse(
         analysis_id=model.id,
+        project_id=model.project_id,
         status=model.status,
         stage=model.stage,
         progress=model.progress,

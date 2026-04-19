@@ -1,5 +1,6 @@
 export interface DashboardAnalysisItem {
   id: string
+  projectId: string | null
   repo: string
   prLabel: string
   commitSha: string | null
@@ -42,6 +43,7 @@ function normalizeAnalysesPayload(payload: DashboardAnalysesResponse | null | un
     .filter((item) => item && typeof item.id === "string" && typeof item.repo === "string")
     .map((item) => ({
       id: item.id,
+      projectId: typeof item.projectId === "string" ? item.projectId : null,
       repo: item.repo,
       prLabel: typeof item.prLabel === "string" ? item.prLabel : "Commit",
       commitSha: typeof item.commitSha === "string" ? item.commitSha : null,

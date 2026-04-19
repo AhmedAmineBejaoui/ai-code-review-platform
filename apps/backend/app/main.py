@@ -1,3 +1,4 @@
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 
@@ -46,7 +47,25 @@ from app.api.websockets import notifications as notifications_ws
 from app.api.websockets import review_sessions as review_sessions_ws
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
+from app.services.analysis_recovery import run_stale_recovery_if_due
 from app.settings import settings
+
+
+async def _analysis_stale_recovery_loop(stop_event: asyncio.Event) -> None:
+    logger = logging.getLogger(__name__)
+    while not stop_event.is_set():
+        try:
+            summary = await asyncio.to_thread(run_stale_recovery_if_due)
+            if summary and (summary.get("requeued") or summary.get("failed")):
+                logger.warning("Stale analysis recovery handled jobs: %s", summary)
+        except Exception:
+            logger.exception("Stale analysis recovery loop failed")
+
+        wait_seconds = max(1, int(settings.ANALYSIS_STALE_RECOVERY_INTERVAL_SECONDS))
+        try:
+            await asyncio.wait_for(stop_event.wait(), timeout=wait_seconds)
+        except asyncio.TimeoutError:
+            continue
 
 
 @asynccontextmanager
@@ -54,6 +73,10 @@ async def lifespan(app: FastAPI):
     init_db()
     get_secret_store().bootstrap_from_env()
     logger = logging.getLogger(__name__)
+    recovery_stop_event = asyncio.Event()
+    recovery_task: asyncio.Task[None] | None = None
+    if settings.ANALYSIS_STALE_RECOVERY_ENABLED:
+        recovery_task = asyncio.create_task(_analysis_stale_recovery_loop(recovery_stop_event))
     # Print registered routes to help debug 404s from external webhooks.
     try:
         routes = []
@@ -64,8 +87,16 @@ async def lifespan(app: FastAPI):
         logger.info("Registered routes: %s", routes)
     except Exception:
         pass
-    yield
-    close_db()
+    try:
+        yield
+    finally:
+        if recovery_task is not None:
+            recovery_stop_event.set()
+            try:
+                await recovery_task
+            except Exception:
+                logger.exception("Stale analysis recovery loop shutdown failed")
+        close_db()
 
 
 app = FastAPI(

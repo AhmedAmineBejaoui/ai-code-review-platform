@@ -37,6 +37,14 @@ def configure_celery_app() -> None:
     celery_app.conf.task_default_queue = settings.ANALYSIS_QUEUE_NAME
     celery_app.conf.task_always_eager = settings.CELERY_TASK_ALWAYS_EAGER
     celery_app.conf.task_eager_propagates = settings.CELERY_TASK_EAGER_PROPAGATES
+    # Reliability for long-running tasks:
+    # - ack late so crashes do not silently drop tasks.
+    # - reject on worker-lost to requeue unacknowledged jobs.
+    # - prefetch=1 to avoid one worker hoarding jobs while another is idle.
+    celery_app.conf.task_acks_late = True
+    celery_app.conf.task_reject_on_worker_lost = True
+    celery_app.conf.task_track_started = True
+    celery_app.conf.worker_prefetch_multiplier = 1
     if settings.CELERY_WORKER_POOL:
         celery_app.conf.worker_pool = settings.CELERY_WORKER_POOL
     elif sys.platform.startswith("win"):
@@ -58,6 +66,41 @@ def configure_celery_app() -> None:
                 "kwargs": {"reason": "scheduled"},
             }
         }
+
+
+def is_celery_task_active(task_id: str, timeout: float | None = None) -> bool:
+    normalized = (task_id or "").strip()
+    if not normalized:
+        return False
+
+    configure_celery_app()
+
+    inspect_timeout = timeout if timeout is not None else settings.CELERY_ENQUEUE_INSPECT_TIMEOUT_SECONDS
+    try:
+        inspector = celery_app.control.inspect(timeout=inspect_timeout)
+    except Exception:
+        return False
+
+    if inspector is None:
+        return False
+
+    for accessor in (inspector.active, inspector.reserved):
+        try:
+            payload = accessor() or {}
+        except Exception:
+            continue
+        if not isinstance(payload, dict):
+            continue
+        for tasks in payload.values():
+            if not isinstance(tasks, list):
+                continue
+            for task in tasks:
+                if not isinstance(task, dict):
+                    continue
+                if str(task.get("id") or "").strip() == normalized:
+                    return True
+
+    return False
 
 
 configure_celery_app()

@@ -45,6 +45,7 @@ help:
 	@echo "  make infra-core-up      Start only db + redis + qdrant locally"
 	@echo "  make infra-core-down    Stop only db + redis + qdrant locally"
 	@echo "  make host-migrate       Run Alembic on the host Poetry env"
+	@echo "  make kill-api           Free port 8000 (host uvicorn + ai-review-api container)"
 	@echo "  make host-api           Run uvicorn on the host Poetry env with stable reload"
 	@echo "  make host-api-no-reload Run uvicorn on the host Poetry env without reload"
 	@echo "  make host-api-prod      Alias for host-api-no-reload"
@@ -143,14 +144,13 @@ infra-core-down:
 host-migrate:
 	cd $(BACKEND_DIR) && poetry run alembic -c alembic.ini upgrade head
 host-api:
-	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --reload --reload-dir app --reload-dir alembic --reload-delay 0.75 --port 8000
+	cd $(BACKEND_DIR) && powershell -NoProfile -ExecutionPolicy Bypass -File run_uvicorn.ps1 -Port 8000
 
-host-api-full:
-	cd $(BACKEND_DIR) && powershell -ExecutionPolicy Bypass -File run_uvicorn.ps1
+host-api-full: host-api
 kill-api:
-	-powershell -Command "Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess | ForEach-Object { Stop-Process -Id $$_ -Force -ErrorAction SilentlyContinue }"
+	cd $(BACKEND_DIR) && powershell -NoProfile -ExecutionPolicy Bypass -File run_uvicorn.ps1 -OnlyCleanup -Port 8000
 host-api-no-reload:
-	cd $(BACKEND_DIR) && poetry run uvicorn app.main:app --port 8000
+	cd $(BACKEND_DIR) && powershell -NoProfile -ExecutionPolicy Bypass -File run_uvicorn.ps1 -NoReload -Port 8000
 host-api-prod: host-api-no-reload
 host-worker:
 	cd $(BACKEND_DIR) && poetry run python -m celery -A app.workers.celery_app.celery_app worker --loglevel=info -Q analyses -P solo

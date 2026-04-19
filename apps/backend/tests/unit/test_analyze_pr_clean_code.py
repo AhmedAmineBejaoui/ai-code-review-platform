@@ -280,6 +280,27 @@ def test_pipeline_keeps_hybrid_rag_source_when_grounded_context_exists(monkeypat
     assert any(item.source == "STATIC_CLEAN_CODE" for item in fake_repo.findings)
 
 
+def test_pipeline_recovers_orphaned_running_task(monkeypatch) -> None:
+    analysis = _build_analysis()
+    analysis.status = "RUNNING"
+    analysis.stage = "RUNNING"
+    analysis.progress = 50
+    analysis.metadata_json = json.dumps({"pipeline": {"task_id": "stale-task"}})
+
+    fake_repo = _FakeAnalysesRepo(analysis)
+    fake_outputs = _FakeReviewOutputsRepo()
+    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], qdrant_enabled=True)
+    monkeypatch.setattr(analyze_pr, "is_celery_task_active", lambda _task_id: False)
+
+    result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
+
+    assert result["status"] == "COMPLETED"
+    first_status_update = fake_repo.status_updates[0]
+    assert first_status_update["status"] == "RUNNING"
+    pipeline = first_status_update["metadata_updates"]["pipeline"]
+    assert pipeline["recovered_from_task_id"] == "stale-task"
+
+
 def test_langchain_parity_gate_remains_blocked_without_corpus_latency_metrics() -> None:
     parity = analyze_pr._evaluate_langchain_parity(
         divergence={

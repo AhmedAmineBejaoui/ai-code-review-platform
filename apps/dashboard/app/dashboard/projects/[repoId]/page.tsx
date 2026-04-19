@@ -105,6 +105,8 @@ interface BackendProjectDetailsResponse {
   health_score: number
   analysis_count: number
   last_analysis_at: string | null
+  resolved_project_id?: string
+  requested_id?: string
 }
 
 const statusConfig: Record<ProjectStatus, { label: string; variant: string }> = {
@@ -175,40 +177,8 @@ export default function ProjectDetailPage() {
 
     let cancelled = false
 
-    const fetchProject = async () => {
-      try {
-        setLoading(true)
-        setError(null)
-
-        const response = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}`, {
-          cache: "no-store",
-          headers: {
-            Accept: "application/json",
-          },
-        })
-        const payload = await response.json().catch(() => ({}))
-
-        if (!response.ok) {
-          throw new Error(extractApiErrorMessage(payload, `Failed to load project: ${response.status}`))
-        }
-
-        if (!cancelled) {
-          setProject(mapProjectResponse(payload as BackendProjectDetailsResponse))
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setProject(null)
-          setError(err instanceof Error ? err.message : "Failed to load project")
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false)
-        }
-      }
-    }
-
-    const fetchGithubInfo = async () => {
-      const ownerName = projectId.includes("/") ? projectId.split("/")[0] : projectId
+    const fetchGithubInfo = async (ownerSeed: string) => {
+      const ownerName = ownerSeed.includes("/") ? ownerSeed.split("/")[0] : ownerSeed
       if (!ownerName) {
         return
       }
@@ -244,13 +214,54 @@ export default function ProjectDetailPage() {
       }
     }
 
+    const fetchProject = async () => {
+      try {
+        setLoading(true)
+        setError(null)
+
+        const response = await fetch(`/api/dashboard/projects/${encodeURIComponent(projectId)}`, {
+          cache: "no-store",
+          headers: {
+            Accept: "application/json",
+          },
+        })
+        const payload = await response.json().catch(() => ({}))
+
+        if (!response.ok) {
+          throw new Error(extractApiErrorMessage(payload, `Failed to load project: ${response.status}`))
+        }
+
+        if (!cancelled) {
+          const responsePayload = payload as BackendProjectDetailsResponse
+          const mapped = mapProjectResponse(responsePayload)
+          setProject(mapped)
+          void fetchGithubInfo(mapped.fullName)
+
+          const resolvedCandidate = responsePayload.resolved_project_id
+          const resolvedProjectId = typeof resolvedCandidate === "string" ? resolvedCandidate.trim() : ""
+          if (resolvedProjectId && resolvedProjectId !== projectId) {
+            const suffix = initialTab ? `?tab=${encodeURIComponent(initialTab)}` : ""
+            router.replace(`/dashboard/projects/${encodeURIComponent(resolvedProjectId)}${suffix}`)
+          }
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setProject(null)
+          setError(err instanceof Error ? err.message : "Failed to load project")
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false)
+        }
+      }
+    }
+
     void fetchProject()
-    void fetchGithubInfo()
 
     return () => {
       cancelled = true
     }
-  }, [projectId])
+  }, [initialTab, projectId, router])
 
   const handleBack = () => {
     router.push("/dashboard/projects")
@@ -562,7 +573,7 @@ export default function ProjectDetailPage() {
         </TabsContent>
 
         <TabsContent value="team" className="mt-6">
-          <TeamManagement projectId={projectId} />
+          <TeamManagement projectId={project.id} />
         </TabsContent>
       </Tabs>
     </div>

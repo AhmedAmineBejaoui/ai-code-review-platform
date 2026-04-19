@@ -47,6 +47,7 @@ type CreateAnalysisBody = {
 
 type BackendAnalysisListItem = {
   analysis_id?: string
+  project_id?: string | null
   repo?: string
   pr_number?: number | null
   commit_sha?: string | null
@@ -66,6 +67,7 @@ type BackendAnalysisListResponse = {
 
 type DashboardAnalysisListItem = {
   id: string
+  projectId: string | null
   repo: string
   prLabel: string
   commitSha: string | null
@@ -853,6 +855,11 @@ export async function GET(request: NextRequest) {
       const status = normalizeAnalysisStatus(item.status)
       return {
         id: item.analysis_id as string,
+        projectId: typeof item.project_id === "string" && item.project_id.trim().length > 0
+          ? item.project_id
+          : (typeof metadata.project_id === "string" && metadata.project_id.trim().length > 0
+            ? metadata.project_id
+            : null),
         repo: item.repo as string,
         prLabel: typeof item.pr_number === "number" ? `PR #${item.pr_number}` : "Commit",
         commitSha: typeof item.commit_sha === "string" ? item.commit_sha : null,
@@ -882,6 +889,7 @@ export async function GET(request: NextRequest) {
   const selectedItems = scopedItems.slice(0, size)
   const enrichedItems: DashboardAnalysisListItem[] = selectedItems.map((item) => ({
     id: item.id,
+    projectId: item.projectId,
     repo: item.repo,
     prLabel: item.prLabel,
     commitSha: item.commitSha,

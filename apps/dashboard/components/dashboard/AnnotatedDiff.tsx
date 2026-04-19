@@ -454,15 +454,18 @@ function DiffLine({
 
       {/* RAG comments after this line */}
       <AnimatePresence>
-        {lineFindings.map((finding) => (
-          <RagComment
-            key={finding.id}
-            finding={finding}
-            onComment={finding.lineStart != null ? () => onComment(finding.lineStart) : undefined}
-            onDismiss={() => onDismiss(finding.id)}
-            onRequestCall={() => onRequestCall(finding)}
-          />
-        ))}
+        {lineFindings.map((finding) => {
+          const findingLineStart = finding.lineStart
+          return (
+            <RagComment
+              key={finding.id}
+              finding={finding}
+              onComment={findingLineStart != null ? () => onComment(findingLineStart) : undefined}
+              onDismiss={() => onDismiss(finding.id)}
+              onRequestCall={() => onRequestCall(finding)}
+            />
+          )
+        })}
       </AnimatePresence>
     </>
   )
@@ -607,6 +610,22 @@ export function AnnotatedDiff() {
       (a, b) => severityRank(a.severity) - severityRank(b.severity) || (a.lineStart ?? 9999) - (b.lineStart ?? 9999)
     )
   }, [analysis, selectedFile, selectedFilePath])
+
+  const selectedFinding = useMemo<DashboardAnalysisFinding | null>(() => {
+    const activeFindings = fileFindings.filter((finding) => !dismissedFindings.has(finding.id))
+    if (activeFindings.length === 0) {
+      return null
+    }
+
+    if (clarificationTarget && !dismissedFindings.has(clarificationTarget.id)) {
+      const inCurrentFile = activeFindings.some((finding) => finding.id === clarificationTarget.id)
+      if (inCurrentFile) {
+        return clarificationTarget
+      }
+    }
+
+    return activeFindings[0]
+  }, [clarificationTarget, dismissedFindings, fileFindings])
 
   const commentsByLine = useMemo(() => {
     const map = new Map<number, ReviewComment[]>()
@@ -1161,9 +1180,9 @@ export function AnnotatedDiff() {
                         saveTrigger={editorSaveTrigger}
                         onBranchResolved={setActiveBranch}
                         originalContent={selectedFile?.lines?.map(l => l.content).join('\n') || ""}
-                        modifiedContent={selectedFile?.lines?.filter(l => l.type !== 'removed').map(l => l.content).join('\n') || ""}
+                        modifiedContent={selectedFile?.lines?.filter((l) => l.lineType !== "remove").map((l) => l.content).join('\n') || ""}
                         findingId={selectedFinding?.id}
-                        findingDescription={selectedFinding?.title}
+                        findingDescription={selectedFinding?.message}
                         diffMode="side-by-side"
                         collaborativeMode={true}
                         showMinimap={true}

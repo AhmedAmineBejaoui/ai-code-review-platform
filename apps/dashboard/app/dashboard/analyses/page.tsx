@@ -292,6 +292,7 @@ function AnalysisRow({
 }) {
   const status = getStatusMeta(item.status)
   const StatusIcon = status.icon
+  const projectTargetId = item.projectId && item.projectId.trim().length > 0 ? item.projectId : item.id
   const isActive = ["RUNNING", "QUEUED", "RECEIVED"].includes(
     normalizeStatus(item.status)?.toUpperCase() ?? ""
   )
@@ -358,16 +359,32 @@ function AnalysisRow({
       </td>
 
       {/* Actions */}
-      <td className="py-3 pr-4 w-24">
+      <td className="py-3 pr-4 w-32">
         <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Link href={`/dashboard/projects/${item.id}`}>
-            <Button size="icon" variant="ghost" className="h-7 w-7 text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10">
+          <Link href={`/dashboard/projects/${encodeURIComponent(projectTargetId)}`}>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="Voir le projet"
+              className="h-7 w-7 text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10"
+            >
               <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+          <Link href={`/dashboard/diff/${encodeURIComponent(item.id)}`}>
+            <Button
+              size="icon"
+              variant="ghost"
+              title="Voir le diff"
+              className="h-7 w-7 text-zinc-400 hover:text-cyan-300 hover:bg-cyan-500/10"
+            >
+              <GitCompare className="h-3.5 w-3.5" />
             </Button>
           </Link>
           <Button
             size="icon"
             variant="ghost"
+            title="Supprimer"
             onClick={onDelete}
             className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10"
           >
@@ -723,7 +740,7 @@ function AnalysesContent() {
                     <th className="py-2.5 pr-4 text-left w-32">
                       <SortHeader field="created_at" label="Date" current={sortField} dir={sortDir} onSort={handleSort} />
                     </th>
-                    <th className="py-2.5 pr-4 w-24" />
+                    <th className="py-2.5 pr-4 w-32" />
                   </tr>
                 </thead>
                 <tbody>

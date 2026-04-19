@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import logging
 import time
 import uuid
 from contextlib import contextmanager
@@ -38,12 +39,13 @@ from app.core.static_analysis.base import StaticAnalysisResult
 from app.core.static_analysis.workspace import prepare_workspace
 from app.core.summarization import SummaryService
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, CreateToolRunInput
-from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+from app.data.repos.repo_profiles_repo import RepoProfilesRepo  # noqa: F401 - kept for tests monkeypatch contract
 from app.data.repos.review_outputs_repo import ReviewOutputsRepo, UpsertReviewOutputInput
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.vector_store.qdrant_client import QdrantClient  # noqa: F401 - kept for tests monkeypatch contract
 from app.settings import settings
 from app.workers.celery_app import celery_app
+from app.workers.celery_app import is_celery_task_active
 
 
 @contextmanager
@@ -90,6 +92,7 @@ _REVIEW_INTELLIGENCE_SERVICE = ReviewIntelligenceService(
         )
     ),
 )
+logger = logging.getLogger(__name__)
 
 
 def build_rag_engines(*, vector_store: object | None = None) -> tuple[object, None]:
@@ -273,6 +276,10 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
 
     analysis = repo.get_by_id(analysis_id)
     if analysis is None:
+        logger.error(
+            "Analysis %s not found by worker. Check that API and worker share the same DATABASE_URL.",
+            analysis_id,
+        )
         return {
             "analysis_id": analysis_id,
             "status": "FAILED",
@@ -290,25 +297,41 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             "message": "Analysis already completed, skipping re-run",
         }
 
+    takeover_from_task_id: str | None = None
     if current_status == "RUNNING":
         # Allow retry if same task_id (Celery retry), block if different task
         if current_task_id and current_task_id != self.request.id:
-            return {
-                "analysis_id": analysis_id,
-                "status": "ALREADY_RUNNING",
-                "message": f"Analysis already running by task {current_task_id}",
-                "running_task_id": current_task_id,
-            }
+            if not is_celery_task_active(current_task_id):
+                # Previous worker/task died after flipping status to RUNNING.
+                # Take over with the current task instead of leaving analysis stuck forever.
+                takeover_from_task_id = current_task_id
+                logger.warning(
+                    "Recovering orphaned running analysis %s from stale task %s",
+                    analysis_id,
+                    current_task_id,
+                )
+            else:
+                return {
+                    "analysis_id": analysis_id,
+                    "status": "ALREADY_RUNNING",
+                    "message": f"Analysis already running by task {current_task_id}",
+                    "running_task_id": current_task_id,
+                }
 
     ANALYSIS_STARTED.labels(source="api").inc()
 
     try:
+        pipeline_metadata: dict[str, Any] = {"task_id": self.request.id, "started": True}
+        if takeover_from_task_id:
+            pipeline_metadata["recovered_from_task_id"] = takeover_from_task_id
+            pipeline_metadata["recovered_at"] = _utc_now_iso()
+
         repo.update_status(
             analysis_id=analysis_id,
             status="RUNNING",
             stage="RUNNING",
             progress=50,
-            metadata_updates={"pipeline": {"task_id": self.request.id, "started": True}},
+            metadata_updates={"pipeline": pipeline_metadata},
         )
 
         with _timed_step("diff_parse"):

@@ -199,6 +199,47 @@ class AnalysesRepo:
             return None
         return self._row_to_model(row)
 
+    def list_stale(
+        self,
+        *,
+        statuses: tuple[str, ...],
+        stale_for_seconds: int,
+        limit: int,
+    ) -> list[Analysis]:
+        normalized_statuses = tuple(status.strip().upper() for status in statuses if isinstance(status, str) and status.strip())
+        if not normalized_statuses or stale_for_seconds <= 0 or limit <= 0:
+            return []
+
+        status_placeholders = [f":status_{index}" for index in range(len(normalized_statuses))]
+        status_clause = ", ".join(status_placeholders)
+        params: dict[str, Any] = {
+            "stale_for_seconds": int(stale_for_seconds),
+            "limit": int(limit),
+        }
+        for index, status in enumerate(normalized_statuses):
+            params[f"status_{index}"] = status
+
+        with self._engine.connect() as conn:
+            rows = (
+                conn.execute(
+                    text(
+                        f"""
+                        SELECT *
+                        FROM analyses
+                        WHERE status IN ({status_clause})
+                          AND updated_at <= NOW() - make_interval(secs => :stale_for_seconds)
+                        ORDER BY updated_at ASC
+                        LIMIT :limit
+                        """
+                    ),
+                    params,
+                )
+                .mappings()
+                .all()
+            )
+
+        return [self._row_to_model(row) for row in rows]
+
     def delete(self, analysis_id: str) -> bool:
         with self._engine.begin() as conn:
             deleted_row = conn.execute(
