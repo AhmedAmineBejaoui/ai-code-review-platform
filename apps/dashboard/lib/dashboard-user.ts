@@ -12,6 +12,9 @@ export interface DashboardAuthUser {
   name: string
   email: string
   role: AppRole
+  canonicalRole: AppRole
+  legacyRoles: string[]
+  permissions: string[]
   avatar: string
   organization: DashboardOrganizationContext | null
 }

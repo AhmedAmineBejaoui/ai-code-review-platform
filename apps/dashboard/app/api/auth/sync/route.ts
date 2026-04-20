@@ -1,6 +1,6 @@
 import { auth, currentUser } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
-import { extractRoleFromClaims, normalizeRole } from "@/lib/roles"
+import { extractRoleFromClaims, getDefaultPermissionsForRole, normalizeRole } from "@/lib/roles"
 
 export const dynamic = "force-dynamic"
 
@@ -40,7 +40,7 @@ function buildDegradedSyncResponse(args: {
   userId: string
   email: string | undefined
   displayName: string | undefined
-  roleCandidate: string
+  roleCandidate: ReturnType<typeof normalizeRole>
   reason: string
   backendStatus?: number
   backendResponse?: unknown
@@ -51,7 +51,9 @@ function buildDegradedSyncResponse(args: {
       user_id: userId,
       email: email ?? `${userId}@clerk.local`,
       display_name: displayName ?? null,
+      canonical_role: roleCandidate,
       roles: [roleCandidate],
+      permissions: getDefaultPermissionsForRole(roleCandidate),
       sync_degraded: true,
       sync_reason: reason,
       backend_status: backendStatus ?? null,
@@ -113,8 +115,8 @@ export async function POST() {
       },
       body: JSON.stringify({
         email: primaryEmail,
-      display_name: displayName,
-      role: roleCandidate,
+        display_name: displayName,
+        role: roleCandidate,
         org_id: orgId,
         org_slug: orgSlug,
         org_name: orgNameCandidate,
@@ -159,5 +161,19 @@ export async function POST() {
     })
   }
 
-  return NextResponse.json(parsedBody, { status: 200 })
+  const normalizedBody =
+    typeof parsedBody === "object" && parsedBody !== null
+      ? {
+          ...parsedBody,
+          canonical_role:
+            typeof (parsedBody as { canonical_role?: unknown }).canonical_role === "string"
+              ? (parsedBody as { canonical_role: string }).canonical_role
+              : roleCandidate,
+          permissions: Array.isArray((parsedBody as { permissions?: unknown }).permissions)
+            ? (parsedBody as { permissions: unknown[] }).permissions
+            : getDefaultPermissionsForRole(roleCandidate),
+        }
+      : parsedBody
+
+  return NextResponse.json(normalizedBody, { status: 200 })
 }

@@ -6,10 +6,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from app.api.middleware.auth import get_rbac_repo
+from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, require_role
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ class TogglePermissionResponse(BaseModel):
 
 @router.get("/permissions", response_model=AllRolesPermissionsResponse)
 async def get_all_roles_with_permissions(
-
+    _principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Get all roles with their permissions (including enabled/disabled status).
     
@@ -111,7 +111,7 @@ async def get_all_roles_with_permissions(
 async def get_role_permissions(
     role_id: str,
     include_disabled: bool = False,
-
+    _principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Get all permissions for a specific role.
     
@@ -149,7 +149,7 @@ async def toggle_role_permission(
     role_id: str,
     permission_id: str,
     request: TogglePermissionRequest,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Toggle a permission for a role (enable/disable).
     
@@ -162,8 +162,7 @@ async def toggle_role_permission(
     """
     repo = get_rbac_repo()
 
-    # TODO: Get current user ID for audit trail from auth context
-    updated_by = "system"
+    updated_by = principal.user_id if principal is not None else "system"
 
     result = repo.toggle_role_permission(
         role_id=role_id,
@@ -199,13 +198,14 @@ async def enable_role_permission(
     role_id: str,
     permission_id: str,
     reason: str | None = None,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Convenience endpoint to enable a permission for a role."""
     return await toggle_role_permission(
         role_id=role_id,
         permission_id=permission_id,
         request=TogglePermissionRequest(enabled=True, reason=reason),
+        principal=principal,
     )
 
 
@@ -214,11 +214,12 @@ async def disable_role_permission(
     role_id: str,
     permission_id: str,
     reason: str | None = None,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Convenience endpoint to disable a permission for a role."""
     return await toggle_role_permission(
         role_id=role_id,
         permission_id=permission_id,
         request=TogglePermissionRequest(enabled=False, reason=reason),
+        principal=principal,
     )

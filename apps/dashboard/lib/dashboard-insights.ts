@@ -1,4 +1,4 @@
-export type DashboardRole = "admin" | "reviewer" | "developer"
+export type DashboardRole = "admin" | "tech_lead" | "developer"
 
 export interface DashboardPrSummary {
   analysisId: string
@@ -51,7 +51,7 @@ function normalizeInsightsPayload(payload: Partial<DashboardInsightsResponse> | 
   }
   return {
     role:
-      payload.role === "admin" || payload.role === "reviewer" || payload.role === "developer"
+      payload.role === "admin" || payload.role === "tech_lead" || payload.role === "developer"
         ? payload.role
         : "developer",
     prSummaries: Array.isArray(payload.prSummaries) ? payload.prSummaries : [],

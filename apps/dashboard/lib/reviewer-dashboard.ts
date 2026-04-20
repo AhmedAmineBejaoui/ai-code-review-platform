@@ -327,7 +327,7 @@ function normalizeBackendResponse(data: BackendReviewerDashboardResponse): Revie
     .map(m => ({
       id: m.id!,
       name: m.name ?? "Unknown",
-      role: m.role ?? "reviewer",
+      role: m.role ?? "tech_lead",
       pendingReviews: m.pending_reviews ?? 0,
       completedThisWeek: m.completed_this_week ?? 0,
     }))

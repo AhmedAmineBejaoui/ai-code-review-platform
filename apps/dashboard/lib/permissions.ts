@@ -153,7 +153,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, Permission[]> = {
     // All permissions
     ...Object.keys(AVAILABLE_PERMISSIONS) as Permission[],
   ],
-  reviewer: [
+  tech_lead: [
     "repo.read",
     "repo.write",
     "branch.create",

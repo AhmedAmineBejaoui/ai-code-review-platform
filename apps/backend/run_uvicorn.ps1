@@ -7,6 +7,15 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Test-DockerDaemonAvailable {
+  if (-not (Get-Command docker -ErrorAction SilentlyContinue)) {
+    return $false
+  }
+
+  & docker version --format "{{.Server.Version}}" 2>$null | Out-Null
+  return $LASTEXITCODE -eq 0
+}
+
 function Stop-HostApiListeners {
   param([int]$TargetPort)
 
@@ -42,9 +51,9 @@ function Stop-HostApiListeners {
     }
   }
 
-  if (Get-Command docker -ErrorAction SilentlyContinue) {
+  if (Test-DockerDaemonAvailable) {
     $containerIds = @(
-      docker ps --filter "name=^ai-review-api$" --filter "publish=$TargetPort" --format "{{.ID}}"
+      & docker ps --filter "name=^ai-review-api$" --filter "publish=$TargetPort" --format "{{.ID}}" 2>$null
     )
     foreach ($containerId in $containerIds) {
       $trimmed = [string]$containerId
@@ -58,7 +67,7 @@ function Stop-HostApiListeners {
     # Prevent host API + Docker worker mixed mode from consuming the same queue
     # with different DATABASE_URL values, which can leave analyses stuck in QUEUED.
     $workerIds = @(
-      docker ps --filter "name=^ai-review-worker$" --format "{{.ID}}"
+      & docker ps --filter "name=^ai-review-worker$" --format "{{.ID}}" 2>$null
     )
     foreach ($workerId in $workerIds) {
       $trimmedWorkerId = [string]$workerId
@@ -81,25 +90,11 @@ if ($OnlyCleanup) {
 
 $env:WATCHFILES_FORCE_POLLING = if ($env:WATCHFILES_FORCE_POLLING) { $env:WATCHFILES_FORCE_POLLING } else { "true" }
 
-$uvicornArgs = @('app.main:app')
+$launcherArgs = @('run', 'python', '-m', 'scripts.run_host_uvicorn', '--port', "$Port")
 
 if ($NoReload) {
-  $uvicornArgs += @('--port', "$Port")
-} else {
-  # Build arguments as an array to avoid wildcard expansion on Windows shells.
-  $uvicornArgs += @(
-    '--reload',
-    '--reload-dir', 'app',
-    '--reload-dir', 'alembic',
-    '--reload-exclude', '__pycache__/*',
-    '--reload-exclude', '*.py[cod]',
-    '--reload-exclude', '*.log',
-    '--reload-exclude', '.ruff_cache/*',
-    '--reload-exclude', '.pytest_cache/*',
-    '--reload-exclude', '.venv/*',
-    '--reload-delay', '0.75',
-    '--port', "$Port"
-  )
+  $launcherArgs += '--no-reload'
 }
 
-poetry run uvicorn @uvicornArgs
+& poetry @launcherArgs
+exit $LASTEXITCODE

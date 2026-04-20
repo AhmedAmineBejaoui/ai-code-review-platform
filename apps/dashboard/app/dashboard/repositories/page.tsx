@@ -279,7 +279,7 @@ function RepositoryRowSkeleton() {
 // Role options for project members (simplified)
 const ROLE_OPTIONS = [
   { value: "admin", label: "Admin" },
-  { value: "reviewer", label: "Reviewer" },
+  { value: "tech_lead", label: "Tech Lead" },
   { value: "developer", label: "Developer" },
 ]
 

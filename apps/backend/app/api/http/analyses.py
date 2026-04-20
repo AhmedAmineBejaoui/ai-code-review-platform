@@ -15,6 +15,8 @@ from app.api.middleware.auth import (
     enforce_permission,
     get_current_principal,
     get_rbac_repo,
+    normalize_role_code,
+    permissions_for_roles,
     require_permission,
 )
 from app.core.review_intelligence.schemas import StructuredReviewOutput
@@ -249,7 +251,9 @@ class AuthSyncResponse(BaseModel):
     user_id: str
     email: str
     display_name: str | None
+    canonical_role: str
     roles: list[str]
+    permissions: list[str]
     org_id: str | None = None
     org_slug: str | None = None
     org_name: str | None = None
@@ -307,7 +311,9 @@ async def sync_authenticated_user(
     if payload is not None and isinstance(payload.display_name, str) and payload.display_name.strip():
         display_name = payload.display_name.strip()
 
-    role_to_sync = principal.roles[0] if principal.roles else "developer"
+    role_to_sync = principal.role or "developer"
+    if payload is not None and isinstance(payload.role, str) and payload.role.strip():
+        role_to_sync = normalize_role_code(payload.role)
     if email in settings.admin_emails:
         role_to_sync = "admin"
 
@@ -348,22 +354,30 @@ async def sync_authenticated_user(
 
     synced_user = await asyncio.to_thread(repo.get_user, principal.user_id)
     if synced_user is not None:
+        canonical_role = normalize_role_code((synced_user.roles or [role_to_sync])[0])
+        permissions = sorted(set(synced_user.permissions or []) | set(permissions_for_roles([canonical_role])))
         return AuthSyncResponse(
             user_id=synced_user.id,
             email=synced_user.email,
             display_name=synced_user.display_name,
             roles=synced_user.roles,
+            canonical_role=canonical_role,
+            permissions=permissions,
             org_id=org_id,
             org_slug=org_slug,
             org_name=org_name,
             org_role=org_role,
         )
 
+    principal_roles = principal.roles or [role_to_sync]
+    canonical_role = normalize_role_code(role_to_sync)
     return AuthSyncResponse(
         user_id=principal.user_id,
         email=email,
         display_name=display_name,
-        roles=principal.roles,
+        canonical_role=canonical_role,
+        roles=principal_roles,
+        permissions=sorted(set(principal.permissions or []) | set(permissions_for_roles([canonical_role]))),
         org_id=org_id,
         org_slug=org_slug,
         org_name=org_name,
@@ -432,7 +446,7 @@ def _is_owned_by_principal(metadata: dict[str, Any], principal: AuthenticatedPri
 
 def _is_limited_to_own_analyses(principal: AuthenticatedPrincipal) -> bool:
     normalized_roles = {role.strip().lower() for role in principal.roles}
-    return "admin" not in normalized_roles and "reviewer" not in normalized_roles
+    return "admin" not in normalized_roles and "tech_lead" not in normalized_roles
 
 
 def _to_finding_response(model: Finding) -> FindingResponse:

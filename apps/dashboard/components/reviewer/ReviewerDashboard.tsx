@@ -39,7 +39,7 @@ import {
 
 // Role-specific capabilities (simplified to admin, reviewer, developer)
 const ROLE_CAPABILITIES = {
-  reviewer: {
+  tech_lead: {
     canApprove: true,
     canBlock: true,
     canAssign: true,
@@ -47,7 +47,7 @@ const ROLE_CAPABILITIES = {
     canAccessTeamAnalytics: true,
     canCreateTemplates: true,
     canEscalate: false,
-    label: "Reviewer",
+    label: "Tech Lead",
     description: "Peut approuver, bloquer, assigner et accéder aux analytics",
     color: "from-purple-500 to-pink-500",
     icon: Shield,
@@ -84,8 +84,8 @@ function getRoleCapabilities(role: AppRole) {
   if (role === "admin") {
     return ROLE_CAPABILITIES.admin
   }
-  if (role === "reviewer") {
-    return ROLE_CAPABILITIES.reviewer
+  if (role === "tech_lead") {
+    return ROLE_CAPABILITIES.tech_lead
   }
   return ROLE_CAPABILITIES.developer
 }
@@ -99,7 +99,7 @@ export function ReviewerDashboard() {
   const pollerRef = useRef<ReturnType<typeof createReviewerDashboardPoller> | null>(null)
 
   const capabilities = getRoleCapabilities(currentUser.role)
-  const isLead = isAdmin(currentUser.role) || currentUser.role === "reviewer"
+  const isLead = isAdmin(currentUser.role) || currentUser.role === "tech_lead"
   const RoleIcon = capabilities.icon
 
   // Fetch data on mount and setup polling
@@ -332,7 +332,7 @@ export function ReviewerDashboard() {
           <Card>
             <CardContent className="p-4">
               <div className="flex items-center justify-center">
-                <Link href="/dashboard/reviewer/queue">
+                <Link href="/dashboard/lead/queue">
                   <Button size="sm" className="w-full">
                     Voir la file
                     <ChevronRight className="h-4 w-4 ml-1" />
@@ -358,14 +358,14 @@ export function ReviewerDashboard() {
                 Gestion d&apos;équipe
               </CardTitle>
               <CardDescription>
-                Superviser les reviewers et gerer les assignations
+                Superviser l'equipe et gerer les assignations
               </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                 <div className="text-center p-4 bg-card-inner rounded-lg">
                   <p className="text-2xl font-bold text-[color:var(--orange)]">{teamStats.totalReviewers}</p>
-                  <p className="text-sm text-muted-foreground">Reviewers</p>
+                  <p className="text-sm text-muted-foreground">Team members</p>
                 </div>
                 <div className="text-center p-4 bg-card-inner rounded-lg">
                   <p className="text-2xl font-bold text-[color:var(--green-status)]">{teamStats.activeReviewers}</p>
@@ -432,7 +432,7 @@ export function ReviewerDashboard() {
                         <div>
                           <p className="font-medium">{member.name}</p>
                           <Badge variant="outline" className="text-xs">
-                            {member.role === "admin" ? "Admin" : member.role === "reviewer" ? "Reviewer" : "Developer"}
+                            {member.role === "admin" ? "Admin" : member.role === "tech_lead" || member.role === "reviewer" ? "Tech Lead" : "Developer"}
                           </Badge>
                         </div>
                       </div>
@@ -450,13 +450,13 @@ export function ReviewerDashboard() {
               </div>
 
               <div className="flex gap-2 mt-4">
-                <Link href="/dashboard/reviewer/team-analytics">
+                <Link href="/dashboard/lead/team-analytics">
                   <Button variant="outline" size="sm">
                     <BarChart3 className="h-4 w-4 mr-2" />
                     Analytics equipe
                   </Button>
                 </Link>
-                <Link href="/dashboard/reviewer/templates">
+                <Link href="/dashboard/lead/templates">
                   <Button variant="outline" size="sm">
                     <Settings className="h-4 w-4 mr-2" />
                     Gerer templates
@@ -550,7 +550,7 @@ export function ReviewerDashboard() {
                   )
                 })
               )}
-              <Link href="/dashboard/reviewer/my-reviews">
+              <Link href="/dashboard/lead/my-reviews">
                 <Button variant="outline" size="sm" className="w-full">
                   Voir toutes mes reviews
                 </Button>
@@ -602,19 +602,19 @@ export function ReviewerDashboard() {
                 <CardTitle>Actions rapides</CardTitle>
               </CardHeader>
               <CardContent className="space-y-3">
-                <Link href="/dashboard/reviewer/queue">
+                <Link href="/dashboard/lead/queue">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <Clock className="h-4 w-4 mr-2" />
                     File d&apos;attente
                   </Button>
                 </Link>
-                <Link href="/dashboard/reviewer/queue?tab=available">
+                <Link href="/dashboard/lead/queue?tab=available">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <Users className="h-4 w-4 mr-2" />
                     Reviews disponibles
                   </Button>
                 </Link>
-                <Link href="/dashboard/reviewer/analytics">
+                <Link href="/dashboard/lead/analytics">
                   <Button variant="outline" size="sm" className="w-full justify-start">
                     <TrendingUp className="h-4 w-4 mr-2" />
                     Mes analytics
@@ -622,13 +622,13 @@ export function ReviewerDashboard() {
                 </Link>
                 {isLead && (
                   <>
-                    <Link href="/dashboard/reviewer/team-analytics">
+                    <Link href="/dashboard/lead/team-analytics">
                       <Button variant="outline" size="sm" className="w-full justify-start">
                         <BarChart3 className="h-4 w-4 mr-2" />
                         Analytics equipe
                       </Button>
                     </Link>
-                    <Link href="/dashboard/reviewer/templates">
+                    <Link href="/dashboard/lead/templates">
                       <Button variant="outline" size="sm" className="w-full justify-start">
                         <Settings className="h-4 w-4 mr-2" />
                         Templates de review

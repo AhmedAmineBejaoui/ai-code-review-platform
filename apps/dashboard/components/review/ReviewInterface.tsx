@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { motion } from "framer-motion"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
-import { isReviewer, isReviewerSeniorOrLead, isReviewerLead, type AppRole } from "@/lib/roles"
+import { isReviewer, isReviewerLead } from "@/lib/roles"
 import { JuniorReviewInterface } from "./JuniorReviewInterface"
 import { SeniorReviewInterface } from "./SeniorReviewInterface"
 import { LeadReviewInterface } from "./LeadReviewInterface"
@@ -59,22 +59,28 @@ export function ReviewInterface({ analysisId, assignmentId }: ReviewInterfacePro
     )
   }
 
-  // Render appropriate interface based on role (simplified roles)
-  // All reviewers now use the SeniorReviewInterface as the standard
-  if (currentUser.role === "reviewer" || currentUser.role === "admin") {
+  if (isReviewerLead(currentUser.role)) {
     return (
-      <SeniorReviewInterface 
+      <LeadReviewInterface
         analysisId={analysisId} 
         assignmentId={assignmentId}
       />
     )
   }
 
-  // Developers see a limited view
   if (currentUser.role === "developer") {
     return (
       <JuniorReviewInterface 
         analysisId={analysisId} 
+        assignmentId={assignmentId}
+      />
+    )
+  }
+
+  if (isReviewer(currentUser.role)) {
+    return (
+      <SeniorReviewInterface
+        analysisId={analysisId}
         assignmentId={assignmentId}
       />
     )

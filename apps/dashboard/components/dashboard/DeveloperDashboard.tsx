@@ -447,7 +447,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
 export function DeveloperDashboard() {
   const router = useRouter();
   const currentUser = useDashboardUser();
-  const insightsRole: DashboardRole = currentUser.role === "admin" ? "admin" : isReviewer(currentUser.role) ? "reviewer" : "developer";
+  const insightsRole: DashboardRole = currentUser.role === "admin" ? "admin" : isReviewer(currentUser.role) ? "tech_lead" : "developer";
 
   const [insightsLoading, setInsightsLoading] = useState(true);
   const [insights, setInsights] = useState(() => emptyDashboardInsights(insightsRole));

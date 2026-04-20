@@ -1,81 +1,153 @@
-/**
- * Simplified role system: admin, reviewer, developer
- * - admin: Full access, can manage organizations, projects, teams, and users
- * - reviewer: Can review code, approve/reject PRs, manage reviews
- * - developer: Can submit code for review, view own analyses
- */
-
-export const APP_ROLES = ["admin", "reviewer", "developer"] as const
+export const APP_ROLES = ["admin", "tech_lead", "developer"] as const
 
 export type AppRole = (typeof APP_ROLES)[number]
 
-// Roles that can perform reviews
-export const REVIEW_ROLES = ["admin", "reviewer"] as const
+export const REVIEW_ROLES = ["admin", "tech_lead"] as const
 export type ReviewRole = (typeof REVIEW_ROLES)[number]
 
-// Roles that can modify project settings
-export const PROJECT_SETTINGS_WRITE_ROLES = ["admin"] as const
+export const PROJECT_SETTINGS_WRITE_ROLES = ["admin", "tech_lead"] as const
 export type ProjectSettingsWriteRole = (typeof PROJECT_SETTINGS_WRITE_ROLES)[number]
 
-// Helper functions
-export function isReviewer(role: AppRole): boolean {
-  return role === "reviewer" || role === "admin"
+export const ROLE_DEFAULT_PERMISSIONS: Record<AppRole, string[]> = {
+  admin: [
+    "admin.read",
+    "admin.write",
+    "analyses.create",
+    "analyses.read",
+    "analyses.write",
+    "assignments.create",
+    "assignments.modify",
+    "assignments.view_all",
+    "assignments.view_own",
+    "comments.create",
+    "comments.edit",
+    "comments.read",
+    "comments.reply",
+    "comments.resolve",
+    "integrations.read",
+    "integrations.write",
+    "metrics.read_self",
+    "metrics.read_team",
+    "observability.read",
+    "organizations.read",
+    "organizations.write",
+    "project_roles.read",
+    "project_roles.write",
+    "project_settings.audit",
+    "project_settings.read",
+    "project_settings.write",
+    "projects.read",
+    "projects.update",
+    "repositories.create",
+    "repositories.read",
+    "reviews.approve",
+    "reviews.assign",
+    "reviews.block",
+    "reviews.bulk_action",
+    "reviews.claim",
+    "reviews.delegate",
+    "reviews.request_changes",
+    "reviews.warn",
+    "role_permissions.read",
+    "role_permissions.write",
+    "teams.create",
+    "teams.delete",
+    "teams.manage_members",
+    "teams.read",
+    "teams.update",
+    "templates.create",
+    "templates.use",
+    "threads.create",
+    "threads.moderate",
+    "threads.participate",
+    "users.manage",
+  ],
+  tech_lead: [
+    "analyses.create",
+    "analyses.read",
+    "analyses.write",
+    "assignments.create",
+    "assignments.modify",
+    "assignments.view_all",
+    "assignments.view_own",
+    "comments.create",
+    "comments.edit",
+    "comments.read",
+    "comments.reply",
+    "comments.resolve",
+    "metrics.read_self",
+    "metrics.read_team",
+    "organizations.read",
+    "project_roles.read",
+    "project_roles.write",
+    "project_settings.audit",
+    "project_settings.read",
+    "project_settings.write",
+    "projects.read",
+    "projects.update",
+    "repositories.create",
+    "repositories.read",
+    "reviews.approve",
+    "reviews.assign",
+    "reviews.block",
+    "reviews.bulk_action",
+    "reviews.claim",
+    "reviews.delegate",
+    "reviews.request_changes",
+    "reviews.warn",
+    "teams.create",
+    "teams.delete",
+    "teams.manage_members",
+    "teams.read",
+    "teams.update",
+    "templates.create",
+    "templates.use",
+    "threads.create",
+    "threads.moderate",
+    "threads.participate",
+  ],
+  developer: [
+    "analyses.create",
+    "analyses.read",
+    "assignments.view_own",
+    "comments.read",
+    "metrics.read_self",
+    "projects.read",
+    "repositories.read",
+  ],
 }
 
-export function canReview(role: AppRole): boolean {
-  return REVIEW_ROLES.includes(role as ReviewRole)
-}
-
-export function canModifyProjectSettings(role: AppRole): boolean {
-  return role === "admin"
-}
-
-export function isAdmin(role: AppRole): boolean {
-  return role === "admin"
-}
-
-export function isReviewerLead(role: AppRole): boolean {
-  return role === "admin"
-}
-
-/**
- * Role aliases for normalization
- * Maps various role strings to the simplified role system
- */
 const ROLE_ALIASES: Record<string, AppRole> = {
-  // Admin aliases
   admin: "admin",
   administrator: "admin",
   owner: "admin",
   superadmin: "admin",
   "super-admin": "admin",
   super_admin: "admin",
-  tech_lead: "admin", // Legacy: tech_lead → admin
-  "tech-lead": "admin",
-  techlead: "admin",
-  lead: "admin",
-  team_lead: "admin",
-  "team-lead": "admin",
 
-  // Reviewer aliases (all reviewer levels map to reviewer)
-  reviewer: "reviewer",
-  review: "reviewer",
-  "code-reviewer": "reviewer",
-  code_reviewer: "reviewer",
-  reviewer_lead: "reviewer", // Legacy
-  "reviewer-lead": "reviewer",
-  lead_reviewer: "reviewer",
-  "lead-reviewer": "reviewer",
-  reviewer_senior: "reviewer", // Legacy
-  "reviewer-senior": "reviewer",
-  senior_reviewer: "reviewer",
-  "senior-reviewer": "reviewer",
-  reviewer_junior: "reviewer", // Legacy
-  "reviewer-junior": "reviewer",
-  junior_reviewer: "reviewer",
-  "junior-reviewer": "reviewer",
+  tech_lead: "tech_lead",
+  "tech-lead": "tech_lead",
+  techlead: "tech_lead",
+  lead: "tech_lead",
+  team_lead: "tech_lead",
+  "team-lead": "tech_lead",
+  reviewer: "tech_lead",
+  review: "tech_lead",
+  "code-reviewer": "tech_lead",
+  code_reviewer: "tech_lead",
+  reviewer_lead: "tech_lead",
+  "reviewer-lead": "tech_lead",
+  lead_reviewer: "tech_lead",
+  "lead-reviewer": "tech_lead",
+  reviewer_senior: "tech_lead",
+  "reviewer-senior": "tech_lead",
+  senior_reviewer: "tech_lead",
+  "senior-reviewer": "tech_lead",
+  reviewer_junior: "tech_lead",
+  "reviewer-junior": "tech_lead",
+  junior_reviewer: "tech_lead",
+  "junior-reviewer": "tech_lead",
 
-  // Developer aliases
   developer: "developer",
   dev: "developer",
   member: "developer",
@@ -100,15 +172,29 @@ function hasValue(value: unknown): boolean {
   return value !== null && value !== undefined
 }
 
+export function getRolePriority(role: AppRole): number {
+  switch (role) {
+    case "admin":
+      return 300
+    case "tech_lead":
+      return 200
+    case "developer":
+      return 100
+    default:
+      return 0
+  }
+}
+
+export function getHigherRole(role1: AppRole, role2: AppRole): AppRole {
+  return getRolePriority(role1) >= getRolePriority(role2) ? role1 : role2
+}
+
 export function normalizeRole(value: unknown): AppRole {
   if (Array.isArray(value)) {
-    for (const item of value) {
-      const nested = normalizeRole(item)
-      if (nested !== "developer") {
-        return nested
-      }
-    }
-    return "developer"
+    return value.reduce<AppRole>((resolved, item) => {
+      const next = normalizeRole(item)
+      return getHigherRole(resolved, next)
+    }, "developer")
   }
 
   if (typeof value !== "string") {
@@ -154,14 +240,42 @@ export function extractRoleFromClaims(sessionClaims: unknown): AppRole {
   return "developer"
 }
 
+export function isAdmin(role: AppRole): boolean {
+  return role === "admin"
+}
+
+export function isTechLead(role: AppRole): boolean {
+  return role === "tech_lead"
+}
+
+export function isReviewer(role: AppRole): boolean {
+  return role === "tech_lead" || role === "admin"
+}
+
+export function isReviewerLead(role: AppRole): boolean {
+  return role === "tech_lead" || role === "admin"
+}
+
+export function isReviewerSeniorOrLead(role: AppRole): boolean {
+  return role === "tech_lead" || role === "admin"
+}
+
+export function canReview(role: AppRole): boolean {
+  return REVIEW_ROLES.includes(role as ReviewRole)
+}
+
+export function canModifyProjectSettings(role: AppRole): boolean {
+  return PROJECT_SETTINGS_WRITE_ROLES.includes(role as ProjectSettingsWriteRole)
+}
+
 export function getRoleHomePath(role: AppRole): string {
   switch (role) {
     case "admin":
-      return "/dashboard/admin/knowledge-base"
-    case "reviewer":
-      return "/dashboard/reviewer"
+      return "/dashboard/admin"
+    case "tech_lead":
+      return "/dashboard/lead"
     default:
-      return "/dashboard"
+      return "/dashboard/developer"
   }
 }
 
@@ -169,32 +283,21 @@ export function formatRoleLabel(role: AppRole): string {
   switch (role) {
     case "admin":
       return "Admin"
-    case "reviewer":
-      return "Reviewer"
+    case "tech_lead":
+      return "Tech Lead"
     default:
       return "Developer"
   }
 }
 
-/**
- * Get role priority for comparison (higher = more privileged)
- */
-export function getRolePriority(role: AppRole): number {
-  switch (role) {
-    case "admin":
-      return 100
-    case "reviewer":
-      return 50
-    case "developer":
-      return 10
-    default:
-      return 0
-  }
+export function hasPermission(userPermissions: readonly string[], permission: string): boolean {
+  return userPermissions.includes(permission)
 }
 
-/**
- * Compare two roles and return the higher privileged one
- */
-export function getHigherRole(role1: AppRole, role2: AppRole): AppRole {
-  return getRolePriority(role1) >= getRolePriority(role2) ? role1 : role2
+export function hasAnyPermission(userPermissions: readonly string[], permissions: readonly string[]): boolean {
+  return permissions.some((permission) => userPermissions.includes(permission))
+}
+
+export function getDefaultPermissionsForRole(role: AppRole): string[] {
+  return ROLE_DEFAULT_PERMISSIONS[role]
 }

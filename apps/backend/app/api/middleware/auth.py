@@ -66,12 +66,21 @@ class AuthenticatedPrincipal(BaseModel):
     user_id: str
     email: str
     display_name: str | None = None
+    canonical_role: str = "developer"
     roles: list[str] = Field(default_factory=list)
     permissions: list[str] = Field(default_factory=list)
     org_id: str | None = None
     org_slug: str | None = None
     org_name: str | None = None
     org_role: str | None = None
+
+    @property
+    def role(self) -> str:
+        if self.canonical_role:
+            return self.canonical_role
+        if self.roles:
+            return self.roles[0]
+        return "developer"
 
 
 _bearer_scheme = HTTPBearer(auto_error=False)
@@ -83,30 +92,28 @@ _ROLE_ALIASES: dict[str, str] = {
     "superadmin": "admin",
     "super-admin": "admin",
     "super_admin": "admin",
-    # Tech Lead role - mapped to admin
-    "tech_lead": "admin",
-    "tech-lead": "admin",
-    "techlead": "admin",
-    "lead": "admin",
-    "team_lead": "admin",
-    "team-lead": "admin",
-    # Reviewers normalized to 'reviewer'
-    "reviewer": "reviewer",
-    "review": "reviewer",
-    "code-reviewer": "reviewer",
-    "code_reviewer": "reviewer",
-    "reviewer_lead": "reviewer",
-    "reviewer-lead": "reviewer",
-    "lead_reviewer": "reviewer",
-    "lead-reviewer": "reviewer",
-    "reviewer_senior": "reviewer",
-    "reviewer-senior": "reviewer",
-    "senior_reviewer": "reviewer",
-    "senior-reviewer": "reviewer",
-    "reviewer_junior": "reviewer",
-    "reviewer-junior": "reviewer",
-    "junior_reviewer": "reviewer",
-    "junior-reviewer": "reviewer",
+    "tech_lead": "tech_lead",
+    "tech-lead": "tech_lead",
+    "techlead": "tech_lead",
+    "lead": "tech_lead",
+    "team_lead": "tech_lead",
+    "team-lead": "tech_lead",
+    "reviewer": "tech_lead",
+    "review": "tech_lead",
+    "code-reviewer": "tech_lead",
+    "code_reviewer": "tech_lead",
+    "reviewer_lead": "tech_lead",
+    "reviewer-lead": "tech_lead",
+    "lead_reviewer": "tech_lead",
+    "lead-reviewer": "tech_lead",
+    "reviewer_senior": "tech_lead",
+    "reviewer-senior": "tech_lead",
+    "senior_reviewer": "tech_lead",
+    "senior-reviewer": "tech_lead",
+    "reviewer_junior": "tech_lead",
+    "reviewer-junior": "tech_lead",
+    "junior_reviewer": "tech_lead",
+    "junior-reviewer": "tech_lead",
     # Developer
     "developer": "developer",
     "dev": "developer",
@@ -115,10 +122,80 @@ _ROLE_ALIASES: dict[str, str] = {
     "viewer": "developer",
 }
 
+_ROLE_PRIORITY: dict[str, int] = {
+    "admin": 300,
+    "tech_lead": 200,
+    "developer": 100,
+}
+
 _ROLE_PERMISSIONS: dict[str, set[str]] = {
-    "developer": {"analyses.read", "analyses.create"},
-    "reviewer": {"analyses.read", "analyses.write"},
-    "admin": {"analyses.create", "analyses.read", "analyses.write"},
+    "developer": {
+        "analyses.create",
+        "analyses.read",
+        "assignments.view_own",
+        "comments.read",
+        "metrics.read_self",
+        "projects.read",
+        "repositories.read",
+    },
+    "tech_lead": {
+        "analyses.create",
+        "analyses.read",
+        "analyses.write",
+        "assignments.create",
+        "assignments.modify",
+        "assignments.view_all",
+        "assignments.view_own",
+        "comments.create",
+        "comments.edit",
+        "comments.read",
+        "comments.reply",
+        "comments.resolve",
+        "metrics.read_self",
+        "metrics.read_team",
+        "organizations.read",
+        "project_roles.read",
+        "project_roles.write",
+        "project_settings.audit",
+        "project_settings.read",
+        "project_settings.write",
+        "projects.read",
+        "projects.update",
+        "repositories.create",
+        "repositories.read",
+        "reviews.approve",
+        "reviews.assign",
+        "reviews.block",
+        "reviews.bulk_action",
+        "reviews.claim",
+        "reviews.delegate",
+        "reviews.request_changes",
+        "reviews.warn",
+        "teams.create",
+        "teams.delete",
+        "teams.manage_members",
+        "teams.read",
+        "teams.update",
+        "templates.create",
+        "templates.use",
+        "threads.create",
+        "threads.moderate",
+        "threads.participate",
+    },
+}
+_ROLE_PERMISSIONS["admin"] = _ROLE_PERMISSIONS["tech_lead"] | {
+    "admin.read",
+    "admin.write",
+    "integrations.read",
+    "integrations.write",
+    "observability.read",
+    "organizations.write",
+    "organizations.delete",
+    "policies.read",
+    "policies.write",
+    "role_permissions.read",
+    "role_permissions.write",
+    "users.manage",
 }
 
 
@@ -146,8 +223,9 @@ def _build_local_dev_principal(user_id: str | None = None) -> AuthenticatedPrinc
         user_id=normalized_user_id,
         email=f"{normalized_user_id}@local.dev",
         display_name="Local Dev User",
+        canonical_role="admin",
         roles=["admin"],
-        permissions=sorted(_ROLE_PERMISSIONS["admin"]),
+        permissions=permissions_for_roles(["admin"]),
         org_id=None,
         org_slug=None,
         org_name=None,
@@ -162,13 +240,30 @@ def _first_non_empty_string(*values: Any) -> str | None:
     return None
 
 
-def _normalize_role(value: Any) -> str:
+def normalize_role_code(value: Any) -> str:
     if not isinstance(value, str):
         return "developer"
     normalized = value.strip().lower()
     if normalized.startswith("org:"):
         normalized = normalized.removeprefix("org:")
     return _ROLE_ALIASES.get(normalized, "developer")
+
+
+def canonicalize_roles(values: list[str] | tuple[str, ...] | None) -> list[str]:
+    normalized_roles: list[str] = []
+    for value in values or []:
+        normalized = normalize_role_code(value)
+        if normalized not in normalized_roles:
+            normalized_roles.append(normalized)
+
+    if not normalized_roles:
+        normalized_roles.append("developer")
+
+    return sorted(normalized_roles, key=lambda role: _ROLE_PRIORITY.get(role, 0), reverse=True)
+
+
+def _select_canonical_role(roles: list[str]) -> str:
+    return canonicalize_roles(roles)[0]
 
 
 def _extract_dict(parent: dict[str, Any], *keys: str) -> dict[str, Any]:
@@ -202,11 +297,11 @@ def _extract_roles(claims: dict[str, Any]) -> list[str]:
     for candidate in candidates:
         if not isinstance(candidate, str) or not candidate.strip():
             continue
-        normalized = _normalize_role(candidate)
+        normalized = normalize_role_code(candidate)
         if normalized not in roles:
             roles.append(normalized)
 
-    return roles or ["developer"]
+    return canonicalize_roles(roles or ["developer"])
 
 
 def _normalize_org_role(value: Any) -> str | None:
@@ -253,9 +348,9 @@ def _extract_org_context_from_claims(claims: dict[str, Any]) -> tuple[str | None
     return org_id, org_slug, org_name, org_role
 
 
-def _permissions_for_roles(roles: list[str]) -> list[str]:
+def permissions_for_roles(roles: list[str]) -> list[str]:
     permissions: set[str] = set()
-    for role in roles:
+    for role in canonicalize_roles(roles):
         permissions.update(_ROLE_PERMISSIONS.get(role, _ROLE_PERMISSIONS["developer"]))
     return sorted(permissions)
 
@@ -269,7 +364,7 @@ def _apply_admin_email_override(email: str, roles: list[str]) -> list[str]:
     for role in roles:
         if role != "admin":
             elevated_roles.append(role)
-    return elevated_roles
+    return canonicalize_roles(elevated_roles)
 
 
 def _decode_clerk_jwt(token: str) -> dict[str, Any]:
@@ -386,6 +481,15 @@ def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | 
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
 
+    raw_roles = [str(role) for role in (user.roles or [])]
+    resolved_roles = canonicalize_roles(raw_roles or fallback_roles)
+    use_role_fallback_permissions = not user.permissions or resolved_roles != raw_roles
+    resolved_permissions = sorted(set(user.permissions or []))
+    if use_role_fallback_permissions:
+        resolved_permissions = sorted(set(resolved_permissions) | set(permissions_for_roles(resolved_roles)))
+    elif fallback_permissions:
+        resolved_permissions = sorted(set(resolved_permissions) | set(fallback_permissions))
+
     resolved_org_name = org_name
     if org_id and not resolved_org_name:
         membership = next(
@@ -399,8 +503,9 @@ def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | 
         user_id=user.id,
         email=user.email or fallback_email,
         display_name=user.display_name or fallback_display_name,
-        roles=user.roles,
-        permissions=user.permissions,
+        canonical_role=_select_canonical_role(resolved_roles),
+        roles=resolved_roles,
+        permissions=resolved_permissions,
         org_id=org_id,
         org_slug=org_slug,
         org_name=resolved_org_name,
@@ -410,12 +515,15 @@ def _construct_principal_from_db_user(user, org_id: str | None, org_slug: str | 
 
 def _construct_principal_fallback(user_id: str, email: str, display_name: str | None, roles: list[str], permissions: list[str], org_id: str | None, org_slug: str | None, org_name: str | None, org_role: str | None) -> AuthenticatedPrincipal:
     """Construct principal when no DB user exists."""
+    resolved_roles = canonicalize_roles(roles)
+    resolved_permissions = sorted(set(permissions) | set(permissions_for_roles(resolved_roles)))
     return AuthenticatedPrincipal(
         user_id=user_id,
         email=email,
         display_name=display_name,
-        roles=roles,
-        permissions=permissions,
+        canonical_role=_select_canonical_role(resolved_roles),
+        roles=resolved_roles,
+        permissions=resolved_permissions,
         org_id=org_id,
         org_slug=org_slug,
         org_name=org_name,
@@ -435,7 +543,7 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
     existing_user = await asyncio.to_thread(repo.get_user, user_id)
     email = _determine_email(existing_user, claims, user_id)
     display_name = _extract_display_name_from_claims(claims)
-    roles = _extract_roles(claims)
+    roles = canonicalize_roles(_extract_roles(claims))
     roles = _apply_admin_email_override(email, roles)
 
     await _sync_user_with_db(repo, user_id, email, display_name, roles, org_id, org_name, org_slug, org_role)
@@ -446,7 +554,7 @@ async def _build_principal_from_clerk_token(token: str, repo: RBACRepo) -> Authe
         _cache_principal(user_id, org_id, principal)
         return principal
 
-    permissions = _permissions_for_roles(roles)
+    permissions = permissions_for_roles(roles)
     principal = _construct_principal_fallback(user_id, email, display_name, roles, permissions, org_id, org_slug, org_name, org_role)
     _cache_principal(user_id, org_id, principal)
     return principal
@@ -491,12 +599,20 @@ async def get_current_principal(
     if not user.is_active:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="RBAC user is inactive")
 
+    raw_roles = [str(role) for role in (user.roles or [])]
+    resolved_roles = canonicalize_roles(raw_roles)
+    use_role_fallback_permissions = not user.permissions or resolved_roles != raw_roles
+    resolved_permissions = sorted(set(user.permissions or []))
+    if use_role_fallback_permissions:
+        resolved_permissions = sorted(set(resolved_permissions) | set(permissions_for_roles(resolved_roles)))
+
     return AuthenticatedPrincipal(
         user_id=user.id,
         email=user.email,
         display_name=user.display_name,
-        roles=user.roles,
-        permissions=user.permissions,
+        canonical_role=_select_canonical_role(resolved_roles),
+        roles=resolved_roles,
+        permissions=resolved_permissions,
         org_id=None,
         org_slug=None,
         org_name=None,
@@ -593,14 +709,15 @@ def enrich_principal_with_project_role(
     
     if team_role:
         # Update principal with project-specific role
-        normalized_role = _ROLE_ALIASES.get(team_role, team_role)
+        normalized_role = normalize_role_code(team_role)
         new_roles = [normalized_role] if normalized_role else principal.roles
-        new_permissions = _permissions_for_roles(new_roles)
+        new_permissions = permissions_for_roles(new_roles)
         
         return AuthenticatedPrincipal(
             user_id=principal.user_id,
             email=principal.email,
             display_name=principal.display_name,
+            canonical_role=_select_canonical_role(new_roles),
             roles=new_roles,
             permissions=new_permissions,
             org_id=principal.org_id,
@@ -621,6 +738,37 @@ def require_auth(principal: AuthenticatedPrincipal | None = Depends(get_current_
     if principal is None:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
     return principal
+
+
+def principal_has_role(principal: AuthenticatedPrincipal | None, *required_roles: str) -> bool:
+    if principal is None:
+        return False
+
+    normalized_required = {normalize_role_code(role) for role in required_roles}
+    if not normalized_required:
+        return True
+
+    principal_roles = set(canonicalize_roles(principal.roles))
+    principal_roles.add(normalize_role_code(principal.role))
+    return bool(principal_roles & normalized_required)
+
+
+def require_role(*required_roles: str):
+    async def dependency(principal: AuthenticatedPrincipal | None = Depends(get_current_principal)) -> AuthenticatedPrincipal | None:
+        if not _is_auth_enforced():
+            return principal
+
+        if principal is None:
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Missing authentication credentials")
+
+        if not principal_has_role(principal, *required_roles):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Missing required role: {', '.join(canonicalize_roles(list(required_roles)))}",
+            )
+        return principal
+
+    return dependency
 
 
 def require_permission(permission_code: str):

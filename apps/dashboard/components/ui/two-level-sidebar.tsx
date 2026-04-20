@@ -267,6 +267,7 @@ interface NavItem {
 function getSidebarContent(
   activeSection: string,
   pathname: string,
+  homePath: string,
   isAdmin: boolean,
   isReviewerRole: boolean,
   isReviewerLeadRole: boolean,
@@ -283,8 +284,8 @@ function getSidebarContent(
             {
               icon: <View size={16} className="text-sidebar-foreground" />,
               label: "Home",
-              href: "/dashboard",
-              isActive: pathname === "/dashboard",
+              href: homePath,
+              isActive: pathname === homePath || pathname === "/dashboard",
             },
             {
               icon: <ChartBar size={16} className="text-sidebar-foreground" />,
@@ -499,24 +500,24 @@ function getSidebarContent(
             {
               icon: <DocumentTasks size={16} className="text-sidebar-foreground" />,
               label: "Dashboard",
-              href: "/dashboard/reviewer",
-              isActive: pathname === "/dashboard/reviewer",
+              href: "/dashboard/lead",
+              isActive: pathname === "/dashboard/lead",
               badge: pendingReviewsCount > 0 ? pendingReviewsCount : undefined,
               badgeColor: "bg-amber-500",
             },
             {
               icon: <Task size={16} className="text-sidebar-foreground" />,
               label: "Review Queue",
-              href: "/dashboard/reviewer/queue",
-              isActive: pathname === "/dashboard/reviewer/queue",
+              href: "/dashboard/lead/queue",
+              isActive: pathname === "/dashboard/lead/queue",
               badge: overdueCount > 0 ? overdueCount : undefined,
               badgeColor: "bg-red-500",
             },
             {
               icon: <DocumentView size={16} className="text-sidebar-foreground" />,
               label: "My Reviews",
-              href: "/dashboard/reviewer/my-reviews",
-              isActive: pathname === "/dashboard/reviewer/my-reviews",
+              href: "/dashboard/lead/my-reviews",
+              isActive: pathname === "/dashboard/lead/my-reviews",
             },
           ],
         },
@@ -526,16 +527,16 @@ function getSidebarContent(
             {
               icon: <Analytics size={16} className="text-sidebar-foreground" />,
               label: "My Analytics",
-              href: "/dashboard/reviewer/analytics",
-              isActive: pathname === "/dashboard/reviewer/analytics",
+              href: "/dashboard/lead/analytics",
+              isActive: pathname === "/dashboard/lead/analytics",
             },
             ...(isReviewerLeadRole
               ? [
                   {
                     icon: <Activity size={16} className="text-sidebar-foreground" />,
                     label: "Team Analytics",
-                    href: "/dashboard/reviewer/team-analytics",
-                    isActive: pathname === "/dashboard/reviewer/team-analytics",
+                    href: "/dashboard/lead/team-analytics",
+                    isActive: pathname === "/dashboard/lead/team-analytics",
                   },
                 ]
               : []),
@@ -549,8 +550,8 @@ function getSidebarContent(
                   {
                     icon: <Template size={16} className="text-sidebar-foreground" />,
                     label: "Templates",
-                    href: "/dashboard/reviewer/templates",
-                    isActive: pathname === "/dashboard/reviewer/templates",
+                    href: "/dashboard/lead/templates",
+                    isActive: pathname === "/dashboard/lead/templates",
                   },
                 ],
               },
@@ -562,8 +563,8 @@ function getSidebarContent(
             {
               icon: <SettingsAdjust size={16} className="text-sidebar-foreground" />,
               label: "Review Settings",
-              href: "/dashboard/reviewer/settings",
-              isActive: pathname === "/dashboard/reviewer/settings",
+              href: "/dashboard/lead/settings",
+              isActive: pathname === "/dashboard/lead/settings",
             },
           ],
         },
@@ -863,14 +864,15 @@ function IconNavigation({
     { id: "pulls", icon: <RequestQuote size={18} />, label: "PRs" },
     { id: "reviews", icon: <DocumentTasks size={18} />, label: "Reviews", requiresReviewer: true },
     { id: "review-status", icon: <Activity size={18} />, label: "Review Status" },
-    { id: "observability", icon: <ChartBar size={18} />, label: "Observability" },
-    { id: "jira", icon: <Integration size={18} />, label: "Jira" },
+    { id: "observability", icon: <ChartBar size={18} />, label: "Observability", requiresAdmin: true },
+    { id: "jira", icon: <Integration size={18} />, label: "Jira", requiresAdmin: true },
     { id: "admin", icon: <Security size={18} />, label: "Admin", requiresAdmin: true },
   ];
 
   const filteredNavItems = navItems.filter((item) => {
     if (item.requiresAdmin && !isAdmin) return false;
     if (item.requiresReviewer && !isReviewerRole) return false;
+    if (item.requiresReviewerSeniorOrLead && !isReviewerRole) return false;
     return true;
   });
 
@@ -976,6 +978,7 @@ function SectionTitle({
 
 function DetailSidebar({
   activeSection,
+  homePath,
   isAdmin,
   isReviewerRole,
   isReviewerLeadRole,
@@ -986,6 +989,7 @@ function DetailSidebar({
   onBack,
 }: {
   activeSection: string;
+  homePath: string;
   isAdmin: boolean;
   isReviewerRole: boolean;
   isReviewerLeadRole: boolean;
@@ -1011,6 +1015,7 @@ function DetailSidebar({
         getSidebarContent(
           activeSection,
           pathname,
+          homePath,
           isAdmin,
           isReviewerRole,
           isReviewerLeadRole,
@@ -1020,6 +1025,7 @@ function DetailSidebar({
       [
         activeSection,
         pathname,
+        homePath,
         isAdmin,
         isReviewerRole,
         isReviewerLeadRole,
@@ -1342,10 +1348,11 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
   const currentUser = useDashboardUser();
   const pathname = usePathname();
   const isImmersiveDiffPage = pathname.startsWith("/dashboard/diff/");
+  const homePath = getRoleHomePath(currentUser.role);
   const [activeSection, setActiveSection] = useState(() => {
     // Determine initial section based on pathname
     if (pathname.startsWith("/dashboard/admin")) return "admin";
-    if (pathname.startsWith("/dashboard/reviewer")) return "reviews";
+    if (pathname.startsWith("/dashboard/lead") || pathname.startsWith("/dashboard/reviewer")) return "reviews";
     if (pathname.startsWith("/dashboard/organization") || pathname.startsWith("/dashboard/teams")) return "workspace";
     if (pathname.startsWith("/dashboard/analyses")) return "analyses";
     if (pathname.startsWith("/dashboard/editor")) return "editor";
@@ -1440,6 +1447,7 @@ export function TwoLevelSidebar({ children }: { children: React.ReactNode }) {
       )}>
         <DetailSidebar
           activeSection={activeSection}
+          homePath={homePath}
           isAdmin={isAdmin}
           isReviewerRole={isReviewerRole}
           isReviewerLeadRole={isReviewerLeadRole}

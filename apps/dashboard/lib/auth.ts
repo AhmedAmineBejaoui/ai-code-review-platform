@@ -4,7 +4,32 @@ import { auth, currentUser } from "@clerk/nextjs/server"
 import { cache } from "react"
 
 import type { DashboardAuthUser } from "@/lib/dashboard-user"
-import { extractRoleFromClaims } from "@/lib/roles"
+import {
+  extractRoleFromClaims,
+  getDefaultPermissionsForRole,
+  normalizeRole,
+  type AppRole,
+} from "@/lib/roles"
+
+type BackendAuthSyncResponse = {
+  user_id: string
+  email: string
+  display_name?: string | null
+  canonical_role?: string
+  roles?: string[]
+  permissions?: string[]
+  org_id?: string | null
+  org_slug?: string | null
+  org_name?: string | null
+  org_role?: string | null
+}
+
+const BACKEND_API_BASE_URL =
+  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+const BACKEND_SYNC_TIMEOUT_MS = Math.max(
+  1_000,
+  Number(process.env.DASHBOARD_BACKEND_SYNC_TIMEOUT_MS ?? "15000") || 15_000,
+)
 
 function parseAdminEmails(rawValue: string | undefined): Set<string> {
   if (!rawValue || rawValue.trim().length === 0) {
@@ -48,14 +73,73 @@ function initials(name: string, email: string): string {
   return email.slice(0, 2).toUpperCase() || "US"
 }
 
+function uniqueStrings(values: unknown[]): string[] {
+  return Array.from(
+    new Set(
+      values.filter((value): value is string => typeof value === "string" && value.trim().length > 0).map((value) => value.trim()),
+    ),
+  )
+}
+
+async function syncAccessWithBackend(args: {
+  token: string | null
+  email: string | undefined
+  displayName: string | undefined
+  roleCandidate: AppRole
+  orgId: string | null
+  orgSlug: string | null
+  orgRole: string | null
+  orgNameCandidate: string | undefined
+}): Promise<BackendAuthSyncResponse | null> {
+  const { token, email, displayName, roleCandidate, orgId, orgSlug, orgRole, orgNameCandidate } = args
+  if (!token) {
+    return null
+  }
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), BACKEND_SYNC_TIMEOUT_MS)
+
+  try {
+    const response = await fetch(`${BACKEND_API_BASE_URL}/v1/auth/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        email,
+        display_name: displayName,
+        role: roleCandidate,
+        org_id: orgId,
+        org_slug: orgSlug,
+        org_name: orgNameCandidate,
+        org_role: orgRole,
+      }),
+      signal: controller.signal,
+      cache: "no-store",
+    })
+
+    if (!response.ok) {
+      return null
+    }
+
+    const payload = (await response.json()) as BackendAuthSyncResponse
+    return payload
+  } catch {
+    return null
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAuthUser | null> => {
-  const { userId, sessionClaims, orgId, orgRole, orgSlug } = await auth()
+  const { userId, sessionClaims, orgId, orgRole, orgSlug, getToken } = await auth()
   if (!userId) {
     return null
   }
 
   const claims = (sessionClaims as Record<string, unknown> | null | undefined) ?? {}
-  const baseRole = extractRoleFromClaims(claims)
+  const baseClaimsRole = extractRoleFromClaims(claims)
   const claimName =
     firstString(
       claims.name,
@@ -74,15 +158,13 @@ export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAu
       claims.primaryEmailAddress,
     ) ?? undefined
 
-  let user: Awaited<ReturnType<typeof currentUser>> | null = null
-  if (!claimName || !claimEmail) {
-    user = await currentUser()
-  }
+  const [user, token] = await Promise.all([currentUser(), getToken()])
 
   const name =
     firstString(
       claimName,
       [user?.firstName, user?.lastName].filter(Boolean).join(" "),
+      user?.fullName,
       user?.username,
     ) ?? "Utilisateur"
 
@@ -92,34 +174,66 @@ export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAu
       user?.emailAddresses?.find((address) => address.id === user?.primaryEmailAddressId)?.emailAddress,
       user?.emailAddresses?.[0]?.emailAddress,
     ) ?? "unknown@example.local"
-  const role = ADMIN_EMAIL_OVERRIDES.has(email.trim().toLowerCase()) ? "admin" : baseRole
+
+  const metadataRoleCandidate =
+    typeof user?.publicMetadata?.role === "string" ? normalizeRole(user.publicMetadata.role) : "developer"
+  const baseRole = metadataRoleCandidate !== "developer" ? metadataRoleCandidate : baseClaimsRole
+  const roleCandidate = ADMIN_EMAIL_OVERRIDES.has(email.trim().toLowerCase()) ? "admin" : baseRole
 
   const orgNameCandidate =
     (typeof claims.org_name === "string" ? claims.org_name : undefined) ??
     (typeof claims.organization_name === "string" ? claims.organization_name : undefined)
+
+  const synced = await syncAccessWithBackend({
+    token,
+    email,
+    displayName: name,
+    roleCandidate,
+    orgId,
+    orgSlug,
+    orgRole,
+    orgNameCandidate,
+  })
+
+  let canonicalRole = normalizeRole(synced?.canonical_role ?? synced?.roles ?? roleCandidate)
+  if (ADMIN_EMAIL_OVERRIDES.has(email.trim().toLowerCase())) {
+    canonicalRole = "admin"
+  }
+
+  const legacyRoles = uniqueStrings([...(synced?.roles ?? []), roleCandidate])
+  const permissions = uniqueStrings([
+    ...(synced?.permissions ?? []),
+    ...getDefaultPermissionsForRole(canonicalRole),
+  ])
+
   const normalizedOrgRole = (() => {
-    if (typeof orgRole !== "string" || orgRole.trim().length === 0) {
+    const value =
+      synced?.org_role ??
+      (typeof orgRole === "string" && orgRole.trim().length > 0 ? orgRole.trim().toLowerCase() : undefined)
+    if (!value) {
       return undefined
     }
-    const raw = orgRole.trim().toLowerCase()
-    return raw.startsWith("org:") ? raw.slice(4) : raw
+    return value.startsWith("org:") ? value.slice(4) : value
   })()
 
   const organization =
-    orgId != null
+    (synced?.org_id ?? orgId) != null
       ? {
-          id: orgId,
-          slug: orgSlug ?? undefined,
-          name: orgNameCandidate ?? undefined,
+          id: synced?.org_id ?? orgId!,
+          slug: synced?.org_slug ?? orgSlug ?? undefined,
+          name: synced?.org_name ?? orgNameCandidate ?? undefined,
           role: normalizedOrgRole,
         }
       : null
 
   return {
     id: userId,
-    name,
-    email,
-    role,
+    name: synced?.display_name?.trim() || name,
+    email: synced?.email?.trim() || email,
+    role: canonicalRole,
+    canonicalRole,
+    legacyRoles,
+    permissions,
     avatar: initials(name, email),
     organization,
   }

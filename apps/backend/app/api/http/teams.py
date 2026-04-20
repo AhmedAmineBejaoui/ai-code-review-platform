@@ -216,8 +216,8 @@ def _check_team_admin_access(
     platform_role: str,
 ) -> bool:
     """Check if user has admin access to a team."""
-    # Platform admins always have access
-    if platform_role == "admin":
+    # Platform admins and tech leads always have access
+    if platform_role in {"admin", "tech_lead"}:
         return True
     
     # Check team membership
@@ -259,7 +259,7 @@ def _check_project_access(
     platform_role: str,
 ) -> bool:
     """Check if user has access to create teams in a project."""
-    if platform_role == "admin":
+    if platform_role in {"admin", "tech_lead"}:
         return True
     
     with engine.connect() as conn:

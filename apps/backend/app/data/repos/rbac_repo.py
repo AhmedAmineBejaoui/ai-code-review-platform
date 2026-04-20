@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, SQLAlchemyError
 
 from app.data.database import get_engine
 from app.data.models.rbac import RBACOrganizationMembership, RBACUser
@@ -10,12 +10,20 @@ from app.data.models.rbac import RBACOrganizationMembership, RBACUser
 
 _CLERK_ROLE_TO_DB_ROLE: dict[str, str] = {
     "admin": "admin",
-    "reviewer": "reviewer",
-    "reviewer_lead": "reviewer_lead",
-    "reviewer_senior": "reviewer_senior",
-    "reviewer_junior": "reviewer_junior",
+    "tech_lead": "tech_lead",
+    "tech-lead": "tech_lead",
+    "techlead": "tech_lead",
+    "lead": "tech_lead",
+    "team_lead": "tech_lead",
+    "team-lead": "tech_lead",
+    "reviewer": "tech_lead",
+    "reviewer_lead": "tech_lead",
+    "reviewer_senior": "tech_lead",
+    "reviewer_junior": "tech_lead",
     "developer": "developer",
-    "viewer": "viewer",
+    "viewer": "developer",
+    "member": "developer",
+    "user": "developer",
 }
 
 
@@ -32,7 +40,7 @@ class RBACRepo:
 
     @staticmethod
     def _role_for_db(clerk_role: str) -> str:
-        return _CLERK_ROLE_TO_DB_ROLE.get(clerk_role.strip().lower(), "viewer")
+        return _CLERK_ROLE_TO_DB_ROLE.get(clerk_role.strip().lower(), "developer")
 
     @staticmethod
     def _normalize_org_role(value: str | None) -> str:
@@ -52,6 +60,43 @@ class RBACRepo:
             "dev": "member",
         }
         return alias_map.get(normalized, "member")
+
+    @staticmethod
+    def _parse_permission_codes(raw: object) -> list[str]:
+        import json
+
+        if raw is None:
+            return []
+        if isinstance(raw, str):
+            try:
+                parsed = json.loads(raw) if raw else []
+            except json.JSONDecodeError:
+                parsed = []
+        elif isinstance(raw, list):
+            parsed = raw
+        else:
+            parsed = []
+
+        normalized: list[str] = []
+        for item in parsed:
+            if not isinstance(item, str):
+                continue
+            code = item.strip()
+            if code and code not in normalized:
+                normalized.append(code)
+        return normalized
+
+    @staticmethod
+    def _merge_effective_permissions(
+        *,
+        role_permissions: list[str],
+        granted_permissions: list[str],
+        revoked_permissions: list[str],
+    ) -> list[str]:
+        granted = {code.strip() for code in granted_permissions if isinstance(code, str) and code.strip()}
+        revoked = {code.strip() for code in revoked_permissions if isinstance(code, str) and code.strip()}
+        effective = (set(role_permissions) | granted) - revoked
+        return sorted(effective)
 
     def upsert_clerk_user(self, user_id: str, email: str, display_name: str | None, clerk_role: str) -> None:
         normalized_email = self._normalize_email(user_id=user_id, email=email)
@@ -128,8 +173,12 @@ class RBACRepo:
                             """
                             SELECT id
                             FROM roles
-                            WHERE code IN ('developer', 'viewer')
-                            ORDER BY CASE WHEN code = 'developer' THEN 0 ELSE 1 END
+                            WHERE code IN ('developer', 'tech_lead', 'viewer')
+                            ORDER BY CASE
+                                WHEN code = 'developer' THEN 0
+                                WHEN code = 'tech_lead' THEN 1
+                                ELSE 2
+                            END
                             LIMIT 1
                             """
                         )
@@ -306,22 +355,44 @@ class RBACRepo:
                 .mappings()
                 .all()
             )
+            try:
+                user_permission_rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT p.code, up.is_active
+                            FROM user_permissions up
+                            JOIN permissions p ON p.id = up.permission_id
+                            WHERE up.user_id = :user_id
+                              AND (up.expires_at IS NULL OR up.expires_at > NOW())
+                            ORDER BY p.code ASC
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            except SQLAlchemyError:
+                user_permission_rows = []
 
-        # Parse custom_permissions from JSONB and merge with role permissions
-        import json
-        custom_perms = user_row.get("custom_permissions")
-        if custom_perms is None:
-            custom_perms_list = []
-        elif isinstance(custom_perms, str):
-            custom_perms_list = json.loads(custom_perms) if custom_perms else []
-        elif isinstance(custom_perms, list):
-            custom_perms_list = custom_perms
-        else:
-            custom_perms_list = []
-        
-        # Combine role permissions with custom permissions (custom permissions override)
+        legacy_grants = self._parse_permission_codes(user_row.get("custom_permissions"))
+        explicit_grants = [
+            str(row["code"])
+            for row in user_permission_rows
+            if bool(row.get("is_active", False))
+        ]
+        explicit_revokes = [
+            str(row["code"])
+            for row in user_permission_rows
+            if not bool(row.get("is_active", False))
+        ]
         role_permissions = [str(row["code"]) for row in permission_rows]
-        all_permissions = sorted(set(role_permissions + custom_perms_list))
+        all_permissions = self._merge_effective_permissions(
+            role_permissions=role_permissions,
+            granted_permissions=[*legacy_grants, *explicit_grants],
+            revoked_permissions=explicit_revokes,
+        )
 
         return RBACUser(
             id=str(user_row["id"]),
@@ -585,7 +656,61 @@ class RBACRepo:
                 .mappings()
                 .all()
             )
-            return [str(row["code"]) for row in rows]
+            base_permissions = [str(row["code"]) for row in rows]
+
+            user_row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT custom_permissions
+                        FROM users
+                        WHERE id = :user_id
+                        LIMIT 1
+                        """
+                    ),
+                    {"user_id": user_id},
+                )
+                .mappings()
+                .first()
+            )
+
+            legacy_grants = self._parse_permission_codes((user_row or {}).get("custom_permissions"))
+            try:
+                override_rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT p.code, up.is_active
+                            FROM user_permissions up
+                            JOIN permissions p ON p.id = up.permission_id
+                            WHERE up.user_id = :user_id
+                              AND (up.expires_at IS NULL OR up.expires_at > NOW())
+                            ORDER BY p.code ASC
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+            except SQLAlchemyError:
+                override_rows = []
+
+            explicit_grants = [
+                str(row["code"])
+                for row in override_rows
+                if bool(row.get("is_active", False))
+            ]
+            explicit_revokes = [
+                str(row["code"])
+                for row in override_rows
+                if not bool(row.get("is_active", False))
+            ]
+            return self._merge_effective_permissions(
+                role_permissions=base_permissions,
+                granted_permissions=[*legacy_grants, *explicit_grants],
+                revoked_permissions=explicit_revokes,
+            )
 
     def check_user_has_permission_for_project(
         self, user_id: str, project_id: str, permission_code: str

@@ -11,7 +11,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.engine import Connection
 
-from app.api.middleware.auth import AuthenticatedPrincipal, get_current_principal
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    get_current_principal,
+    principal_has_role,
+    require_auth,
+    require_role,
+)
 from app.data.database import get_engine
 from app.settings import settings
 
@@ -38,12 +44,12 @@ class UpdateOrganizationRequest(BaseModel):
 
 class AddMemberRequest(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=255)
-    role: Literal["admin", "reviewer", "developer"] = Field(default="developer")
+    role: Literal["admin", "tech_lead", "reviewer", "developer"] = Field(default="developer")
     status: Literal["active", "invited", "revoked"] = Field(default="active")
 
 
 class UpdateMemberRequest(BaseModel):
-    role: Literal["admin", "reviewer", "developer"] | None = None
+    role: Literal["admin", "tech_lead", "reviewer", "developer"] | None = None
     status: Literal["active", "invited", "revoked"] | None = None
 
 
@@ -55,11 +61,35 @@ def _to_iso(dt: Any) -> str | None:
     return str(dt)
 
 
+def _ensure_org_visibility(conn: Connection, org_id: str, principal: AuthenticatedPrincipal) -> None:
+    if principal_has_role(principal, "admin"):
+        return
+
+    membership = conn.execute(
+        text(
+            """
+            SELECT role, status
+            FROM organization_memberships
+            WHERE organization_id = :org_id AND user_id = :user_id
+            LIMIT 1
+            """
+        ),
+        {"org_id": org_id, "user_id": principal.user_id},
+    ).mappings().first()
+
+    if membership is None or str(membership.get("status") or "").strip().lower() != "active":
+        raise HTTPException(status_code=403, detail="Not a member of this organization")
+
+
+def _ensure_org_admin(principal: AuthenticatedPrincipal) -> None:
+    if not principal_has_role(principal, "admin"):
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+
 @router.post("")
 async def create_organization(
     request: CreateOrganizationRequest,
-    # Allow both authenticated users and system calls (webhook)
-    # For system calls, X-User-ID header can be used
+    _principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Create a new organization in the database."""
     engine = get_engine()
@@ -108,7 +138,7 @@ async def create_organization(
 @router.get("/{org_id}")
 async def get_organization(
     org_id: str = Path(..., min_length=1),
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """Get organization details."""
     engine = get_engine()
@@ -127,19 +157,20 @@ async def get_organization(
         if not org_row:
             raise HTTPException(status_code=404, detail="Organization not found")
         
-        # Check if user is a member
+        if principal is None:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        _ensure_org_visibility(conn, org_id, principal)
         membership = conn.execute(
-            text("""
+            text(
+                """
                 SELECT role, status
                 FROM organization_memberships
                 WHERE organization_id = :org_id AND user_id = :user_id
                 LIMIT 1
-            """),
-            {"org_id": org_id, "user_id": principal.user_id}
+                """
+            ),
+            {"org_id": org_id, "user_id": principal.user_id},
         ).mappings().first()
-        
-        if not membership and "admin" not in principal.roles:
-            raise HTTPException(status_code=403, detail="Not a member of this organization")
         
         return {
             "id": str(org_row["id"]),
@@ -155,8 +186,12 @@ async def get_organization(
 async def update_organization(
     request: UpdateOrganizationRequest,
     org_id: str = Path(..., min_length=1),
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Update organization details."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.begin() as conn:
@@ -196,11 +231,11 @@ async def update_organization(
 @router.delete("/{org_id}")
 async def delete_organization(
     org_id: str = Path(..., min_length=1),
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Delete an organization (soft delete)."""
-    if "admin" not in principal.roles:
-        raise HTTPException(status_code=403, detail="Admin access required")
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
     
     engine = get_engine()
     
@@ -234,9 +269,12 @@ async def delete_organization(
 
 @router.get("")
 async def list_organizations(
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """List organizations the user is a member of."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.connect() as conn:
@@ -252,7 +290,7 @@ async def list_organizations(
             text(query),
             {
                 "user_id": principal.user_id,
-                "is_admin": "admin" in principal.roles
+                "is_admin": principal_has_role(principal, "admin"),
             }
         ).mappings().all()
         
@@ -277,8 +315,12 @@ async def list_organizations(
 @router.get("/{org_id}/members")
 async def list_organization_members(
     org_id: str = Path(..., min_length=1),
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """List all members of an organization."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.connect() as conn:
@@ -290,6 +332,7 @@ async def list_organization_members(
         
         if not org:
             raise HTTPException(status_code=404, detail="Organization not found")
+        _ensure_org_visibility(conn, org_id, principal)
         
         # Get members with user details
         rows = conn.execute(
@@ -336,8 +379,12 @@ async def list_organization_members(
 async def add_organization_member(
     request: AddMemberRequest,
     org_id: str = Path(..., min_length=1),
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Add a member to an organization."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.begin() as conn:
@@ -423,8 +470,12 @@ async def update_organization_member(
     request: UpdateMemberRequest,
     org_id: str = Path(..., min_length=1),
     user_id: str = Path(..., min_length=1),
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Update a member's role or status in an organization."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.begin() as conn:
@@ -478,8 +529,12 @@ async def update_organization_member(
 async def remove_organization_member(
     org_id: str = Path(..., min_length=1),
     user_id: str = Path(..., min_length=1),
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin")),
 ):
     """Remove a member from an organization."""
+    if principal is None:
+        raise HTTPException(status_code=401, detail="Authentication required")
+
     engine = get_engine()
     
     with engine.begin() as conn:
@@ -512,11 +567,12 @@ async def remove_organization_member(
 
 def _map_platform_role_to_db_role(platform_role: str) -> str:
     """
-    Map platform roles (admin, reviewer, developer) to DB roles (owner, admin, member).
+    Map platform roles (admin, tech_lead, developer) to DB roles (owner, admin, member).
     The DB uses a different role vocabulary for historical reasons.
     """
     mapping = {
         "admin": "admin",
+        "tech_lead": "member",
         "reviewer": "member",  # reviewers are members with elevated permissions
         "developer": "member",
     }

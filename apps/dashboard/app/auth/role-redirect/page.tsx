@@ -8,6 +8,7 @@ import { getRoleHomePath, normalizeRole } from "@/lib/roles"
 import { CircuitLoader } from "@/components/ui/circuit-loader"
 
 type SyncResponse = {
+  canonical_role?: string
   roles?: string[]
 }
 
@@ -38,7 +39,7 @@ export default function RoleRedirectPage() {
 
         if (response.ok) {
           const payload = (await response.json()) as SyncResponse
-          role = normalizeRole(payload.roles ?? [])
+          role = normalizeRole(payload.canonical_role ?? payload.roles ?? [])
         } else {
           await response.json().catch(() => ({}))
         }

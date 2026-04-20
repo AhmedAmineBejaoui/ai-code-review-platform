@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict
 
-from app.api.middleware.auth import get_rbac_repo
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    get_rbac_repo,
+    principal_has_role,
+    require_auth,
+    require_role,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +81,7 @@ class CheckPermissionResponse(BaseModel):
 @router.get("/{project_id}/members", response_model=ProjectMembersResponse)
 async def get_project_members(
     project_id: str,
-
+    _principal: AuthenticatedPrincipal | None = Depends(require_role("admin", "tech_lead")),
 ):
     """Get all members with roles in a specific project."""
     repo = get_rbac_repo()
@@ -109,6 +115,7 @@ async def get_project_members(
 async def assign_project_role(
     project_id: str,
     request: AssignProjectRoleRequest,
+    principal: AuthenticatedPrincipal | None = Depends(require_role("admin", "tech_lead")),
 ):
     """Assign a role to a user for a specific project.
     
@@ -117,8 +124,7 @@ async def assign_project_role(
     """
     repo = get_rbac_repo()
     
-    # TODO: Get current user ID for assigned_by from auth context
-    assigned_by = None
+    assigned_by = principal.user_id if principal is not None else None
     
     result = repo.assign_project_role(
         user_id=request.user_id,
@@ -153,7 +159,7 @@ async def assign_project_role(
 async def remove_project_role(
     project_id: str,
     user_id: str,
-
+    _principal: AuthenticatedPrincipal | None = Depends(require_role("admin", "tech_lead")),
 ):
     """Remove a user's role from a specific project."""
     repo = get_rbac_repo()
@@ -172,9 +178,14 @@ async def remove_project_role(
 async def get_user_project_role(
     project_id: str,
     user_id: str,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """Get a specific user's role in a project."""
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if principal.user_id != user_id and not principal_has_role(principal, "admin", "tech_lead"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
     repo = get_rbac_repo()
     role = repo.get_user_project_role(user_id, project_id)
     
@@ -203,12 +214,17 @@ async def get_user_project_role(
 async def get_user_permissions_for_project(
     project_id: str,
     user_id: str,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """Get all permissions a user has for a specific project.
     
     This combines global permissions and project-specific role permissions.
     """
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if principal.user_id != user_id and not principal_has_role(principal, "admin", "tech_lead"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
     repo = get_rbac_repo()
     permissions = repo.get_user_permissions_for_project(user_id, project_id)
     
@@ -224,9 +240,14 @@ async def check_permission_for_project(
     project_id: str,
     user_id: str,
     permission_code: str,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """Check if a user has a specific permission for a project."""
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if principal.user_id != user_id and not principal_has_role(principal, "admin", "tech_lead"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
     repo = get_rbac_repo()
     has_permission = repo.check_user_has_permission_for_project(user_id, project_id, permission_code)
     
@@ -243,9 +264,14 @@ async def check_permission_for_project(
 @router.get("/users/{user_id}/project-roles", response_model=UserProjectRolesResponse)
 async def get_user_all_project_roles(
     user_id: str,
-
+    principal: AuthenticatedPrincipal | None = Depends(require_auth),
 ):
     """Get all project-specific roles for a user."""
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Authentication required")
+    if principal.user_id != user_id and not principal_has_role(principal, "admin", "tech_lead"):
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Insufficient permissions")
+
     repo = get_rbac_repo()
     roles = repo.get_user_project_roles(user_id)
     

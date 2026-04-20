@@ -3,7 +3,7 @@
 
 import Link from "next/link"
 import { useEffect, useMemo, useState } from "react"
-import { CheckCircle2, Edit, Search, Shield, UserCog, UserPlus, Users, X } from "lucide-react"
+import { CheckCircle2, Edit, RotateCcw, Search, Shield, UserCog, UserPlus, Users, X } from "lucide-react"
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -30,7 +30,9 @@ import {
   SelectItem,
   SelectTrigger,
 } from "@/components/ui/select"
+import { Switch } from "@/components/ui/switch"
 import { GroupedPermissions } from "./GroupedPermissions"
+import { ROLE_DEFAULT_PERMISSIONS } from "@/lib/roles"
 
 type AdminUser = {
   id: string
@@ -39,6 +41,8 @@ type AdminUser = {
   isActive: boolean
   roles: string[]
   permissions: string[]
+  customPermissions?: string[]
+  revokedPermissions?: string[]
 }
 
 type PermissionCatalogItem = {
@@ -68,9 +72,28 @@ type IntegrationsPayload = {
   }
 }
 
+type RolePermissionDetail = {
+  id: string
+  role_id: string
+  permission_id: string
+  permission_code: string
+  permission_description: string
+  enabled: boolean
+}
+
+type RolePermissionsPayload = {
+  roles?: Array<{
+    id: string
+    code: string
+    label: string
+    is_system: boolean
+    permissions: RolePermissionDetail[]
+  }>
+}
+
 type RoleValue =
   | "admin"
-  | "reviewer"
+  | "tech_lead"
   | "developer"
 
 type RoleOption = {
@@ -80,6 +103,14 @@ type RoleOption = {
   chips: string[]
   indicatorClass: string
   badgeClass: string
+}
+
+type PermissionOverride = "grant" | "revoke"
+
+type PermissionGroup = {
+  key: string
+  label: string
+  items: Array<{ code: string; description: string }>
 }
 
 const ROLE_OPTIONS: RoleOption[] = [
@@ -93,9 +124,9 @@ const ROLE_OPTIONS: RoleOption[] = [
       "font-mono text-[11px] uppercase tracking-wider border border-[#17f0c4]/40 text-[#17f0c4] bg-[#17f0c4]/10",
   },
   {
-    value: "reviewer",
-    label: "Reviewer",
-    description: "Peut approuver, bloquer les PRs et demander des changements. Accès aux outils de review.",
+    value: "tech_lead",
+    label: "Tech Lead",
+    description: "Peut piloter les reviews, les assignations et les operations d'equipe.",
     chips: ["Approuver", "Bloquer", "Demander changements", "Review"],
     indicatorClass: "bg-violet-400",
     badgeClass:
@@ -114,10 +145,36 @@ const ROLE_OPTIONS: RoleOption[] = [
 
 const ROLE_LOOKUP = new Map(ROLE_OPTIONS.map((option) => [option.value, option]))
 
+const ROLE_PERMISSION_FALLBACKS: Record<RoleValue, string[]> = {
+  admin: ROLE_DEFAULT_PERMISSIONS.admin,
+  tech_lead: ROLE_DEFAULT_PERMISSIONS.tech_lead,
+  developer: ROLE_DEFAULT_PERMISSIONS.developer,
+}
+
+const PERMISSION_GROUP_LABELS: Record<string, string> = {
+  admin: "Administration",
+  analyses: "Analyses",
+  assignments: "Assignations",
+  comments: "Commentaires",
+  integrations: "Integrations",
+  metrics: "Metriques",
+  observability: "Observabilite",
+  organizations: "Organisation",
+  project_roles: "Roles projet",
+  project_settings: "Parametres projet",
+  projects: "Projets",
+  repositories: "Depots",
+  reviews: "Reviews",
+  role_permissions: "Permissions des roles",
+  teams: "Equipes",
+  templates: "Templates",
+  threads: "Discussions",
+  users: "Utilisateurs",
+}
+
 function normalizeRole(role: string): RoleValue {
   if (role === "admin") return "admin"
-  // Map all reviewer variants to "reviewer"
-  if (role === "reviewer" || role.startsWith("reviewer_")) return "reviewer"
+  if (role === "tech_lead" || role === "reviewer" || role.startsWith("reviewer_")) return "tech_lead"
   if (role === "developer" || role === "viewer" || role === "member") return "developer"
   return "developer"
 }
@@ -181,9 +238,8 @@ function primaryRole(user: AdminUser): RoleValue {
   if (user.roles.includes("admin")) {
     return "admin"
   }
-  // Map all reviewer variants to "reviewer"
-  if (user.roles.some((role) => role === "reviewer" || role.startsWith("reviewer_"))) {
-    return "reviewer"
+  if (user.roles.some((role) => role === "tech_lead" || role === "reviewer" || role.startsWith("reviewer_"))) {
+    return "tech_lead"
   }
   if (user.roles.includes("developer")) {
     return "developer"
@@ -196,7 +252,27 @@ function getRoleMeta(role: string) {
 }
 
 function hasReviewerRole(user: AdminUser): boolean {
-  return user.roles.some((role) => role === "reviewer" || role.startsWith("reviewer_"))
+  return user.roles.some((role) => role === "tech_lead" || role === "reviewer" || role.startsWith("reviewer_"))
+}
+
+function getPermissionGroupLabel(code: string): string {
+  const prefix = code.split(".")[0] ?? "other"
+  return PERMISSION_GROUP_LABELS[prefix] ?? "Autres"
+}
+
+function buildPermissionOverrides(user: AdminUser | null): Record<string, PermissionOverride> {
+  if (!user) {
+    return {}
+  }
+
+  const next: Record<string, PermissionOverride> = {}
+  for (const code of user.customPermissions ?? []) {
+    next[code] = "grant"
+  }
+  for (const code of user.revokedPermissions ?? []) {
+    next[code] = "revoke"
+  }
+  return next
 }
 
 export function UserManagement() {
@@ -219,7 +295,14 @@ export function UserManagement() {
   })
   const [roleDialogOpen, setRoleDialogOpen] = useState(false)
   const [selectedUser, setSelectedUser] = useState<AdminUser | null>(null)
-  const [selectedRole, setSelectedRole] = useState<RoleValue>("viewer")
+  const [selectedRole, setSelectedRole] = useState<RoleValue>("developer")
+  const [selectedPermissionOverrides, setSelectedPermissionOverrides] = useState<Record<string, PermissionOverride>>({})
+  const [rolePermissionQuery, setRolePermissionQuery] = useState("")
+  const [rolePermissionsByRole, setRolePermissionsByRole] = useState<Record<RoleValue, RolePermissionDetail[]>>({
+    admin: [],
+    tech_lead: [],
+    developer: [],
+  })
 
   const loadData = async () => {
     setLoading(true)
@@ -231,11 +314,23 @@ export function UserManagement() {
         headers: { Accept: "application/json" },
       }).catch(() => null)
 
-      const usersResponse = await fetch("/api/dashboard/admin/users?limit=250", {
-        method: "GET",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      })
+      const [usersResponse, rolePermissionsResponse, integrationsResponse] = await Promise.all([
+        fetch("/api/dashboard/admin/users?limit=250", {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        }),
+        fetch("/api/dashboard/admin/roles/permissions", {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        }),
+        fetch("/api/dashboard/admin/integrations", {
+          method: "GET",
+          cache: "no-store",
+          headers: { Accept: "application/json" },
+        }),
+      ])
       const usersPayload = (await usersResponse.json().catch(() => ({}))) as UsersPayload
       if (!usersResponse.ok) {
         throw new Error(extractApiErrorMessage(usersPayload, "Impossible de charger les utilisateurs."))
@@ -255,11 +350,20 @@ export function UserManagement() {
         activeUsers: Number(payloadStats.activeUsers ?? items.filter((item) => item.isActive).length),
       })
 
-      const integrationsResponse = await fetch("/api/dashboard/admin/integrations", {
-        method: "GET",
-        cache: "no-store",
-        headers: { Accept: "application/json" },
-      })
+      const rolePermissionsPayload = (await rolePermissionsResponse.json().catch(() => ({}))) as RolePermissionsPayload
+      if (rolePermissionsResponse.ok) {
+        const nextRolePermissions: Record<RoleValue, RolePermissionDetail[]> = {
+          admin: [],
+          tech_lead: [],
+          developer: [],
+        }
+        for (const role of rolePermissionsPayload.roles ?? []) {
+          const normalizedRole = normalizeRole(role.code)
+          nextRolePermissions[normalizedRole] = Array.isArray(role.permissions) ? role.permissions : []
+        }
+        setRolePermissionsByRole(nextRolePermissions)
+      }
+
       const integrationsPayload = (await integrationsResponse.json().catch(() => ({}))) as IntegrationsPayload
       if (integrationsResponse.ok) {
         setTokenInfo(integrationsPayload.ciToken ?? null)
@@ -302,8 +406,111 @@ export function UserManagement() {
   }, [searchQuery, sortedUsers])
 
   const selectedRoleMeta = useMemo(() => getRoleMeta(selectedRole), [selectedRole])
+  const permissionDescriptions = useMemo(() => {
+    const next = new Map<string, string>()
+    for (const permission of permissions) {
+      next.set(permission.code, permission.description)
+    }
+    for (const rolePermissions of Object.values(rolePermissionsByRole)) {
+      for (const permission of rolePermissions) {
+        if (!next.has(permission.permission_code)) {
+          next.set(permission.permission_code, permission.permission_description)
+        }
+      }
+    }
+    return next
+  }, [permissions, rolePermissionsByRole])
 
-  const patchUser = async (userId: string, body: { role?: string; isActive?: boolean }) => {
+  const selectedRolePermissionSet = useMemo(() => {
+    const configuredPermissions = rolePermissionsByRole[selectedRole]
+      .filter((permission) => permission.enabled)
+      .map((permission) => permission.permission_code)
+    const source = configuredPermissions.length > 0 ? configuredPermissions : ROLE_PERMISSION_FALLBACKS[selectedRole]
+    return new Set(source)
+  }, [rolePermissionsByRole, selectedRole])
+
+  const groupedRolePermissions = useMemo(() => {
+    const allCodes = new Set<string>()
+    for (const permission of permissions) {
+      allCodes.add(permission.code)
+    }
+    for (const rolePermissions of Object.values(rolePermissionsByRole)) {
+      for (const permission of rolePermissions) {
+        allCodes.add(permission.permission_code)
+      }
+    }
+    for (const code of Object.keys(selectedPermissionOverrides)) {
+      allCodes.add(code)
+    }
+
+    const normalizedQuery = rolePermissionQuery.trim().toLowerCase()
+    const buckets = new Map<string, PermissionGroup>()
+
+    for (const code of Array.from(allCodes).sort((left, right) => left.localeCompare(right))) {
+      const description = permissionDescriptions.get(code) ?? "Permission personnalisée"
+      if (normalizedQuery && !`${code} ${description}`.toLowerCase().includes(normalizedQuery)) {
+        continue
+      }
+
+      const groupKey = code.split(".")[0] ?? "other"
+      const existing = buckets.get(groupKey)
+      const item = { code, description }
+      if (existing) {
+        existing.items.push(item)
+      } else {
+        buckets.set(groupKey, {
+          key: groupKey,
+          label: getPermissionGroupLabel(code),
+          items: [item],
+        })
+      }
+    }
+
+    return Array.from(buckets.values()).sort((left, right) => left.label.localeCompare(right.label))
+  }, [permissionDescriptions, permissions, rolePermissionQuery, rolePermissionsByRole, selectedPermissionOverrides])
+
+  const permissionOverrideStats = useMemo(() => {
+    let granted = 0
+    let revoked = 0
+    for (const state of Object.values(selectedPermissionOverrides)) {
+      if (state === "grant") {
+        granted += 1
+      } else {
+        revoked += 1
+      }
+    }
+    return { granted, revoked }
+  }, [selectedPermissionOverrides])
+
+  const effectivePermissionCount = useMemo(() => {
+    const codes = new Set<string>(selectedRolePermissionSet)
+    for (const [code, state] of Object.entries(selectedPermissionOverrides)) {
+      if (state === "grant") {
+        codes.add(code)
+      } else {
+        codes.delete(code)
+      }
+    }
+    return codes.size
+  }, [selectedPermissionOverrides, selectedRolePermissionSet])
+
+  const updatePermissionOverride = (code: string, nextChecked: boolean) => {
+    const baselineEnabled = selectedRolePermissionSet.has(code)
+    setSelectedPermissionOverrides((previous) => {
+      const next = { ...previous }
+      if (nextChecked === baselineEnabled) {
+        delete next[code]
+      } else {
+        next[code] = nextChecked ? "grant" : "revoke"
+      }
+      return next
+    })
+  }
+
+  const patchUser = async (
+    userId: string,
+    body: { role?: string; isActive?: boolean; customPermissions?: string[]; revokedPermissions?: string[] },
+  ) => {
     setBusyUserId(userId)
     setActionMessage(null)
     try {
@@ -318,16 +525,7 @@ export function UserManagement() {
       }
       // Targeted optimistic update — preserve all existing fields (esp. permissions)
       // and only overwrite the fields we actually changed.
-      setUsers((previous) =>
-        previous.map((user) => {
-          if (user.id !== userId) return user
-          return {
-            ...user,
-            ...(body.role !== undefined ? { roles: [body.role] } : {}),
-            ...(body.isActive !== undefined ? { isActive: body.isActive } : {}),
-          }
-        }),
-      )
+      await loadData()
       setActionMessage("Utilisateur mis à jour.")
       return true
     } catch (updateError) {
@@ -341,15 +539,35 @@ export function UserManagement() {
   const openRoleDialog = (user: AdminUser) => {
     setSelectedUser(user)
     setSelectedRole(normalizeRole(primaryRole(user)))
+    setSelectedPermissionOverrides(buildPermissionOverrides(user))
+    setRolePermissionQuery("")
     setRoleDialogOpen(true)
   }
 
   const saveRole = async () => {
     if (!selectedUser || !selectedRole) return
-    const updated = await patchUser(selectedUser.id, { role: selectedRole })
+    const customPermissions = Object.entries(selectedPermissionOverrides)
+      .filter(([, state]) => state === "grant")
+      .map(([code]) => code)
+      .sort((left, right) => left.localeCompare(right))
+    const revokedPermissions = Object.entries(selectedPermissionOverrides)
+      .filter(([, state]) => state === "revoke")
+      .map(([code]) => code)
+      .sort((left, right) => left.localeCompare(right))
+    const body: { role?: string; customPermissions?: string[]; revokedPermissions?: string[] } = {
+      role: selectedRole,
+    }
+    const hadExistingOverrides =
+      (selectedUser.customPermissions?.length ?? 0) > 0 || (selectedUser.revokedPermissions?.length ?? 0) > 0
+    if (customPermissions.length > 0 || revokedPermissions.length > 0 || hadExistingOverrides) {
+      body.customPermissions = customPermissions
+      body.revokedPermissions = revokedPermissions
+    }
+    const updated = await patchUser(selectedUser.id, body)
     if (updated) {
       setRoleDialogOpen(false)
       setSelectedUser(null)
+      setSelectedPermissionOverrides({})
     }
   }
 
@@ -414,7 +632,7 @@ export function UserManagement() {
   const statsCards = [
     { label: "Total utilisateurs", value: stats.totalUsers, icon: Users, accent: "text-[--orange]", bg: "bg-[--orange-glow]" },
     { label: "Admins", value: stats.admins, icon: Shield, accent: "text-rose-400", bg: "bg-rose-400/10" },
-    { label: "Reviewers", value: stats.reviewers, icon: CheckCircle2, accent: "text-amber-400", bg: "bg-amber-400/10" },
+    { label: "Tech Leads", value: stats.reviewers, icon: CheckCircle2, accent: "text-amber-400", bg: "bg-amber-400/10" },
     { label: "Développeurs", value: stats.developers, icon: UserCog, accent: "text-[#17f0c4]", bg: "bg-[#17f0c4]/10" },
   ]
 
@@ -669,8 +887,18 @@ export function UserManagement() {
       </div>
 
       {/* ── Role Dialog ──────────────────────────────────────────────── */}
-      <Dialog open={roleDialogOpen} onOpenChange={setRoleDialogOpen}>
-        <DialogContent className="sm:max-w-[520px]">
+      <Dialog
+        open={roleDialogOpen}
+        onOpenChange={(open) => {
+          setRoleDialogOpen(open)
+          if (!open) {
+            setSelectedUser(null)
+            setSelectedPermissionOverrides({})
+            setRolePermissionQuery("")
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-[880px]">
           <DialogHeader>
             <DialogTitle>Modifier le rôle</DialogTitle>
             <DialogDescription>
@@ -701,21 +929,140 @@ export function UserManagement() {
               </SelectContent>
             </Select>
 
-            <div className="border border-[--border-card] bg-[--bg-card-inner] p-4">
-              <div className="flex items-center gap-2">
-                <span className={`size-2 ${selectedRoleMeta.indicatorClass}`} />
-                <p className="font-semibold text-foreground">{selectedRoleMeta.label}</p>
-              </div>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedRoleMeta.description}</p>
-              <div className="mt-3 flex flex-wrap gap-1.5">
-                {selectedRoleMeta.chips.map((chip) => (
-                  <span
-                    key={chip}
-                    className="border border-[--border-card] bg-[--bg-card] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,240px)_minmax(0,1fr)]">
+              <div className="space-y-4">
+                <div className="border border-[--border-card] bg-[--bg-card-inner] p-4">
+                  <div className="flex items-center gap-2">
+                    <span className={`size-2 ${selectedRoleMeta.indicatorClass}`} />
+                    <p className="font-semibold text-foreground">{selectedRoleMeta.label}</p>
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{selectedRoleMeta.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-1.5">
+                    {selectedRoleMeta.chips.map((chip) => (
+                      <span
+                        key={chip}
+                        className="border border-[--border-card] bg-[--bg-card] px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-foreground"
+                      >
+                        {chip}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="border border-[--border-card] bg-[--bg-card-inner] p-4">
+                  <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                    Overrides utilisateur
+                  </p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <div className="border border-[--border-card] bg-[--bg-card] px-3 py-2">
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Actives</p>
+                      <p className="mt-1 text-lg font-semibold text-foreground">{effectivePermissionCount}</p>
+                    </div>
+                    <div className="border border-[--border-card] bg-[--bg-card] px-3 py-2">
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Accordees</p>
+                      <p className="mt-1 text-lg font-semibold text-[#17f0c4]">{permissionOverrideStats.granted}</p>
+                    </div>
+                    <div className="border border-[--border-card] bg-[--bg-card] px-3 py-2">
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-foreground">Retirees</p>
+                      <p className="mt-1 text-lg font-semibold text-rose-400">{permissionOverrideStats.revoked}</p>
+                    </div>
+                  </div>
+                  <p className="mt-3 text-sm leading-6 text-muted-foreground">
+                    Le rÃ´le dÃ©finit la base. Les interrupteurs ci-dessous permettent de forcer ON ou OFF par utilisateur.
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3 w-full"
+                    onClick={() => setSelectedPermissionOverrides({})}
+                    disabled={Object.keys(selectedPermissionOverrides).length === 0}
                   >
-                    {chip}
-                  </span>
-                ))}
+                    <RotateCcw className="h-4 w-4" />
+                    RÃ©initialiser les overrides
+                  </Button>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                  <input
+                    value={rolePermissionQuery}
+                    onChange={(event) => setRolePermissionQuery(event.target.value)}
+                    type="search"
+                    placeholder="Rechercher une permission..."
+                    className="h-10 w-full border border-[--border-card] bg-[--bg-card-inner] pl-9 pr-3 text-sm text-foreground outline-none transition-colors focus:border-[--orange] placeholder:text-muted-foreground"
+                  />
+                </div>
+
+                <div className="max-h-[420px] space-y-4 overflow-y-auto pr-1">
+                  {groupedRolePermissions.length === 0 ? (
+                    <div className="border border-[--border-card] bg-[--bg-card-inner] px-4 py-6 text-sm text-muted-foreground">
+                      Aucune permission ne correspond Ã  cette recherche.
+                    </div>
+                  ) : (
+                    groupedRolePermissions.map((group) => (
+                      <div key={group.key} className="border border-[--border-card] bg-[--bg-card-inner]">
+                        <div className="border-b border-[--border-card] px-4 py-3">
+                          <p className="font-mono text-[11px] uppercase tracking-wider text-muted-foreground">
+                            {group.label}
+                          </p>
+                        </div>
+                        <div className="divide-y divide-[--border-card]">
+                          {group.items.map((permission) => {
+                            const baselineEnabled = selectedRolePermissionSet.has(permission.code)
+                            const overrideState = selectedPermissionOverrides[permission.code]
+                            const isEnabled = overrideState ? overrideState === "grant" : baselineEnabled
+
+                            return (
+                              <div key={permission.code} className="flex items-start justify-between gap-4 px-4 py-3">
+                                <div className="min-w-0 space-y-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <code className="border border-[--border-card] bg-[--bg-card] px-2 py-0.5 font-mono text-[11px] text-foreground">
+                                      {permission.code}
+                                    </code>
+                                    <Badge
+                                      variant="outline"
+                                      className={
+                                        overrideState === "grant"
+                                          ? "border-[#17f0c4]/40 bg-[#17f0c4]/10 text-[#17f0c4]"
+                                          : overrideState === "revoke"
+                                            ? "border-rose-500/30 bg-rose-500/10 text-rose-400"
+                                            : baselineEnabled
+                                              ? "border-[--border-card] bg-[--bg-card] text-muted-foreground"
+                                              : "border-[--border-card] bg-transparent text-muted-foreground"
+                                      }
+                                    >
+                                      {overrideState === "grant"
+                                        ? "Force ON"
+                                        : overrideState === "revoke"
+                                          ? "Force OFF"
+                                          : baselineEnabled
+                                            ? "Herite"
+                                            : "Inactif"}
+                                    </Badge>
+                                  </div>
+                                  <p className="text-sm leading-6 text-muted-foreground">{permission.description}</p>
+                                </div>
+
+                                <div className="flex items-center gap-3">
+                                  <span className={`text-xs font-mono ${isEnabled ? "text-[#17f0c4]" : "text-muted-foreground"}`}>
+                                    {isEnabled ? "ON" : "OFF"}
+                                  </span>
+                                  <Switch
+                                    checked={isEnabled}
+                                    onCheckedChange={(checked) => updatePermissionOverride(permission.code, checked)}
+                                    aria-label={`Activer ou desactiver ${permission.code}`}
+                                  />
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             </div>
           </div>

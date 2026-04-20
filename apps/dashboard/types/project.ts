@@ -1,14 +1,14 @@
 /**
  * Project-related type definitions
  * 
- * Simplified role system: admin, reviewer, developer only
+ * Simplified role system: admin, tech_lead, developer only
  */
 
 // Project status types
 export type ProjectStatus = "active" | "maintenance" | "archived"
 
 // Project role types for team members - SIMPLIFIED
-export type ProjectRole = "admin" | "reviewer" | "developer"
+export type ProjectRole = "admin" | "tech_lead" | "developer"
 
 // Language colors for UI consistency
 export const LANGUAGE_COLORS: Record<string, string> = {
@@ -50,10 +50,10 @@ export const ROLE_CONFIG: Record<ProjectRole, { label: string; color: string; de
     color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
     description: "Full project access and management",
   },
-  reviewer: {
-    label: "Reviewer",
+  tech_lead: {
+    label: "Tech Lead",
     color: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400",
-    description: "Can review and approve code changes",
+    description: "Can lead reviews, assignments, and team operations",
   },
   developer: {
     label: "Developer",

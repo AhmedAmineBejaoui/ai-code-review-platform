@@ -6,6 +6,59 @@ import { proxyBackendRequest, requireBackendAuth } from "@/lib/backend-admin"
 type UpdatePayload = {
   role?: string
   isActive?: boolean
+  customPermissions?: string[]
+  revokedPermissions?: string[]
+}
+
+function sanitizeUpdatePayload(payload: UpdatePayload): UpdatePayload {
+  const next: UpdatePayload = {}
+
+  if (payload.role !== undefined) {
+    next.role = payload.role
+  }
+  if (payload.isActive !== undefined) {
+    next.isActive = payload.isActive
+  }
+  if (Array.isArray(payload.customPermissions) && payload.customPermissions.length > 0) {
+    next.customPermissions = payload.customPermissions
+  }
+  if (Array.isArray(payload.revokedPermissions) && payload.revokedPermissions.length > 0) {
+    next.revokedPermissions = payload.revokedPermissions
+  }
+
+  return next
+}
+
+function hasLegacyPayloadMismatch(rawPayload: UpdatePayload, sanitizedPayload: UpdatePayload): boolean {
+  const rawCustomPermissions = Array.isArray(rawPayload.customPermissions) ? rawPayload.customPermissions.length : 0
+  const rawRevokedPermissions = Array.isArray(rawPayload.revokedPermissions) ? rawPayload.revokedPermissions.length : 0
+  const sanitizedCustomPermissions = Array.isArray(sanitizedPayload.customPermissions) ? sanitizedPayload.customPermissions.length : 0
+  const sanitizedRevokedPermissions = Array.isArray(sanitizedPayload.revokedPermissions) ? sanitizedPayload.revokedPermissions.length : 0
+
+  return rawCustomPermissions !== sanitizedCustomPermissions || rawRevokedPermissions !== sanitizedRevokedPermissions
+}
+
+function extractExtraForbiddenFields(payload: Record<string, unknown>): string[] {
+  const detail = payload.detail
+  if (!Array.isArray(detail)) {
+    return []
+  }
+
+  const fields: string[] = []
+  for (const item of detail) {
+    if (!item || typeof item !== "object") {
+      continue
+    }
+    const record = item as { type?: unknown; loc?: unknown }
+    if (record.type !== "extra_forbidden" || !Array.isArray(record.loc) || record.loc.length === 0) {
+      continue
+    }
+    const field = record.loc[record.loc.length - 1]
+    if (typeof field === "string") {
+      fields.push(field)
+    }
+  }
+  return fields
 }
 
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -25,6 +78,8 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   } catch {
     return NextResponse.json({ error: "Invalid JSON payload" }, { status: 400 })
   }
+
+  const sanitizedPayload = sanitizeUpdatePayload(payload)
 
   // If role is being updated, try to sync to Clerk publicMetadata
   // But don't fail if the user doesn't exist in Clerk (might be a local-only user)
@@ -94,7 +149,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
       path: `/v1/admin/users/${encodeURIComponent(userId)}`,
       token: authContext.token,
       userId: authContext.userId,
-      body: payload,
+      body: sanitizedPayload,
     })
     backendStatus = backendResponse.status
     backendBody = (await backendResponse.json().catch(() => ({}))) as Record<string, unknown>
@@ -106,7 +161,29 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
 
   // 4xx from the backend means a real validation problem (e.g. ROLE_NOT_FOUND).
   // Surface the error to the client so the UI doesn't show a false success.
-  if (backendStatus >= 400 && backendStatus < 500) {
+  if (backendStatus >= 400) {
+    const rejectedFields = extractExtraForbiddenFields(backendBody)
+    const incompatibleOverrideFields = rejectedFields.filter(
+      (field) => field === "customPermissions" || field === "revokedPermissions",
+    )
+
+    if (backendStatus === 422 && incompatibleOverrideFields.length > 0) {
+      if (hasLegacyPayloadMismatch(payload, sanitizedPayload)) {
+        console.warn(
+          `[RBAC] Backend is using a legacy schema for user PATCH; ignored empty override arrays for ${userId}.`,
+        )
+      } else {
+        return NextResponse.json(
+          {
+            error:
+              "Le backend actif n'accepte pas encore les overrides de permissions. Redemarre l'API ou applique les migrations puis reessaie.",
+            details: backendBody,
+          },
+          { status: 409 },
+        )
+      }
+    }
+
     console.error(`[RBAC] Backend rejected PATCH for user ${userId} with ${backendStatus}:`, backendBody)
     return NextResponse.json(
       {
@@ -123,16 +200,5 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
   }
 
   // 5xx / network error: Clerk was already updated — return success and log.
-  if (backendStatus >= 500) {
-    console.warn(`[RBAC] Backend returned ${backendStatus} for user ${userId}; Clerk was updated. DB may be out of sync.`)
-  }
-
-  // Return the updated fields so the UI can apply a targeted optimistic update.
-  return NextResponse.json({
-    item: {
-      id: userId,
-      ...(payload.role !== undefined ? { roles: [payload.role] } : {}),
-      ...(payload.isActive !== undefined ? { isActive: payload.isActive } : {}),
-    },
-  })
+  return NextResponse.json(backendBody, { status: backendStatus })
 }

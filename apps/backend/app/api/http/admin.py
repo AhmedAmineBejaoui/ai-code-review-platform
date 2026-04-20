@@ -16,7 +16,7 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, require_permission
+from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, normalize_role_code, require_permission
 from app.data.database import get_engine
 from app.data.repos.analyses_repo import AnalysesRepo
 from app.core.knowledge_base.document_lifecycle import source_observability_summary
@@ -38,9 +38,10 @@ _TOKEN_PREFIX_LEN = 12
 class AdminUserUpdateRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    role: Literal["admin", "reviewer_lead", "reviewer_senior", "reviewer_junior", "reviewer", "developer", "viewer"] | None = None
+    role: Literal["admin", "tech_lead", "reviewer_lead", "reviewer_senior", "reviewer_junior", "reviewer", "developer", "viewer"] | None = None
     isActive: bool | None = None
     customPermissions: list[str] | None = None
+    revokedPermissions: list[str] | None = None
 
 
 class PolicyRepoRule(BaseModel):
@@ -121,6 +122,41 @@ def _as_json_object(value: Any) -> dict[str, Any]:
         if isinstance(parsed, dict):
             return parsed
     return {}
+
+
+def _parse_permission_codes(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value) if value else []
+        except json.JSONDecodeError:
+            parsed = []
+    elif isinstance(value, list):
+        parsed = value
+    else:
+        parsed = []
+
+    normalized: list[str] = []
+    for item in parsed:
+        if not isinstance(item, str):
+            continue
+        code = item.strip()
+        if code and code not in normalized:
+            normalized.append(code)
+    return normalized
+
+
+def _merge_effective_permissions(
+    *,
+    role_permissions: list[str],
+    granted_permissions: list[str],
+    revoked_permissions: list[str],
+) -> list[str]:
+    granted = {code.strip() for code in granted_permissions if isinstance(code, str) and code.strip()}
+    revoked = {code.strip() for code in revoked_permissions if isinstance(code, str) and code.strip()}
+    effective = (set(role_permissions) | granted) - revoked
+    return sorted(effective)
 
 
 def _ensure_admin_access(
@@ -384,7 +420,18 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
             FROM user_roles ur
             JOIN role_permissions rp ON rp.role_id = ur.role_id
             JOIN permissions p ON p.id = rp.permission_id
+            WHERE (rp.enabled IS NULL OR rp.enabled = TRUE)
             ORDER BY ur.user_id ASC, p.code ASC
+            """,
+            optional=True,
+        )
+        user_permission_rows = _query_all(
+            """
+            SELECT up.user_id, p.code, up.is_active
+            FROM user_permissions up
+            JOIN permissions p ON p.id = up.permission_id
+            WHERE up.expires_at IS NULL OR up.expires_at > NOW()
+            ORDER BY up.user_id ASC, p.code ASC
             """,
             optional=True,
         )
@@ -404,7 +451,9 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
                 p.description,
                 COUNT(DISTINCT ur.user_id) AS user_count
             FROM permissions p
-            LEFT JOIN role_permissions rp ON rp.permission_id = p.id
+            LEFT JOIN role_permissions rp
+              ON rp.permission_id = p.id
+             AND (rp.enabled IS NULL OR rp.enabled = TRUE)
             LEFT JOIN user_roles ur ON ur.role_id = rp.role_id
             GROUP BY p.code, p.description
             ORDER BY p.code ASC
@@ -464,6 +513,15 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
         user_id = str(row["user_id"])
         permissions_by_user.setdefault(user_id, []).append(str(row["code"]))
 
+    granted_overrides_by_user: dict[str, list[str]] = {}
+    revoked_overrides_by_user: dict[str, list[str]] = {}
+    for row in user_permission_rows:
+        user_id = str(row["user_id"])
+        if bool(row.get("is_active", False)):
+            granted_overrides_by_user.setdefault(user_id, []).append(str(row["code"]))
+        else:
+            revoked_overrides_by_user.setdefault(user_id, []).append(str(row["code"]))
+
     memberships_by_user: dict[str, list[dict[str, Any]]] = {}
     for row in membership_rows:
         user_id = str(row["user_id"])
@@ -480,22 +538,16 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
     users: list[dict[str, Any]] = []
     for row in users_rows:
         user_id = str(row["id"])
-        
-        # Parse custom_permissions from JSONB
-        custom_perms = row.get("custom_permissions")
-        if custom_perms is None:
-            custom_perms_list = []
-        elif isinstance(custom_perms, str):
-            try:
-                loaded = json.loads(custom_perms) if custom_perms else []
-            except json.JSONDecodeError:
-                loaded = []
-            custom_perms_list = loaded if isinstance(loaded, list) else []
-        elif isinstance(custom_perms, list):
-            custom_perms_list = custom_perms
-        else:
-            custom_perms_list = []
-        
+        legacy_custom_permissions = _parse_permission_codes(row.get("custom_permissions"))
+        granted_permissions = sorted(
+            set(legacy_custom_permissions) | set(granted_overrides_by_user.get(user_id, []))
+        )
+        revoked_permissions = sorted(set(revoked_overrides_by_user.get(user_id, [])))
+        effective_permissions = _merge_effective_permissions(
+            role_permissions=permissions_by_user.get(user_id, []),
+            granted_permissions=granted_permissions,
+            revoked_permissions=revoked_permissions,
+        )
         users.append(
             {
                 "id": user_id,
@@ -504,8 +556,9 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
                 "isActive": bool(row.get("is_active", False)),
                 "createdAt": _to_iso(row.get("created_at")),
                 "roles": sorted(set(roles_by_user.get(user_id, []))),
-                "permissions": sorted(set(permissions_by_user.get(user_id, []))),
-                "customPermissions": custom_perms_list,
+                "permissions": effective_permissions,
+                "customPermissions": granted_permissions,
+                "revokedPermissions": revoked_permissions,
                 "organizationMemberships": memberships_by_user.get(user_id, []),
             }
         )
@@ -527,7 +580,7 @@ def _collect_admin_users(limit: int) -> dict[str, Any]:
             "activeUsers": int((total_row or {}).get("active_users") or 0),
             "inactiveUsers": int((total_row or {}).get("inactive_users") or 0),
             "admins": role_stats.get("admin", 0),
-            "reviewers": role_stats.get("reviewer", 0),
+            "reviewers": role_stats.get("tech_lead", role_stats.get("reviewer", 0)),
             "developers": role_stats.get("developer", 0),
             "viewers": role_stats.get("viewer", 0),
         },
@@ -578,6 +631,7 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
                 JOIN role_permissions rp ON rp.role_id = ur.role_id
                 JOIN permissions p ON p.id = rp.permission_id
                 WHERE ur.user_id = :user_id
+                  AND (rp.enabled IS NULL OR rp.enabled = TRUE)
                 ORDER BY p.code ASC
                 """
             ),
@@ -602,19 +656,49 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
         .mappings()
         .all()
     )
-    
-    # Parse custom_permissions from JSONB
-    import json
-    custom_perms = row.get("custom_permissions")
-    if custom_perms is None:
-        custom_perms_list = []
-    elif isinstance(custom_perms, str):
-        custom_perms_list = json.loads(custom_perms) if custom_perms else []
-    elif isinstance(custom_perms, list):
-        custom_perms_list = custom_perms
-    else:
-        custom_perms_list = []
-    
+    try:
+        user_permission_rows = (
+            conn.execute(
+                text(
+                    """
+                    SELECT p.code, up.is_active
+                    FROM user_permissions up
+                    JOIN permissions p ON p.id = up.permission_id
+                    WHERE up.user_id = :user_id
+                      AND (up.expires_at IS NULL OR up.expires_at > NOW())
+                    ORDER BY p.code ASC
+                    """
+                ),
+                {"user_id": user_id},
+            )
+            .mappings()
+            .all()
+        )
+    except SQLAlchemyError:
+        user_permission_rows = []
+
+    legacy_custom_permissions = _parse_permission_codes(row.get("custom_permissions"))
+    granted_permissions = sorted(
+        set(legacy_custom_permissions)
+        | {
+            str(item["code"])
+            for item in user_permission_rows
+            if bool(item.get("is_active", False))
+        }
+    )
+    revoked_permissions = sorted(
+        {
+            str(item["code"])
+            for item in user_permission_rows
+            if not bool(item.get("is_active", False))
+        }
+    )
+    effective_permissions = _merge_effective_permissions(
+        role_permissions=[str(item["code"]) for item in permission_rows],
+        granted_permissions=granted_permissions,
+        revoked_permissions=revoked_permissions,
+    )
+
     return {
         "id": str(row["id"]),
         "email": str(row["email"]),
@@ -622,8 +706,9 @@ def _fetch_user_by_id(conn: Connection, user_id: str) -> dict[str, Any] | None:
         "isActive": bool(row.get("is_active", False)),
         "createdAt": _to_iso(row.get("created_at")),
         "roles": [str(item["code"]) for item in role_rows],
-        "permissions": [str(item["code"]) for item in permission_rows],
-        "customPermissions": custom_perms_list,
+        "permissions": effective_permissions,
+        "customPermissions": granted_permissions,
+        "revokedPermissions": revoked_permissions,
         "organizationMemberships": [
             {
                 "organizationId": str(item["organization_id"]),
@@ -796,10 +881,11 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
             )
 
         if payload.role is not None:
+            normalized_role = normalize_role_code(payload.role)
             role_row = (
                 conn.execute(
                     text("SELECT id FROM roles WHERE code = :code LIMIT 1"),
-                    {"code": payload.role},
+                    {"code": normalized_role},
                 )
                 .mappings()
                 .first()
@@ -809,7 +895,7 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
                     status_code=400,
                     code="ROLE_NOT_FOUND",
                     message="Role is not defined",
-                    details={"role": payload.role},
+                    details={"role": normalized_role},
                 )
             conn.execute(
                 text(
@@ -836,11 +922,138 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
                 },
             )
 
-        if payload.customPermissions is not None:
-            import json
+        merged_custom_permissions = (
+            _parse_permission_codes(payload.customPermissions)
+            if payload.customPermissions is not None
+            else _parse_permission_codes(existing.get("customPermissions"))
+        )
+        merged_revoked_permissions = (
+            _parse_permission_codes(payload.revokedPermissions)
+            if payload.revokedPermissions is not None
+            else _parse_permission_codes(existing.get("revokedPermissions"))
+        )
+
+        if merged_revoked_permissions:
+            merged_custom_permissions = [
+                code for code in merged_custom_permissions if code not in set(merged_revoked_permissions)
+            ]
+
+        if payload.customPermissions is not None or payload.revokedPermissions is not None:
+            desired_states: dict[str, bool] = {
+                **{code: True for code in merged_custom_permissions},
+                **{code: False for code in merged_revoked_permissions},
+            }
+
+            try:
+                permission_rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT id, code
+                            FROM permissions
+                            """
+                        ),
+                    )
+                    .mappings()
+                    .all()
+                    if desired_states
+                    else []
+                )
+                permission_map = {str(row["code"]): str(row["id"]) for row in permission_rows}
+                unknown_permissions = sorted(set(desired_states) - set(permission_map))
+                if unknown_permissions:
+                    raise ApiError(
+                        status_code=400,
+                        code="PERMISSION_NOT_FOUND",
+                        message="One or more permissions are not defined",
+                        details={"permissions": unknown_permissions},
+                    )
+
+                existing_override_rows = (
+                    conn.execute(
+                        text(
+                            """
+                            SELECT permission_id
+                            FROM user_permissions
+                            WHERE user_id = :user_id
+                            """
+                        ),
+                        {"user_id": user_id},
+                    )
+                    .mappings()
+                    .all()
+                )
+
+                if desired_states:
+                    for code, enabled in desired_states.items():
+                        conn.execute(
+                            text(
+                                """
+                                INSERT INTO user_permissions (
+                                    id,
+                                    user_id,
+                                    permission_id,
+                                    granted_by,
+                                    reason,
+                                    is_active
+                                )
+                                VALUES (
+                                    :id,
+                                    :user_id,
+                                    :permission_id,
+                                    :granted_by,
+                                    :reason,
+                                    :is_active
+                                )
+                                ON CONFLICT (user_id, permission_id) DO UPDATE
+                                SET granted_by = EXCLUDED.granted_by,
+                                    reason = EXCLUDED.reason,
+                                    is_active = EXCLUDED.is_active,
+                                    expires_at = NULL,
+                                    updated_at = NOW()
+                                """
+                            ),
+                            {
+                                "id": f"up_{uuid.uuid4().hex}",
+                                "user_id": user_id,
+                                "permission_id": permission_map[code],
+                                "granted_by": actor_id,
+                                "reason": "admin.user.update",
+                                "is_active": enabled,
+                            },
+                        )
+                if desired_states:
+                    desired_permission_ids = {permission_map[code] for code in desired_states}
+                    for row in existing_override_rows:
+                        permission_id = str(row["permission_id"])
+                        if permission_id not in desired_permission_ids:
+                            conn.execute(
+                                text(
+                                    """
+                                    DELETE FROM user_permissions
+                                    WHERE user_id = :user_id
+                                      AND permission_id = :permission_id
+                                    """
+                                ),
+                                {"user_id": user_id, "permission_id": permission_id},
+                            )
+                else:
+                    conn.execute(
+                        text("DELETE FROM user_permissions WHERE user_id = :user_id"),
+                        {"user_id": user_id},
+                    )
+            except SQLAlchemyError as exc:
+                if merged_revoked_permissions:
+                    raise ApiError(
+                        status_code=500,
+                        code="USER_PERMISSION_OVERRIDES_UNAVAILABLE",
+                        message="User permission overrides are unavailable until the latest backend migrations are applied",
+                        details={"hint": "Run alembic upgrade head", "user_id": user_id},
+                    ) from exc
+
             conn.execute(
                 text("UPDATE users SET custom_permissions = :perms WHERE id = :user_id"),
-                {"perms": json.dumps(payload.customPermissions), "user_id": user_id},
+                {"perms": json.dumps(merged_custom_permissions), "user_id": user_id},
             )
 
         _insert_audit_log(
@@ -852,7 +1065,8 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
             meta={
                 "role": payload.role,
                 "isActive": payload.isActive,
-                "customPermissions": payload.customPermissions,
+                "customPermissions": merged_custom_permissions if (payload.customPermissions is not None or payload.revokedPermissions is not None) else payload.customPermissions,
+                "revokedPermissions": merged_revoked_permissions if (payload.customPermissions is not None or payload.revokedPermissions is not None) else payload.revokedPermissions,
             },
         )
 
@@ -1690,7 +1904,12 @@ async def patch_admin_user(
     user_id: str = Path(min_length=1, max_length=255),
     principal: AuthenticatedPrincipal = Depends(_ensure_admin_access),
 ):
-    if payload.role is None and payload.isActive is None and payload.customPermissions is None:
+    if (
+        payload.role is None
+        and payload.isActive is None
+        and payload.customPermissions is None
+        and payload.revokedPermissions is None
+    ):
         raise ApiError(
             status_code=400,
             code="EMPTY_UPDATE",
