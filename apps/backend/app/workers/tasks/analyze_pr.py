@@ -932,6 +932,28 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         ANALYSIS_DURATION.observe(duration_ms / 1000)
         push_worker_metrics()
 
+        # Publish results to GitHub if enabled
+        if settings.GITHUB_PUBLISH_ENABLED and settings.GITHUB_PUBLISH_ON_ANALYSIS_COMPLETE:
+            try:
+                from app.services.github_publisher import GitHubPublisher
+                
+                publisher = GitHubPublisher()
+                github_result = asyncio.run(
+                    publisher.publish_analysis_to_github(analysis_id=analysis_id)
+                )
+                logger.info(
+                    "GitHub publication for analysis %s: %s",
+                    analysis_id,
+                    github_result.get("status"),
+                )
+            except Exception as exc:
+                logger.warning(
+                    "Failed to publish analysis %s to GitHub: %s",
+                    analysis_id,
+                    exc,
+                    exc_info=True,
+                )
+
         return {"analysis_id": analysis_id, "status": "COMPLETED", "metrics": metrics}
     except Exception:
         duration_ms = int((time.perf_counter() - started_at) * 1000)

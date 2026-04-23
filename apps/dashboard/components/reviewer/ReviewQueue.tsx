@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react"
 import { motion } from "motion/react"
+import { useRouter } from "next/navigation"
 import {
   Search,
   Filter,
@@ -45,6 +46,15 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import Link from "next/link"
 import {
@@ -67,9 +77,11 @@ interface QueueFilters {
 }
 
 export function ReviewQueue() {
+  const router = useRouter()
   const [queueData, setQueueData] = useState<ReviewQueueData>(defaultReviewQueueData)
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("assigned")
   const [filters, setFilters] = useState<QueueFilters>({
     status: "all",
@@ -78,6 +90,13 @@ export function ReviewQueue() {
     sortBy: "due_at",
     sortOrder: "asc",
   })
+
+  // Dialog states
+  const [reassignDialogOpen, setReassignDialogOpen] = useState(false)
+  const [priorityDialogOpen, setPriorityDialogOpen] = useState(false)
+  const [selectedAssignment, setSelectedAssignment] = useState<QueueAssignment | null>(null)
+  const [newReviewerId, setNewReviewerId] = useState("")
+  const [newPriority, setNewPriority] = useState<"low" | "medium" | "high" | "critical">("medium")
 
   // Load queue data on mount
   const loadData = useCallback(async () => {
@@ -169,45 +188,134 @@ export function ReviewQueue() {
 
   const handleClaimReview = async (assignmentId: string) => {
     setActionLoading(assignmentId)
+    setActionError(null)
     try {
       const result = await claimReviewAssignment(assignmentId)
       if (result.success) {
         // Refresh data after claiming
         await loadData()
       } else {
+        setActionError(result.error ?? "Impossible de reclamer cette review.")
         console.error("Failed to claim review:", result.error)
       }
     } catch (error) {
+      setActionError("Erreur reseau lors de la reclamation de la review.")
       console.error("Failed to claim review:", error)
     } finally {
       setActionLoading(null)
     }
   }
 
-  const handleStartReview = async (assignmentId: string, analysisId: string) => {
-    setActionLoading(assignmentId)
+  const buildReviewHref = (analysisId: string, assignmentId?: string) => {
+    const encodedAnalysisId = encodeURIComponent(analysisId)
+    return assignmentId
+      ? `/dashboard/review/${encodedAnalysisId}?assignment=${encodeURIComponent(assignmentId)}`
+      : `/dashboard/review/${encodedAnalysisId}`
+  }
+
+  const handleStartReview = async (item: QueueAssignment) => {
+    setActionLoading(item.id)
+    setActionError(null)
     try {
-      await startReview(assignmentId)
-      // Navigate to review page
-      window.location.href = `/dashboard/review/${analysisId}?assignment=${assignmentId}`
+      const result = await startReview(item.id, item.analysis.id, item.priority)
+      if (!result.success) {
+        setActionError(result.error ?? "Impossible de demarrer cette review.")
+        return
+      }
+      router.push(buildReviewHref(item.analysis.id, result.assignmentId ?? item.id))
     } catch (error) {
+      setActionError("Erreur reseau lors du demarrage de la review.")
       console.error("Failed to start review:", error)
-      // Still navigate even if API fails
-      window.location.href = `/dashboard/review/${analysisId}?assignment=${assignmentId}`
+    } finally {
+      setActionLoading(null)
     }
   }
 
   const handleDeclineReview = async (assignmentId: string) => {
     setActionLoading(assignmentId)
+    setActionError(null)
     try {
       const result = await declineReviewAssignment(assignmentId)
       if (result.success) {
         await loadData()
       } else {
+        setActionError(result.error ?? "Impossible de refuser cette review.")
         console.error("Failed to decline review:", result.error)
       }
     } catch (error) {
+      setActionError("Erreur reseau lors du refus de la review.")
       console.error("Failed to decline review:", error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handleReassignClick = (item: QueueAssignment) => {
+    setSelectedAssignment(item)
+    setNewReviewerId("")
+    setReassignDialogOpen(true)
+  }
+
+  const handleReassign = async () => {
+    if (!selectedAssignment || !newReviewerId.trim()) {
+      setActionError("Veuillez entrer un ID de reviewer valide")
+      return
+    }
+
+    setActionLoading(selectedAssignment.id)
+    setActionError(null)
+    try {
+      const response = await fetch(`/api/dashboard/reviews/assignments/${selectedAssignment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reviewer_id: newReviewerId.trim() }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        setActionError(data.error ?? "Impossible de réassigner cette review.")
+        return
+      }
+
+      setReassignDialogOpen(false)
+      await loadData()
+    } catch (error) {
+      setActionError("Erreur réseau lors de la réassignation.")
+      console.error("Failed to reassign:", error)
+    } finally {
+      setActionLoading(null)
+    }
+  }
+
+  const handlePriorityClick = (item: QueueAssignment) => {
+    setSelectedAssignment(item)
+    setNewPriority(item.priority)
+    setPriorityDialogOpen(true)
+  }
+
+  const handleChangePriority = async () => {
+    if (!selectedAssignment) return
+
+    setActionLoading(selectedAssignment.id)
+    setActionError(null)
+    try {
+      const response = await fetch(`/api/dashboard/reviews/assignments/${selectedAssignment.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: newPriority }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        setActionError(data.error ?? "Impossible de changer la priorité.")
+        return
+      }
+
+      setPriorityDialogOpen(false)
+      await loadData()
+    } catch (error) {
+      setActionError("Erreur réseau lors du changement de priorité.")
+      console.error("Failed to change priority:", error)
     } finally {
       setActionLoading(null)
     }
@@ -242,7 +350,7 @@ export function ReviewQueue() {
   return (
     <div className="space-y-6">
       {/* Error State */}
-      {queueData.error && (
+      {(queueData.error || actionError) && (
         <motion.div
           initial={{ opacity: 0, y: -10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -250,9 +358,16 @@ export function ReviewQueue() {
         >
           <div className="flex items-center gap-3">
             <AlertCircle className="h-5 w-5 text-destructive" />
-            <span className="text-red-200">{queueData.error}</span>
+            <span className="text-red-200">{actionError ?? queueData.error}</span>
           </div>
-          <Button variant="outline" size="sm" onClick={loadData}>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              setActionError(null)
+              loadData()
+            }}
+          >
             <RefreshCw className="h-4 w-4 mr-2" />
             Réessayer
           </Button>
@@ -472,7 +587,7 @@ export function ReviewQueue() {
                         <div className="flex items-center space-x-2">
                           <Button
                             size="sm"
-                            onClick={() => handleStartReview(item.id, item.analysis.id)}
+                            onClick={() => handleStartReview(item)}
                             disabled={actionLoading === item.id}
                           >
                             {actionLoading === item.id ? (
@@ -482,7 +597,7 @@ export function ReviewQueue() {
                             )}
                             Démarrer
                           </Button>
-                          <Link href={`/dashboard/review/${item.analysis.id}`}>
+                          <Link href={buildReviewHref(item.analysis.id, item.id)}>
                             <Button size="sm" variant="outline">
                               <Eye className="h-3 w-3 mr-1" />
                               Voir
@@ -495,8 +610,12 @@ export function ReviewQueue() {
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent>
-                              <DropdownMenuItem>Réassigner</DropdownMenuItem>
-                              <DropdownMenuItem>Changer la priorité</DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handleReassignClick(item)}>
+                                Réassigner
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onClick={() => handlePriorityClick(item)}>
+                                Changer la priorité
+                              </DropdownMenuItem>
                               <DropdownMenuItem 
                                 className="text-destructive"
                                 onClick={() => handleDeclineReview(item.id)}
@@ -614,7 +733,7 @@ export function ReviewQueue() {
                             )}
                             Réclamer
                           </Button>
-                          <Link href={`/dashboard/review/${item.analysis.id}`}>
+                          <Link href={buildReviewHref(item.analysis.id, item.id)}>
                             <Button size="sm" variant="outline">
                               <Eye className="h-3 w-3 mr-1" />
                               Aperçu
@@ -637,6 +756,139 @@ export function ReviewQueue() {
           </Card>
         </TabsContent>
       </Tabs>
+
+      {/* Reassign Dialog */}
+      <Dialog open={reassignDialogOpen} onOpenChange={setReassignDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Réassigner la review</DialogTitle>
+            <DialogDescription>
+              Entrez l'ID du nouveau reviewer pour cette review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="reviewer-id">ID du reviewer</Label>
+              <Input
+                id="reviewer-id"
+                placeholder="user_xxxxx"
+                value={newReviewerId}
+                onChange={(e) => setNewReviewerId(e.target.value)}
+                disabled={actionLoading !== null}
+              />
+            </div>
+            {selectedAssignment && (
+              <div className="text-sm text-muted-foreground">
+                <p><strong>Repository:</strong> {selectedAssignment.analysis.repo}</p>
+                <p><strong>PR:</strong> {selectedAssignment.analysis.pr_label}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setReassignDialogOpen(false)}
+              disabled={actionLoading !== null}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleReassign}
+              disabled={actionLoading !== null || !newReviewerId.trim()}
+            >
+              {actionLoading !== null ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Réassignation...
+                </>
+              ) : (
+                "Réassigner"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Change Priority Dialog */}
+      <Dialog open={priorityDialogOpen} onOpenChange={setPriorityDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Changer la priorité</DialogTitle>
+            <DialogDescription>
+              Sélectionnez la nouvelle priorité pour cette review.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="priority">Priorité</Label>
+              <Select
+                value={newPriority}
+                onValueChange={(value: "low" | "medium" | "high" | "critical") => setNewPriority(value)}
+                disabled={actionLoading !== null}
+              >
+                <SelectTrigger id="priority">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="low">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-green-500" />
+                      Basse
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="medium">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-yellow-500" />
+                      Moyenne
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="high">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-orange-500" />
+                      Haute
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="critical">
+                    <div className="flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-full bg-red-500" />
+                      Critique
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedAssignment && (
+              <div className="text-sm text-muted-foreground">
+                <p><strong>Repository:</strong> {selectedAssignment.analysis.repo}</p>
+                <p><strong>PR:</strong> {selectedAssignment.analysis.pr_label}</p>
+                <p><strong>Priorité actuelle:</strong> {selectedAssignment.priority}</p>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => setPriorityDialogOpen(false)}
+              disabled={actionLoading !== null}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={handleChangePriority}
+              disabled={actionLoading !== null}
+            >
+              {actionLoading !== null ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Modification...
+                </>
+              ) : (
+                "Modifier"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }

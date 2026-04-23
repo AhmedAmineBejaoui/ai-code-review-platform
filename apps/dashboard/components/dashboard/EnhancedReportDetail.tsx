@@ -59,6 +59,9 @@ import {
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/lib/utils"
+import { PublishToGitHubButton } from "./PublishToGitHubButton"
+import { ApplySuggestionButton } from "./ApplySuggestionButton"
+import { CodeEditorPanel } from "./CodeEditorPanel"
 
 // Types
 export type FindingSeverity = "BLOCKER" | "WARN" | "INFO"
@@ -78,6 +81,9 @@ export interface Finding {
   description?: string
   filePath: string
   lineNumber?: number
+  lineStart?: number | null
+  lineEnd?: number | null
+  ruleId: string
   codeSnippet?: string
   cwe?: string
   owasp?: string
@@ -98,6 +104,7 @@ export interface ReportDetails {
   id: string
   repo: string
   prLabel: string
+  prNumber?: number
   commitSha: string
   status: string
   createdAt: string
@@ -309,9 +316,12 @@ function FindingCard({
 
               {finding.suggestion && (
                 <div className="p-3 rounded-lg bg-emerald-500/10 border border-emerald-500/30">
-                  <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600 mb-1">
-                    <Lightbulb className="h-3 w-3" />
-                    Suggestion
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-emerald-600">
+                      <Lightbulb className="h-3 w-3" />
+                      Suggestion
+                    </div>
+                    <ApplySuggestionButton findingId={finding.id} />
                   </div>
                   <p className="text-sm text-emerald-700">
                     {finding.suggestion}
@@ -426,6 +436,8 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState("overview")
+  const [selectedFileForEditor, setSelectedFileForEditor] = useState<string | null>(null)
+  const [editorContent, setEditorContent] = useState<string>("")
 
   // Fetch real analysis data from API
   useEffect(() => {
@@ -448,6 +460,7 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
           id: data.id,
           repo: data.repo,
           prLabel: data.prLabel || "Commit",
+          prNumber: data.prNumber,
           commitSha: data.commitSha || "unknown",
           status: data.status || "completed",
           createdAt: data.createdAt,
@@ -567,6 +580,13 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
         </div>
 
         <div className="flex gap-2">
+          <PublishToGitHubButton
+            analysisId={id as string}
+            repo={report.repo}
+            prNumber={report.prNumber}
+            variant="outline"
+            size="sm"
+          />
           <Button variant="outline" size="sm">
             <RefreshCw className="h-4 w-4 mr-2" />
             Re-run
@@ -638,6 +658,7 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="findings">Findings ({stats?.totalFindings || 0})</TabsTrigger>
           <TabsTrigger value="files">Files ({report.files.length})</TabsTrigger>
+          <TabsTrigger value="editor">Code Editor</TabsTrigger>
           <TabsTrigger value="changes">Changes</TabsTrigger>
         </TabsList>
 
@@ -727,6 +748,97 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
                 />
               ))}
           </ScrollArea>
+        </TabsContent>
+
+        <TabsContent value="editor" className="space-y-4">
+          {selectedFileForEditor ? (
+            <CodeEditorPanel
+              filePath={selectedFileForEditor}
+              initialContent={editorContent}
+              findings={
+                report.files
+                  .find((f) => f.path === selectedFileForEditor)
+                  ?.findings.map((f) => ({
+                    id: f.id,
+                    line_start: f.lineStart,
+                    line_end: f.lineEnd,
+                    severity: f.severity,
+                    message: f.message,
+                    rule_id: f.ruleId,
+                    category: f.category,
+                  })) || []
+              }
+              onSave={async (content) => {
+                // TODO: Implement save functionality (commit to GitHub)
+                console.log("Saving content:", content)
+              }}
+              onContentChange={(content) => {
+                setEditorContent(content)
+              }}
+            />
+          ) : (
+            <Card>
+              <CardContent className="p-8">
+                <div className="text-center space-y-4">
+                  <Code2 className="h-12 w-12 mx-auto text-muted-foreground" />
+                  <div>
+                    <h3 className="text-lg font-semibold mb-2">Sélectionnez un fichier</h3>
+                    <p className="text-sm text-muted-foreground mb-6">
+                      Choisissez un fichier ci-dessous pour le modifier dans l'éditeur
+                    </p>
+                  </div>
+                  <ScrollArea className="h-[400px] rounded-lg border border-border">
+                    <div className="p-4 space-y-2">
+                      {report.files.map((file) => (
+                        <Button
+                          key={file.path}
+                          variant="outline"
+                          className="w-full justify-start gap-2 h-auto py-3"
+                          onClick={async () => {
+                            setSelectedFileForEditor(file.path)
+                            setActiveTab("editor")
+                            
+                            // Fetch file content from GitHub
+                            try {
+                              const response = await fetch(
+                                `/api/dashboard/files/content?repo=${encodeURIComponent(
+                                  report.repo
+                                )}&path=${encodeURIComponent(file.path)}&branch=${encodeURIComponent(
+                                  report.branch
+                                )}`
+                              )
+                              if (response.ok) {
+                                const data = await response.json()
+                                setEditorContent(data.content || "// Unable to fetch file content")
+                              } else {
+                                setEditorContent("// Error fetching file content")
+                              }
+                            } catch (error) {
+                              console.error("Error fetching file:", error)
+                              setEditorContent("// Error fetching file content")
+                            }
+                          }}
+                        >
+                          <FileCode className="h-4 w-4" />
+                          <div className="flex-1 text-left">
+                            <div className="font-medium">{file.path}</div>
+                            <div className="text-xs text-muted-foreground">
+                              {file.findings.length} finding{file.findings.length !== 1 ? "s" : ""}
+                            </div>
+                          </div>
+                          {file.findings.length > 0 && (
+                            <Badge variant="destructive" className="ml-auto">
+                              {file.findings.length}
+                            </Badge>
+                          )}
+                        </Button>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="changes">

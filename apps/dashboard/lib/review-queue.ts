@@ -260,8 +260,11 @@ function normalizeBackendResponse(data: BackendQueueResponse): ReviewQueueData {
     const waitTime = item.wait_time_hours ?? computeWaitTimeHours(item.assigned_at ?? "")
     const dueAt = item.due_at ?? new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
 
+    // Prefer real backend ID, fall back to assignment_id, then synthetic ID
+    const assignmentId = item.id ?? item.assignment_id ?? `asg_${analysis.id ?? item.analysis_id ?? Math.random()}`
+
     return {
-      id: item.id ?? item.assignment_id ?? `asg_${analysis.id ?? Math.random()}`,
+      id: assignmentId,
       analysis: {
         id: analysis.id ?? item.analysis_id ?? "",
         repo: analysis.repo ?? "Unknown",
@@ -374,16 +377,25 @@ export async function claimReviewAssignment(assignmentId: string): Promise<{ suc
   }
 }
 
-export async function startReview(assignmentId: string): Promise<{ success: boolean; error?: string }> {
+export async function startReview(
+  assignmentId: string,
+  analysisId: string,
+  priority?: QueueAssignment["priority"],
+): Promise<{ success: boolean; assignmentId?: string; error?: string }> {
   try {
     const response = await fetch(`/api/dashboard/reviewer/queue/${assignmentId}/start`, {
       method: "POST",
       cache: "no-store",
       headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ analysisId, priority }),
     })
 
     if (response.ok) {
-      return { success: true }
+      const data = await response.json().catch(() => ({}))
+      return {
+        success: true,
+        assignmentId: typeof data.assignmentId === "string" ? data.assignmentId : assignmentId,
+      }
     }
 
     const data = await response.json().catch(() => ({}))

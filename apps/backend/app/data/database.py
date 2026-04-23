@@ -470,6 +470,7 @@ def init_db() -> None:
                 INSERT INTO roles (id, code, label, is_system)
                 VALUES
                     ('role_admin', 'admin', 'Administrator', TRUE),
+                    ('role_tech_lead', 'tech_lead', 'Tech Lead', TRUE),
                     ('role_reviewer', 'reviewer', 'Reviewer', TRUE),
                     ('role_reviewer_lead', 'reviewer_lead', 'Lead Reviewer', TRUE),
                     ('role_reviewer_senior', 'reviewer_senior', 'Senior Reviewer', TRUE),
@@ -502,6 +503,9 @@ def init_db() -> None:
                     ('rp_admin_create', 'role_admin', 'perm_analyses_create'),
                     ('rp_admin_write', 'role_admin', 'perm_analyses_write'),
                     ('rp_admin_secrets', 'role_admin', 'perm_secrets_manage'),
+                    ('rp_tech_lead_read', 'role_tech_lead', 'perm_analyses_read'),
+                    ('rp_tech_lead_create', 'role_tech_lead', 'perm_analyses_create'),
+                    ('rp_tech_lead_write', 'role_tech_lead', 'perm_analyses_write'),
                     ('rp_reviewer_read', 'role_reviewer', 'perm_analyses_read'),
                     ('rp_reviewer_create', 'role_reviewer', 'perm_analyses_create'),
                     ('rp_reviewer_write', 'role_reviewer', 'perm_analyses_write'),

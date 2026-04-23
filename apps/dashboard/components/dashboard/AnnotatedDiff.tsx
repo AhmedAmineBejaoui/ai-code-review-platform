@@ -1188,6 +1188,7 @@ export function AnnotatedDiff() {
                         showMinimap={true}
                         showLineNumbers={true}
                         fontSize={14}
+                        compact={true}
                       />
                     )}
                   </motion.div>

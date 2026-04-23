@@ -19,6 +19,8 @@ class Settings(BaseSettings):
     GITHUB_APP_INSTALLATION_ID: str | None = None
     GITHUB_APP_PRIVATE_KEY_PEM: str | None = None
     GITHUB_API_BASE_URL: str = "https://api.github.com"
+    GITHUB_PUBLISH_ENABLED: bool = True
+    GITHUB_PUBLISH_ON_ANALYSIS_COMPLETE: bool = True
     REDIS_URL: str | None = None
     CELERY_BROKER_URL: str | None = None
     CELERY_RESULT_BACKEND: str | None = None

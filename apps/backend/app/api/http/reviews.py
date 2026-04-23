@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import datetime, timezone, date, timedelta
 from typing import Any, Literal
@@ -10,6 +11,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from sqlalchemy import text
 
 from app.api.middleware.auth import AuthenticatedPrincipal, enforce_permission, get_current_principal, require_permission
+
+logger = logging.getLogger(__name__)
+
+
+def _serialize_datetime_fields(row: dict[str, Any]) -> dict[str, Any]:
+    """Convert datetime objects to ISO format strings for API responses."""
+    result = dict(row)
+    for key, value in result.items():
+        if isinstance(value, datetime):
+            result[key] = value.isoformat()
+    return result
 from app.data.database import get_engine
 from app.data.repos.review_assignments_repo import (
     CreateReviewAssignmentInput,
@@ -145,6 +157,8 @@ class UpdateAssignmentRequest(BaseModel):
     started_at: str | None = None
     completed_at: str | None = None
     declined_reason: str | None = None
+    priority: Literal["low", "medium", "high", "critical"] | None = None
+    reviewer_id: str | None = None
 
 
 class AssignmentResponse(BaseModel):
@@ -295,6 +309,7 @@ async def create_assignment(
 @router.get("/assignments", response_model=list[AssignmentResponse])
 async def list_assignments(
     reviewer_id: str | None = Query(None),
+    analysis_id: str | None = Query(None),
     status_filter: str | None = Query(None, alias="status"),
     limit: int = Query(50, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -309,13 +324,28 @@ async def list_assignments(
 
     repo = ReviewAssignmentsRepo()
 
+    # If both analysis_id and reviewer_id are specified, use the specific finder
+    if analysis_id and reviewer_id:
+        assignment = repo.find_assignment_by_analysis_and_reviewer(analysis_id, reviewer_id, status_filter)
+        return [AssignmentResponse(**_serialize_datetime_fields(dict(assignment)))] if assignment else []
+
+    # If only analysis_id is specified, get all assignments for that analysis
+    if analysis_id:
+        assignments = repo.get_assignments_by_analysis(analysis_id)
+        # Apply status filter if provided
+        if status_filter:
+            assignments = [a for a in assignments if a["status"] == status_filter]
+        # Apply pagination
+        assignments = assignments[offset:offset + limit]
+        return [AssignmentResponse(**_serialize_datetime_fields(dict(assignment))) for assignment in assignments]
+
     if reviewer_id:
         assignments = repo.get_assignments_by_reviewer(reviewer_id, status_filter, limit, offset)
     else:
         # If no reviewer_id specified, show current user's assignments
         assignments = repo.get_assignments_by_reviewer(principal.user_id, status_filter, limit, offset)
 
-    return [AssignmentResponse(**dict(assignment)) for assignment in assignments]
+    return [AssignmentResponse(**_serialize_datetime_fields(dict(assignment))) for assignment in assignments]
 
 
 @router.get("/assignments/{assignment_id}", response_model=AssignmentResponse)
@@ -336,59 +366,71 @@ async def get_assignment(
     else:
         enforce_permission(principal, "assignments.view_own")
 
-    return AssignmentResponse(**dict(assignment))
+    return AssignmentResponse(**_serialize_datetime_fields(dict(assignment)))
 
 
 @router.patch("/assignments/{assignment_id}", response_model=AssignmentResponse)
 async def update_assignment(
     assignment_id: str,
     request: UpdateAssignmentRequest,
-    principal: AuthenticatedPrincipal = Depends(get_current_principal),
+    principal: AuthenticatedPrincipal | None = Depends(get_current_principal),
 ) -> AssignmentResponse:
     """Update assignment status"""
-    repo = ReviewAssignmentsRepo()
-    assignment = repo.get_assignment_by_id(assignment_id)
+    try:
+        if not principal:
+            raise HTTPException(status_code=401, detail="Authentication required")
+        
+        repo = ReviewAssignmentsRepo()
+        assignment = repo.get_assignment_by_id(assignment_id)
 
-    if not assignment:
-        raise HTTPException(status_code=404, detail="Assignment not found")
+        if not assignment:
+            raise HTTPException(status_code=404, detail="Assignment not found")
 
-    # Check permissions - can modify own assignments or all if has permission
-    if assignment["reviewer_id"] != principal.user_id:
-        enforce_permission(principal, "assignments.modify")
-    else:
-        enforce_permission(principal, "assignments.view_own")
+        # Check permissions - can modify own assignments or all if has permission
+        logger.info(f"Assignment reviewer_id: {assignment['reviewer_id']}, principal.user_id: {principal.user_id}")
+        if assignment["reviewer_id"] != principal.user_id:
+            enforce_permission(principal, "assignments.modify")
+        else:
+            enforce_permission(principal, "assignments.view_own")
 
-    update_data = UpdateReviewAssignmentInput(
-        status=request.status,
-        started_at=request.started_at,
-        completed_at=request.completed_at,
-        declined_reason=request.declined_reason,
-    )
+        update_data = UpdateReviewAssignmentInput(
+            status=request.status,
+            started_at=request.started_at,
+            completed_at=request.completed_at,
+            declined_reason=request.declined_reason,
+            priority=request.priority,
+            reviewer_id=request.reviewer_id,
+        )
 
-    success = repo.update_assignment(assignment_id, update_data)
-    if not success:
-        raise HTTPException(status_code=500, detail="Failed to update assignment")
+        success = repo.update_assignment(assignment_id, update_data)
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to update assignment")
 
-    updated_assignment = repo.get_assignment_by_id(assignment_id)
+        updated_assignment = repo.get_assignment_by_id(assignment_id)
 
-    if request.status == "completed":
-        analysis = _get_analysis_context(str(assignment["analysis_id"]))
-        recipient_ids = _resolve_analysis_owner_ids(analysis)
-        assigner_id = assignment.get("assigner_id")
-        if isinstance(assigner_id, str) and assigner_id.strip() and assigner_id not in recipient_ids:
-            recipient_ids.append(assigner_id)
-        if recipient_ids:
-            notification_service = NotificationService()
-            await notification_service.send_review_completed_notification(
-                analysis_id=str(assignment["analysis_id"]),
-                reviewer_id=principal.user_id,
-                decision="completed",
-                summary=None,
-                recipient_ids=recipient_ids,
-                project_id=(analysis or {}).get("project_id"),
-            )
+        if request.status == "completed":
+            analysis = _get_analysis_context(str(assignment["analysis_id"]))
+            recipient_ids = _resolve_analysis_owner_ids(analysis)
+            assigner_id = assignment.get("assigner_id")
+            if isinstance(assigner_id, str) and assigner_id.strip() and assigner_id not in recipient_ids:
+                recipient_ids.append(assigner_id)
+            if recipient_ids:
+                notification_service = NotificationService()
+                await notification_service.send_review_completed_notification(
+                    analysis_id=str(assignment["analysis_id"]),
+                    reviewer_id=principal.user_id,
+                    decision="completed",
+                    summary=None,
+                    recipient_ids=recipient_ids,
+                    project_id=(analysis or {}).get("project_id"),
+                )
 
-    return AssignmentResponse(**dict(updated_assignment))
+        return AssignmentResponse(**_serialize_datetime_fields(dict(updated_assignment)))
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating assignment {assignment_id}: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
 @router.post("/assignments/{assignment_id}/claim", response_model=AssignmentResponse)
@@ -422,7 +464,7 @@ async def claim_assignment(
         raise HTTPException(status_code=500, detail="Failed to claim assignment")
 
     updated_assignment = repo.get_assignment_by_id(assignment_id)
-    return AssignmentResponse(**dict(updated_assignment))
+    return AssignmentResponse(**_serialize_datetime_fields(dict(updated_assignment)))
 
 
 # Comment Endpoints

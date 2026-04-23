@@ -31,7 +31,7 @@ interface PersonalMetrics {
     approvals: number
     warnings: number
     blocks: number
-    findings_identified: number
+    findings_identified?: number
   }
   trends: {
     dates: string[]
@@ -39,7 +39,7 @@ interface PersonalMetrics {
     avg_review_time: number[]
     sla_compliance: number[]
     avg_comments: number[]
-  }
+  } | []
   rankings: {
     reviews_count: number
     quality_score: number
@@ -80,16 +80,21 @@ export default function ReviewerAnalyticsPage() {
 
   const formatTrendData = () => {
     if (!metrics) return []
+    
+    // Handle case where trends is an empty array or doesn't have the expected structure
+    if (!metrics.trends || Array.isArray(metrics.trends) || !metrics.trends.dates || !Array.isArray(metrics.trends.dates)) {
+      return []
+    }
 
     return metrics.trends.dates.map((date, index) => ({
       date: new Date(date).toLocaleDateString("fr-FR", {
         month: "short",
         day: "numeric"
       }),
-      reviews: metrics.trends.reviews_completed[index] || 0,
-      avgTime: metrics.trends.avg_review_time[index] || 0,
-      slaCompliance: metrics.trends.sla_compliance[index] || 0,
-      avgComments: metrics.trends.avg_comments[index] || 0,
+      reviews: metrics.trends.reviews_completed?.[index] || 0,
+      avgTime: metrics.trends.avg_review_time?.[index] || 0,
+      slaCompliance: metrics.trends.sla_compliance?.[index] || 0,
+      avgComments: metrics.trends.avg_comments?.[index] || 0,
     }))
   }
 
@@ -542,7 +547,7 @@ export default function ReviewerAnalyticsPage() {
             )}
             <div className="text-center">
               <div className="text-2xl font-bold text-purple-600 dark:text-purple-400">
-                {metrics.current_period.findings_identified}
+                {metrics.current_period.findings_identified || 0}
               </div>
               <div className="text-sm text-muted-foreground mt-1">Findings Identified</div>
             </div>

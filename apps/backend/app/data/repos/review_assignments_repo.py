@@ -29,6 +29,8 @@ class UpdateReviewAssignmentInput:
     started_at: str | None = None
     completed_at: str | None = None
     declined_reason: str | None = None
+    priority: str | None = None  # 'low', 'medium', 'high', 'critical'
+    reviewer_id: str | None = None
 
 
 class ReviewAssignmentsRepo:
@@ -125,6 +127,34 @@ class ReviewAssignmentsRepo:
             result = conn.execute(query, {"analysis_id": analysis_id})
             return list(result.mappings().all())
 
+    def find_assignment_by_analysis_and_reviewer(
+        self,
+        analysis_id: str,
+        reviewer_id: str,
+        status: str | None = None,
+    ) -> RowMapping | None:
+        """Find assignment for specific analysis and reviewer"""
+        if status:
+            query = text("""
+                SELECT * FROM review_assignments
+                WHERE analysis_id = :analysis_id AND reviewer_id = :reviewer_id AND status = :status
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+            params = {"analysis_id": analysis_id, "reviewer_id": reviewer_id, "status": status}
+        else:
+            query = text("""
+                SELECT * FROM review_assignments
+                WHERE analysis_id = :analysis_id AND reviewer_id = :reviewer_id
+                ORDER BY created_at DESC
+                LIMIT 1
+            """)
+            params = {"analysis_id": analysis_id, "reviewer_id": reviewer_id}
+
+        with self._engine.connect() as conn:
+            result = conn.execute(query, params)
+            return result.mappings().first()
+
     def get_pending_assignments(
         self,
         priority: str | None = None,
@@ -192,6 +222,14 @@ class ReviewAssignmentsRepo:
         if update_data.declined_reason is not None:
             updates.append("declined_reason = :declined_reason")
             params["declined_reason"] = update_data.declined_reason
+
+        if update_data.priority is not None:
+            updates.append("priority = :priority")
+            params["priority"] = update_data.priority
+
+        if update_data.reviewer_id is not None:
+            updates.append("reviewer_id = :reviewer_id")
+            params["reviewer_id"] = update_data.reviewer_id
 
         if not updates:
             return False

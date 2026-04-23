@@ -16,7 +16,13 @@ from sqlalchemy.engine import Connection
 from sqlalchemy.exc import SQLAlchemyError
 
 from app.api.errors import ApiError
-from app.api.middleware.auth import AuthenticatedPrincipal, get_rbac_repo, normalize_role_code, require_permission
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    get_rbac_repo,
+    normalize_role_code,
+    permissions_for_roles,
+    require_permission,
+)
 from app.data.database import get_engine
 from app.data.repos.analyses_repo import AnalysesRepo
 from app.core.knowledge_base.document_lifecycle import source_observability_summary
@@ -33,6 +39,9 @@ _ADMIN_POLICY_REPO_KEY = "__admin_policy__"
 _ADMIN_INTEGRATIONS_REPO_KEY = "__admin_integrations__"
 _ADMIN_CI_TOKEN_REPO_KEY = "__admin_ci_token__"
 _TOKEN_PREFIX_LEN = 12
+_SYSTEM_ROLE_SEEDS: dict[str, tuple[str, str]] = {
+    "tech_lead": ("role_tech_lead", "Tech Lead"),
+}
 
 
 class AdminUserUpdateRequest(BaseModel):
@@ -42,6 +51,46 @@ class AdminUserUpdateRequest(BaseModel):
     isActive: bool | None = None
     customPermissions: list[str] | None = None
     revokedPermissions: list[str] | None = None
+
+
+def _ensure_system_role_seed(conn: Connection, role_code: str) -> None:
+    seed = _SYSTEM_ROLE_SEEDS.get(role_code)
+    if seed is None:
+        return
+
+    role_id, label = seed
+    conn.execute(
+        text(
+            """
+            INSERT INTO roles (id, code, label, is_system)
+            VALUES (:role_id, :code, :label, TRUE)
+            ON CONFLICT (code) DO UPDATE
+            SET label = EXCLUDED.label,
+                is_system = TRUE
+            """
+        ),
+        {"role_id": role_id, "code": role_code, "label": label},
+    )
+
+    for permission_code in permissions_for_roles([role_code]):
+        conn.execute(
+            text(
+                """
+                INSERT INTO role_permissions (id, role_id, permission_id)
+                SELECT :id, roles.id, permissions.id
+                FROM roles
+                CROSS JOIN permissions
+                WHERE roles.code = :role_code
+                  AND permissions.code = :permission_code
+                ON CONFLICT (role_id, permission_id) DO NOTHING
+                """
+            ),
+            {
+                "id": f"rp_{role_code}_{permission_code.replace('.', '_')}",
+                "role_code": role_code,
+                "permission_code": permission_code,
+            },
+        )
 
 
 class PolicyRepoRule(BaseModel):
@@ -882,6 +931,7 @@ def _update_admin_user(user_id: str, payload: AdminUserUpdateRequest, actor_id: 
 
         if payload.role is not None:
             normalized_role = normalize_role_code(payload.role)
+            _ensure_system_role_seed(conn, normalized_role)
             role_row = (
                 conn.execute(
                     text("SELECT id FROM roles WHERE code = :code LIMIT 1"),

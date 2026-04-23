@@ -4,7 +4,7 @@ import { AnimatePresence, motion } from 'framer-motion';
 import { Menu, Moon, Sparkles, Sun } from 'lucide-react';
 import Link from 'next/link';
 import { useEffect, useState } from 'react';
-import { SignedIn, SignedOut, UserButton } from '@clerk/nextjs';
+import { useUser, UserButton } from '@clerk/nextjs';
 import { useTheme } from 'next-themes';
 
 import { Button } from '@/components/ui/button';
@@ -22,6 +22,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mounted, setMounted] = useState(false);
   const { theme, resolvedTheme, setTheme } = useTheme();
+  const { isSignedIn } = useUser();
   const currentTheme = resolvedTheme ?? theme;
   const isDark = currentTheme !== "light";
 
@@ -81,38 +82,41 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                 {isDark ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
               </button>
             )}
-            <SignedOut>
-              <Button
-                asChild
-                variant="ghost"
-                className={cn('rounded-none px-3 text-primary-color hover:bg-card-hover hover:text-primary-color', monoClassName)}
-              >
-                <Link href="/sign-in">Log in</Link>
-              </Button>
-              <Button
-                asChild
-                className={cn(
-                  'h-10 rounded-none border border-orange-accent bg-orange/10 px-5 text-orange shadow-none hover:bg-orange/20',
-                  monoClassName,
-                )}
-              >
-                <Link href="/sign-up">
-                  Get a free trial
-                </Link>
-              </Button>
-            </SignedOut>
-            <SignedIn>
-              <Button
-                asChild
-                className={cn(
-                  'h-10 rounded-none border border-orange-accent bg-orange/10 px-5 text-orange shadow-none hover:bg-orange/20',
-                  monoClassName,
-                )}
-              >
-                <Link href="/dashboard">Open dashboard</Link>
-              </Button>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
+            {!isSignedIn ? (
+              <>
+                <Button
+                  asChild
+                  variant="ghost"
+                  className={cn('rounded-none px-3 text-primary-color hover:bg-card-hover hover:text-primary-color', monoClassName)}
+                >
+                  <Link href="/sign-in">Log in</Link>
+                </Button>
+                <Button
+                  asChild
+                  className={cn(
+                    'h-10 rounded-none border border-orange-accent bg-orange/10 px-5 text-orange shadow-none hover:bg-orange/20',
+                    monoClassName,
+                  )}
+                >
+                  <Link href="/sign-up">
+                    Get a free trial
+                  </Link>
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button
+                  asChild
+                  className={cn(
+                    'h-10 rounded-none border border-orange-accent bg-orange/10 px-5 text-orange shadow-none hover:bg-orange/20',
+                    monoClassName,
+                  )}
+                >
+                  <Link href="/dashboard">Open dashboard</Link>
+                </Button>
+                <UserButton afterSignOutUrl="/" />
+              </>
+            )}
           </div>
 
           <div className="flex items-center gap-2 lg:hidden">
@@ -157,7 +161,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                     <Sparkles className="h-4 w-4 text-muted-color" />
                   </Link>
                 ))}
-                <SignedOut>
+                {!isSignedIn ? (
                   <div className="grid gap-3 pt-2 sm:grid-cols-2">
                     <Button asChild variant="ghost" className="rounded-full border border-graphite-card text-primary-color">
                       <Link href="/sign-in">Log in</Link>
@@ -166,12 +170,11 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                       <Link href="/sign-up">Get Started</Link>
                     </Button>
                   </div>
-                </SignedOut>
-                <SignedIn>
+                ) : (
                   <Button asChild className="w-full rounded-full border border-orange-accent bg-orange/10 text-orange hover:bg-orange/20">
                     <Link href="/dashboard">Open dashboard</Link>
                   </Button>
-                </SignedIn>
+                )}
               </div>
             </motion.div>
           ) : null}

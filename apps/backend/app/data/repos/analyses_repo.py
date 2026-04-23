@@ -457,6 +457,38 @@ class AnalysesRepo:
             return None
         return self._row_to_model(row)
 
+    def update_metadata(
+        self,
+        *,
+        analysis_id: str,
+        metadata: dict[str, Any],
+    ) -> Analysis | None:
+        """Update analysis metadata field."""
+        with self._engine.begin() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        UPDATE analyses
+                        SET metadata = CAST(:metadata AS jsonb),
+                            updated_at = NOW()
+                        WHERE id = :analysis_id
+                        RETURNING *
+                        """
+                    ),
+                    {
+                        "analysis_id": analysis_id,
+                        "metadata": json.dumps(metadata),
+                    },
+                )
+                .mappings()
+                .first()
+            )
+
+        if row is None:
+            return None
+        return self._row_to_model(row)
+
     def list_paginated(self, page: int, size: int) -> tuple[list[Analysis], int]:
         offset = (page - 1) * size
 
@@ -811,6 +843,28 @@ class AnalysesRepo:
             )
 
         return result
+
+    def get_finding_by_id(self, finding_id: str) -> Finding | None:
+        """Get a single finding by its ID."""
+        with self._engine.connect() as conn:
+            row = (
+                conn.execute(
+                    text(
+                        """
+                        SELECT *
+                        FROM findings
+                        WHERE id = :finding_id
+                        """
+                    ),
+                    {"finding_id": finding_id},
+                )
+                .mappings()
+                .first()
+            )
+
+        if row is None:
+            return None
+        return self._row_to_finding(row)
 
     def list_findings_by_analysis(self, analysis_id: str) -> list[Finding]:
         with self._engine.connect() as conn:

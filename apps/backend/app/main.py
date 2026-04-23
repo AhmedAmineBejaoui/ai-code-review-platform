@@ -39,6 +39,7 @@ from app.api.http import (
     role_permissions,
     security,
     statistics,
+    suggestions,
     teams,
     webhook_github,
     integrations,
@@ -214,6 +215,7 @@ app.include_router(integrations.router)
 app.include_router(project_roles.router)
 app.include_router(role_permissions.router)
 app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
+app.include_router(suggestions.router, prefix="/v1")
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
 app.include_router(graphrag_router)

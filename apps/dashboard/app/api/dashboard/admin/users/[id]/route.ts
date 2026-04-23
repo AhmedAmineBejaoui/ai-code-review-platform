@@ -61,6 +61,27 @@ function extractExtraForbiddenFields(payload: Record<string, unknown>): string[]
   return fields
 }
 
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null
+}
+
+function extractBackendErrorMessage(payload: Record<string, unknown>, fallback: string): string {
+  const nestedError = asRecord(payload.error)
+  const candidates = [
+    nestedError?.message,
+    payload.message,
+    typeof payload.error === "string" ? payload.error : undefined,
+  ]
+
+  for (const candidate of candidates) {
+    if (typeof candidate === "string" && candidate.trim().length > 0) {
+      return candidate
+    }
+  }
+
+  return fallback
+}
+
 export async function PATCH(request: Request, context: { params: Promise<{ id: string }> }) {
   const { id: userId } = await context.params
   if (!userId || userId.trim().length === 0) {
@@ -187,12 +208,7 @@ export async function PATCH(request: Request, context: { params: Promise<{ id: s
     console.error(`[RBAC] Backend rejected PATCH for user ${userId} with ${backendStatus}:`, backendBody)
     return NextResponse.json(
       {
-        error:
-          typeof backendBody.message === "string"
-            ? backendBody.message
-            : typeof backendBody.error === "string"
-              ? backendBody.error
-              : "Backend rejected the role update",
+        error: extractBackendErrorMessage(backendBody, "Backend rejected the role update"),
         details: backendBody,
       },
       { status: backendStatus },

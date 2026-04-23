@@ -23,6 +23,12 @@ export function logGitHubError(error: unknown, context: {
   additionalInfo?: Record<string, unknown>
 }) {
   const typedError = error as GitHubError
+  const fallbackMessage =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+      ? error
+      : "Unknown GitHub operation error"
   
   const errorInfo = {
     timestamp: new Date().toISOString(),
@@ -31,12 +37,12 @@ export function logGitHubError(error: unknown, context: {
     filePath: context.filePath,
     branch: context.branch,
     status: typedError.status,
-    message: typedError.message,
+    message: typedError.message || fallbackMessage,
     details: typedError.details || typedError.body,
     ...context.additionalInfo
   }
   
-  console.error("[GitHub Operation Error]", errorInfo)
+  console.warn("[GitHub Operation Error]", errorInfo)
   
   // Enhanced error messages for common issues
   if (typedError.status === 404) {
@@ -51,7 +57,7 @@ export function logGitHubError(error: unknown, context: {
       causes.push("Missing branch information")
     }
     
-    console.error("[GitHub 404 Analysis]", {
+    console.warn("[GitHub 404 Analysis]", {
       possibleCauses: causes,
       troubleshooting: {
         repositoryAccess: "Check if repository exists and is accessible",
@@ -199,10 +205,8 @@ export function showGitHubErrorToast(error: GitHubError, context?: { operation?:
   const message = getReadableErrorMessage(error)
   const title = `GitHub ${context?.operation || 'Operation'} Failed`
   
-  toast({
-    title,
+  toast.error(title, {
     description: message,
-    variant: "destructive",
   })
 }
 

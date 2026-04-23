@@ -1,6 +1,6 @@
 'use client';
 
-import { SignedIn, SignedOut } from '@clerk/nextjs';
+import { useUser } from '@clerk/nextjs';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
 
@@ -111,6 +111,8 @@ const testimonials = [
 ];
 
 export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumLandingPageProps) {
+  const { isSignedIn } = useUser();
+  
   return (
     <main
       id="top"
@@ -346,7 +348,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
 
       <PremiumFooter displayClassName={displayClassName} monoClassName={monoClassName} />
 
-      <SignedOut>
+      {!isSignedIn && (
         <div className="fixed bottom-6 right-6 z-50">
           <Button asChild className="h-12 rounded-none border border-[#ff6a00] bg-[#ff6a00]/10 px-5 text-[#ff6a00] hover:bg-[#ff6a00]/20">
             <Link href="/sign-up">
@@ -355,9 +357,9 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             </Link>
           </Button>
         </div>
-      </SignedOut>
+      )}
 
-      <SignedIn>
+      {isSignedIn && (
         <div className="fixed bottom-6 right-6 z-50">
           <Button asChild className="h-12 rounded-none border border-[#ff6a00] bg-[#ff6a00]/10 px-5 text-[#ff6a00] hover:bg-[#ff6a00]/20">
             <Link href="/dashboard">
@@ -366,7 +368,7 @@ export function PremiumLandingPage({ displayClassName, monoClassName }: PremiumL
             </Link>
           </Button>
         </div>
-      </SignedIn>
+      )}
     </main>
   );
 }

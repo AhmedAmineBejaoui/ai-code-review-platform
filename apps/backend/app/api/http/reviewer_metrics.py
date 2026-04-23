@@ -53,8 +53,15 @@ async def get_personal_metrics(
             "approvals": 0,
             "warnings": 0,
             "blocks": 0,
+            "findings_identified": 0,
         },
-        "trends": [],
+        "trends": {
+            "dates": [],
+            "reviews_completed": [],
+            "avg_review_time": [],
+            "sla_compliance": [],
+            "avg_comments": [],
+        },
         "rankings": {
             "reviews_count": 0,
             "quality_score": 0,

@@ -564,6 +564,7 @@ export async function POST(request: NextRequest) {
 
         const { repository, token: accessToken } = await ensureRepositoryAccess({
           tokenCandidates,
+          installationToken,
           owner,
           repo,
           scope,
@@ -577,7 +578,7 @@ export async function POST(request: NextRequest) {
           repo,
           newBranch,
           baseBranch,
-          token: installationToken ?? accessToken,
+          token: accessToken,
         })
         return NextResponse.json({ ok: true, result }, { status: 201 })
       }

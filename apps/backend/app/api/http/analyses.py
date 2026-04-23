@@ -957,3 +957,84 @@ async def create_analysis_finding(
         _raise_api_error(exc)
 
     return _to_finding_response(finding)
+
+
+class PublishToGitHubRequest(BaseModel):
+    """Request to publish analysis results to GitHub."""
+    force: bool = Field(default=False, description="Force republish even if already published")
+
+
+class PublishToGitHubResponse(BaseModel):
+    """Response from GitHub publication attempt."""
+    status: Literal["published", "already_published", "skipped", "disabled", "failed"]
+    message: str
+    published_at: str | None = None
+    repo: str | None = None
+    pr_number: int | None = None
+    findings_count: int | None = None
+    comment_id: str | None = None
+    error: str | None = None
+
+
+@router.post("/analyses/{analysis_id}/publish-github", response_model=PublishToGitHubResponse, status_code=200)
+async def publish_analysis_to_github(
+    analysis_id: str,
+    payload: PublishToGitHubRequest = PublishToGitHubRequest(),
+    _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
+    service: AnalysisService = Depends(get_analysis_service),
+) -> PublishToGitHubResponse:
+    """
+    Publish analysis results as a GitHub PR comment.
+    
+    This endpoint manually triggers publication to GitHub for a completed analysis.
+    Normally, publication happens automatically after analysis completion if
+    GITHUB_PUBLISH_ON_ANALYSIS_COMPLETE is enabled.
+    
+    Requires:
+    - Analysis must be in COMPLETED status
+    - Analysis must have a pr_number
+    - GITHUB_PUBLISH_ENABLED must be true
+    - GitHub App credentials must be configured
+    
+    Returns:
+    - status: published, already_published, skipped, disabled, or failed
+    - Details about the publication including GitHub PR information
+    """
+    from app.services.github_publisher import GitHubPublisher
+    
+    try:
+        # Verify analysis exists
+        try:
+            analysis = await service.get_analysis(analysis_id)
+        except ServiceError as exc:
+            if exc.code == "not_found":
+                raise ApiError(status_code=404, code="ANALYSIS_NOT_FOUND", message=f"Analysis {analysis_id} not found")
+            raise
+
+        # Publish to GitHub
+        publisher = GitHubPublisher()
+        result = await publisher.publish_analysis_to_github(
+            analysis_id=analysis_id,
+            force=payload.force,
+        )
+
+        return PublishToGitHubResponse(
+            status=result["status"],
+            message=result.get("message", ""),
+            published_at=result.get("published_at"),
+            repo=result.get("repo"),
+            pr_number=result.get("pr_number"),
+            findings_count=result.get("findings_count"),
+            comment_id=result.get("comment_id"),
+        )
+
+    except ValueError as exc:
+        raise ApiError(status_code=400, code="INVALID_REQUEST", message=str(exc))
+    except RuntimeError as exc:
+        raise ApiError(status_code=500, code="GITHUB_PUBLISH_FAILED", message=str(exc))
+    except Exception as exc:
+        raise ApiError(
+            status_code=500,
+            code="INTERNAL_ERROR",
+            message=f"Failed to publish analysis to GitHub: {exc}",
+        )

@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { motion } from "framer-motion"
 import {
   AlertTriangle,
@@ -172,6 +172,7 @@ export default function OrganizationPage() {
   const [inviting, setInviting] = useState(false)
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
+  const inviteDeepLinkHandled = useRef(false)
 
   const linkedCount = useMemo(
     () => organizations.filter((org) => org.syncStatus === "linked").length,
@@ -321,16 +322,7 @@ export default function OrganizationPage() {
     }
   }
 
-  async function openMembersDialog(org: Organization) {
-    setMembersOrg(org)
-    setMembersDialogOpen(true)
-    setInviteEmail("")
-    setInviteError(null)
-    setInviteSuccess(null)
-    await loadMembers(org.id)
-  }
-
-  async function loadMembers(orgId: string) {
+  const loadMembers = useCallback(async (orgId: string) => {
     setMembersLoading(true)
     try {
       const res = await fetch(`/api/dashboard/admin/organizations/${orgId}/members`)
@@ -346,7 +338,16 @@ export default function OrganizationPage() {
     } finally {
       setMembersLoading(false)
     }
-  }
+  }, [])
+
+  const openMembersDialog = useCallback(async (org: Organization) => {
+    setMembersOrg(org)
+    setMembersDialogOpen(true)
+    setInviteEmail("")
+    setInviteError(null)
+    setInviteSuccess(null)
+    await loadMembers(org.id)
+  }, [loadMembers])
 
   async function handleInvite() {
     if (!membersOrg || !inviteEmail.trim()) return
@@ -396,6 +397,33 @@ export default function OrganizationPage() {
       // non-fatal
     }
   }
+
+  useEffect(() => {
+    if (loading || inviteDeepLinkHandled.current) return
+
+    const params = new URLSearchParams(window.location.search)
+    const inviteRequested = params.get("invite") === "1" || params.get("action") === "invite"
+    if (!inviteRequested) return
+
+    inviteDeepLinkHandled.current = true
+
+    if (organizations.length === 0) {
+      setError("Create or import an organization before inviting teammates.")
+      return
+    }
+
+    const requestedGithubOrg = params.get("githubOrg")?.trim().toLowerCase()
+    const targetOrg =
+      (requestedGithubOrg
+        ? organizations.find((org) =>
+            [org.githubOrgLogin, org.slug, org.name]
+              .filter(Boolean)
+              .some((value) => value?.trim().toLowerCase() === requestedGithubOrg),
+          )
+        : null) ?? organizations[0]
+
+    void openMembersDialog(targetOrg)
+  }, [loading, openMembersDialog, organizations])
 
   function openLinkGithubDialog(org: Organization) {
     setEditingOrg(org)

@@ -172,6 +172,20 @@ export function CodeEditor({
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
   const editorRef = useRef<unknown>(null)
   const lastExternalSaveTrigger = useRef<number | undefined>(saveTrigger)
+  const mountedRef = useRef(false)
+  const resetStatusTimerRef = useRef<number | null>(null)
+
+  useEffect(() => {
+    mountedRef.current = true
+
+    return () => {
+      mountedRef.current = false
+      if (resetStatusTimerRef.current) {
+        clearTimeout(resetStatusTimerRef.current)
+        resetStatusTimerRef.current = null
+      }
+    }
+  }, [])
 
   useEffect(() => {
     setEffectiveBranch(branch)
@@ -366,6 +380,7 @@ export function CodeEditor({
       })
 
       if (res.status === 409) {
+        if (!mountedRef.current) return
         setStatus("conflict")
         setStatusMessage(
           "Merge conflict detected. The file was modified on GitHub. Please refresh and merge your changes.",
@@ -374,6 +389,7 @@ export function CodeEditor({
       }
 
       if (!res.ok) throw new Error(extractApiErrorMessage(data, "Failed to save"))
+      if (!mountedRef.current) return
 
       setOriginalContent(content)
       setIsDirty(false)
@@ -382,10 +398,17 @@ export function CodeEditor({
       setCommitMessage("")
       onSaved?.()
 
-      window.setTimeout(() => {
+      if (resetStatusTimerRef.current) {
+        clearTimeout(resetStatusTimerRef.current)
+      }
+      resetStatusTimerRef.current = window.setTimeout(() => {
+        if (!mountedRef.current) return
         setStatus((current) => (current === "saved" ? "idle" : current))
+        resetStatusTimerRef.current = null
       }, 3000)
     } catch (err) {
+      if (!mountedRef.current) return
+
       // Enhanced error logging with context
       logGitHubError(err, {
         operation: "commit_file",
@@ -528,6 +551,8 @@ export function CodeEditor({
         throw new Error(extractApiErrorMessage(data, "AI fix failed"))
       }
 
+      if (!mountedRef.current) return
+
       if (data.fixedContent && data.fixedContent !== content) {
         setAiSuggestion(data.fixedContent)
         setContent(data.fixedContent)
@@ -538,9 +563,17 @@ export function CodeEditor({
       } else {
         setStatus("idle")
         setStatusMessage("No changes suggested by AI")
-        window.setTimeout(() => setStatusMessage(""), 3000)
+        if (resetStatusTimerRef.current) {
+          clearTimeout(resetStatusTimerRef.current)
+        }
+        resetStatusTimerRef.current = window.setTimeout(() => {
+          if (!mountedRef.current) return
+          setStatusMessage("")
+          resetStatusTimerRef.current = null
+        }, 3000)
       }
     } catch (err) {
+      if (!mountedRef.current) return
       setStatus("error")
       setStatusMessage(
         err instanceof Error ? err.message : "AI fix failed",

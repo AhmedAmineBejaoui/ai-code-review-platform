@@ -111,6 +111,7 @@ interface EnhancedDiffEditorProps {
   showMinimap?: boolean
   showLineNumbers?: boolean
   fontSize?: number
+  compact?: boolean
 }
 
 type EditorStatus = "idle" | "loading" | "saving" | "saved" | "error" | "conflict" | "ai-fixing" | "ai-analyzing" | "quantum-processing" | "syncing"
@@ -600,6 +601,7 @@ export function EnhancedFuturisticDiffEditor({
   showMinimap = true,
   showLineNumbers = true,
   fontSize = 14,
+  compact = false,
 }: EnhancedDiffEditorProps) {
   const [status, setStatus] = useState<EditorStatus>("idle")
   const [progress, setProgress] = useState<number>(0)
@@ -889,8 +891,9 @@ export function EnhancedFuturisticDiffEditor({
   }, [settings.enableCollaboration])
 
   return (
-    <div className={`flex flex-col h-full space-y-4 ${isFullscreen ? 'fixed inset-0 z-50 bg-background p-4' : ''} neural-bg`}>
+    <div className={`flex flex-col h-full ${compact ? '' : 'space-y-4'} ${isFullscreen ? 'fixed inset-0 z-50 bg-background p-4' : ''} neural-bg`}>
       {/* Enhanced Header with Advanced Controls */}
+      {!compact && (
       <div className="flex items-center justify-between p-4 bg-black/30 rounded-lg border border-white/10 backdrop-blur-sm quantum-border">
         <div className="flex items-center space-x-6">
           {/* File Info */}
@@ -1039,9 +1042,10 @@ export function EnhancedFuturisticDiffEditor({
           </div>
         </div>
       </div>
+      )}
 
       {/* Main Editor Area with Enhanced Layout */}
-      <div className="flex-1 flex space-x-4">
+      <div className={`flex-1 flex ${compact ? '' : 'space-x-4'}`}>
         <div className="flex-1">
           <QuantumGlowBorder glowColor="cyan" className="h-full" animate={true}>
             <div className="h-full rounded-lg overflow-hidden relative">
@@ -1101,6 +1105,7 @@ export function EnhancedFuturisticDiffEditor({
         </div>
 
         {/* Advanced AI Suggestions Panel */}
+        {!compact && (
         <AnimatePresence>
           {isAiPanelOpen && (
             <motion.div
@@ -1119,6 +1124,7 @@ export function EnhancedFuturisticDiffEditor({
             </motion.div>
           )}
         </AnimatePresence>
+        )}
       </div>
 
       {/* Enhanced Footer with Real-time Status */}

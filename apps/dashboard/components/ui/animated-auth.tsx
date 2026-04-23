@@ -16,7 +16,7 @@ import {
   ArrowRight,
   Loader2,
   Github,
-  Chrome,
+  Circle,
   Sparkles,
   Shield,
   Zap,
@@ -324,7 +324,7 @@ export function AnimatedAuth({
             <>
               <div className="flex gap-3 mb-6">
                 <SocialButton
-                  icon={<Chrome className="h-4 w-4" />}
+                  icon={<Circle className="h-4 w-4 fill-current" />}
                   label="Google"
                   onClick={onGoogleAuth}
                 />

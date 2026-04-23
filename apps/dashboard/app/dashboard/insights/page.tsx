@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useRef } from "react"
+import Link from "next/link"
 import {
   BarChart,
   Bar,
@@ -313,6 +314,10 @@ export default function InsightsPage() {
   }
 
   const timeRangeLabel = TIME_RANGES.find((t) => t.value === timeRange)?.label ?? "Last 4 weeks"
+  const primaryRepoOwner = selectedRepos[0]?.split("/")[0]?.trim()
+  const inviteTeammatesHref = `/dashboard/admin/organization?invite=1${
+    primaryRepoOwner ? `&githubOrg=${encodeURIComponent(primaryRepoOwner)}` : ""
+  }`
 
   // ── Empty state (no repos) ──────────────────────────────────────────────
   if (!selectedRepos.length) {
@@ -465,8 +470,10 @@ export default function InsightsPage() {
                 </span>
               </div>
               <div className="flex items-center gap-2 shrink-0">
-                <Button size="sm" variant="outline" className="h-7 text-xs gap-1">
-                  <UserPlus className="h-3 w-3" /> Invite more teammates
+                <Button asChild size="sm" variant="outline" className="h-7 text-xs gap-1">
+                  <Link href={inviteTeammatesHref}>
+                    <UserPlus className="h-3 w-3" /> Invite more teammates
+                  </Link>
                 </Button>
                 <Button size="sm" variant="ghost" className="h-7 text-xs">
                   <ExternalLink className="h-3 w-3 mr-1" /> Learn more
@@ -668,9 +675,11 @@ export default function InsightsPage() {
                   </DropdownMenuContent>
                 </DropdownMenu>
 
-                <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5">
-                  <UserPlus className="h-3 w-3" />
-                  Invite teammates
+                <Button asChild variant="outline" size="sm" className="h-8 text-xs gap-1.5">
+                  <Link href={inviteTeammatesHref}>
+                    <UserPlus className="h-3 w-3" />
+                    Invite teammates
+                  </Link>
                 </Button>
                 <Button variant="outline" size="sm" className="h-8 text-xs gap-1.5" onClick={downloadCSV}>
                   <Download className="h-3 w-3" />
