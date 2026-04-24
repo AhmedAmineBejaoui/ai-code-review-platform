@@ -13,7 +13,7 @@ from enum import Enum
 from typing import TYPE_CHECKING, Any, Sequence
 
 if TYPE_CHECKING:
-    from app.integrations.vector_store.qdrant_client import QdrantClient
+    from app.integrations.graph_database.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
 
@@ -147,10 +147,10 @@ class BaseRAGAgent(ABC):
     def __init__(
         self,
         *,
-        qdrant_client: QdrantClient | None = None,
+        neo4j_client: Neo4jClient | None = None,
         llm_client: object | None = None,  # LLM integration
     ):
-        self.qdrant_client = qdrant_client
+        self.neo4j_client = neo4j_client
         self.llm_client = llm_client
         self._enabled = True
 

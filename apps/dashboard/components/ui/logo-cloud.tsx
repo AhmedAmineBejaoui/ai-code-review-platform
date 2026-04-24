@@ -6,15 +6,11 @@ import { cn } from '@/lib/utils';
 import { InfiniteSlider } from './infinite-slider';
 import { ProgressiveBlur } from './progressive-blur';
 import { 
-  Github, 
   Chrome, 
-  Facebook, 
-  Twitter, 
-  Linkedin,
-  Slack,
   Trello,
   Figma,
 } from 'lucide-react';
+import { Github, Linkedin, Twitter, Slack, Facebook } from '@/components/ui/social-icons';
 
 // ============================================================================
 // TYPES

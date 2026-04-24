@@ -1,15 +1,149 @@
+"""
+Provider-Agnostic LLM Layer
+
+Supports: Ollama (local dev) | Anthropic Claude (prod) | OpenAI
+
+Selection via settings.LLM_PROVIDER: "ollama" | "anthropic" | "openai"
+
+All providers implement the same generate() contract:
+    generate(prompt: str) -> LLMResponse
+
+RagGraphLLMService uses this internally — callers don't need to know
+which provider is active.
+"""
 from __future__ import annotations
 
 import asyncio
+import logging
+from dataclasses import dataclass
 from typing import Literal
 
 from pydantic import BaseModel, Field, ValidationError, constr
 
 from analysis.langGraph.models import DiffCodeFragment, LLMGeneratedFinding, LLMOutput, RetrievalResult
 from app.core.langchain_runtime.output_parser import parse_pydantic_with_repair
-from app.integrations.llm_providers.ollama_client import OllamaClient
 from app.settings import settings
 
+logger = logging.getLogger(__name__)
+
+
+# ── LLM Response contract ─────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class LLMResponse:
+    text: str
+    provider: str
+    model: str
+    input_tokens: int | None = None
+    output_tokens: int | None = None
+
+
+# ── Base provider interface ───────────────────────────────────────────────────
+
+class BaseLLMProvider:
+    def generate(self, prompt: str) -> LLMResponse:
+        raise NotImplementedError
+
+
+# ── Ollama provider ───────────────────────────────────────────────────────────
+
+class OllamaProvider(BaseLLMProvider):
+    def __init__(self) -> None:
+        from app.integrations.llm_providers.ollama_client import OllamaClient
+        self._client = OllamaClient(
+            base_url=settings.OLLAMA_BASE_URL,
+            model=settings.OLLAMA_MODEL,
+            timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
+        )
+
+    def generate(self, prompt: str) -> LLMResponse:
+        resp = self._client.generate(prompt)
+        return LLMResponse(
+            text=resp.text,
+            provider="ollama",
+            model=settings.OLLAMA_MODEL,
+        )
+
+
+# ── Anthropic Claude provider ─────────────────────────────────────────────────
+
+class AnthropicProvider(BaseLLMProvider):
+    def __init__(self) -> None:
+        import anthropic
+        self._client = anthropic.Anthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+    def generate(self, prompt: str) -> LLMResponse:
+        import anthropic
+        message = self._client.messages.create(
+            model=settings.ANTHROPIC_MODEL,
+            max_tokens=settings.ANTHROPIC_MAX_TOKENS,
+            temperature=settings.ANTHROPIC_TEMPERATURE,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = ""
+        for block in message.content:
+            if hasattr(block, "text"):
+                text += block.text
+        return LLMResponse(
+            text=text,
+            provider="anthropic",
+            model=settings.ANTHROPIC_MODEL,
+            input_tokens=message.usage.input_tokens if message.usage else None,
+            output_tokens=message.usage.output_tokens if message.usage else None,
+        )
+
+
+# ── OpenAI provider ───────────────────────────────────────────────────────────
+
+class OpenAIProvider(BaseLLMProvider):
+    def __init__(self) -> None:
+        import openai
+        self._client = openai.OpenAI(api_key=settings.OPENAI_API_KEY)
+
+    def generate(self, prompt: str) -> LLMResponse:
+        response = self._client.chat.completions.create(
+            model=settings.OPENAI_MODEL,
+            max_tokens=settings.OPENAI_MAX_TOKENS,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = response.choices[0].message.content or ""
+        usage = response.usage
+        return LLMResponse(
+            text=text,
+            provider="openai",
+            model=settings.OPENAI_MODEL,
+            input_tokens=usage.prompt_tokens if usage else None,
+            output_tokens=usage.completion_tokens if usage else None,
+        )
+
+
+# ── Provider factory ──────────────────────────────────────────────────────────
+
+_PROVIDER_CACHE: BaseLLMProvider | None = None
+
+
+def get_llm_provider() -> BaseLLMProvider:
+    global _PROVIDER_CACHE  # noqa: PLW0603
+    if _PROVIDER_CACHE is not None:
+        return _PROVIDER_CACHE
+
+    provider_name = settings.LLM_PROVIDER.lower()
+    try:
+        if provider_name == "anthropic":
+            _PROVIDER_CACHE = AnthropicProvider()
+        elif provider_name == "openai":
+            _PROVIDER_CACHE = OpenAIProvider()
+        else:
+            _PROVIDER_CACHE = OllamaProvider()
+        logger.info("LLM provider initialized: %s", provider_name)
+    except Exception as exc:
+        logger.warning("Failed to init LLM provider '%s': %s — falling back to Ollama", provider_name, exc)
+        _PROVIDER_CACHE = OllamaProvider()
+
+    return _PROVIDER_CACHE
+
+
+# ── Output schemas ────────────────────────────────────────────────────────────
 
 class _LLMFindingPayload(BaseModel):
     severity: Literal["INFO", "WARN", "BLOCKER"] = "WARN"
@@ -21,6 +155,8 @@ class _LLMFindingPayload(BaseModel):
     line_start: int | None = Field(default=None, ge=1)
     line_end: int | None = Field(default=None, ge=1)
     references: list[constr(min_length=2, max_length=300)] = Field(default_factory=list, max_length=8)
+    auto_fix: str | None = Field(default=None, max_length=1000)
+    rule_ref: str | None = Field(default=None, max_length=200)
 
 
 class _LLMStrictOutput(BaseModel):
@@ -28,15 +164,17 @@ class _LLMStrictOutput(BaseModel):
     findings: list[_LLMFindingPayload] = Field(default_factory=list, max_length=12)
 
 
-class RagGraphLLMService:
-    """LLM generation with strict JSON contract and safe fallback modes."""
+# ── Main LLM Service ──────────────────────────────────────────────────────────
 
-    def __init__(self, llm_client: OllamaClient | None = None) -> None:
-        self._llm_client = llm_client or OllamaClient(
-            base_url=settings.OLLAMA_BASE_URL,
-            model=settings.OLLAMA_MODEL,
-            timeout_s=settings.OLLAMA_TIMEOUT_SECONDS,
-        )
+class RagGraphLLMService:
+    """
+    LLM generation with strict JSON contract.
+    Provider is selected from settings.LLM_PROVIDER.
+    KB rules referenced in retrieval are injected as priority context.
+    """
+
+    def __init__(self, llm_provider: BaseLLMProvider | None = None) -> None:
+        self._provider = llm_provider or get_llm_provider()
 
     async def generate(
         self,
@@ -65,15 +203,9 @@ class RagGraphLLMService:
         )
 
         try:
-            response = await asyncio.to_thread(self._llm_client.generate, prompt)
+            response = await asyncio.to_thread(self._provider.generate, prompt)
         except Exception as exc:
-            return LLMOutput(
-                status="unavailable",
-                summary=None,
-                findings=[],
-                fallback_reason=str(exc),
-                prompt=prompt,
-            )
+            return LLMOutput(status="unavailable", summary=None, findings=[], fallback_reason=str(exc), prompt=prompt)
 
         try:
             parsed = parse_pydantic_with_repair(
@@ -83,28 +215,14 @@ class RagGraphLLMService:
                     '{"summary":"string|null","findings":[{"severity":"WARN","category":"quality",'
                     '"message":"string","suggestion":"string|null","confidence":0.75,'
                     '"file_path":"src/file.py","line_start":1,"line_end":1,'
-                    '"references":["path:line"]}]}'
+                    '"references":["path:line"],"auto_fix":"string|null","rule_ref":"string|null"}]}'
                 ),
-                llm_client=self._llm_client,
+                llm_client=None,
             )
         except ValidationError as exc:
-            return LLMOutput(
-                status="failed",
-                summary=None,
-                findings=[],
-                fallback_reason=str(exc),
-                prompt=prompt,
-                raw_response=response.text,
-            )
+            return LLMOutput(status="failed", summary=None, findings=[], fallback_reason=str(exc), prompt=prompt, raw_response=response.text)
         except Exception as exc:
-            return LLMOutput(
-                status="failed",
-                summary=None,
-                findings=[],
-                fallback_reason=str(exc),
-                prompt=prompt,
-                raw_response=response.text,
-            )
+            return LLMOutput(status="failed", summary=None, findings=[], fallback_reason=str(exc), prompt=prompt, raw_response=response.text)
 
         return LLMOutput(
             status="completed",
@@ -121,7 +239,7 @@ class RagGraphLLMService:
         changed_files: list[str],
         max_findings: int,
     ) -> list[LLMGeneratedFinding]:
-        changed_paths = {item.strip() for item in changed_files if item.strip()}
+        changed_paths = {f.strip() for f in changed_files if f.strip()}
         output: list[LLMGeneratedFinding] = []
         seen: set[tuple[str | None, int | None, str]] = set()
 
@@ -138,26 +256,26 @@ class RagGraphLLMService:
             if line_start and line_end and line_end < line_start:
                 line_end = line_start
 
-            normalized_message = " ".join(finding.message.split()).strip()
-            dedupe_key = (file_path, line_start, normalized_message.lower())
-            if dedupe_key in seen:
+            msg = " ".join(finding.message.split()).strip()
+            key = (file_path, line_start, msg.lower())
+            if key in seen:
                 continue
-            seen.add(dedupe_key)
+            seen.add(key)
 
             suggestion = finding.suggestion.strip() if isinstance(finding.suggestion, str) and finding.suggestion.strip() else None
-            output.append(
-                LLMGeneratedFinding(
-                    severity=finding.severity,
-                    category=finding.category.strip().lower(),
-                    message=normalized_message,
-                    suggestion=suggestion,
-                    confidence=float(finding.confidence),
-                    file_path=file_path,
-                    line_start=line_start,
-                    line_end=line_end,
-                    references=tuple(item.strip() for item in finding.references if item.strip()),
-                )
-            )
+            auto_fix = finding.auto_fix.strip() if isinstance(finding.auto_fix, str) and finding.auto_fix.strip() else None
+            output.append(LLMGeneratedFinding(
+                severity=finding.severity,
+                category=finding.category.strip().lower(),
+                message=msg,
+                suggestion=suggestion,
+                confidence=float(finding.confidence),
+                file_path=file_path,
+                line_start=line_start,
+                line_end=line_end,
+                references=tuple(r.strip() for r in finding.references if r.strip()),
+                auto_fix=auto_fix,
+            ))
             if len(output) >= max_findings:
                 break
         return output
@@ -173,39 +291,53 @@ class RagGraphLLMService:
         changed_files: list[str],
         max_findings: int,
     ) -> str:
-        changed_files_block = "\n".join(f"- {item}" for item in changed_files[:60]) or "- none"
+        changed_files_block = "\n".join(f"- {f}" for f in changed_files[:60]) or "- none"
         fragments_block = "\n".join(
-            f"- {item.file_path} | lang={item.language} | module={item.module} | class={item.class_name} | function={item.function_name}"
-            for item in fragments[:30]
+            f"- {f.file_path} | lang={f.language} | module={f.module} | class={f.class_name} | function={f.function_name}"
+            for f in fragments[:30]
         ) or "- none"
-        context_block = "\n\n".join(
-            f"[{ref.path}] ({ref.source}) score={ref.score:.3f}\n{ref.content[:1200]}"
-            for ref in retrieval.references[:12]
-        )
+
+        # Separate KB content (rules/docs) from code context for ordering
+        kb_refs = [r for r in retrieval.references[:16] if r.source_type == "knowledge_base"]
+        code_refs = [r for r in retrieval.references[:16] if r.source_type != "knowledge_base"]
+
+        kb_block = "\n\n".join(
+            f"[RULE/DOC: {r.symbol_name or r.path}]\n{r.content[:800]}"
+            for r in kb_refs[:6]
+        ) or "None"
+
+        code_block = "\n\n".join(
+            f"[{r.path}:{r.line_start or '?'}] score={r.score:.2f}\n{r.content[:1000]}"
+            for r in code_refs[:8]
+        ) or "None"
 
         return f"""[SYSTEM]
-Tu es un moteur d'analyse de code strictement ancre dans le contexte fourni.
-Interdictions:
-- Pas d'hallucination.
-- Pas de chemins de fichiers inventes.
-- Pas de texte hors JSON.
+You are a strict code review engine grounded ONLY in the provided context.
+Rules:
+- NO hallucination. NO invented file paths.
+- KB rules take priority over code context.
+- Output ONLY valid JSON — no text outside JSON.
+- Every finding must be traceable to a file+line or a KB rule reference.
 
 [USER]
 Repository: {repo_id}
-PR Number: {pr_number if pr_number is not None else "N/A"}
+PR: {pr_number if pr_number is not None else "N/A"}
 Changed files:
 {changed_files_block}
 
 Diff fragments:
 {fragments_block}
 
-Diff raw excerpt:
-{diff_text[:8000]}
+Diff (excerpt):
+{diff_text[:6000]}
 
-RAG context:
-{context_block[:12000]}
+Knowledge Base Rules / Docs (HIGH PRIORITY):
+{kb_block[:4000]}
 
-Retourne UNIQUEMENT un JSON valide au format:
+Repository Code Context:
+{code_block[:6000]}
+
+Return ONLY valid JSON:
 {{
   "summary": "string|null",
   "findings": [
@@ -218,22 +350,26 @@ Retourne UNIQUEMENT un JSON valide au format:
       "file_path": "string|null",
       "line_start": 1,
       "line_end": 1,
-      "references": ["string"]
+      "references": ["string"],
+      "auto_fix": "string|null",
+      "rule_ref": "string|null"
     }}
   ]
 }}
 
-Contraintes:
+Constraints:
 - Maximum {max_findings} findings.
-- Si aucun probleme solide: {{"summary": null, "findings": []}}.
-- Chaque finding doit etre justifie par le contexte RAG ou le diff.
+- If no solid issues: {{"summary": null, "findings": []}}.
+- Each finding must cite the diff, code context, or a KB rule.
 """.strip()
 
 
-class LLMService(RagGraphLLMService):
-    """Backward-compatible alias."""
+# ── Backward-compat alias ─────────────────────────────────────────────────────
 
-    async def generate(
+class LLMService(RagGraphLLMService):
+    """Backward-compatible alias with old generate() signature."""
+
+    async def generate(  # type: ignore[override]
         self,
         *,
         repo: str,
@@ -253,7 +389,8 @@ class LLMService(RagGraphLLMService):
             retrieval_mode="legacy",
             retrieval_trace={},
         )
-        output = await super().generate(
+        output = await RagGraphLLMService.generate(
+            self,
             repo_id=repo,
             pr_number=pr_number,
             diff_text=diff_redacted,

@@ -15,7 +15,7 @@ from app.core.project_comprehension.service import ProjectComprehensionService
 from app.core.summarization import SummaryService
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
@@ -84,11 +84,11 @@ def run_document_maintenance(
 
 async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: str) -> dict[str, Any]:
     repo_path = repo_path.strip('"')
-    qdrant_client = QdrantClient()
+    neo4j_client = get_neo4j_client()
 
     if Path(repo_path).is_file():
         # Treat as document ingestion
-        kb_service = KnowledgeBaseIngestionService(vector_store=qdrant_client)
+        kb_service = KnowledgeBaseIngestionService(neo4j_client=neo4j_client)
         result = await kb_service.ingest_document(
             title=repo_id,
             path_or_url=repo_path,
@@ -105,13 +105,13 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
         }
 
     # Repo onboarding
-    ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    rag_engine = build_graph_rag_engine(vector_store=qdrant_client)
+    ingestor = RepoContextIngestor(neo4j_client=neo4j_client)
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
 
     index_result = await ingestor.onboard_repo(repo_id=repo_id, repo_path=repo_path, source=source, force_full=True)
 
     # Run project comprehension analysis
-    comprehension_service = ProjectComprehensionService(qdrant_client=qdrant_client)
+    comprehension_service = ProjectComprehensionService(neo4j_client=neo4j_client)
     comprehension_profile = None
     comprehension_error = None
     try:
@@ -119,7 +119,7 @@ async def _run_repo_onboarding_async(*, repo_id: str, repo_path: str, source: st
             repo_path=repo_path,
             repo_id=repo_id,
         )
-        # Store profile in Qdrant
+        # Store profile in Neo4j
         await comprehension_service.store_profile(comprehension_profile)
         logger.info(f"Project comprehension completed for {repo_id}: status={comprehension_profile.analysis_status}")
     except Exception as e:
@@ -201,9 +201,9 @@ async def _run_repo_diff_processing_async(
     head_ref: str,
     source: str,
 ) -> dict[str, Any]:
-    qdrant_client = QdrantClient()
-    ingestor = RepoContextIngestor(vector_store=qdrant_client)
-    rag_engine = build_graph_rag_engine(vector_store=qdrant_client)
+    neo4j_client = get_neo4j_client()
+    ingestor = RepoContextIngestor(neo4j_client=neo4j_client)
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
 
     update_result = await ingestor.update_repo_incremental(
         repo_id=repo_id,
@@ -259,7 +259,7 @@ def _as_optional_str(value: Any) -> str | None:
 
 
 async def _run_document_resync_async(*, doc_id: str, reason: str) -> dict[str, Any]:
-    return await resync_document_source(doc_id=doc_id, vector_store=QdrantClient(), reason=reason)
+    return await resync_document_source(doc_id=doc_id, reason=reason)
 
 
 async def _run_document_maintenance_async(

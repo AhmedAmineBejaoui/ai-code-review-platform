@@ -42,7 +42,7 @@ from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput, Creat
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo  # noqa: F401 - kept for tests monkeypatch contract
 from app.data.repos.review_outputs_repo import ReviewOutputsRepo, UpsertReviewOutputInput
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient  # noqa: F401 - kept for tests monkeypatch contract
+from app.integrations.graph_database.neo4j_client import Neo4jClient  # noqa: F401 - kept for tests monkeypatch contract
 from app.settings import settings
 from app.workers.celery_app import celery_app
 from app.workers.celery_app import is_celery_task_active
@@ -333,6 +333,21 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
             progress=50,
             metadata_updates={"pipeline": pipeline_metadata},
         )
+
+        # Create Neo4j AnalysisRun node (best-effort, never blocks the pipeline)
+        neo4j_run_id: str | None = None
+        if settings.NEO4J_ENABLED:
+            try:
+                from app.integrations.graph_database.neo4j_client import get_neo4j_client as _get_neo4j
+                _neo4j = _get_neo4j()
+                neo4j_run_id = _neo4j.create_analysis_run(
+                    repo_id=analysis.project_id or analysis.repo,
+                    pr_number=analysis.pr_number,
+                    commit_sha=analysis.commit_sha,
+                    metadata={"analysis_id": analysis_id},
+                )
+            except Exception as _neo4j_err:
+                logger.debug("Neo4j create_analysis_run failed (non-fatal): %s", _neo4j_err)
 
         with _timed_step("diff_parse"):
             parsed = parse_unified_diff(analysis.diff_raw)
@@ -700,19 +715,19 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         review_output_reason: str | None = None
         review_merge_status: str | None = None
         review_risk_count = 0
-        review_qdrant_required = settings.GRAPH_RAG_REQUIRED
+        review_graph_rag_required = settings.GRAPH_RAG_REQUIRED  # whether graph-RAG context was required
+        neo4j_grounded = False
         review_generation_ms: int | None = None
 
         if settings.REVIEW_INTELLIGENCE_ENABLED:
             current_findings = repo.list_findings_by_analysis(analysis_id)
             can_use_graph_rag, review_output_reason = _REVIEW_INTELLIGENCE_SERVICE.can_use_graph_rag(
-                qdrant_enabled=bool(kb_context_preview and kb_context_references),
+                neo4j_enabled=bool(kb_context_preview and kb_context_references),
                 kb_retrieval_mode=kb_retrieval_mode,
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=kb_context_preview,
                 kb_retrieval_error=kb_retrieval_error,
                 context_references=kb_context_references,
-                allow_non_qdrant_grounding=True,
             )
             try:
                 _ri_start = time.perf_counter()
@@ -729,14 +744,14 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         knowledge_base_context=kb_context_preview,
                         context_references=kb_context_references,
                         fallback_summary=summary_text,
-                        qdrant_enabled=bool(kb_context_preview and kb_context_references),
+                        neo4j_enabled=bool(kb_context_preview and kb_context_references),
                         kb_retrieval_mode=kb_retrieval_mode,
                         kb_context_chunks_count=kb_context_chunks_count,
                         kb_retrieval_error=kb_retrieval_error,
-                        allow_non_qdrant_grounding=True,
                     )
                     review_output_source = "graph_rag"
-                    review_qdrant_required = True
+                    review_graph_rag_required = True
+                    neo4j_grounded = True
                 else:
                     review_output, review_generation_ms = _timed_call(
                         _REVIEW_INTELLIGENCE_SERVICE.generate_rule_engine_output,
@@ -748,7 +763,8 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                         fallback_summary=summary_text,
                     )
                     review_output_source = "rule_engine"
-                    review_qdrant_required = False
+                    review_graph_rag_required = False
+                    neo4j_grounded = False
 
                 PIPELINE_STEP_DURATION.labels(step="review_intelligence").observe(
                     time.perf_counter() - _ri_start
@@ -809,7 +825,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     UpsertReviewOutputInput(
                         analysis_id=analysis_id,
                         source=persisted_review_source,
-                        qdrant_required=review_qdrant_required,
+                        graph_rag_required=review_graph_rag_required,
                         payload=review_output.model_dump(mode="json"),
                     )
                 )
@@ -833,12 +849,13 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
                     summary_text = review_output.summary.short_summary
                     summary_source = "rule_engine"
                     summary_fallback = True
-                    review_qdrant_required = False
+                    review_graph_rag_required = False
+                    neo4j_grounded = False
                     ReviewOutputsRepo().upsert(
                         UpsertReviewOutputInput(
                             analysis_id=analysis_id,
                             source="rule_engine",
-                            qdrant_required=False,
+                            graph_rag_required=False,
                             payload=review_output.model_dump(mode="json"),
                         )
                     )
@@ -901,7 +918,7 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         }
         metrics["review_intelligence"] = {
             "enabled": settings.REVIEW_INTELLIGENCE_ENABLED,
-            "qdrant_required": review_qdrant_required,
+            "neo4j_grounded": neo4j_grounded,
             "status": review_output_status,
             "source": review_output_source,
             "fallback_reason": review_output_reason,
@@ -931,6 +948,38 @@ def run_minimal_analysis_pipeline(self, analysis_id: str) -> dict[str, Any]:
         ANALYSIS_COMPLETED.labels(status="completed").inc()
         ANALYSIS_DURATION.observe(duration_ms / 1000)
         push_worker_metrics()
+
+        # Update Neo4j AnalysisRun and persist findings as Comment nodes (best-effort)
+        if settings.NEO4J_ENABLED and neo4j_run_id:
+            try:
+                from app.integrations.graph_database.neo4j_client import get_neo4j_client as _get_neo4j
+                _neo4j = _get_neo4j()
+                all_findings = repo.list_findings_by_analysis(analysis_id)
+                _neo4j.update_analysis_run(
+                    run_id=neo4j_run_id,
+                    status="COMPLETED",
+                    findings_count=len(all_findings),
+                    summary=summary_text[:500] if summary_text else None,
+                )
+                for _f in all_findings:
+                    try:
+                        _neo4j.add_comment_to_run(
+                            run_id=neo4j_run_id,
+                            file_path=_f.file_path or "",
+                            line_start=_f.line_start,
+                            line_end=_f.line_end,
+                            severity=str(_f.severity),
+                            category=str(_f.category or ""),
+                            message=_f.message or "",
+                            suggestion=_f.suggestion,
+                            confidence=float(_f.confidence or 0.0),
+                            references=list(_f.evidence.get("references", [])) if isinstance(_f.evidence, dict) else [],
+                            auto_fix=_f.evidence.get("auto_fix") if isinstance(_f.evidence, dict) else None,
+                        )
+                    except Exception:
+                        pass
+            except Exception as _neo4j_err:
+                logger.debug("Neo4j update_analysis_run failed (non-fatal): %s", _neo4j_err)
 
         # Publish results to GitHub if enabled
         if settings.GITHUB_PUBLISH_ENABLED and settings.GITHUB_PUBLISH_ON_ANALYSIS_COMPLETE:

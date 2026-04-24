@@ -8,6 +8,7 @@ Manages the three-level context hierarchy:
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
@@ -17,7 +18,7 @@ from typing import TYPE_CHECKING, Any
 from app.settings import settings
 
 if TYPE_CHECKING:
-    from app.integrations.vector_store.qdrant_client import QdrantClient
+    from app.integrations.graph_database.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
 
@@ -55,10 +56,10 @@ class ProjectContext:
 
 
 class ContextManager:
-    """Manages hierarchical project context.
+    """Manages hierarchical project context backed by Neo4j.
 
     This manager:
-    1. Retrieves and caches project context from Qdrant
+    1. Retrieves and caches project context from Neo4j
     2. Manages context lifecycle (load, update, invalidate)
     3. Provides context for RAG agents
     4. Handles incremental context updates
@@ -67,10 +68,13 @@ class ContextManager:
     def __init__(
         self,
         *,
-        qdrant_client: QdrantClient | None = None,
-        redis_client: object | None = None,  # For caching
+        neo4j_client: Neo4jClient | None = None,
+        redis_client: object | None = None,
     ):
-        self.qdrant_client = qdrant_client
+        if neo4j_client is None:
+            from app.integrations.graph_database.neo4j_client import get_neo4j_client
+            neo4j_client = get_neo4j_client()
+        self.neo4j_client = neo4j_client
         self.redis_client = redis_client
         self._cache: dict[str, ProjectContext] = {}
         self._cache_ttl = settings.ANTI_HALLUCINATION_MAX_CONTEXT_AGE_HOURS * 3600
@@ -82,35 +86,22 @@ class ContextManager:
         org_id: str | None = None,
         force_refresh: bool = False,
     ) -> ProjectContext:
-        """Get the context for a repository.
-
-        Args:
-            repo_id: Repository identifier
-            org_id: Optional organization ID
-            force_refresh: Force refresh from storage
-
-        Returns:
-            ProjectContext with all context levels
-        """
+        """Get the context for a repository."""
         cache_key = f"{org_id or 'default'}:{repo_id}"
 
-        # Check memory cache
         if not force_refresh and cache_key in self._cache:
             cached = self._cache[cache_key]
             if not cached.is_stale:
                 return cached
 
-        # Check Redis cache
         if self.redis_client and not force_refresh:
             cached = await self._get_from_redis(cache_key)
             if cached:
                 self._cache[cache_key] = cached
                 return cached
 
-        # Load from storage
         context = await self._load_context(repo_id, org_id)
 
-        # Cache it
         self._cache[cache_key] = context
         if self.redis_client:
             await self._set_in_redis(cache_key, context)
@@ -122,7 +113,7 @@ class ContextManager:
         repo_id: str,
         org_id: str | None,
     ) -> ProjectContext:
-        """Load context from Qdrant and database."""
+        """Load context from Neo4j and database."""
         context = ProjectContext(
             repo_id=repo_id,
             org_id=org_id,
@@ -130,13 +121,13 @@ class ContextManager:
         )
 
         try:
-            # Load project profile from Qdrant
+            # Load project profile from Neo4j (repository node properties)
             project_profile = await self._load_project_profile(repo_id)
             if project_profile:
                 context.project_context = project_profile
-                context.context_version = project_profile.get("context_version", 1)
+                context.context_version = int(project_profile.get("context_version", 1))
 
-            # Load organization rules (global context)
+            # Load organization rules from Neo4j rule nodes
             if org_id:
                 org_rules = await self._load_org_rules(org_id)
                 context.global_context = org_rules
@@ -151,51 +142,78 @@ class ContextManager:
         return context
 
     async def _load_project_profile(self, repo_id: str) -> dict[str, Any]:
-        """Load project profile from Qdrant."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        """Load project profile from Neo4j Repository node."""
+        if not self.neo4j_client or not self.neo4j_client.enabled:
+            # Fall back to PostgreSQL
+            from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+            row = await asyncio.to_thread(RepoProfilesRepo().get_profile, repo_id)
+            if row and isinstance(row.profile, dict):
+                return dict(row.profile)
             return {}
 
         try:
-            # Search for project profile by repo_id
-            results = await self.qdrant_client.scroll(
-                collection_name=settings.QDRANT_COLLECTION_PROJECT_PROFILES,
-                filter_payload={"repo_id": repo_id},
-                limit=1,
+            results = await asyncio.to_thread(
+                self.neo4j_client.get_repo_profile,
+                repo_id=repo_id,
             )
-
-            if results:
-                return results[0].payload
-
+            if results and isinstance(results, dict):
+                return results
         except Exception as e:
-            logger.warning(f"Failed to load project profile: {e}")
+            logger.warning(f"Failed to load project profile from Neo4j: {e}")
+
+        # Fallback to PostgreSQL
+        try:
+            from app.data.repos.repo_profiles_repo import RepoProfilesRepo
+            row = await asyncio.to_thread(RepoProfilesRepo().get_profile, repo_id)
+            if row and isinstance(row.profile, dict):
+                return dict(row.profile)
+        except Exception as e:
+            logger.warning(f"Failed to load project profile from SQL fallback: {e}")
 
         return {}
 
     async def _load_org_rules(self, org_id: str) -> dict[str, Any]:
-        """Load organization rules from Qdrant."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        """Load organization rules from Neo4j Rule nodes."""
+        if not self.neo4j_client or not self.neo4j_client.enabled:
             return {}
 
         try:
-            results = await self.qdrant_client.scroll(
-                collection_name=settings.QDRANT_COLLECTION_ORG_RULES,
-                filter_payload={"org_id": org_id, "is_active": True},
+            # Search Neo4j for Rule nodes tagged with this org
+            rules = await asyncio.to_thread(
+                self.neo4j_client.vector_search_rules,
+                query_vector=[0.0] * 384,  # neutral query to list all org rules
                 limit=100,
             )
-
-            rules = []
-            for hit in results:
-                rules.append(hit.payload)
-
-            return {
-                "rules": rules,
-                "rules_count": len(rules),
-            }
-
+            if isinstance(rules, list):
+                org_rules = [r for r in rules if r.get("org_id") == org_id or not r.get("org_id")]
+                return {"rules": org_rules, "rules_count": len(org_rules)}
         except Exception as e:
-            logger.warning(f"Failed to load org rules: {e}")
+            logger.warning(f"Failed to load org rules from Neo4j: {e}")
 
         return {}
+
+    async def get_neighbor_paths(
+        self,
+        repo_id: str,
+        path: str,
+        *,
+        depth: int = 2,
+        limit: int = 32,
+    ) -> list[str]:
+        """Return neighboring file paths using Neo4j graph traversal."""
+        if not self.neo4j_client or not self.neo4j_client.enabled:
+            return []
+        try:
+            return await asyncio.to_thread(
+                self.neo4j_client.get_neighbor_paths,
+                repo_id=repo_id,
+                path=path,
+                depth=depth,
+                limit=limit,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to get neighbor paths from Neo4j: {e}")
+            return []
 
     async def update_local_context(
         self,
@@ -204,24 +222,13 @@ class ContextManager:
         *,
         org_id: str | None = None,
     ) -> ProjectContext:
-        """Update the local context for an analysis.
-
-        Args:
-            repo_id: Repository identifier
-            local_context: Local context (diff, changed files, etc.)
-            org_id: Optional organization ID
-
-        Returns:
-            Updated ProjectContext
-        """
+        """Update the local context for an analysis."""
         context = await self.get_context(repo_id, org_id=org_id)
         context.local_context = local_context
         context.last_updated = datetime.now(timezone.utc)
 
-        # Update cache
         cache_key = f"{org_id or 'default'}:{repo_id}"
         self._cache[cache_key] = context
-
         return context
 
     async def invalidate_context(
@@ -231,21 +238,12 @@ class ContextManager:
         org_id: str | None = None,
         reason: str = "manual invalidation",
     ) -> None:
-        """Invalidate cached context for a repository.
-
-        Args:
-            repo_id: Repository identifier
-            org_id: Optional organization ID
-            reason: Reason for invalidation
-        """
+        """Invalidate cached context for a repository."""
         cache_key = f"{org_id or 'default'}:{repo_id}"
-
-        # Mark as stale in memory cache
         if cache_key in self._cache:
             self._cache[cache_key].is_stale = True
             self._cache[cache_key].staleness_reason = reason
 
-        # Remove from Redis
         if self.redis_client:
             await self._delete_from_redis(cache_key)
 
@@ -257,73 +255,47 @@ class ContextManager:
         *,
         org_id: str | None = None,
     ) -> int:
-        """Increment the context version for a repository.
-
-        Returns:
-            New version number
-        """
+        """Increment the context version for a repository."""
         context = await self.get_context(repo_id, org_id=org_id)
         new_version = context.context_version + 1
         context.context_version = new_version
         context.last_updated = datetime.now(timezone.utc)
 
-        # Update cache
         cache_key = f"{org_id or 'default'}:{repo_id}"
         self._cache[cache_key] = context
-
         return new_version
 
+    # ── Redis cache helpers (placeholders — actual Redis calls depend on client) ──
+
     async def _get_from_redis(self, cache_key: str) -> ProjectContext | None:
-        """Get context from Redis cache."""
         if not self.redis_client:
             return None
-
         try:
-            # This is a placeholder - actual implementation depends on Redis client
-            # data = await self.redis_client.get(f"context:{cache_key}")
-            # if data:
-            #     return self._deserialize_context(data)
             pass
         except Exception as e:
             logger.warning(f"Redis get failed: {e}")
-
         return None
 
     async def _set_in_redis(self, cache_key: str, context: ProjectContext) -> None:
-        """Set context in Redis cache."""
         if not self.redis_client:
             return
-
         try:
-            # This is a placeholder - actual implementation depends on Redis client
-            # data = self._serialize_context(context)
-            # await self.redis_client.set(
-            #     f"context:{cache_key}",
-            #     data,
-            #     ex=self._cache_ttl,
-            # )
             pass
         except Exception as e:
             logger.warning(f"Redis set failed: {e}")
 
     async def _delete_from_redis(self, cache_key: str) -> None:
-        """Delete context from Redis cache."""
         if not self.redis_client:
             return
-
         try:
-            # This is a placeholder - actual implementation depends on Redis client
-            # await self.redis_client.delete(f"context:{cache_key}")
             pass
         except Exception as e:
             logger.warning(f"Redis delete failed: {e}")
 
     def _serialize_context(self, context: ProjectContext) -> str:
-        """Serialize context to JSON string."""
         return json.dumps(context.to_dict())
 
     def _deserialize_context(self, data: str) -> ProjectContext:
-        """Deserialize context from JSON string."""
         d = json.loads(data)
         ctx = ProjectContext(
             repo_id=d["repo_id"],

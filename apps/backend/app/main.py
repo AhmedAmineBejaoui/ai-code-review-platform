@@ -74,6 +74,17 @@ async def lifespan(app: FastAPI):
     init_db()
     get_secret_store().bootstrap_from_env()
     logger = logging.getLogger(__name__)
+
+    # Initialise Neo4j schema (constraints, indexes, vector indexes) if enabled
+    try:
+        from app.integrations.graph_database.neo4j_client import get_neo4j_client
+        neo4j = get_neo4j_client()
+        if neo4j.enabled:
+            await asyncio.to_thread(neo4j.init_schema)
+            logger.info("Neo4j schema initialised")
+    except Exception:
+        logger.exception("Neo4j schema init failed (non-fatal — service will continue)")
+
     recovery_stop_event = asyncio.Event()
     recovery_task: asyncio.Task[None] | None = None
     if settings.ANALYSIS_STALE_RECOVERY_ENABLED:
@@ -171,9 +182,9 @@ async def health():
         except Exception:
             services["minio"] = "error"
 
-    # Check Qdrant health if enabled
-    if settings.QDRANT_ENABLED:
-        services["qdrant"] = "configured"
+    # Check Neo4j health if enabled
+    if settings.NEO4J_ENABLED:
+        services["neo4j"] = "configured"
 
     overall_status = "ok" if all(
         s in ("ok", "healthy", "configured", "disabled")

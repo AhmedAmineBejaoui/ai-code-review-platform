@@ -9,12 +9,12 @@ import {
   Clock,
   ExternalLink,
   Folder,
-  Github,
   GitBranch,
   Loader2,
   ShieldCheck,
   Users,
 } from "lucide-react"
+import { Github } from "@/components/ui/social-icons"
 
 import { Badge } from "@/components/ui/badge"
 import { BADGE_SUCCESS, BADGE_WARNING, BADGE_SECONDARY } from "@/lib/design-tokens"

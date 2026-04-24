@@ -16,9 +16,6 @@ import {
   Building,
   MapPin,
   Link as LinkIcon,
-  Github,
-  Linkedin,
-  Twitter,
   Camera,
   Save,
   CheckCircle,
@@ -27,6 +24,7 @@ import {
   Briefcase,
   Calendar,
 } from "lucide-react"
+import { Github, Linkedin, Twitter } from "@/components/ui/social-icons"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 
 interface UserProfile {

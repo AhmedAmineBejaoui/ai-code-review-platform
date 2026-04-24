@@ -55,13 +55,14 @@ class ReviewGenerationEngine(Protocol):
     def can_use_graph_rag(
         self,
         *,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
         context_references: list[dict[str, Any]] | None = None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> tuple[bool, str | None]: ...
 
     def generate_review_output(
@@ -77,11 +78,12 @@ class ReviewGenerationEngine(Protocol):
         knowledge_base_context: str | None,
         context_references: list[dict[str, Any]],
         fallback_summary: str,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         kb_retrieval_error: str | None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> StructuredReviewOutput: ...
 
     def generate_rule_engine_output(
@@ -159,43 +161,43 @@ class _BaseReviewGenerationEngine:
     def can_use_graph_rag(
         self,
         *,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
         context_references: list[dict[str, Any]] | None = None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> tuple[bool, str | None]:
         return self.review_intelligence_service.can_use_graph_rag(
-            qdrant_enabled=qdrant_enabled,
+            neo4j_enabled=neo4j_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
             context_references=context_references,
-            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
 
     def can_use_hybrid_rag(
         self,
         *,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
         context_references: list[dict[str, Any]] | None = None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> tuple[bool, str | None]:
         enabled, reason = self.can_use_graph_rag(
-            qdrant_enabled=qdrant_enabled,
+            neo4j_enabled=neo4j_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
             context_references=context_references,
-            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
         if reason:
             reason = reason.replace("GraphRAG", "Hybrid RAG")
@@ -214,11 +216,12 @@ class _BaseReviewGenerationEngine:
         knowledge_base_context: str | None,
         context_references: list[dict[str, Any]],
         fallback_summary: str,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         kb_retrieval_error: str | None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> StructuredReviewOutput:
         return self.review_intelligence_service.generate(
             repo=repo,
@@ -231,11 +234,10 @@ class _BaseReviewGenerationEngine:
             knowledge_base_context=knowledge_base_context,
             context_references=context_references,
             fallback_summary=fallback_summary,
-            qdrant_enabled=qdrant_enabled,
+            neo4j_enabled=neo4j_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
             kb_retrieval_error=kb_retrieval_error,
-            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
 
     def generate_rule_engine_output(

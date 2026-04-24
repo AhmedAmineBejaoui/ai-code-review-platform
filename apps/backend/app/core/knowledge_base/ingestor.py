@@ -1,6 +1,21 @@
+"""
+Neo4j Repository Ingestor
+
+Replaces the Qdrant-backed RepoContextIngestor with a Neo4j-native implementation.
+
+Key changes vs old ingestor:
+- Writes File + Chunk nodes to Neo4j (no Qdrant)
+- Uses real sentence-transformers embeddings (not hash)
+- Writes IMPORTS / INHERITS edges to Neo4j (not PostgreSQL code_entity_edges)
+- Keeps PostgreSQL RepoContextChunksRepo as a fast lookup fallback
+- Full incremental mode: only re-chunks changed files
+- All chunking logic preserved (Python AST, generic symbols, docs, config, SQL, etc.)
+"""
+
 from __future__ import annotations
 
 import ast
+import hashlib
 import json
 import re
 import subprocess
@@ -9,8 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Iterable
 
-from app.core.knowledge_base.embeddings import hash_embed_text
-from app.core.knowledge_base.embedding_provider import embed_text_for_ingestor
+from app.core.knowledge_base.embedding_provider import embed_texts
 from app.core.knowledge_base.guardrails import (
     iter_repo_files,
     normalize_repo_id,
@@ -19,58 +33,34 @@ from app.core.knowledge_base.guardrails import (
     to_posix_relative,
     validate_allowed_roots,
 )
-from app.core.knowledge_base.qdrant_ids import build_repo_chunk_point_id, build_repo_profile_point_id
-from app.data.repos.repo_context_chunks_repo import RepoContextChunkRow, RepoContextChunkWrite, RepoContextChunksRepo
-from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
+from app.data.repos.repo_context_chunks_repo import RepoContextChunkWrite, RepoContextChunksRepo
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client
 from app.settings import settings
 
+logger = __import__("logging").getLogger(__name__)
+
+# ── Language / file-type maps (unchanged) ────────────────────────────────────
+
 _LANGUAGE_BY_SUFFIX: dict[str, str] = {
-    ".py": "python",
-    ".pyi": "python",
-    ".js": "javascript",
-    ".jsx": "javascript",
-    ".ts": "typescript",
-    ".tsx": "typescript",
-    ".vue": "vue",
-    ".svelte": "svelte",
-    ".go": "go",
-    ".java": "java",
-    ".kt": "kotlin",
-    ".scala": "scala",
-    ".rs": "rust",
-    ".rb": "ruby",
-    ".php": "php",
-    ".c": "c",
-    ".h": "c",
-    ".cpp": "cpp",
-    ".hpp": "cpp",
-    ".cs": "csharp",
-    ".swift": "swift",
-    ".m": "objective-c",
-    ".mm": "objective-cpp",
-    ".dart": "dart",
-    ".md": "markdown",
-    ".mdx": "markdown",
-    ".rst": "rst",
-    ".txt": "text",
-    ".sql": "sql",
-    ".yaml": "yaml",
-    ".yml": "yaml",
-    ".json": "json",
-    ".toml": "toml",
-    ".ini": "ini",
-    ".cfg": "config",
-    ".conf": "config",
-    ".env.example": "dotenv",
-    ".tf": "terraform",
-    ".hcl": "hcl",
-    ".sh": "bash",
-    ".ps1": "powershell",
-    ".bat": "batch",
-    ".xml": "xml",
-    ".feature": "gherkin",
-    ".diff": "diff",
-    ".patch": "diff",
+    ".py": "python", ".pyi": "python",
+    ".js": "javascript", ".jsx": "javascript",
+    ".ts": "typescript", ".tsx": "typescript",
+    ".vue": "vue", ".svelte": "svelte",
+    ".go": "go", ".java": "java", ".kt": "kotlin",
+    ".scala": "scala", ".rs": "rust", ".rb": "ruby",
+    ".php": "php", ".c": "c", ".h": "c",
+    ".cpp": "cpp", ".hpp": "cpp", ".cs": "csharp",
+    ".swift": "swift", ".m": "objective-c",
+    ".mm": "objective-cpp", ".dart": "dart",
+    ".md": "markdown", ".mdx": "markdown",
+    ".rst": "rst", ".txt": "text", ".sql": "sql",
+    ".yaml": "yaml", ".yml": "yaml", ".json": "json",
+    ".toml": "toml", ".ini": "ini", ".cfg": "config",
+    ".conf": "config", ".env.example": "dotenv",
+    ".tf": "terraform", ".hcl": "hcl",
+    ".sh": "bash", ".ps1": "powershell", ".bat": "batch",
+    ".xml": "xml", ".feature": "gherkin",
+    ".diff": "diff", ".patch": "diff",
 }
 
 _DOC_SUFFIXES = {".md", ".mdx", ".rst", ".txt"}
@@ -80,65 +70,22 @@ _SQL_SUFFIXES = {".sql"}
 _DIFF_SUFFIXES = {".diff", ".patch"}
 _INFRA_SUFFIXES = {".tf", ".hcl"}
 _CODE_SUFFIXES = {
-    ".py",
-    ".pyi",
-    ".js",
-    ".jsx",
-    ".ts",
-    ".tsx",
-    ".go",
-    ".java",
-    ".kt",
-    ".scala",
-    ".rs",
-    ".rb",
-    ".php",
-    ".c",
-    ".h",
-    ".cpp",
-    ".hpp",
-    ".cs",
-    ".swift",
-    ".m",
-    ".mm",
-    ".dart",
-    ".vue",
-    ".svelte",
+    ".py", ".pyi", ".js", ".jsx", ".ts", ".tsx", ".go", ".java", ".kt",
+    ".scala", ".rs", ".rb", ".php", ".c", ".h", ".cpp", ".hpp", ".cs",
+    ".swift", ".m", ".mm", ".dart", ".vue", ".svelte",
 }
 
 _DEPENDENCY_FILENAMES = {
-    "package.json",
-    "pnpm-lock.yaml",
-    "package-lock.json",
-    "yarn.lock",
-    "requirements.txt",
-    "requirements-dev.txt",
-    "poetry.lock",
-    "pyproject.toml",
-    "go.mod",
-    "go.sum",
-    "cargo.toml",
-    "cargo.lock",
-    "pom.xml",
-    "build.gradle",
-    "build.gradle.kts",
-    "composer.json",
-    "composer.lock",
-    "gemfile",
-    "gemfile.lock",
+    "package.json", "pnpm-lock.yaml", "package-lock.json", "yarn.lock",
+    "requirements.txt", "requirements-dev.txt", "poetry.lock", "pyproject.toml",
+    "go.mod", "go.sum", "cargo.toml", "cargo.lock", "pom.xml",
+    "build.gradle", "build.gradle.kts", "composer.json", "composer.lock",
+    "gemfile", "gemfile.lock",
 }
-
 _CI_FILENAMES = {
-    ".gitlab-ci.yml",
-    "azure-pipelines.yml",
-    "azure-pipelines.yaml",
-    "buildkite.yml",
-    "buildkite.yaml",
-    "circle.yml",
-    "drone.yml",
-    "drone.yaml",
+    ".gitlab-ci.yml", "azure-pipelines.yml", "azure-pipelines.yaml",
+    "buildkite.yml", "buildkite.yaml", "circle.yml", "drone.yml", "drone.yaml",
 }
-
 _CI_PATH_HINTS = (".github/workflows/", ".circleci/", ".gitlab/")
 _MIGRATION_PATH_HINTS = ("migrations/", "alembic/versions/", "db/migrate/")
 _TEST_PATH_HINTS = ("tests/", "test/", "__tests__/", "spec/")
@@ -158,13 +105,21 @@ _GENERIC_SYMBOL_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     ),
 )
 
+_PY_IMPORT_RE = re.compile(r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE)
+_PY_CLASS_BASES_RE = re.compile(r"^\s*class\s+(\w+)\s*\(([^)]+)\)", re.MULTILINE)
+_JS_IMPORT_RE = re.compile(
+    r"""(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))""",
+    re.MULTILINE,
+)
+
+
+# ── Data classes ──────────────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
 class RepoIndexResult:
     repo_id: str
     repo_path: str
     mode: str
-    collection_name: str
     indexed_commit: str | None
     default_branch: str | None
     files_seen: int
@@ -191,15 +146,32 @@ class ChunkingResult:
     chunks: list[ChunkRecord]
 
 
-class RepoContextIngestor:
-    def __init__(self, vector_store: QdrantClient) -> None:
-        self._vector_store = vector_store
-        self._repo_context_chunks_repo = RepoContextChunksRepo()
-        self._collection = settings.QDRANT_REPO_CONTEXT_COLLECTION
-        self._vector_size = settings.REPO_CONTEXT_VECTOR_SIZE
-        self._chunk_size = settings.REPO_CONTEXT_CHUNK_SIZE
-        self._chunk_overlap = settings.REPO_CONTEXT_CHUNK_OVERLAP
-        self._batch_size = 256
+@dataclass(frozen=True)
+class _LineSplitChunk:
+    content: str
+    start_line: int
+    end_line: int
+
+
+# ── Main Ingestor ─────────────────────────────────────────────────────────────
+
+class Neo4jRepoIngestor:
+    """
+    Repository ingestor that writes to Neo4j + PostgreSQL fallback.
+
+    Flow:
+      iter files → chunk → embed (sentence-transformers) →
+      upsert File + Chunk nodes to Neo4j →
+      upsert edge relationships (IMPORTS, INHERITS) to Neo4j →
+      upsert chunk rows to PostgreSQL (fast lookup fallback)
+    """
+
+    def __init__(self, neo4j_client: Neo4jClient | None = None) -> None:
+        self._neo4j = neo4j_client or get_neo4j_client()
+        self._sql_repo = RepoContextChunksRepo()
+        self._chunk_size = settings.CHUNKING_MAX_CHUNK_SIZE
+        self._chunk_overlap = settings.CHUNKING_OVERLAP_SIZE
+        self._batch_size = settings.INCREMENTAL_INDEXING_BATCH_SIZE
 
     async def onboard_repo(
         self,
@@ -209,28 +181,33 @@ class RepoContextIngestor:
         source: str = "manual",
         force_full: bool = False,
     ) -> RepoIndexResult:
-        _ = source
-        _ = force_full
-        self._vector_store.ensure_enabled()
-
+        _ = source, force_full
         repo_key = normalize_repo_id(repo_id)
         root = resolve_repo_path(repo_path)
         validate_allowed_roots(root)
-
         started_at = _utc_now()
-        indexed_commit = self._safe_git_head(root)
-        default_branch = self._safe_git_branch(root)
+
+        indexed_commit = _safe_git_head(root)
+        default_branch = _safe_git_branch(root)
+
+        # Wipe existing Neo4j nodes for this repo
+        self._neo4j.delete_repo_chunks(repo_id=repo_key)
+        self._sql_repo.delete_repo(repo_key)
+
+        # Upsert Repository node
+        self._neo4j.upsert_repository(
+            repo_id=repo_key,
+            repo_path=str(root),
+            indexed_commit=indexed_commit,
+            default_branch=default_branch,
+        )
 
         files = iter_repo_files(root)
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-        await self._vector_store.delete_by_filter(collection_name=self._collection, filter_payload={"repo_id": repo_key})
-
-        points: list[QdrantPoint] = []
+        chunk_batch: list[dict[str, Any]] = []
         sql_rows: list[RepoContextChunkWrite] = []
-        graph_edges: list[dict[str, Any]] = []
+        edge_batch: list[dict[str, Any]] = []
         files_indexed = 0
-        file_type_distribution: dict[str, int] = {}
-        self._repo_context_chunks_repo.delete_repo(repo_key)
+
         for file_path in files:
             relative_path = to_posix_relative(root, file_path)
             chunking = self._file_to_chunks(file_path)
@@ -238,59 +215,75 @@ class RepoContextIngestor:
                 continue
 
             language = _guess_language(relative_path)
-            file_type_distribution[chunking.file_type] = file_type_distribution.get(chunking.file_type, 0) + 1
-            for chunk_index, chunk in enumerate(chunking.chunks):
-                point = self._build_chunk_point(
-                    repo_id=repo_key,
-                    relative_path=relative_path,
-                    chunk_index=chunk_index,
-                    language=language,
-                    file_type=chunking.file_type,
-                    chunk=chunk,
-                    indexed_commit=indexed_commit,
-                )
-                points.append(point)
-                sql_rows.append(self._build_sql_chunk_row(point))
 
-            # Extract graph edges (imports, inheritance) for code files
+            # Upsert File node
+            self._neo4j.upsert_file(
+                repo_id=repo_key,
+                path=relative_path,
+                language=language,
+                file_type=chunking.file_type,
+                indexed_commit=indexed_commit,
+            )
+
+            # Embed all chunks for this file in one batch
+            texts = [
+                _build_embed_input(relative_path, language, chunking.file_type, c)
+                for c in chunking.chunks
+            ]
+            embeddings = embed_texts(texts)
+
+            for chunk_index, (chunk, embedding) in enumerate(zip(chunking.chunks, embeddings)):
+                uid = _chunk_uid(repo_key, relative_path, chunk_index, chunk.chunk_type, chunk.symbol_name)
+                chunk_batch.append({
+                    "uid": uid,
+                    "repo_id": repo_key,
+                    "path": relative_path,
+                    "chunk_index": chunk_index,
+                    "language": language,
+                    "file_type": chunking.file_type,
+                    "chunk_type": chunk.chunk_type,
+                    "content": chunk.content,
+                    "embedding": embedding,
+                    "start_line": chunk.start_line,
+                    "end_line": chunk.end_line,
+                    "symbol_name": chunk.symbol_name,
+                    "indexed_commit": indexed_commit,
+                    "token_count": len(chunk.content.split()),
+                    "indexed_at": _utc_now(),
+                })
+                sql_rows.append(_build_sql_row(uid, repo_key, relative_path, chunk_index, language, chunking.file_type, chunk, indexed_commit))
+
+                if len(chunk_batch) >= self._batch_size:
+                    self._neo4j.batch_upsert_chunks(chunk_batch)
+                    chunk_batch = []
+
+            # Extract edges
             if language == "python" and chunking.file_type == "code":
-                graph_edges.extend(
-                    _extract_python_edges(file_path, relative_path, repo_key, indexed_commit)
-                )
+                edge_batch.extend(_extract_python_edges(file_path, relative_path, repo_key, indexed_commit))
             elif language in {"javascript", "typescript"} and chunking.file_type == "code":
-                graph_edges.extend(
-                    _extract_js_ts_edges(file_path, relative_path, repo_key, indexed_commit)
-                )
+                edge_batch.extend(_extract_js_ts_edges(file_path, relative_path, repo_key, indexed_commit))
 
             files_indexed += 1
 
-        await self._upsert_in_batches(points)
-        self._repo_context_chunks_repo.upsert_chunks(sql_rows)
-        _persist_graph_edges(repo_key, graph_edges)
+        # Flush remaining chunks
+        if chunk_batch:
+            self._neo4j.batch_upsert_chunks(chunk_batch)
+        self._sql_repo.upsert_chunks(sql_rows)
 
-        profile_payload = self._build_repo_profile_payload(
-            repo_id=repo_key,
-            root=root,
-            indexed_commit=indexed_commit,
-            default_branch=default_branch,
-            files_seen=len(files),
-            files_indexed=files_indexed,
-            file_type_distribution=file_type_distribution,
-        )
-        profile_point = self._build_profile_point(repo_id=repo_key, payload=profile_payload)
-        await self._vector_store.upsert_points(collection_name=self._collection, points=[profile_point])
+        # Persist edges to Neo4j
+        if edge_batch:
+            self._neo4j.batch_upsert_edges(edge_batch)
 
         completed_at = _utc_now()
         return RepoIndexResult(
             repo_id=repo_key,
             repo_path=str(root),
             mode="full",
-            collection_name=self._collection,
             indexed_commit=indexed_commit,
             default_branch=default_branch,
             files_seen=len(files),
             files_indexed=files_indexed,
-            chunks_upserted=len(points),
+            chunks_upserted=len(sql_rows),
             chunks_deleted=0,
             changed_files=[],
             started_at=started_at,
@@ -307,52 +300,39 @@ class RepoContextIngestor:
         source: str = "manual",
     ) -> RepoIndexResult:
         _ = source
-        self._vector_store.ensure_enabled()
-
         repo_key = normalize_repo_id(repo_id)
         root = resolve_repo_path(repo_path)
         validate_allowed_roots(root)
         started_at = _utc_now()
 
-        profile = await self.get_repo_profile(repo_key)
-        inferred_base = base_ref or _as_non_empty_str(profile.get("indexed_commit") if profile else None)
+        profile = self._neo4j.get_repo_profile(repo_key)
+        inferred_base = base_ref or _as_str(profile.get("indexed_commit") if profile else None)
 
         if inferred_base is None:
             return await self.onboard_repo(repo_id=repo_key, repo_path=str(root), source=source, force_full=True)
 
-        changed_files = self._git_changed_files(root, base_ref=inferred_base, head_ref=head_ref)
+        changed_files = _git_changed_files(root, base_ref=inferred_base, head_ref=head_ref)
+        indexed_commit = _safe_git_head(root)
+        default_branch = _safe_git_branch(root)
+
         if not changed_files:
-            completed_at = _utc_now()
             return RepoIndexResult(
-                repo_id=repo_key,
-                repo_path=str(root),
-                mode="incremental",
-                collection_name=self._collection,
-                indexed_commit=self._safe_git_head(root),
-                default_branch=self._safe_git_branch(root),
-                files_seen=0,
-                files_indexed=0,
-                chunks_upserted=0,
-                chunks_deleted=0,
-                changed_files=[],
-                started_at=started_at,
-                completed_at=completed_at,
+                repo_id=repo_key, repo_path=str(root), mode="incremental",
+                indexed_commit=indexed_commit, default_branch=default_branch,
+                files_seen=0, files_indexed=0, chunks_upserted=0, chunks_deleted=0,
+                changed_files=[], started_at=started_at, completed_at=_utc_now(),
             )
 
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-
-        points_to_upsert: list[QdrantPoint] = []
-        sql_rows_to_upsert: list[RepoContextChunkWrite] = []
-        chunks_deleted = 0
+        chunk_batch: list[dict[str, Any]] = []
+        sql_rows: list[RepoContextChunkWrite] = []
+        edge_batch: list[dict[str, Any]] = []
         files_indexed = 0
-        file_type_distribution: dict[str, int] = {}
-        indexed_commit = self._safe_git_head(root)
-        self._repo_context_chunks_repo.delete_repo_paths(repo_key, changed_files)
+        chunks_deleted = 0
+
+        self._sql_repo.delete_repo_paths(repo_key, changed_files)
+
         for relative_path in changed_files:
-            await self._vector_store.delete_by_filter(
-                collection_name=self._collection,
-                filter_payload={"repo_id": repo_key, "type": "chunk", "path": relative_path},
-            )
+            self._neo4j.delete_file_chunks(repo_id=repo_key, path=relative_path)
             chunks_deleted += 1
 
             abs_path = root / Path(relative_path)
@@ -368,78 +348,63 @@ class RepoContextIngestor:
                 continue
 
             language = _guess_language(relative_path)
-            file_type_distribution[chunking.file_type] = file_type_distribution.get(chunking.file_type, 0) + 1
-            for chunk_index, chunk in enumerate(chunking.chunks):
-                point = self._build_chunk_point(
-                    repo_id=repo_key,
-                    relative_path=relative_path,
-                    chunk_index=chunk_index,
-                    language=language,
-                    file_type=chunking.file_type,
-                    chunk=chunk,
-                    indexed_commit=indexed_commit,
-                )
-                points_to_upsert.append(point)
-                sql_rows_to_upsert.append(self._build_sql_chunk_row(point))
+            self._neo4j.upsert_file(
+                repo_id=repo_key, path=relative_path,
+                language=language, file_type=chunking.file_type,
+                indexed_commit=indexed_commit,
+            )
+
+            texts = [_build_embed_input(relative_path, language, chunking.file_type, c) for c in chunking.chunks]
+            embeddings = embed_texts(texts)
+
+            for chunk_index, (chunk, embedding) in enumerate(zip(chunking.chunks, embeddings)):
+                uid = _chunk_uid(repo_key, relative_path, chunk_index, chunk.chunk_type, chunk.symbol_name)
+                chunk_batch.append({
+                    "uid": uid, "repo_id": repo_key, "path": relative_path,
+                    "chunk_index": chunk_index, "language": language,
+                    "file_type": chunking.file_type, "chunk_type": chunk.chunk_type,
+                    "content": chunk.content, "embedding": embedding,
+                    "start_line": chunk.start_line, "end_line": chunk.end_line,
+                    "symbol_name": chunk.symbol_name, "indexed_commit": indexed_commit,
+                    "token_count": len(chunk.content.split()), "indexed_at": _utc_now(),
+                })
+                sql_rows.append(_build_sql_row(uid, repo_key, relative_path, chunk_index, language, chunking.file_type, chunk, indexed_commit))
+
+                if len(chunk_batch) >= self._batch_size:
+                    self._neo4j.batch_upsert_chunks(chunk_batch)
+                    chunk_batch = []
+
+            if language == "python" and chunking.file_type == "code":
+                edge_batch.extend(_extract_python_edges(abs_path, relative_path, repo_key, indexed_commit))
+            elif language in {"javascript", "typescript"} and chunking.file_type == "code":
+                edge_batch.extend(_extract_js_ts_edges(abs_path, relative_path, repo_key, indexed_commit))
+
             files_indexed += 1
 
-        await self._upsert_in_batches(points_to_upsert)
-        self._repo_context_chunks_repo.upsert_chunks(sql_rows_to_upsert)
-        default_branch = self._safe_git_branch(root)
-        profile_payload = self._build_repo_profile_payload(
-            repo_id=repo_key,
-            root=root,
-            indexed_commit=indexed_commit,
-            default_branch=default_branch,
-            files_seen=len(changed_files),
-            files_indexed=files_indexed,
-            update_base=inferred_base,
-            update_head=head_ref,
-            file_type_distribution=file_type_distribution,
-        )
-        profile_point = self._build_profile_point(repo_id=repo_key, payload=profile_payload)
-        await self._vector_store.upsert_points(collection_name=self._collection, points=[profile_point])
+        if chunk_batch:
+            self._neo4j.batch_upsert_chunks(chunk_batch)
+        self._sql_repo.upsert_chunks(sql_rows)
+        if edge_batch:
+            self._neo4j.batch_upsert_edges(edge_batch)
 
-        completed_at = _utc_now()
+        # Update repo node
+        self._neo4j.upsert_repository(
+            repo_id=repo_key, repo_path=str(root),
+            indexed_commit=indexed_commit, default_branch=default_branch,
+        )
+
         return RepoIndexResult(
-            repo_id=repo_key,
-            repo_path=str(root),
-            mode="incremental",
-            collection_name=self._collection,
-            indexed_commit=indexed_commit,
-            default_branch=default_branch,
-            files_seen=len(changed_files),
-            files_indexed=files_indexed,
-            chunks_upserted=len(points_to_upsert),
-            chunks_deleted=chunks_deleted,
-            changed_files=changed_files,
-            started_at=started_at,
-            completed_at=completed_at,
+            repo_id=repo_key, repo_path=str(root), mode="incremental",
+            indexed_commit=indexed_commit, default_branch=default_branch,
+            files_seen=len(changed_files), files_indexed=files_indexed,
+            chunks_upserted=len(sql_rows), chunks_deleted=chunks_deleted,
+            changed_files=changed_files, started_at=started_at, completed_at=_utc_now(),
         )
 
     async def get_repo_profile(self, repo_id: str) -> dict[str, Any] | None:
-        self._vector_store.ensure_enabled()
-        repo_key = normalize_repo_id(repo_id)
-        await self._vector_store.ensure_collection(collection_name=self._collection, vector_size=self._vector_size)
-        points = await self._vector_store.scroll(
-            collection_name=self._collection,
-            limit=1,
-            filter_payload={"repo_id": repo_key, "type": "repo_profile"},
-        )
-        if not points:
-            return None
+        return self._neo4j.get_repo_profile(normalize_repo_id(repo_id))
 
-        payload = getattr(points[0], "payload", None)
-        if not isinstance(payload, dict):
-            return None
-        return payload
-
-    async def _upsert_in_batches(self, points: list[QdrantPoint]) -> None:
-        if not points:
-            return
-        for start in range(0, len(points), self._batch_size):
-            batch = points[start : start + self._batch_size]
-            await self._vector_store.upsert_points(collection_name=self._collection, points=batch)
+    # ── Chunking (all logic preserved from old ingestor) ─────────────────────
 
     def _file_to_chunks(self, file_path: Path) -> ChunkingResult:
         try:
@@ -476,90 +441,54 @@ class RepoContextIngestor:
                 continue
             normalized.extend(self._fit_chunk_size(chunk))
 
-        # Parent-document: store the full file as an additional chunk so the
-        # LLM can pull broader context when a child chunk scores highly.
         if settings.PARENT_DOCUMENT_ENABLED and len(normalized) > 1:
-            parent_max_chars = settings.PARENT_DOCUMENT_MAX_TOKENS * 4  # rough char estimate
+            parent_max_chars = settings.PARENT_DOCUMENT_MAX_TOKENS * 4
             parent_content = text[:parent_max_chars].strip()
             if parent_content:
                 total_lines = text.count("\n") + 1
-                normalized.append(
-                    ChunkRecord(
-                        content=parent_content,
-                        chunk_type="parent_document",
-                        start_line=1,
-                        end_line=total_lines,
-                        symbol_name=None,
-                    )
-                )
+                normalized.append(ChunkRecord(
+                    content=parent_content, chunk_type="parent_document",
+                    start_line=1, end_line=total_lines,
+                ))
 
         return ChunkingResult(file_type=file_type, chunks=normalized)
 
     def _fit_chunk_size(self, chunk: ChunkRecord) -> list[ChunkRecord]:
         if len(chunk.content) <= self._chunk_size:
             return [chunk]
-
-        sub_chunks: list[ChunkRecord] = []
-        split_items = _split_text_with_line_ranges(
-            chunk.content,
-            chunk_size=self._chunk_size,
-            overlap=self._chunk_overlap,
-            base_start_line=chunk.start_line,
-        )
-        for item in split_items:
-            sub_chunks.append(
-                ChunkRecord(
-                    content=item.content,
-                    chunk_type=chunk.chunk_type,
-                    start_line=item.start_line,
-                    end_line=item.end_line,
-                    symbol_name=chunk.symbol_name,
-                )
-            )
-        return sub_chunks
+        sub: list[ChunkRecord] = []
+        for item in _split_text_with_line_ranges(chunk.content, chunk_size=self._chunk_size, overlap=self._chunk_overlap, base_start_line=chunk.start_line):
+            sub.append(ChunkRecord(content=item.content, chunk_type=chunk.chunk_type, start_line=item.start_line, end_line=item.end_line, symbol_name=chunk.symbol_name))
+        return sub
 
     def _chunk_code(self, *, file_path: Path, text: str) -> list[ChunkRecord]:
         language = _guess_language(file_path.as_posix())
         if language == "python":
-            python_chunks = self._chunk_python(text=text)
-            if python_chunks:
-                return python_chunks
-        generic_chunks = self._chunk_generic_symbols(text=text)
-        if generic_chunks:
-            return generic_chunks
+            py = self._chunk_python(text=text)
+            if py:
+                return py
+        generic = self._chunk_generic_symbols(text=text)
+        if generic:
+            return generic
         return self._chunk_fixed(text=text, chunk_type="code_block", start_line=1)
 
     def _chunk_tests(self, *, file_path: Path, text: str) -> list[ChunkRecord]:
         chunks = self._chunk_code(file_path=file_path, text=text)
-        if not chunks:
-            return []
-
-        normalized: list[ChunkRecord] = []
+        out: list[ChunkRecord] = []
         for item in chunks:
             symbol = (item.symbol_name or "").lower()
             is_test = symbol.startswith("test") or "spec" in symbol or "test(" in item.content
-            normalized.append(
-                ChunkRecord(
-                    content=item.content,
-                    chunk_type="test_case" if is_test else "test_block",
-                    start_line=item.start_line,
-                    end_line=item.end_line,
-                    symbol_name=item.symbol_name,
-                )
-            )
-        return normalized
+            out.append(ChunkRecord(content=item.content, chunk_type="test_case" if is_test else "test_block", start_line=item.start_line, end_line=item.end_line, symbol_name=item.symbol_name))
+        return out
 
     def _chunk_docs(self, *, text: str, chunk_type: str) -> list[ChunkRecord]:
         lines = text.replace("\r\n", "\n").split("\n")
-        if not lines:
-            return []
-
         chunks: list[ChunkRecord] = []
         current_section = "Document"
         paragraph_lines: list[str] = []
         paragraph_start = 1
 
-        def flush_paragraph(end_line: int) -> None:
+        def flush(end_line: int) -> None:
             nonlocal paragraph_lines
             if not paragraph_lines:
                 return
@@ -568,45 +497,29 @@ class RepoContextIngestor:
                 paragraph_lines = []
                 return
             content = f"{current_section}\n{body}" if current_section else body
-            chunks.append(
-                ChunkRecord(
-                    content=content,
-                    chunk_type=chunk_type,
-                    start_line=paragraph_start,
-                    end_line=max(end_line, paragraph_start),
-                    symbol_name=current_section if current_section != "Document" else None,
-                )
-            )
+            chunks.append(ChunkRecord(content=content, chunk_type=chunk_type, start_line=paragraph_start, end_line=max(end_line, paragraph_start), symbol_name=current_section if current_section != "Document" else None))
             paragraph_lines = []
 
         for line_no, line in enumerate(lines, start=1):
             stripped = line.strip()
             if stripped.startswith("#"):
-                flush_paragraph(line_no - 1)
+                flush(line_no - 1)
                 current_section = stripped
                 paragraph_start = line_no + 1
                 continue
             if not stripped:
-                flush_paragraph(line_no - 1)
+                flush(line_no - 1)
                 paragraph_start = line_no + 1
                 continue
             if not paragraph_lines:
                 paragraph_start = line_no
             paragraph_lines.append(line)
-
-        flush_paragraph(len(lines))
-        if chunks:
-            return chunks
-        return self._chunk_fixed(text=text, chunk_type=chunk_type, start_line=1)
+        flush(len(lines))
+        return chunks or self._chunk_fixed(text=text, chunk_type=chunk_type, start_line=1)
 
     def _chunk_config(self, *, file_path: Path, text: str, file_type: str) -> list[ChunkRecord]:
         suffix = _extract_suffix(file_path)
-        chunk_type = "config_section"
-        if file_type == "infra":
-            chunk_type = "infra_block"
-        elif file_type == "ci":
-            chunk_type = "ci_block"
-
+        chunk_type = "infra_block" if file_type == "infra" else ("ci_block" if file_type == "ci" else "config_section")
         if suffix == ".json":
             try:
                 parsed = json.loads(text)
@@ -614,22 +527,13 @@ class RepoContextIngestor:
                 parsed = None
             if isinstance(parsed, dict):
                 lines = text.replace("\r\n", "\n").split("\n")
-                chunks: list[ChunkRecord] = []
+                chunks = []
                 for key, value in parsed.items():
                     content = json.dumps({key: value}, ensure_ascii=False, indent=2)
-                    start_line = _find_line_for_token(lines, f'"{key}"')
-                    chunks.append(
-                        ChunkRecord(
-                            content=content,
-                            chunk_type=chunk_type,
-                            start_line=start_line,
-                            end_line=start_line + max(content.count("\n"), 0),
-                            symbol_name=str(key),
-                        )
-                    )
+                    sl = _find_line_for_token(lines, f'"{key}"')
+                    chunks.append(ChunkRecord(content=content, chunk_type=chunk_type, start_line=sl, end_line=sl + max(content.count("\n"), 0), symbol_name=str(key)))
                 if chunks:
                     return chunks
-
         lines = text.replace("\r\n", "\n").split("\n")
         headers: list[tuple[int, str]] = []
         for line_no, line in enumerate(lines, start=1):
@@ -641,14 +545,12 @@ class RepoContextIngestor:
                 continue
             if re.match(r"^[A-Za-z0-9_.-]+\s*:\s*", line):
                 headers.append((line_no, stripped.split(":", maxsplit=1)[0].strip()))
-
         if headers:
             return _chunk_by_headers(lines=lines, headers=headers, chunk_type=chunk_type)
         return self._chunk_fixed(text=text, chunk_type=chunk_type, start_line=1)
 
     def _chunk_migration(self, *, file_path: Path, text: str) -> list[ChunkRecord]:
-        suffix = _extract_suffix(file_path)
-        if suffix in _SQL_SUFFIXES:
+        if _extract_suffix(file_path) in _SQL_SUFFIXES:
             return self._chunk_sql_statements(text=text)
         return self._chunk_code(file_path=file_path, text=text)
 
@@ -660,30 +562,19 @@ class RepoContextIngestor:
             except json.JSONDecodeError:
                 parsed = None
             if isinstance(parsed, dict):
-                chunks: list[ChunkRecord] = []
+                chunks = []
                 for section in ("dependencies", "devDependencies", "peerDependencies", "optionalDependencies"):
                     values = parsed.get(section)
                     if isinstance(values, dict) and values:
                         content = json.dumps({section: values}, ensure_ascii=False, indent=2)
-                        chunks.append(
-                            ChunkRecord(
-                                content=content,
-                                chunk_type="dependency_group",
-                                start_line=1,
-                                end_line=1 + max(content.count("\n"), 0),
-                                symbol_name=section,
-                            )
-                        )
+                        chunks.append(ChunkRecord(content=content, chunk_type="dependency_group", start_line=1, end_line=1 + max(content.count("\n"), 0), symbol_name=section))
                 if chunks:
                     return chunks
         return self._chunk_fixed(text=text, chunk_type="dependency_block", start_line=1)
 
     def _chunk_diff(self, *, text: str) -> list[ChunkRecord]:
         lines = text.replace("\r\n", "\n").split("\n")
-        headers: list[tuple[int, str]] = []
-        for line_no, line in enumerate(lines, start=1):
-            if line.startswith("@@"):
-                headers.append((line_no, line.strip()))
+        headers: list[tuple[int, str]] = [(line_no, line.strip()) for line_no, line in enumerate(lines, 1) if line.startswith("@@")]
         if headers:
             return _chunk_by_headers(lines=lines, headers=headers, chunk_type="diff_hunk")
         return self._chunk_fixed(text=text, chunk_type="diff_block", start_line=1)
@@ -691,13 +582,13 @@ class RepoContextIngestor:
     def _chunk_script(self, *, text: str) -> list[ChunkRecord]:
         lines = text.replace("\r\n", "\n").split("\n")
         headers: list[tuple[int, str]] = []
-        for line_no, line in enumerate(lines, start=1):
-            bash_match = re.match(r"^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{", line)
-            ps_match = re.match(r"^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)", line, flags=re.IGNORECASE)
-            if bash_match:
-                headers.append((line_no, bash_match.group(1)))
-            elif ps_match:
-                headers.append((line_no, ps_match.group(1)))
+        for line_no, line in enumerate(lines, 1):
+            bash_m = re.match(r"^\s*(?:function\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*\(\)\s*\{", line)
+            ps_m = re.match(r"^\s*function\s+([A-Za-z_][A-Za-z0-9_-]*)", line, flags=re.IGNORECASE)
+            if bash_m:
+                headers.append((line_no, bash_m.group(1)))
+            elif ps_m:
+                headers.append((line_no, ps_m.group(1)))
         if headers:
             return _chunk_by_headers(lines=lines, headers=headers, chunk_type="script_function")
         return self._chunk_fixed(text=text, chunk_type="script_block", start_line=1)
@@ -707,105 +598,55 @@ class RepoContextIngestor:
             tree = ast.parse(text)
         except SyntaxError:
             return []
-
         lines = text.replace("\r\n", "\n").split("\n")
-        nodes: list[ast.AST] = []
-        for node in tree.body:
-            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-                nodes.append(node)
-        nodes.sort(key=lambda item: int(getattr(item, "lineno", 1)))
+        nodes = sorted(
+            [n for n in tree.body if isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))],
+            key=lambda n: int(getattr(n, "lineno", 1)),
+        )
         if not nodes:
             return []
-
         chunks: list[ChunkRecord] = []
         first_line = int(getattr(nodes[0], "lineno", 1))
         if first_line > 1:
-            preamble = "\n".join(lines[: first_line - 1]).strip()
+            preamble = "\n".join(lines[:first_line - 1]).strip()
             if preamble:
-                chunks.append(
-                    ChunkRecord(
-                        content=preamble,
-                        chunk_type="module_preamble",
-                        start_line=1,
-                        end_line=first_line - 1,
-                    )
-                )
-
+                chunks.append(ChunkRecord(content=preamble, chunk_type="module_preamble", start_line=1, end_line=first_line - 1))
         for node in nodes:
-            start_line = int(getattr(node, "lineno", 1))
-            end_line = int(getattr(node, "end_lineno", start_line))
-            snippet = "\n".join(lines[start_line - 1 : end_line]).strip()
-            if not snippet:
-                continue
-            chunk_type = "class" if isinstance(node, ast.ClassDef) else "function"
-            symbol_name = getattr(node, "name", None)
-            chunks.append(
-                ChunkRecord(
-                    content=snippet,
-                    chunk_type=chunk_type,
-                    start_line=start_line,
-                    end_line=end_line,
-                    symbol_name=symbol_name,
-                )
-            )
-
+            sl = int(getattr(node, "lineno", 1))
+            el = int(getattr(node, "end_lineno", sl))
+            snippet = "\n".join(lines[sl - 1:el]).strip()
+            if snippet:
+                chunks.append(ChunkRecord(content=snippet, chunk_type="class" if isinstance(node, ast.ClassDef) else "function", start_line=sl, end_line=el, symbol_name=getattr(node, "name", None)))
         last_line = int(getattr(nodes[-1], "end_lineno", len(lines)))
         if last_line < len(lines):
             tail = "\n".join(lines[last_line:]).strip()
             if tail:
-                chunks.append(
-                    ChunkRecord(
-                        content=tail,
-                        chunk_type="module_tail",
-                        start_line=last_line + 1,
-                        end_line=len(lines),
-                    )
-                )
+                chunks.append(ChunkRecord(content=tail, chunk_type="module_tail", start_line=last_line + 1, end_line=len(lines)))
         return chunks
 
     def _chunk_generic_symbols(self, *, text: str) -> list[ChunkRecord]:
         lines = text.replace("\r\n", "\n").split("\n")
         headers: list[tuple[int, str, str]] = []
-        for line_no, line in enumerate(lines, start=1):
+        for line_no, line in enumerate(lines, 1):
             for pattern, kind in _GENERIC_SYMBOL_PATTERNS:
-                match = pattern.match(line)
-                if not match:
-                    continue
-                symbol_name = match.group(1)
-                headers.append((line_no, symbol_name, kind))
-                break
+                m = pattern.match(line)
+                if m:
+                    headers.append((line_no, m.group(1), kind))
+                    break
         if not headers:
             return []
-
         chunks: list[ChunkRecord] = []
         first_line = headers[0][0]
         if first_line > 1:
-            preamble = "\n".join(lines[: first_line - 1]).strip()
+            preamble = "\n".join(lines[:first_line - 1]).strip()
             if preamble:
-                chunks.append(
-                    ChunkRecord(
-                        content=preamble,
-                        chunk_type="module_preamble",
-                        start_line=1,
-                        end_line=first_line - 1,
-                    )
-                )
-
-        for index, (start, symbol_name, kind) in enumerate(headers):
-            next_start = headers[index + 1][0] if index + 1 < len(headers) else len(lines) + 1
+                chunks.append(ChunkRecord(content=preamble, chunk_type="module_preamble", start_line=1, end_line=first_line - 1))
+        for i, (start, symbol_name, kind) in enumerate(headers):
+            next_start = headers[i + 1][0] if i + 1 < len(headers) else len(lines) + 1
             end = max(start, next_start - 1)
-            snippet = "\n".join(lines[start - 1 : end]).strip()
-            if not snippet:
-                continue
-            chunks.append(
-                ChunkRecord(
-                    content=snippet,
-                    chunk_type=kind,
-                    start_line=start,
-                    end_line=end,
-                    symbol_name=symbol_name,
-                )
-            )
+            snippet = "\n".join(lines[start - 1:end]).strip()
+            if snippet:
+                chunks.append(ChunkRecord(content=snippet, chunk_type=kind, start_line=start, end_line=end, symbol_name=symbol_name))
         return chunks
 
     def _chunk_sql_statements(self, *, text: str) -> list[ChunkRecord]:
@@ -813,8 +654,7 @@ class RepoContextIngestor:
         chunks: list[ChunkRecord] = []
         buffer: list[str] = []
         start_line = 1
-
-        for line_no, line in enumerate(lines, start=1):
+        for line_no, line in enumerate(lines, 1):
             if not buffer and line.strip():
                 start_line = line_no
             buffer.append(line)
@@ -822,217 +662,68 @@ class RepoContextIngestor:
                 continue
             content = "\n".join(buffer).strip()
             if content:
-                chunks.append(
-                    ChunkRecord(
-                        content=content,
-                        chunk_type="sql_statement",
-                        start_line=start_line,
-                        end_line=line_no,
-                    )
-                )
+                chunks.append(ChunkRecord(content=content, chunk_type="sql_statement", start_line=start_line, end_line=line_no))
             buffer = []
-
         if buffer:
             content = "\n".join(buffer).strip()
             if content:
-                chunks.append(
-                    ChunkRecord(
-                        content=content,
-                        chunk_type="sql_block",
-                        start_line=start_line,
-                        end_line=len(lines),
-                    )
-                )
+                chunks.append(ChunkRecord(content=content, chunk_type="sql_block", start_line=start_line, end_line=len(lines)))
         return chunks
 
     def _chunk_fixed(self, *, text: str, chunk_type: str, start_line: int) -> list[ChunkRecord]:
-        chunks: list[ChunkRecord] = []
-        for item in _split_text_with_line_ranges(
-            text,
-            chunk_size=self._chunk_size,
-            overlap=self._chunk_overlap,
-            base_start_line=start_line,
-        ):
-            chunks.append(
-                ChunkRecord(
-                    content=item.content,
-                    chunk_type=chunk_type,
-                    start_line=item.start_line,
-                    end_line=item.end_line,
-                )
-            )
-        return chunks
-
-    def _build_chunk_point(
-        self,
-        *,
-        repo_id: str,
-        relative_path: str,
-        chunk_index: int,
-        language: str,
-        file_type: str,
-        chunk: ChunkRecord,
-        indexed_commit: str | None,
-    ) -> QdrantPoint:
-        token_count = len(chunk.content.split())
-        symbol_hint = chunk.symbol_name or ""
-        point_id = build_repo_chunk_point_id(
-            repo_id=repo_id,
-            relative_path=relative_path,
-            chunk_index=chunk_index,
-            chunk_type=chunk.chunk_type,
-            symbol_name=chunk.symbol_name,
-        )
-        payload = {
-            "repo_id": repo_id,
-            "type": "chunk",
-            "path": relative_path,
-            "file_type": file_type,
-            "chunk_type": chunk.chunk_type,
-            "symbol_name": chunk.symbol_name,
-            "start_line": chunk.start_line,
-            "end_line": chunk.end_line,
-            "chunk_index": chunk_index,
-            "language": language,
-            "token_count": token_count,
-            "indexed_commit": indexed_commit,
-            "indexed_at": _utc_now(),
-            "content": chunk.content,
-        }
-        embed_input = f"path:{relative_path}\nfile_type:{file_type}\nlanguage:{language}\nsymbol:{symbol_hint}\n{chunk.content}"
-        vector = embed_text_for_ingestor(embed_input, vector_size=self._vector_size)
-        return QdrantPoint(id=point_id, vector=vector, payload=payload)
-
-    def _build_sql_chunk_row(self, point: QdrantPoint) -> RepoContextChunkWrite:
-        payload = point.payload
-        return RepoContextChunkWrite(
-            id=point.id,
-            repo_id=str(payload["repo_id"]),
-            path=str(payload["path"]),
-            chunk_index=int(payload["chunk_index"]),
-            content=str(payload["content"]),
-            language=str(payload["language"]),
-            file_type=str(payload["file_type"]),
-            chunk_type=str(payload["chunk_type"]),
-            symbol_name=_as_non_empty_str(payload.get("symbol_name")),
-            start_line=_as_optional_int(payload.get("start_line")),
-            end_line=_as_optional_int(payload.get("end_line")),
-            indexed_commit=_as_non_empty_str(payload.get("indexed_commit")),
-            metadata={
-                "indexed_at": payload.get("indexed_at"),
-                "token_count": payload.get("token_count"),
-            },
-        )
-
-    def _build_profile_point(self, *, repo_id: str, payload: dict[str, Any]) -> QdrantPoint:
-        summary = payload.get("summary", "")
-        vector = embed_text_for_ingestor(f"{repo_id}\n{summary}", vector_size=self._vector_size)
-        return QdrantPoint(
-            id=build_repo_profile_point_id(repo_id=repo_id),
-            vector=vector,
-            payload=payload,
-        )
-
-    def _build_repo_profile_payload(
-        self,
-        *,
-        repo_id: str,
-        root: Path,
-        indexed_commit: str | None,
-        default_branch: str | None,
-        files_seen: int,
-        files_indexed: int,
-        update_base: str | None = None,
-        update_head: str | None = None,
-        file_type_distribution: dict[str, int] | None = None,
-    ) -> dict[str, Any]:
-        key_files = [
-            "README.md",
-            "Makefile",
-            "docker-compose.yml",
-            "Dockerfile",
-            "pyproject.toml",
-            "package.json",
-            "requirements.txt",
-            "go.mod",
-            "Cargo.toml",
-            "pom.xml",
-        ]
-        detected_key_files = [name for name in key_files if (root / name).exists()]
-
-        top_dirs = sorted([item.name for item in root.iterdir() if item.is_dir() and not item.name.startswith(".")])[:15]
-        language_stats = _language_stats(iter_repo_files(root))
-
-        normalized_file_types = dict(sorted((file_type_distribution or {}).items(), key=lambda item: item[1], reverse=True))
-        summary_parts = [
-            f"Repo {repo_id}",
-            f"Top dirs: {', '.join(top_dirs)}" if top_dirs else "Top dirs: n/a",
-            f"Key files: {', '.join(detected_key_files)}" if detected_key_files else "Key files: n/a",
-            (
-                f"Languages: {', '.join(f'{lang}:{count}' for lang, count in language_stats.items())}"
-                if language_stats
-                else "Languages: n/a"
-            ),
-            (
-                f"File types: {', '.join(f'{name}:{count}' for name, count in normalized_file_types.items())}"
-                if normalized_file_types
-                else "File types: n/a"
-            ),
+        return [
+            ChunkRecord(content=item.content, chunk_type=chunk_type, start_line=item.start_line, end_line=item.end_line)
+            for item in _split_text_with_line_ranges(text, chunk_size=self._chunk_size, overlap=self._chunk_overlap, base_start_line=start_line)
         ]
 
-        payload: dict[str, Any] = {
-            "repo_id": repo_id,
-            "type": "repo_profile",
-            "repo_path": str(root),
-            "indexed_at": _utc_now(),
-            "indexed_commit": indexed_commit,
-            "default_branch": default_branch,
-            "files_seen": files_seen,
-            "files_indexed": files_indexed,
-            "top_directories": top_dirs,
-            "key_files": detected_key_files,
-            "languages": language_stats,
-            "file_types": normalized_file_types,
-            "summary": " | ".join(summary_parts),
-        }
-        if update_base:
-            payload["last_update_base_ref"] = update_base
-        if update_head:
-            payload["last_update_head_ref"] = update_head
-        return payload
 
-    def _safe_git_head(self, root: Path) -> str | None:
-        return _safe_git_output(root, ["rev-parse", "HEAD"])
+# ── Backward-compat alias (old code uses RepoContextIngestor) ────────────────
 
-    def _safe_git_branch(self, root: Path) -> str | None:
-        return _safe_git_output(root, ["rev-parse", "--abbrev-ref", "HEAD"])
+class RepoContextIngestor(Neo4jRepoIngestor):
+    """
+    Drop-in alias for legacy callers.
+    Accepts (but ignores) a vector_store kwarg for backward compatibility.
+    """
 
-    def _git_changed_files(self, root: Path, *, base_ref: str, head_ref: str) -> list[str]:
-        result = subprocess.run(
-            ["git", "-C", str(root), "diff", "--name-only", "--diff-filter=ACMRD", base_ref, head_ref],
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if result.returncode != 0:
-            raise ValueError(
-                "Unable to compute changed files for incremental indexing. "
-                f"git diff failed: {result.stderr.strip() or result.stdout.strip()}"
-            )
-
-        paths = [line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()]
-        return sorted(set(paths))
+    def __init__(self, vector_store: Any = None) -> None:  # noqa: ARG002
+        super().__init__()
 
 
-@dataclass(frozen=True)
-class _LineSplitChunk:
-    content: str
-    start_line: int
-    end_line: int
-
+# ── Helpers ───────────────────────────────────────────────────────────────────
 
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat()
+
+
+def _chunk_uid(repo_id: str, path: str, chunk_index: int, chunk_type: str, symbol_name: str | None) -> str:
+    key = f"{repo_id}:{path}:{chunk_index}:{chunk_type}:{symbol_name or ''}"
+    return hashlib.sha1(key.encode()).hexdigest()
+
+
+def _build_embed_input(relative_path: str, language: str, file_type: str, chunk: ChunkRecord) -> str:
+    return f"path:{relative_path}\nfile_type:{file_type}\nlanguage:{language}\nsymbol:{chunk.symbol_name or ''}\n{chunk.content}"
+
+
+def _build_sql_row(
+    uid: str, repo_id: str, path: str, chunk_index: int,
+    language: str, file_type: str, chunk: ChunkRecord,
+    indexed_commit: str | None,
+) -> RepoContextChunkWrite:
+    return RepoContextChunkWrite(
+        id=uid,
+        repo_id=repo_id,
+        path=path,
+        chunk_index=chunk_index,
+        content=chunk.content,
+        language=language,
+        file_type=file_type,
+        chunk_type=chunk.chunk_type,
+        symbol_name=chunk.symbol_name,
+        start_line=chunk.start_line,
+        end_line=chunk.end_line,
+        indexed_commit=indexed_commit,
+        metadata={"indexed_at": _utc_now(), "token_count": len(chunk.content.split())},
+    )
 
 
 def _extract_suffix(file_path: Path) -> str:
@@ -1043,99 +734,92 @@ def _extract_suffix(file_path: Path) -> str:
 
 
 def _guess_language(relative_path: str) -> str:
-    candidate = Path(relative_path)
-    suffix = _extract_suffix(candidate)
-    return _LANGUAGE_BY_SUFFIX.get(suffix, "text")
+    return _LANGUAGE_BY_SUFFIX.get(_extract_suffix(Path(relative_path)), "text")
 
 
 def _classify_file_type(file_path: Path) -> str:
     posix_path = file_path.as_posix().lower()
     name = file_path.name.lower()
     suffix = _extract_suffix(file_path)
-
     if name in _DEPENDENCY_FILENAMES:
         return "dependency"
-
     if suffix in _DIFF_SUFFIXES:
         return "diff"
-
-    if any(hint in posix_path for hint in _CI_PATH_HINTS) or name in _CI_FILENAMES:
+    if any(h in posix_path for h in _CI_PATH_HINTS) or name in _CI_FILENAMES:
         return "ci"
-
-    if any(hint in posix_path for hint in _MIGRATION_PATH_HINTS):
+    if any(h in posix_path for h in _MIGRATION_PATH_HINTS):
         return "migration"
-
     if suffix in _SQL_SUFFIXES and "migration" in posix_path:
         return "migration"
-
-    if any(hint in posix_path for hint in _ADR_PATH_HINTS):
+    if any(h in posix_path for h in _ADR_PATH_HINTS):
         return "adr"
-
-    if any(hint in posix_path for hint in _TEST_PATH_HINTS) or re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", name):
+    if any(h in posix_path for h in _TEST_PATH_HINTS) or re.search(r"(?:^|[._-])(test|spec)(?:[._-]|$)", name):
         if suffix in _CODE_SUFFIXES:
             return "test"
-
-    if suffix in _INFRA_SUFFIXES or any(token in posix_path for token in ("/terraform/", "/helm/", "/k8s/", "/kubernetes/")):
+    if suffix in _INFRA_SUFFIXES or any(t in posix_path for t in ("/terraform/", "/helm/", "/k8s/", "/kubernetes/")):
         return "infra"
-
     if suffix in _SCRIPT_SUFFIXES:
         return "script"
-
     if suffix in _DOC_SUFFIXES:
         return "docs"
-
     if suffix in _CONFIG_SUFFIXES:
         return "config"
-
     if suffix in _CODE_SUFFIXES:
         return "code"
-
     if suffix in _SQL_SUFFIXES:
         return "migration"
-
     return "text"
 
 
+def _safe_git_head(root: Path) -> str | None:
+    return _safe_git_output(root, ["rev-parse", "HEAD"])
+
+
+def _safe_git_branch(root: Path) -> str | None:
+    return _safe_git_output(root, ["rev-parse", "--abbrev-ref", "HEAD"])
+
+
 def _safe_git_output(root: Path, args: list[str]) -> str | None:
-    result = subprocess.run(
-        ["git", "-C", str(root), *args],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
+    result = subprocess.run(["git", "-C", str(root), *args], capture_output=True, text=True, check=False)
     if result.returncode != 0:
         return None
-    value = result.stdout.strip()
-    return value or None
+    return result.stdout.strip() or None
+
+
+def _git_changed_files(root: Path, *, base_ref: str, head_ref: str) -> list[str]:
+    result = subprocess.run(
+        ["git", "-C", str(root), "diff", "--name-only", "--diff-filter=ACMRD", base_ref, head_ref],
+        capture_output=True, text=True, check=False,
+    )
+    if result.returncode != 0:
+        raise ValueError(f"git diff failed: {result.stderr.strip() or result.stdout.strip()}")
+    return sorted({line.strip().replace("\\", "/") for line in result.stdout.splitlines() if line.strip()})
+
+
+def _as_str(value: Any) -> str | None:
+    if not isinstance(value, str):
+        return None
+    return value.strip() or None
 
 
 def _language_stats(paths: list[Path]) -> dict[str, int]:
     stats: dict[str, int] = {}
     for path in paths:
-        language = _guess_language(path.as_posix())
-        stats[language] = stats.get(language, 0) + 1
-    return dict(sorted(stats.items(), key=lambda item: item[1], reverse=True))
+        lang = _guess_language(path.as_posix())
+        stats[lang] = stats.get(lang, 0) + 1
+    return dict(sorted(stats.items(), key=lambda x: x[1], reverse=True))
 
 
-def _split_text_with_line_ranges(
-    text: str,
-    *,
-    chunk_size: int,
-    overlap: int,
-    base_start_line: int,
-) -> list[_LineSplitChunk]:
+def _split_text_with_line_ranges(text: str, *, chunk_size: int, overlap: int, base_start_line: int) -> list[_LineSplitChunk]:
     normalized = text.replace("\r\n", "\n")
     if chunk_size <= 0:
-        line_count = max(normalized.count("\n"), 0)
-        return [_LineSplitChunk(content=normalized, start_line=base_start_line, end_line=base_start_line + line_count)]
-
+        lc = max(normalized.count("\n"), 0)
+        return [_LineSplitChunk(content=normalized, start_line=base_start_line, end_line=base_start_line + lc)]
     if overlap < 0:
         overlap = 0
-
     lines = normalized.split("\n")
     if not lines:
         return []
-
     chunks: list[_LineSplitChunk] = []
     start_idx = 0
     total = len(lines)
@@ -1150,234 +834,73 @@ def _split_text_with_line_ranges(
             end_idx += 1
             if current_len >= chunk_size:
                 break
-
         content = "\n".join(lines[start_idx:end_idx]).strip()
         if content:
-            chunks.append(
-                _LineSplitChunk(
-                    content=content,
-                    start_line=base_start_line + start_idx,
-                    end_line=base_start_line + max(start_idx, end_idx - 1),
-                )
-            )
-
+            chunks.append(_LineSplitChunk(content=content, start_line=base_start_line + start_idx, end_line=base_start_line + max(start_idx, end_idx - 1)))
         if end_idx >= total:
             break
-
         if overlap == 0:
             start_idx = end_idx
             continue
-
         overlap_chars = 0
         overlap_start = end_idx
         while overlap_start > start_idx and overlap_chars < overlap:
             overlap_start -= 1
             overlap_chars += len(lines[overlap_start]) + 1
         start_idx = overlap_start if overlap_start < end_idx else end_idx
-
     return chunks
 
 
 def _chunk_by_headers(lines: list[str], headers: list[tuple[int, str]], chunk_type: str) -> list[ChunkRecord]:
     chunks: list[ChunkRecord] = []
-    if not headers:
-        return chunks
-
-    first_header_line = headers[0][0]
-    if first_header_line > 1:
-        preface = "\n".join(lines[: first_header_line - 1]).strip()
+    first = headers[0][0]
+    if first > 1:
+        preface = "\n".join(lines[:first - 1]).strip()
         if preface:
-            chunks.append(
-                ChunkRecord(
-                    content=preface,
-                    chunk_type=f"{chunk_type}_preamble",
-                    start_line=1,
-                    end_line=first_header_line - 1,
-                )
-            )
-
-    for index, (start_line, label) in enumerate(headers):
-        next_start = headers[index + 1][0] if index + 1 < len(headers) else len(lines) + 1
-        end_line = max(start_line, next_start - 1)
-        content = "\n".join(lines[start_line - 1 : end_line]).strip()
-        if not content:
-            continue
-        chunks.append(
-            ChunkRecord(
-                content=content,
-                chunk_type=chunk_type,
-                start_line=start_line,
-                end_line=end_line,
-                symbol_name=label,
-            )
-        )
+            chunks.append(ChunkRecord(content=preface, chunk_type=f"{chunk_type}_preamble", start_line=1, end_line=first - 1))
+    for i, (sl, label) in enumerate(headers):
+        ns = headers[i + 1][0] if i + 1 < len(headers) else len(lines) + 1
+        el = max(sl, ns - 1)
+        content = "\n".join(lines[sl - 1:el]).strip()
+        if content:
+            chunks.append(ChunkRecord(content=content, chunk_type=chunk_type, start_line=sl, end_line=el, symbol_name=label))
     return chunks
 
 
 def _find_line_for_token(lines: Iterable[str], token: str) -> int:
-    for index, line in enumerate(lines, start=1):
+    for i, line in enumerate(lines, 1):
         if token in line:
-            return index
+            return i
     return 1
 
 
-def _as_non_empty_str(value: Any) -> str | None:
-    if not isinstance(value, str):
-        return None
-    cleaned = value.strip()
-    return cleaned or None
-
-
-def _sql_write_to_row(row: RepoContextChunkWrite) -> RepoContextChunkRow:
-    return RepoContextChunkRow(
-        id=row.id,
-        repo_id=row.repo_id,
-        path=row.path,
-        chunk_index=row.chunk_index,
-        content=row.content,
-        language=row.language,
-        file_type=row.file_type,
-        chunk_type=row.chunk_type,
-        symbol_name=row.symbol_name,
-        start_line=row.start_line,
-        end_line=row.end_line,
-        indexed_commit=row.indexed_commit,
-        metadata=dict(row.metadata or {}),
-        lexical_score=0.0,
-    )
-
-
-def _as_optional_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return int(value)
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float):
-        return int(value)
-    if isinstance(value, str):
-        try:
-            return int(value.strip())
-        except ValueError:
-            return None
-    return None
-
-
-# ── Graph edge extraction ────────────────────────────────────────────────────
-
-_PY_IMPORT_RE = re.compile(
-    r"^\s*(?:from\s+([\w.]+)\s+import|import\s+([\w.]+))", re.MULTILINE,
-)
-_PY_CLASS_BASES_RE = re.compile(
-    r"^\s*class\s+(\w+)\s*\(([^)]+)\)", re.MULTILINE,
-)
-_JS_IMPORT_RE = re.compile(
-    r"""(?:import\s+.*?from\s+['"]([^'"]+)['"]|require\s*\(\s*['"]([^'"]+)['"]\s*\))""",
-    re.MULTILINE,
-)
-
-
-def _extract_python_edges(
-    file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None,
-) -> list[dict[str, Any]]:
-    """Extract import and inheritance edges from a Python file."""
+def _extract_python_edges(file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None) -> list[dict[str, Any]]:
     try:
         text = file_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-
     edges: list[dict[str, Any]] = []
-
-    # Imports
-    for match in _PY_IMPORT_RE.finditer(text):
-        module = match.group(1) or match.group(2) or ""
-        if not module:
-            continue
-        target_path = module.replace(".", "/") + ".py"
-        edges.append({
-            "repo_id": repo_id,
-            "source_path": relative_path,
-            "source_symbol": None,
-            "target_path": target_path,
-            "target_symbol": None,
-            "edge_type": "imports",
-            "indexed_commit": indexed_commit,
-        })
-
-    # Class inheritance
-    for match in _PY_CLASS_BASES_RE.finditer(text):
-        class_name = match.group(1)
-        bases = [b.strip() for b in match.group(2).split(",")]
-        for base in bases:
-            base_name = base.split(".")[-1].strip()
+    for m in _PY_IMPORT_RE.finditer(text):
+        module = m.group(1) or m.group(2) or ""
+        if module:
+            edges.append({"repo_id": repo_id, "source_path": relative_path, "source_symbol": None, "target_path": module.replace(".", "/") + ".py", "target_symbol": None, "edge_type": "imports", "indexed_commit": indexed_commit})
+    for m in _PY_CLASS_BASES_RE.finditer(text):
+        class_name = m.group(1)
+        for base in m.group(2).split(","):
+            base_name = base.strip().split(".")[-1].strip()
             if base_name and base_name not in {"object", "ABC", "Protocol", "BaseModel"}:
-                edges.append({
-                    "repo_id": repo_id,
-                    "source_path": relative_path,
-                    "source_symbol": class_name,
-                    "target_path": "",  # resolved by symbol search
-                    "target_symbol": base_name,
-                    "edge_type": "inherits",
-                    "indexed_commit": indexed_commit,
-                })
-
+                edges.append({"repo_id": repo_id, "source_path": relative_path, "source_symbol": class_name, "target_path": "", "target_symbol": base_name, "edge_type": "inherits", "indexed_commit": indexed_commit})
     return edges
 
 
-def _extract_js_ts_edges(
-    file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None,
-) -> list[dict[str, Any]]:
-    """Extract import edges from JavaScript/TypeScript files."""
+def _extract_js_ts_edges(file_path: Path, relative_path: str, repo_id: str, indexed_commit: str | None) -> list[dict[str, Any]]:
     try:
         text = file_path.read_text(encoding="utf-8", errors="ignore")
     except OSError:
         return []
-
     edges: list[dict[str, Any]] = []
-    for match in _JS_IMPORT_RE.finditer(text):
-        module = match.group(1) or match.group(2) or ""
-        if not module or not module.startswith("."):
-            continue  # skip node_modules imports
-        edges.append({
-            "repo_id": repo_id,
-            "source_path": relative_path,
-            "source_symbol": None,
-            "target_path": module,
-            "target_symbol": None,
-            "edge_type": "imports",
-            "indexed_commit": indexed_commit,
-        })
-
+    for m in _JS_IMPORT_RE.finditer(text):
+        module = m.group(1) or m.group(2) or ""
+        if module and module.startswith("."):
+            edges.append({"repo_id": repo_id, "source_path": relative_path, "source_symbol": None, "target_path": module, "target_symbol": None, "edge_type": "imports", "indexed_commit": indexed_commit})
     return edges
-
-
-def _persist_graph_edges(repo_id: str, edges: list[dict[str, Any]]) -> None:
-    """Persist extracted graph edges to PostgreSQL."""
-    if not edges:
-        return
-    try:
-        from app.data.database import get_engine
-        from sqlalchemy import text as sa_text
-
-        engine = get_engine()
-        if engine is None:
-            return
-
-        with engine.begin() as conn:
-            # Clear old edges for this repo
-            conn.execute(
-                sa_text("DELETE FROM code_entity_edges WHERE repo_id = :repo_id"),
-                {"repo_id": repo_id},
-            )
-            # Batch insert new edges
-            for edge in edges:
-                conn.execute(
-                    sa_text(
-                        "INSERT INTO code_entity_edges "
-                        "(repo_id, source_path, source_symbol, target_path, target_symbol, edge_type, indexed_commit) "
-                        "VALUES (:repo_id, :source_path, :source_symbol, :target_path, :target_symbol, :edge_type, :indexed_commit)"
-                    ),
-                    edge,
-                )
-    except Exception:
-        # Graph edges are best-effort; never break repo indexing.
-        pass

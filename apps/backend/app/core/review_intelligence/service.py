@@ -49,20 +49,20 @@ class ReviewIntelligenceService:
         knowledge_base_context: str | None,
         context_references: list[dict[str, Any]],
         fallback_summary: str,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated — ignored, Neo4j only
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         kb_retrieval_error: str | None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> StructuredReviewOutput:
         self.require_graph_rag(
-            qdrant_enabled=qdrant_enabled,
+            neo4j_enabled=neo4j_enabled,
             kb_retrieval_mode=kb_retrieval_mode,
             kb_context_chunks_count=kb_context_chunks_count,
             knowledge_base_context=knowledge_base_context,
             kb_retrieval_error=kb_retrieval_error,
             context_references=context_references,
-            allow_non_qdrant_grounding=allow_non_qdrant_grounding,
         )
         validated_context_references = _validated_context_references(context_references)
 
@@ -153,23 +153,23 @@ class ReviewIntelligenceService:
     def can_use_graph_rag(
         self,
         *,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
         context_references: list[dict[str, Any]] | None = None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> tuple[bool, str | None]:
         try:
             self.require_graph_rag(
-                qdrant_enabled=qdrant_enabled,
+                neo4j_enabled=neo4j_enabled,
                 kb_retrieval_mode=kb_retrieval_mode,
                 kb_context_chunks_count=kb_context_chunks_count,
                 knowledge_base_context=knowledge_base_context,
                 kb_retrieval_error=kb_retrieval_error,
                 context_references=context_references,
-                allow_non_qdrant_grounding=allow_non_qdrant_grounding,
             )
         except GraphRAGRequiredError as exc:
             return False, str(exc)
@@ -178,20 +178,21 @@ class ReviewIntelligenceService:
     def require_graph_rag(
         self,
         *,
-        qdrant_enabled: bool,
+        qdrant_enabled: bool = False,  # deprecated, ignored
+        neo4j_enabled: bool = True,
         kb_retrieval_mode: str,
         kb_context_chunks_count: int,
         knowledge_base_context: str | None,
         kb_retrieval_error: str | None,
         context_references: list[dict[str, Any]] | None = None,
-        allow_non_qdrant_grounding: bool = False,
+        allow_non_qdrant_grounding: bool = True,  # deprecated — ignored
     ) -> None:
         if not settings.REVIEW_INTELLIGENCE_ENABLED:
             return
         if not settings.GRAPH_RAG_REQUIRED:
             return
-        if not qdrant_enabled and not allow_non_qdrant_grounding:
-            raise GraphRAGRequiredError("Qdrant is required for the GraphRAG review pipeline.")
+        if not neo4j_enabled:
+            raise GraphRAGRequiredError("Neo4j is required for the GraphRAG review pipeline.")
         if kb_retrieval_mode == "failed":
             detail = f" Retrieval error: {kb_retrieval_error}" if kb_retrieval_error else ""
             raise GraphRAGRequiredError(f"GraphRAG retrieval failed.{detail}")

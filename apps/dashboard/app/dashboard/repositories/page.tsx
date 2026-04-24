@@ -22,13 +22,13 @@ import {
   Settings,
   Copy,
   Loader2,
-  Github,
   FolderGit2,
   ChevronLeft,
   Users,
   Mail,
   Filter,
 } from "lucide-react"
+import { Github } from "@/components/ui/social-icons"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"

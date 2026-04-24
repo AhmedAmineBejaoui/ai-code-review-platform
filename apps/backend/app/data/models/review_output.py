@@ -9,7 +9,7 @@ from typing import Any
 class AnalysisReviewOutput:
     analysis_id: str
     source: str
-    qdrant_required: bool
+    graph_rag_required: bool
     payload_json: str
     created_at: str
     updated_at: str

@@ -10,7 +10,7 @@ from analysis.langGraph.raggraph.retriever import RagGraphRetriever
 from app.core.knowledge_base.retriever import build_llm_context_with_chunks
 from app.core.knowledge_base.retrieval_models import RetrievedContextChunk
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client
 from app.settings import settings
 
 
@@ -23,7 +23,7 @@ class RagEngineResult:
     context_text: str | None
     context_references: list[dict[str, Any]]
     grounded: bool
-    qdrant_enabled: bool
+    neo4j_grounded: bool  # True when Neo4j context was used for this result
     rag_confidence_score: float
     trace: dict[str, Any]
     error: str | None = None
@@ -66,16 +66,16 @@ class GraphRagEngine:
     def __init__(
         self,
         *,
-        vector_store: QdrantClient | None = None,
+        neo4j_client: Neo4jClient | None = None,
         retriever: RagGraphRetriever | None = None,
     ) -> None:
-        self._vector_store = vector_store or QdrantClient()
-        self._retriever = retriever or RagGraphRetriever(vector_store=self._vector_store)
+        self._neo4j = neo4j_client or get_neo4j_client()
+        self._retriever = retriever or RagGraphRetriever(neo4j_client=self._neo4j)
         self._profiles_repo = RepoProfilesRepo()
 
     @property
     def available(self) -> bool:
-        return self._vector_store.enabled
+        return self._neo4j.enabled
 
     async def retrieve_for_diff(
         self,
@@ -97,7 +97,6 @@ class GraphRagEngine:
             retrieval=retrieval,
             mode="graph_rag_diff",
             started=started,
-            qdrant_enabled=self._vector_store.enabled,
         )
 
     async def retrieve_for_query(
@@ -122,7 +121,6 @@ class GraphRagEngine:
             retrieval=retrieval,
             mode="graph_rag_query",
             started=started,
-            qdrant_enabled=self._vector_store.enabled,
         )
 
     async def retrieve_for_repo_bootstrap(
@@ -138,7 +136,6 @@ class GraphRagEngine:
             retrieval=retrieval,
             mode="graph_rag_bootstrap",
             started=started,
-            qdrant_enabled=self._vector_store.enabled,
         )
 
     async def _build_result(
@@ -148,7 +145,6 @@ class GraphRagEngine:
         retrieval: RetrievalResult,
         mode: str,
         started: float,
-        qdrant_enabled: bool,
     ) -> RagEngineResult:
         chunks = [_reference_to_chunk(reference, repo_id=repo_id, chunk_index=index) for index, reference in enumerate(retrieval.references)]
         context_text = retrieval.context_text
@@ -173,15 +169,20 @@ class GraphRagEngine:
             context_text=context_text,
             context_references=context_references,
             grounded=bool(context_text and context_references),
-            qdrant_enabled=qdrant_enabled,
+            neo4j_grounded=bool(context_text and context_references),
             rag_confidence_score=_rag_confidence_score(chunks),
             trace=trace,
             error=None,
         )
 
 
-def build_graph_rag_engine(*, vector_store: QdrantClient | None = None) -> GraphRagEngine:
-    return GraphRagEngine(vector_store=vector_store)
+def build_graph_rag_engine(
+    *,
+    neo4j_client: Neo4jClient | None = None,
+    # legacy kwarg kept for call sites that still pass vector_store=
+    vector_store: object | None = None,  # noqa: ARG001
+) -> GraphRagEngine:
+    return GraphRagEngine(neo4j_client=neo4j_client)
 
 
 def _rag_confidence_score(chunks: list[RetrievedContextChunk]) -> float:

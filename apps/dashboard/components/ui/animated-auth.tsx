@@ -15,13 +15,13 @@ import {
   User,
   ArrowRight,
   Loader2,
-  Github,
   Circle,
   Sparkles,
   Shield,
   Zap,
   CheckCircle2,
 } from 'lucide-react';
+import { Github } from '@/components/ui/social-icons';
 
 // ============================================================================
 // TYPES

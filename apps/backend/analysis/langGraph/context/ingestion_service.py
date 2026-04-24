@@ -1,12 +1,17 @@
+"""
+Repository Ingestion Service — Neo4j backend
+
+Orchestrates repo onboarding + incremental index updates for GraphRAG.
+Uses Neo4jRepoIngestor instead of the old Qdrant-backed RepoContextIngestor.
+"""
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING
+from typing import Any
 
 from analysis.langGraph.models import GraphIndexSnapshot
-from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResult
-from app.integrations.vector_store.qdrant_client import QdrantClient
-
+from app.core.knowledge_base.ingestor import Neo4jRepoIngestor, RepoIndexResult
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client
 
 logger = logging.getLogger(__name__)
 
@@ -17,16 +22,15 @@ class RepositoryIngestionService:
     def __init__(
         self,
         *,
-        vector_store: QdrantClient | None = None,
-        ingestor: RepoContextIngestor | None = None,
-        graph_manager: RepositoryGraphManager | None = None,
+        neo4j_client: Neo4jClient | None = None,
+        ingestor: Neo4jRepoIngestor | None = None,
+        # Legacy params accepted but ignored for backward compat
+        vector_store: Any = None,
+        graph_manager: Any = None,
     ) -> None:
-        self._vector_store = vector_store
+        self._neo4j = neo4j_client or get_neo4j_client()
         self._ingestor = ingestor
-        if graph_manager is None:
-            from analysis.langGraph.context.graph_manager import RepositoryGraphManager
-
-            graph_manager = RepositoryGraphManager()
+        # graph_manager kept as attribute for callers that access .neighbors()
         self._graph_manager = graph_manager
 
     async def ensure_index(
@@ -61,7 +65,7 @@ class RepositoryIngestionService:
                     source="langgraph_pipeline",
                 )
         except Exception as exc:
-            logger.exception("Repository index update failed")
+            logger.exception("Repository index update failed for %s", repo_id)
             return GraphIndexSnapshot(
                 status="failed",
                 mode="unknown",
@@ -78,11 +82,14 @@ class RepositoryIngestionService:
                 graph_edges_count=0,
             )
 
-        graph_edges_count = self._graph_manager.refresh_graph(
-            repo_id=repo_id,
-            changed_files=result.changed_files if result.mode == "incremental" else None,
-            indexed_commit=result.indexed_commit,
-        )
+        # Count graph edges from Neo4j
+        try:
+            stats = self._neo4j.get_repo_stats(repo_id)
+            # edges are relationships in Neo4j; approximate from chunk count
+            graph_edges_count = int(stats.get("chunk_count", 0))
+        except Exception:
+            graph_edges_count = result.chunks_upserted
+
         return _to_snapshot(result=result, graph_edges_count=graph_edges_count)
 
     def neighbors(
@@ -93,19 +100,21 @@ class RepositoryIngestionService:
         depth: int = 2,
         limit: int = 32,
     ) -> list[str]:
-        return self._graph_manager.neighbors(
-            repo_id=repo_id,
-            path=path,
-            depth=depth,
-            limit=limit,
-        )
+        """Get neighboring file paths via graph traversal."""
+        try:
+            return self._neo4j.get_neighbor_paths(
+                repo_id=repo_id,
+                path=path,
+                depth=depth,
+                limit=limit,
+            )
+        except Exception as exc:
+            logger.debug("Neo4j neighbor lookup failed: %s", exc)
+            return []
 
-    def _get_ingestor(self) -> RepoContextIngestor:
-        if self._ingestor is not None:
-            return self._ingestor
-        if self._vector_store is None:
-            self._vector_store = QdrantClient()
-        self._ingestor = RepoContextIngestor(vector_store=self._vector_store)
+    def _get_ingestor(self) -> Neo4jRepoIngestor:
+        if self._ingestor is None:
+            self._ingestor = Neo4jRepoIngestor(neo4j_client=self._neo4j)
         return self._ingestor
 
 

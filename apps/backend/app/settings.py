@@ -100,14 +100,16 @@ class Settings(BaseSettings):
     LLM_REVIEW_FINDINGS_ENABLED: bool = True
     LLM_REVIEW_MAX_FINDINGS: int = 4
     REVIEW_INTELLIGENCE_ENABLED: bool = True
-    REVIEW_INTELLIGENCE_REQUIRE_QDRANT: bool = True
+    # REVIEW_INTELLIGENCE_REQUIRE_QDRANT removed — Neo4j is the store; use GRAPH_RAG_REQUIRED
     GRAPH_RAG_REQUIRED: bool = True
 
-    # ── Vector Store (Qdrant) ─────────────────────────────────────────────────
-    QDRANT_ENABLED: bool = True
-    QDRANT_MODE: str = "local"  # "http" for remote server, "local" for embedded in-process
-    QDRANT_URL: str = "http://localhost:6333"  # Used when QDRANT_MODE=http
-    QDRANT_LOCAL_PATH: str = "./qdrant_storage"  # Used when QDRANT_MODE=local
+    # ── Vector Store (Qdrant) — DEPRECATED; kept only for env-var compat ─────
+    # These settings are no longer consumed by any active code.
+    # Neo4j is the sole vector/graph store. QDRANT_ENABLED must stay False.
+    QDRANT_ENABLED: bool = False
+    QDRANT_MODE: str = "local"
+    QDRANT_URL: str = "http://localhost:6333"
+    QDRANT_LOCAL_PATH: str = "./qdrant_storage"
     QDRANT_COLLECTION: str = "code_review_rules"
     QDRANT_REPO_CONTEXT_COLLECTION: str = "repo_context"
     QDRANT_API_KEY: str | None = None
@@ -167,17 +169,9 @@ class Settings(BaseSettings):
     RAG_ORCHESTRATOR_MAX_AGENTS_PER_QUERY: int = 3
     RAG_ORCHESTRATOR_TIMEOUT_SECONDS: int = 60
 
-    # ── Qdrant Collections ────────────────────────────────────────────────────
-    QDRANT_COLLECTION_KB_DOCUMENTS: str = "kb_documents"
-    QDRANT_COLLECTION_PROJECT_PROFILES: str = "project_profiles"
-    QDRANT_COLLECTION_ORG_RULES: str = "org_rules"
-    QDRANT_COLLECTION_ANALYSIS_CONTEXT: str = "analysis_context"
-
-    # Collection vector sizes (mxbai-embed-large = 1024)
-    QDRANT_VECTOR_SIZE_KB_DOCUMENTS: int = 1024
-    QDRANT_VECTOR_SIZE_PROJECT_PROFILES: int = 1024
-    QDRANT_VECTOR_SIZE_ORG_RULES: int = 1024
-    QDRANT_VECTOR_SIZE_ANALYSIS_CONTEXT: int = 1024
+    # ── Qdrant Collections — REMOVED (Neo4j is now the sole vector store) ────
+    # These settings are preserved only for backwards env-var compatibility;
+    # no code reads them. Remove them once no .env files reference them.
 
     # ── Anti-Hallucination Configuration ──────────────────────────────────────
     ANTI_HALLUCINATION_REQUIRE_GROUNDING: bool = True
@@ -207,7 +201,7 @@ class Settings(BaseSettings):
     LANGGRAPH_REQUIRE_SOURCE_REFERENCES: bool = True
     LANGGRAPH_CACHE_TTL_SECONDS: int = 1800
 
-    NEO4J_ENABLED: bool = False
+    NEO4J_ENABLED: bool = True
     NEO4J_URI: str = "bolt://localhost:7687"
     NEO4J_USER: str = "neo4j"
     NEO4J_PASSWORD: str = "neo4j"

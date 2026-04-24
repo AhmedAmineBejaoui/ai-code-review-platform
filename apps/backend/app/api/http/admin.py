@@ -27,7 +27,6 @@ from app.data.database import get_engine
 from app.data.repos.analyses_repo import AnalysesRepo
 from app.core.knowledge_base.document_lifecycle import source_observability_summary
 from app.integrations.object_storage.s3_minio_client import S3MinioClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.settings import settings
 from app.workers.queue import QueueUnavailableError, enqueue_analysis_job
 from app.workers.tasks.ingest_kb import run_repo_onboarding
@@ -1713,7 +1712,7 @@ def _collect_integrations_payload() -> dict[str, Any]:
                 settings.GITHUB_APP_ID and settings.GITHUB_APP_INSTALLATION_ID and settings.GITHUB_APP_PRIVATE_KEY_PEM
             ),
             "githubWebhookConfigured": bool(settings.GITHUB_WEBHOOK_SECRET),
-            "qdrantEnabled": bool(settings.QDRANT_ENABLED),
+            "neo4jEnabled": bool(settings.NEO4J_ENABLED),
         },
         "storage": {
             "enabled": bool(settings.OBJECT_STORAGE_ENABLED),
@@ -1897,15 +1896,14 @@ async def _delete_kb_repo(repo_id: str, actor_id: str) -> dict[str, Any]:
         )
         deleted = True
 
-    if settings.QDRANT_ENABLED:
-        qdrant_client = QdrantClient()
+    if settings.NEO4J_ENABLED:
+        from app.integrations.graph_database.neo4j_client import get_neo4j_client
         try:
-            await qdrant_client.delete_by_filter(
-                collection_name=settings.QDRANT_REPO_CONTEXT_COLLECTION,
-                filter_payload={"repo_id": repo_id},
-            )
+            neo4j_client = get_neo4j_client()
+            import asyncio
+            await asyncio.to_thread(neo4j_client.delete_repo_chunks, repo_id)
         except Exception:
-            # Keep profile deletion successful even when vector-store cleanup fails.
+            # Keep profile deletion successful even when graph-store cleanup fails.
             pass
 
     return {"repoId": repo_id, "deleted": deleted}

@@ -18,7 +18,7 @@ _REVIEW_OUTPUTS_LOCK = Lock()
 class UpsertReviewOutputInput:
     analysis_id: str
     source: str
-    qdrant_required: bool
+    graph_rag_required: bool
     payload: dict[str, Any]
 
 
@@ -35,14 +35,14 @@ class ReviewOutputsRepo:
                         text(
                             """
                             INSERT INTO analysis_review_outputs (
-                                analysis_id, source, qdrant_required, payload_json
+                                analysis_id, source, graph_rag_required, payload_json
                             )
                             VALUES (
-                                :analysis_id, :source, :qdrant_required, CAST(:payload_json AS jsonb)
+                                :analysis_id, :source, :graph_rag_required, CAST(:payload_json AS jsonb)
                             )
                             ON CONFLICT (analysis_id) DO UPDATE
                             SET source = EXCLUDED.source,
-                                qdrant_required = EXCLUDED.qdrant_required,
+                                graph_rag_required = EXCLUDED.graph_rag_required,
                                 payload_json = EXCLUDED.payload_json,
                                 updated_at = NOW()
                             RETURNING *
@@ -51,7 +51,7 @@ class ReviewOutputsRepo:
                         {
                             "analysis_id": payload.analysis_id,
                             "source": payload.source,
-                            "qdrant_required": payload.qdrant_required,
+                            "graph_rag_required": payload.graph_rag_required,
                             "payload_json": payload_json,
                         },
                     )
@@ -86,7 +86,7 @@ def _row_to_model(row: RowMapping) -> AnalysisReviewOutput:
     return AnalysisReviewOutput(
         analysis_id=str(row["analysis_id"]),
         source=str(row["source"]),
-        qdrant_required=bool(row["qdrant_required"]),
+        graph_rag_required=bool(row["graph_rag_required"]),
         payload_json=payload_json,
         created_at=str(row["created_at"]),
         updated_at=str(row["updated_at"]),

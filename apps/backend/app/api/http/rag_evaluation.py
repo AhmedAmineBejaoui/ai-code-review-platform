@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 from app.core.knowledge_base.rag_engines import build_graph_rag_engine
 from app.settings import settings
 
@@ -158,12 +158,9 @@ async def evaluate_rag_performance(
     Evaluate RAG performance for a repository using test queries.
     Returns metrics like latency, accuracy, and context quality.
     """
-    vector_store = QdrantClient()
-    if not vector_store.enabled:
-        raise ValueError("Vector store is not available")
-    
-    rag_engine = build_graph_rag_engine(vector_store=vector_store)
-    
+    neo4j_client = get_neo4j_client()
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
+
     # Select test queries
     selected_queries = TEST_QUERIES[:test_queries]
     
@@ -251,12 +248,9 @@ async def run_rag_benchmark(
     Run a comprehensive RAG benchmark with all test queries.
     Returns detailed results for each query.
     """
-    vector_store = QdrantClient()
-    if not vector_store.enabled:
-        raise ValueError("Vector store is not available")
-    
-    rag_engine = build_graph_rag_engine(vector_store=vector_store)
-    
+    neo4j_client = get_neo4j_client()
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
+
     # Run all test queries
     test_results = []
     for query in TEST_QUERIES:

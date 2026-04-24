@@ -4,7 +4,7 @@ Repository Context Manager - Central Service for Repo Indexing
 Responsibilities:
 1. First-time repository onboarding (full indexation)
 2. Incremental updates (commits, PRs)
-3. Coordinate: chunking → embeddings → graph → Qdrant
+3. Coordinate: chunking → embeddings → graph → Neo4j
 4. Track indexing state per repository
 5. Handle large repositories efficiently
 
@@ -25,7 +25,7 @@ from app.core.analysis.context.embeddings import EmbeddingGenerator
 from app.core.analysis.graph.builder import GraphBuilder
 from app.core.analysis.graph.manager import GraphManager
 from app.core.analysis.graph.schema import NodeType, RelationType
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 
 logger = logging.getLogger(__name__)
@@ -58,7 +58,7 @@ class RepoContextManager:
     2. Scan all relevant files (filter by language, exclude binaries)
     3. Chunk each file with Tree-sitter
     4. Generate embeddings for each chunk
-    5. Store chunks in Qdrant
+    5. Store chunks in Neo4j
     6. Build code graph in Neo4j (files, functions, classes, dependencies)
     7. Update repository profile metadata
     
@@ -83,14 +83,13 @@ class RepoContextManager:
         embedder: EmbeddingGenerator | None = None,
         graph_manager: GraphManager | None = None,
         graph_builder: GraphBuilder | None = None,
-        qdrant_client: QdrantClient | None = None,
         repo_profiles_repo: RepoProfilesRepo | None = None,
     ) -> None:
         self._chunker = chunker or CodeChunker()
         self._embedder = embedder or EmbeddingGenerator()
         self._graph_manager = graph_manager or GraphManager()
         self._graph_builder = graph_builder or GraphBuilder()
-        self._qdrant = qdrant_client or QdrantClient()
+        self._neo4j = get_neo4j_client()
         self._profiles_repo = repo_profiles_repo or RepoProfilesRepo()
     
     async def index_repository(
@@ -206,7 +205,7 @@ class RepoContextManager:
         2. Filter by language (Python, JS, TS, Go)
         3. Chunk all files
         4. Generate embeddings in batch
-        5. Store in Qdrant
+        5. Store in Neo4j
         6. Build graph: Repository → Files → Functions/Classes
         7. Extract relationships (calls, imports)
         8. Update repository profile
@@ -241,8 +240,8 @@ class RepoContextManager:
         # Generate embeddings
         chunk_embeddings = await self._embedder.embed_chunks(all_chunks)
         
-        # Store in Qdrant
-        await self._store_chunks_in_qdrant(repository_id, all_chunks, chunk_embeddings)
+        # Store in Neo4j
+        await self._store_chunks_in_neo4j(repository_id, all_chunks, chunk_embeddings)
         
         # Build graph
         graph_stats = await self._build_graph(
@@ -283,7 +282,7 @@ class RepoContextManager:
         1. Delete old chunks for changed files
         2. Re-chunk changed files
         3. Generate new embeddings
-        4. Update Qdrant
+        4. Update Neo4j
         5. Update graph nodes/edges
         """
         from pathlib import Path
@@ -311,8 +310,8 @@ class RepoContextManager:
         # Generate embeddings
         chunk_embeddings = await self._embedder.embed_chunks(all_chunks)
         
-        # Update Qdrant (delete old, insert new)
-        await self._update_chunks_in_qdrant(repository_id, changed_files, all_chunks, chunk_embeddings)
+        # Update Neo4j (delete old, insert new)
+        await self._update_chunks_in_neo4j(repository_id, changed_files, all_chunks, chunk_embeddings)
         
         # Update graph
         graph_stats = await self._update_graph(repository_id, commit_sha, all_chunks)
@@ -346,25 +345,41 @@ class RepoContextManager:
         
         return code_files
     
-    async def _store_chunks_in_qdrant(
+    async def _store_chunks_in_neo4j(
         self,
         repository_id: str,
         chunks: list[CodeChunk],
         embeddings: list[list[float]],
     ) -> None:
-        """Store chunks with embeddings in Qdrant."""
-        # Will be implemented with Qdrant upsert
-        pass
-    
-    async def _update_chunks_in_qdrant(
+        """Store chunks with embeddings in Neo4j."""
+        neo4j_chunks = []
+        for chunk, embedding in zip(chunks, embeddings):
+            neo4j_chunks.append({
+                "chunk_id": chunk.chunk_id,
+                "repo_id": repository_id,
+                "file_path": chunk.file_path,
+                "content": chunk.content,
+                "symbol_name": getattr(chunk, "symbol_name", None),
+                "symbol_type": getattr(chunk, "symbol_type", None),
+                "language": getattr(chunk, "language", None),
+                "line_start": getattr(chunk, "line_start", None),
+                "line_end": getattr(chunk, "line_end", None),
+                "embedding": embedding,
+            })
+        if neo4j_chunks:
+            await asyncio.to_thread(self._neo4j.batch_upsert_chunks, neo4j_chunks)
+
+    async def _update_chunks_in_neo4j(
         self,
         repository_id: str,
         changed_files: list[str],
         chunks: list[CodeChunk],
         embeddings: list[list[float]],
     ) -> None:
-        """Update Qdrant: delete old chunks, insert new ones."""
-        pass
+        """Update Neo4j: delete old chunks for changed files, insert new ones."""
+        for file_path in changed_files:
+            await asyncio.to_thread(self._neo4j.delete_file_chunks, repository_id, file_path)
+        await self._store_chunks_in_neo4j(repository_id, chunks, embeddings)
     
     async def _build_graph(
         self,

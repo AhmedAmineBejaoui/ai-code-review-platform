@@ -12,7 +12,6 @@ import { Separator } from "@/components/ui/separator"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
-  Slack,
   Mail,
   MessageSquare,
   CheckCircle,
@@ -27,6 +26,7 @@ import {
   EyeOff,
   Settings,
 } from "lucide-react"
+import { Slack } from "@/components/ui/social-icons"
 import { toast } from "sonner"
 
 interface SlackConfig {

@@ -10,6 +10,7 @@ Specializes in:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -40,7 +41,6 @@ class PolicyRulesAgent(BaseRAGAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._collection = settings.QDRANT_COLLECTION_ORG_RULES
         self._enabled = settings.RAG_AGENT_POLICY_RULES_ENABLED
 
     def should_run(self, context: AgentContext) -> bool:
@@ -69,7 +69,7 @@ class PolicyRulesAgent(BaseRAGAgent):
 
     async def retrieve(self, context: AgentContext) -> list[RetrievedChunk]:
         """Retrieve relevant rules and policies."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        if not self.neo4j_client:
             return []
 
         chunks: list[RetrievedChunk] = []
@@ -78,25 +78,24 @@ class PolicyRulesAgent(BaseRAGAgent):
             queries = self._build_policy_queries(context)
 
             for query_text in queries[:3]:
-                results = await self._search_qdrant(
+                results = await self._search_neo4j(
                     query_text=query_text,
                     org_id=context.org_id,
                     limit=context.max_chunks,
                 )
 
                 for hit in results:
-                    payload = hit.get("payload", {})
                     chunk = RetrievedChunk(
                         id=str(hit.get("id", "")),
-                        content=payload.get("rule_content", ""),
+                        content=hit.get("rule_content", hit.get("content", "")),
                         score=hit.get("score", 0.0),
                         source="policy",
                         metadata={
-                            "rule_name": payload.get("rule_name"),
-                            "rule_type": payload.get("rule_type"),
-                            "severity": payload.get("severity"),
-                            "scope": payload.get("scope"),
-                            "description": payload.get("description"),
+                            "rule_name": hit.get("rule_name"),
+                            "rule_type": hit.get("rule_type"),
+                            "severity": hit.get("severity"),
+                            "scope": hit.get("scope"),
+                            "description": hit.get("description"),
                         },
                     )
                     if chunk.id not in {c.id for c in chunks}:
@@ -192,42 +191,26 @@ class PolicyRulesAgent(BaseRAGAgent):
 
         return queries
 
-    async def _search_qdrant(
+    async def _search_neo4j(
         self,
         query_text: str,
         org_id: str | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Search Qdrant for policy/rule chunks."""
-        if not self.qdrant_client:
+        """Search Neo4j for policy/rule chunks."""
+        if not self.neo4j_client:
             return []
 
         try:
-            from app.core.knowledge_base.embeddings import hash_embed_text
-
-            vector = hash_embed_text(query_text)
-
-            filter_payload = {"is_active": True}
-            if org_id:
-                filter_payload["org_id"] = org_id
-
-            results = await self.qdrant_client.search(
-                collection_name=self._collection,
-                query_vector=list(vector),
+            results = await asyncio.to_thread(
+                self.neo4j_client.vector_search_rules,
+                query_text=query_text,
+                org_id=org_id,
                 limit=limit,
-                filter_payload=filter_payload,
             )
-
-            return [
-                {
-                    "id": hit.id,
-                    "score": hit.score,
-                    "payload": hit.payload,
-                }
-                for hit in results
-            ]
+            return results or []
         except Exception as e:
-            logger.warning(f"Qdrant search failed: {e}")
+            logger.warning(f"Neo4j rules search failed: {e}")
             return []
 
     def _extract_applicable_rules(

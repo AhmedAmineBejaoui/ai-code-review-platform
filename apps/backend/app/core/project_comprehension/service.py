@@ -22,7 +22,7 @@ from app.core.project_comprehension.extractors import (
 from app.core.project_comprehension.profile import ProjectProfile, StructureInfo
 
 if TYPE_CHECKING:
-    from app.integrations.vector_store.qdrant_client import QdrantClient
+    from app.integrations.graph_database.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
 
@@ -33,17 +33,17 @@ class ProjectComprehensionService:
     This service:
     1. Extracts project structure, languages, frameworks, architecture, quality
     2. Generates human-readable descriptions (business and technical)
-    3. Stores the profile in Qdrant for semantic search
+    3. Stores the profile in Neo4j for semantic search
     4. Provides context for RAG-based code review
     """
 
     def __init__(
         self,
         *,
-        qdrant_client: QdrantClient | None = None,
+        neo4j_client: Neo4jClient | None = None,
         llm_client: object | None = None,  # For description generation
     ):
-        self.qdrant_client = qdrant_client
+        self.neo4j_client = neo4j_client
         self.llm_client = llm_client
 
     async def analyze_repository(
@@ -285,7 +285,7 @@ class ProjectComprehensionService:
         return "\n".join(lines)
 
     async def store_profile(self, profile: ProjectProfile) -> bool:
-        """Store the profile in Qdrant for semantic search.
+        """Store the profile in Neo4j.
 
         Args:
             profile: The project profile to store
@@ -293,22 +293,32 @@ class ProjectComprehensionService:
         Returns:
             True if stored successfully
         """
-        if not self.qdrant_client:
-            logger.warning("Qdrant client not configured, skipping profile storage")
+        if not self.neo4j_client:
+            logger.warning("Neo4j client not configured, skipping profile storage")
             return False
 
-        # This would use the Qdrant client to store the profile
-        # Implementation depends on the Qdrant collection schema
-        logger.info(f"Storing profile for repo: {profile.repo_id}")
-
-        # TODO: Implement actual Qdrant storage
-        # - Generate embedding for profile
-        # - Upsert to project_profiles collection
-
-        return True
+        try:
+            import asyncio
+            await asyncio.to_thread(
+                self.neo4j_client.upsert_repository,
+                repo_id=profile.repo_id,
+                org_id=profile.org_id,
+                properties={
+                    "context_version": profile.context_version,
+                    "business_description": profile.business_description,
+                    "technical_summary": profile.technical_summary,
+                    "analysis_status": profile.analysis_status,
+                    "last_analyzed_at": profile.last_analyzed_at.isoformat() if profile.last_analyzed_at else None,
+                },
+            )
+            logger.info(f"Stored profile for repo: {profile.repo_id}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to store profile for {profile.repo_id}: {e}")
+            return False
 
     async def get_profile(self, repo_id: str) -> ProjectProfile | None:
-        """Retrieve a stored profile from Qdrant.
+        """Retrieve a stored profile from Neo4j.
 
         Args:
             repo_id: The repository identifier
@@ -316,14 +326,28 @@ class ProjectComprehensionService:
         Returns:
             ProjectProfile if found, None otherwise
         """
-        if not self.qdrant_client:
+        if not self.neo4j_client:
             return None
 
-        # TODO: Implement actual Qdrant retrieval
-        # - Query by repo_id
-        # - Return profile
-
-        return None
+        try:
+            import asyncio
+            data = await asyncio.to_thread(
+                self.neo4j_client.get_repo_profile,
+                repo_id,
+            )
+            if not data:
+                return None
+            return ProjectProfile(
+                repo_id=repo_id,
+                org_id=data.get("org_id"),
+                context_version=int(data.get("context_version", 1)),
+                business_description=data.get("business_description"),
+                technical_summary=data.get("technical_summary"),
+                analysis_status=data.get("analysis_status", "unknown"),
+            )
+        except Exception as e:
+            logger.error(f"Failed to get profile for {repo_id}: {e}")
+            return None
 
     async def update_profile_incremental(
         self,

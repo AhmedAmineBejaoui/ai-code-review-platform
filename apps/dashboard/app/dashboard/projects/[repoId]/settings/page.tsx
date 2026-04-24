@@ -1,7 +1,8 @@
 "use client"
 
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, Copy, ExternalLink, Github, Settings, ShieldCheck } from "lucide-react"
+import { ArrowLeft, Copy, ExternalLink, Settings, ShieldCheck } from "lucide-react"
+import { Github } from "@/components/ui/social-icons"
 import { toast } from "sonner"
 
 import { AutoAnalysisToggle } from "@/components/settings/AutoAnalysisToggle"

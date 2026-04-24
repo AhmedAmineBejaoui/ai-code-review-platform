@@ -1,33 +1,25 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections import deque
 from threading import Lock
 from typing import Any
 
-from sqlalchemy import text as sa_text
-
-from analysis.langGraph.raggraph.neo4j_fallback import Neo4jFallback
-from app.data.database import get_engine
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
 class RepositoryGraphManager:
-    """Graph operations with SQL source-of-truth and optional Neo4j mirror."""
+    """Graph operations backed by Neo4j with an in-memory adjacency cache."""
 
-    def __init__(self, *, neo4j_client: Neo4jFallback | None = None) -> None:
+    def __init__(self, *, neo4j_client: Neo4jClient | None = None) -> None:
         self._adjacency: dict[str, dict[str, set[str]]] = {}
         self._reverse_adjacency: dict[str, dict[str, set[str]]] = {}
         self._cache_lock = Lock()
-        self._neo4j = neo4j_client or Neo4jFallback(
-            enabled=settings.NEO4J_ENABLED,
-            uri=settings.NEO4J_URI,
-            user=settings.NEO4J_USER,
-            password=settings.NEO4J_PASSWORD,
-            database=settings.NEO4J_DATABASE,
-        )
+        self._neo4j = neo4j_client or get_neo4j_client()
 
     def refresh_graph(
         self,
@@ -36,26 +28,27 @@ class RepositoryGraphManager:
         changed_files: list[str] | None = None,
         indexed_commit: str | None = None,
     ) -> int:
-        edges = self._load_edges(repo_id=repo_id, changed_files=changed_files)
+        """Re-build the in-memory adjacency cache from Neo4j edges."""
+        if not self._neo4j.enabled:
+            return 0
+
+        try:
+            # Pull edges directly from Neo4j for this repo
+            edges = self._load_edges_from_neo4j(repo_id=repo_id, changed_files=changed_files)
+        except Exception as exc:
+            logger.warning("Failed to load edges from Neo4j for repo %s: %s", repo_id, exc)
+            edges = []
+
         adjacency: dict[str, set[str]] = {}
         reverse: dict[str, set[str]] = {}
 
         for edge in edges:
             source_path = str(edge.get("source_path") or "").strip()
             target_path = str(edge.get("target_path") or "").strip()
-            edge_type = str(edge.get("edge_type") or "related")
             if not source_path or not target_path:
                 continue
             adjacency.setdefault(source_path, set()).add(target_path)
             reverse.setdefault(target_path, set()).add(source_path)
-
-            self._neo4j.upsert_edge(
-                repo_id=repo_id,
-                source_path=source_path,
-                target_path=target_path,
-                edge_type=edge_type,
-                indexed_commit=indexed_commit,
-            )
 
         with self._cache_lock:
             self._adjacency[repo_id] = adjacency
@@ -63,11 +56,7 @@ class RepositoryGraphManager:
 
         logger.debug(
             "Repository graph refreshed",
-            extra={
-                "repo_id": repo_id,
-                "edges": len(edges),
-                "neo4j_available": self._neo4j.available,
-            },
+            extra={"repo_id": repo_id, "edges": len(edges)},
         )
         return len(edges)
 
@@ -79,9 +68,23 @@ class RepositoryGraphManager:
         depth: int = 2,
         limit: int = 32,
     ) -> list[str]:
+        """Return neighboring file paths up to `depth` hops away."""
         if not path.strip():
             return []
 
+        # Try Neo4j direct traversal first (more accurate, supports full graph)
+        if self._neo4j.enabled:
+            try:
+                return self._neo4j.get_neighbor_paths(
+                    repo_id=repo_id,
+                    path=path,
+                    depth=depth,
+                    limit=limit,
+                )
+            except Exception as exc:
+                logger.debug("Neo4j neighbor lookup failed, falling back to cache: %s", exc)
+
+        # Fall back to in-memory adjacency cache
         with self._cache_lock:
             adjacency = self._adjacency.get(repo_id)
             reverse = self._reverse_adjacency.get(repo_id)
@@ -102,9 +105,8 @@ class RepositoryGraphManager:
             current, current_depth = queue.popleft()
             if current_depth >= max_depth:
                 continue
-
-            neighbors = adjacency.get(current, set()).union(reverse.get(current, set()))
-            for candidate in neighbors:
+            combined = adjacency.get(current, set()).union(reverse.get(current, set()))
+            for candidate in combined:
                 if candidate in visited:
                     continue
                 visited.add(candidate)
@@ -115,24 +117,35 @@ class RepositoryGraphManager:
 
         return output
 
-    def _load_edges(self, *, repo_id: str, changed_files: list[str] | None = None) -> list[dict[str, Any]]:
-        engine = get_engine()
-        if engine is None:
-            return []
+    def _load_edges_from_neo4j(
+        self,
+        *,
+        repo_id: str,
+        changed_files: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        """Pull IMPORTS/DEPENDS_ON edges for a repo from Neo4j."""
+        if changed_files:
+            path_filter = " AND (f1.path IN $paths OR f2.path IN $paths)"
+        else:
+            path_filter = ""
 
-        query = """
-            SELECT source_path, target_path, edge_type
-            FROM code_entity_edges
-            WHERE repo_id = :repo_id
+        query = f"""
+            MATCH (f1:File {{repo_id: $repo_id}})-[r]->(f2:File {{repo_id: $repo_id}})
+            WHERE type(r) IN ['IMPORTS', 'DEPENDS_ON', 'RELATED_TO']
+            {path_filter}
+            RETURN f1.path AS source_path, f2.path AS target_path, type(r) AS edge_type
+            LIMIT 5000
         """
         params: dict[str, Any] = {"repo_id": repo_id}
         if changed_files:
-            query += " AND (source_path = ANY(:paths) OR target_path = ANY(:paths))"
             params["paths"] = changed_files
 
-        with engine.connect() as conn:
-            rows = conn.execute(sa_text(query), params).mappings().all()
-        return [dict(item) for item in rows]
+        try:
+            rows = self._neo4j.execute_query(query, params)
+            return [dict(row) for row in rows]
+        except Exception as exc:
+            logger.warning("Neo4j edge query failed: %s", exc)
+            return []
 
 
 class ContextGraphManager:

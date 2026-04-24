@@ -14,16 +14,16 @@ from pydantic import BaseModel, Field
 
 from app.core.context_management import ContextManager, StalenessChecker
 from app.core.project_comprehension import ProjectComprehensionService
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/projects", tags=["projects"])
 
 # Initialize services (would use dependency injection in production)
-_qdrant_client = QdrantClient()
-_comprehension_service = ProjectComprehensionService(qdrant_client=_qdrant_client)
-_context_manager = ContextManager(qdrant_client=_qdrant_client)
+_neo4j_client = get_neo4j_client()
+_comprehension_service = ProjectComprehensionService(neo4j_client=_neo4j_client)
+_context_manager = ContextManager(neo4j_client=_neo4j_client)
 _staleness_checker = StalenessChecker()
 
 
@@ -254,7 +254,7 @@ async def refresh_context(
 
         updater = IncrementalUpdater(
             context_manager=_context_manager,
-            qdrant_client=_qdrant_client,
+            neo4j_client=_neo4j_client,
         )
 
         result = await updater.update(

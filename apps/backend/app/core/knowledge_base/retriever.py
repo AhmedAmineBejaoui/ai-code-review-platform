@@ -15,17 +15,23 @@ from app.core.knowledge_base.retrieval_models import QueryRoute, RetrievedContex
 from app.core.knowledge_base.semantic_retriever import SemanticRetriever
 from app.core.review_engine.diff_engine import DiffParseError, parse_unified_diff
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client
 from app.settings import settings
 
 
 class RepoContextRetriever:
-    def __init__(self, vector_store: QdrantClient) -> None:
-        self._vector_store = vector_store
-        self._ingestor = RepoContextIngestor(vector_store=vector_store)
+    def __init__(
+        self,
+        neo4j_client: Neo4jClient | None = None,
+        *,
+        # legacy: silently ignore old vector_store kwarg
+        vector_store: object | None = None,  # noqa: ARG002
+    ) -> None:
+        self._neo4j = neo4j_client or get_neo4j_client()
+        self._ingestor = RepoContextIngestor(neo4j_client=self._neo4j)
         self._exact = ExactRetriever()
         self._lexical = LexicalRetriever()
-        self._semantic = SemanticRetriever(vector_store=vector_store)
+        self._semantic = SemanticRetriever(neo4j_client=self._neo4j)
         self._router = QueryRouter()
         self._reranker = ReRanker()
         self._packer = ContextPacker(
@@ -34,7 +40,7 @@ class RepoContextRetriever:
         )
 
     async def get_repo_profile(self, repo_id: str) -> dict[str, Any] | None:
-        if self._vector_store.enabled:
+        if self._neo4j.enabled:
             try:
                 profile = await self._ingestor.get_repo_profile(repo_id)
                 if profile:

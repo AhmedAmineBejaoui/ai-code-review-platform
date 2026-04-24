@@ -12,15 +12,15 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from app.core.rag_agents import RAGOrchestrator, AgentContext
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/rag", tags=["rag"])
 
 # Initialize services
-_qdrant_client = QdrantClient()
-_orchestrator = RAGOrchestrator(qdrant_client=_qdrant_client)
+_neo4j_client = get_neo4j_client()
+_orchestrator = RAGOrchestrator(neo4j_client=_neo4j_client)
 
 
 # Request/Response models
@@ -217,19 +217,19 @@ async def get_agents_status():
     agents_status = {
         "code_context": {
             "enabled": settings.RAG_AGENT_CODE_CONTEXT_ENABLED,
-            "collection": settings.QDRANT_REPO_CONTEXT_COLLECTION,
+            "store": "neo4j",
         },
         "documentation": {
             "enabled": settings.RAG_AGENT_DOCUMENTATION_ENABLED,
-            "collection": settings.QDRANT_COLLECTION_KB_DOCUMENTS,
+            "store": "neo4j",
         },
         "policy_rules": {
             "enabled": settings.RAG_AGENT_POLICY_RULES_ENABLED,
-            "collection": settings.QDRANT_COLLECTION_ORG_RULES,
+            "store": "neo4j",
         },
         "synthesis": {
             "enabled": settings.RAG_AGENT_SYNTHESIS_ENABLED,
-            "collection": None,
+            "store": None,
         },
     }
 

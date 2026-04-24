@@ -15,7 +15,7 @@ Process:
 2. Chunk document (semantic chunking for docs, not code)
 3. Extract entities (rules, patterns, best practices)
 4. Generate embeddings
-5. Store in Neo4j graph + Qdrant vectors
+5. Store in Neo4j graph (nodes + vector embeddings)
 6. Link to organization/project context
 
 Graph structure:
@@ -234,7 +234,7 @@ class KnowledgeBaseIngestionService:
     - Duplicate detection
     
     Usage:
-        service = KnowledgeBaseIngestionService(graph_manager, qdrant_client, embeddings)
+        service = KnowledgeBaseIngestionService(graph_manager, neo4j_client, embeddings)
         doc_id = await service.ingest_document(
             file_path="/path/to/doc.md",
             organization_id=org_id,
@@ -245,11 +245,11 @@ class KnowledgeBaseIngestionService:
     def __init__(
         self,
         graph_manager: Any,  # GraphManager from app/core/analysis/graph/manager.py
-        qdrant_client: Any,  # QdrantClient from app/integrations/vector_store/
+        neo4j_client: Any,  # Neo4jClient from app/integrations/graph_database/
         embedding_generator: Any,  # EmbeddingGenerator
     ):
         self.graph_manager = graph_manager
-        self.qdrant = qdrant_client
+        self.neo4j_client = neo4j_client
         self.embeddings = embedding_generator
         self.markdown_parser = MarkdownParser()
     
@@ -513,61 +513,30 @@ class KnowledgeBaseIngestionService:
         chunks: list[KBChunk],
         embeddings: list[list[float]],
     ) -> None:
-        """Store chunks and embeddings in Qdrant."""
-        # Collection name: kb_chunks_{org_id}
-        collection_name = f"kb_chunks_{doc.organization_id}"
-        
-        # Ensure collection exists
-        await self._ensure_collection(
-            collection_name,
-            vector_size=len(embeddings[0]) if embeddings else 384,
-        )
-        
-        # Prepare points for Qdrant
-        points = []
+        """Store chunks and embeddings in Neo4j."""
         for chunk, embedding in zip(chunks, embeddings):
-            points.append({
-                "id": str(chunk.id),
-                "vector": embedding,
-                "payload": {
-                    "chunk_id": str(chunk.id),
-                    "document_id": str(doc.id),
-                    "organization_id": str(doc.organization_id),
-                    "project_id": str(doc.project_id) if doc.project_id else None,
-                    "content": chunk.content,
-                    "document_type": doc.document_type,
-                    "tags": doc.tags,
-                    "heading": chunk.heading,
-                    "chunk_index": chunk.chunk_index,
-                },
-            })
-        
-        # Batch insert
-        await self.qdrant.upsert_points(collection_name, points)
-        logger.info(f"Stored {len(points)} chunks in Qdrant collection {collection_name}")
-    
-    async def _ensure_collection(self, collection_name: str, vector_size: int) -> None:
-        """Ensure Qdrant collection exists."""
-        try:
-            await self.qdrant.create_collection(
-                collection_name=collection_name,
-                vector_size=vector_size,
-            )
-        except Exception as e:
-            # Collection might already exist
-            logger.debug(f"Collection {collection_name} may already exist: {e}")
+            kb_doc_data = {
+                "chunk_id": str(chunk.id),
+                "document_id": str(doc.id),
+                "organization_id": str(doc.organization_id),
+                "project_id": str(doc.project_id) if doc.project_id else None,
+                "content": chunk.content,
+                "document_type": doc.document_type,
+                "tags": doc.tags,
+                "heading": chunk.heading,
+                "chunk_index": chunk.chunk_index,
+                "embedding": embedding,
+            }
+            await asyncio.to_thread(self.neo4j_client.upsert_kb_document, kb_doc_data)
+        logger.info(f"Stored {len(chunks)} KB chunks in Neo4j for document {doc.id}")
     
     async def delete_document(self, document_id: UUID) -> None:
         """Delete a knowledge base document and all its chunks."""
         logger.info(f"Deleting KB document: {document_id}")
         
-        # Delete from graph (will cascade to chunks via relationships)
+        # Delete from graph (cascades to chunks via relationships)
         await self.graph_manager.delete_node("KBDocument", str(document_id))
-        
-        # Delete from Qdrant
-        # Note: Need to get organization_id first to know collection name
-        # For now, we'll leave vectors (they won't be retrieved without graph nodes)
-        # TODO: Implement proper cleanup
+        # Neo4j is the single store — no secondary vector DB cleanup needed.
         
         logger.info(f"Deleted document {document_id}")
     

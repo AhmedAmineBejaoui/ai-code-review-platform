@@ -9,7 +9,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Path
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.api.deps import get_qdrant_client
+from app.api.deps import get_neo4j_graph_client
 from app.api.errors import ApiError
 from app.api.middleware.auth import AuthenticatedPrincipal, require_permission
 from app.data.database import get_engine
@@ -17,8 +17,8 @@ from app.core.knowledge_base.ingestor import RepoContextIngestor, RepoIndexResul
 from app.core.knowledge_base.rag_engines import GraphRagEngine, build_graph_rag_engine
 from app.core.knowledge_base.retriever import RepoContextRetriever, RetrievedContextChunk, build_llm_context
 from app.core.summarization import SummaryService
+from app.integrations.graph_database.neo4j_client import Neo4jClient
 from app.integrations.llm_providers.ollama_client import OllamaClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
 from app.data.repos.repo_context_chunks_repo import RepoContextChunksRepo
 from app.settings import settings
@@ -113,7 +113,6 @@ class RepoIndexResponse(BaseModel):
     repo_id: str
     repo_path: str
     mode: str
-    collection_name: str
     indexed_commit: str | None
     default_branch: str | None
     files_seen: int
@@ -489,7 +488,6 @@ def _map_index_result(result: RepoIndexResult) -> RepoIndexResponse:
         repo_id=result.repo_id,
         repo_path=result.repo_path,
         mode=result.mode,
-        collection_name=result.collection_name,
         indexed_commit=result.indexed_commit,
         default_branch=result.default_branch,
         files_seen=result.files_seen,
@@ -580,9 +578,9 @@ def _to_api_error(exc: Exception) -> ApiError:
 async def onboard_repo(
     payload: RepoOnboardRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> RepoIndexResponse:
-    ingestor = RepoContextIngestor(vector_store=vector_store)
+    ingestor = RepoContextIngestor(neo4j_client=neo4j_client)
     try:
         result = await ingestor.onboard_repo(
             repo_id=payload.repo_id,
@@ -591,7 +589,7 @@ async def onboard_repo(
             force_full=payload.force_full,
         )
         # Auto-bootstrap retrieval for a newly indexed repo.
-        rag_engine = build_graph_rag_engine(vector_store=vector_store)
+        rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
         bootstrap_result = await rag_engine.retrieve_for_repo_bootstrap(repo_id=payload.repo_id, limit=16)
         bootstrap_chunks = bootstrap_result.chunks
         profile = bootstrap_result.profile
@@ -640,9 +638,9 @@ async def onboard_repo(
 async def update_repo(
     payload: RepoUpdateRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> RepoIndexResponse:
-    ingestor = RepoContextIngestor(vector_store=vector_store)
+    ingestor = RepoContextIngestor(neo4j_client=neo4j_client)
     try:
         result = await ingestor.update_repo_incremental(
             repo_id=payload.repo_id,
@@ -683,9 +681,9 @@ async def reindex_repo(
 async def get_repo_profile(
     repo_id: str,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> RepoProfileResponse:
-    retriever = RepoContextRetriever(vector_store=vector_store)
+    retriever = RepoContextRetriever(neo4j_client=neo4j_client)
     try:
         profile = await retriever.get_repo_profile(repo_id)
         sql_profile = await asyncio.to_thread(RepoProfilesRepo().get_profile, repo_id)
@@ -703,15 +701,12 @@ async def get_repo_profile(
 async def delete_repo(
     repo_id: str = Path(min_length=1, max_length=255),
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> KnowledgeBaseDeleteResponse:
     try:
         deleted = await asyncio.to_thread(_delete_repo_profile, repo_id)
-        if settings.QDRANT_ENABLED:
-            qdrant_client = QdrantClient()
-            await qdrant_client.delete_by_filter(
-                collection_name=settings.QDRANT_REPO_CONTEXT_COLLECTION,
-                filter_payload={"repo_id": repo_id},
-            )
+        if neo4j_client.enabled:
+            await asyncio.to_thread(neo4j_client.delete_repo_chunks, repo_id=repo_id)
         return KnowledgeBaseDeleteResponse(repoId=repo_id, deleted=deleted)
     except ApiError:
         raise
@@ -749,9 +744,9 @@ async def list_repo_profiles(
 async def get_context_for_query(
     payload: ContextByQueryRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> ContextResponse:
-    rag_engine = build_graph_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
     try:
         result = await rag_engine.retrieve_for_query(
             repo_id=payload.repo_id,
@@ -773,9 +768,9 @@ async def get_context_for_query(
 async def get_context_for_diff(
     payload: ContextByDiffRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> ContextResponse:
-    rag_engine = build_graph_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
     try:
         result = await rag_engine.retrieve_for_diff(
             repo_id=payload.repo_id,
@@ -796,9 +791,9 @@ async def get_context_for_diff(
 async def get_bootstrap_context_for_repo(
     payload: RepoBootstrapContextRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> ContextResponse:
-    rag_engine = build_graph_rag_engine(vector_store=vector_store)
+    rag_engine = build_graph_rag_engine(neo4j_client=neo4j_client)
     try:
         result = await rag_engine.retrieve_for_repo_bootstrap(
             repo_id=payload.repo_id,
@@ -817,7 +812,7 @@ async def get_bootstrap_context_for_repo(
 async def ingest_document(
     payload: DocumentIngestRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.write")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> DocumentIngestResponse:
     normalized_source_type = _normalize_source_type(payload.source_type)
     normalized_tags = _normalize_string_list(payload.tags)
@@ -868,7 +863,7 @@ async def ingest_document(
         tags=normalized_tags,
         doc_version=payload.doc_version,
         ingestion_result=ingestion_result,
-        vector_store=vector_store,
+        vector_store=None,  # Qdrant removed; SQL rows still persisted by _upsert_document_rows
         existing_tags_payload=build_document_tags_payload(
             repo_id=payload.repo_id,
             source_type=normalized_source_type,
@@ -910,6 +905,23 @@ async def ingest_document(
         overview_context=existing_profile.overview_context if existing_profile else None,
     )
 
+    # Also ingest into Neo4j knowledge graph
+    try:
+        from app.core.knowledge_base.neo4j_kb_ingestion import get_kb_ingestion_service
+        kb_service = get_kb_ingestion_service()
+        await asyncio.to_thread(
+            kb_service.ingest_document,
+            doc_id=doc_id,
+            title=payload.title,
+            content=payload.content,
+            source_type=normalized_source_type,
+            repo_id=payload.repo_id,
+            path_or_url=payload.path_or_url,
+            tags=normalized_tags,
+        )
+    except Exception:
+        logger.warning("Neo4j KB ingestion failed for doc_id=%s (non-fatal)", doc_id, exc_info=True)
+
     return DocumentIngestResponse(
         doc_id=doc_id,
         repo_id=payload.repo_id,
@@ -923,9 +935,9 @@ async def ingest_document(
 async def search_documents(
     payload: DocumentSearchRequest,
     _principal: AuthenticatedPrincipal | None = Depends(require_permission("analyses.read")),
-    vector_store: QdrantClient = Depends(get_qdrant_client),
+    neo4j_client: Neo4jClient = Depends(get_neo4j_graph_client),
 ) -> DocumentSearchResponse:
-    retriever = RepoContextRetriever(vector_store=vector_store)
+    retriever = RepoContextRetriever(neo4j_client=neo4j_client)
     chunks = await retriever.retrieve_document_chunks(
         repo_id=payload.repo_id,
         query=payload.query,

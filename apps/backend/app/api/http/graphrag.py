@@ -27,8 +27,7 @@ from app.core.analysis.knowledge_base import (
     KBDocumentType,
     RulesEngine,
 )
-from app.integrations.graph_database.neo4j_client import Neo4jClient
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.integrations.graph_database.neo4j_client import Neo4jClient, get_neo4j_client as _get_neo4j_singleton
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -97,17 +96,8 @@ class ExtractRulesResponse(BaseModel):
 # ─────────────────────────────────────────────────────────────────────────────
 
 async def get_neo4j_client() -> Neo4jClient:
-    """Get Neo4j client instance."""
-    client = Neo4jClient(
-        uri=settings.NEO4J_URI,
-        user=settings.NEO4J_USER,
-        password=settings.NEO4J_PASSWORD,
-        database=settings.NEO4J_DATABASE,
-    )
-    try:
-        yield client
-    finally:
-        await client.close()
+    """Get Neo4j client singleton."""
+    return _get_neo4j_singleton()
 
 
 async def get_graph_manager(
@@ -115,11 +105,6 @@ async def get_graph_manager(
 ) -> GraphManager:
     """Get GraphManager instance."""
     return GraphManager(neo4j_client)
-
-
-async def get_qdrant_client() -> QdrantClient:
-    """Get Qdrant client instance."""
-    return QdrantClient()
 
 
 async def get_embedding_generator() -> EmbeddingGenerator:
@@ -136,13 +121,11 @@ async def get_embedding_generator() -> EmbeddingGenerator:
 
 async def get_kb_ingestion_service(
     graph_manager: GraphManager = Depends(get_graph_manager),
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
     embeddings: EmbeddingGenerator = Depends(get_embedding_generator),
 ) -> KnowledgeBaseIngestionService:
     """Get KnowledgeBaseIngestionService instance."""
     return KnowledgeBaseIngestionService(
         graph_manager=graph_manager,
-        qdrant_client=qdrant_client,
         embedding_generator=embeddings,
     )
 
@@ -163,13 +146,11 @@ async def get_history_service(
 
 async def get_repo_context_manager(
     graph_manager: GraphManager = Depends(get_graph_manager),
-    qdrant_client: QdrantClient = Depends(get_qdrant_client),
     embeddings: EmbeddingGenerator = Depends(get_embedding_generator),
 ) -> RepoContextManager:
     """Get RepoContextManager instance."""
     return RepoContextManager(
         graph_manager=graph_manager,
-        qdrant_client=qdrant_client,
         embedding_generator=embeddings,
     )
 

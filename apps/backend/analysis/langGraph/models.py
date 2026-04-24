@@ -141,6 +141,7 @@ class LLMGeneratedFinding:
     line_start: int | None
     line_end: int | None
     references: tuple[str, ...] = ()
+    auto_fix: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -153,6 +154,7 @@ class LLMGeneratedFinding:
             "line_start": self.line_start,
             "line_end": self.line_end,
             "references": list(self.references),
+            "auto_fix": self.auto_fix,
         }
 
 

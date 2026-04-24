@@ -17,7 +17,7 @@ from app.settings import settings
 if TYPE_CHECKING:
     from app.core.context_management.context_manager import ContextManager
     from app.core.project_comprehension.service import ProjectComprehensionService
-    from app.integrations.vector_store.qdrant_client import QdrantClient
+    from app.integrations.graph_database.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
 
@@ -66,7 +66,7 @@ class IncrementalUpdater:
     This updater:
     1. Analyzes what changed since last update
     2. Re-runs only necessary extractors
-    3. Updates only affected chunks in Qdrant
+    3. Updates only affected chunks in Neo4j
     4. Maintains version consistency
     """
 
@@ -75,11 +75,11 @@ class IncrementalUpdater:
         *,
         context_manager: ContextManager | None = None,
         comprehension_service: ProjectComprehensionService | None = None,
-        qdrant_client: QdrantClient | None = None,
+        neo4j_client: Neo4jClient | None = None,
     ):
         self.context_manager = context_manager
         self.comprehension_service = comprehension_service
-        self.qdrant_client = qdrant_client
+        self.neo4j_client = neo4j_client
 
     async def update(
         self,
@@ -89,6 +89,7 @@ class IncrementalUpdater:
         org_id: str | None = None,
         commit_sha: str | None = None,
         force_full: bool = False,
+        repo_path: str | None = None,
     ) -> UpdateResult:
         """Update context based on changed files.
 
@@ -119,7 +120,7 @@ class IncrementalUpdater:
 
         try:
             if update_type == UpdateType.FULL:
-                result = await self._do_full_update(repo_id, org_id, old_version)
+                result = await self._do_full_update(repo_id, org_id, old_version, repo_path=repo_path)
             elif update_type == UpdateType.INCREMENTAL:
                 result = await self._do_incremental_update(
                     repo_id, org_id, old_version, changed_files
@@ -188,16 +189,38 @@ class IncrementalUpdater:
         repo_id: str,
         org_id: str | None,
         old_version: int,
+        *,
+        repo_path: str | None = None,
     ) -> UpdateResult:
-        """Do a full context update."""
+        """Do a full context update by delegating to Neo4jRepoIngestor.
+
+        When ``repo_path`` is provided the ingestor's ``onboard_repo`` is called
+        so all files are re-chunked and re-embedded in Neo4j.  Without it the
+        update is recorded in the version counter but no re-ingestion happens.
+        """
+        new_version = old_version + 1
         extractors_run = ["structure", "languages", "frameworks", "architecture", "quality", "dependencies"]
 
-        # This would trigger the full project comprehension service
-        # For now, return a placeholder result
-
-        new_version = old_version + 1
-
-        logger.info(f"Full context update for {repo_id}: v{old_version} -> v{new_version}")
+        if repo_path:
+            try:
+                from app.core.knowledge_base.ingestor import get_neo4j_ingestor
+                import asyncio
+                ingestor = get_neo4j_ingestor()
+                await asyncio.to_thread(
+                    ingestor.onboard_repo,
+                    repo_path=repo_path,
+                    repo_id=repo_id,
+                    org_id=org_id,
+                    force_full=True,
+                )
+                logger.info(f"Full re-ingestion completed for {repo_id} at {repo_path}: v{old_version} -> v{new_version}")
+            except Exception as exc:
+                logger.warning(f"Full update ingestor delegation failed for {repo_id}: {exc}")
+        else:
+            logger.info(
+                f"Full context update for {repo_id}: v{old_version} -> v{new_version} "
+                "(re-ingestion skipped — repo_path not provided)"
+            )
 
         return UpdateResult(
             success=True,
@@ -222,7 +245,7 @@ class IncrementalUpdater:
 
         new_version = old_version + 1
 
-        # Update affected chunks in Qdrant
+        # Update affected chunks in Neo4j
         chunks_updated = await self._update_chunks_for_files(
             repo_id, changed_files
         )
@@ -306,14 +329,65 @@ class IncrementalUpdater:
         repo_id: str,
         changed_files: list[str],
     ) -> int:
-        """Update Qdrant chunks for specific files."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        """Delete old Neo4j chunks for changed files then re-chunk and re-embed them."""
+        if not self.neo4j_client:
             return 0
 
-        # This would:
-        # 1. Delete old chunks for changed files
-        # 2. Re-chunk the changed files
-        # 3. Embed and upsert new chunks
+        import asyncio
+        from pathlib import Path
 
-        # Placeholder implementation
-        return len(changed_files)
+        count = 0
+
+        # Lazy-import the ingestor to avoid circular imports
+        try:
+            from app.core.knowledge_base.ingestor import get_neo4j_ingestor
+            ingestor = get_neo4j_ingestor()
+        except Exception:
+            ingestor = None
+
+        for file_path in changed_files:
+            try:
+                # 1. Delete stale chunks
+                await asyncio.to_thread(
+                    self.neo4j_client.delete_file_chunks,
+                    repo_id,
+                    file_path,
+                )
+
+                # 2. Re-chunk and re-embed if file still exists on disk and ingestor is available
+                if ingestor is not None:
+                    path = Path(file_path)
+                    if path.exists() and path.is_file():
+                        try:
+                            file_chunks = await asyncio.to_thread(ingestor._file_to_chunks, path)
+                            if file_chunks:
+                                texts = [c.content for c in file_chunks]
+                                vectors = await asyncio.to_thread(ingestor.embedder.embed_texts, texts)
+                                records = [
+                                    {
+                                        "repo_id": repo_id,
+                                        "path": str(path),
+                                        "chunk_index": c.chunk_index,
+                                        "language": c.language,
+                                        "file_type": c.file_type,
+                                        "chunk_type": c.chunk_type,
+                                        "content": c.content,
+                                        "symbol_name": c.symbol_name,
+                                        "start_line": c.start_line,
+                                        "end_line": c.end_line,
+                                        "embedding": v,
+                                    }
+                                    for c, v in zip(file_chunks, vectors)
+                                ]
+                                await asyncio.to_thread(
+                                    self.neo4j_client.batch_upsert_chunks,
+                                    repo_id,
+                                    records,
+                                )
+                        except Exception as re_chunk_exc:
+                            logger.warning(f"Re-chunk failed for {file_path}: {re_chunk_exc}")
+
+                count += 1
+            except Exception as exc:
+                logger.warning(f"Failed to update chunks for {file_path}: {exc}")
+        return count

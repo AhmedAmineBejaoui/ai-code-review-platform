@@ -6,7 +6,6 @@ import {
   AlertTriangle,
   Building2,
   CheckCircle2,
-  Github,
   Link2,
   Loader2,
   Mail,
@@ -20,6 +19,7 @@ import {
   Unplug,
   Users,
 } from "lucide-react"
+import { Github } from "@/components/ui/social-icons"
 
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"

@@ -2,7 +2,7 @@
 Hybrid Retrieval Service - Vector + Graph Retrieval
 
 Implements true GraphRAG retrieval:
-1. Vector search in Qdrant (semantic similarity)
+1. Vector search in Neo4j (semantic similarity)
 2. Graph traversal in Neo4j (structural relationships)
 3. Hybrid fusion (combine scores)
 4. Cross-encoder re-ranking
@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from app.core.analysis.graph.traversal import GraphTraversal
-from app.integrations.vector_store.qdrant_client import QdrantClient
+from app.core.knowledge_base.embedding_provider import get_embedding_provider
 from app.integrations.graph_database.neo4j_client import get_neo4j_client
 
 logger = logging.getLogger(__name__)
@@ -58,11 +58,11 @@ class HybridRetriever:
     def __init__(
         self,
         *,
-        qdrant_client: QdrantClient | None = None,
         graph_traversal: GraphTraversal | None = None,
         kb_retriever: Any | None = None,
     ) -> None:
-        self._qdrant = qdrant_client or QdrantClient()
+        self._neo4j = get_neo4j_client()
+        self._embedder = get_embedding_provider()
         self._graph_traversal = graph_traversal or GraphTraversal()
         self._kb_retriever = kb_retriever  # Will be implemented
     
@@ -148,11 +148,20 @@ class HybridRetriever:
         query_text: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Vector search in Qdrant."""
-        # Generate query embedding
-        # Search in Qdrant
-        # Return top-K results with scores
-        return []
+        """Vector search in Neo4j — embeds query_text first, then searches by vector."""
+        try:
+            vectors = await asyncio.to_thread(self._embedder.embed_texts, [query_text])
+            query_vector = vectors[0]
+            results = await asyncio.to_thread(
+                self._neo4j.vector_search_chunks,
+                repo_id=repository_id,
+                query_vector=query_vector,
+                top_k=limit,
+            )
+            return results or []
+        except Exception as exc:
+            logger.warning(f"[{repository_id}] Neo4j vector search failed: {exc}")
+            return []
     
     async def _graph_traverse(
         self,
@@ -175,9 +184,19 @@ class HybridRetriever:
         query_text: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Retrieve from knowledge base."""
-        # Query Neo4j for relevant rules/documents
-        return []
+        """Retrieve from knowledge base via Neo4j — embeds query_text first."""
+        try:
+            vectors = await asyncio.to_thread(self._embedder.embed_texts, [query_text])
+            query_vector = vectors[0]
+            results = await asyncio.to_thread(
+                self._neo4j.vector_search_kb_docs,
+                query_vector=query_vector,
+                top_k=limit,
+            )
+            return results or []
+        except Exception as exc:
+            logger.warning(f"[{repository_id}] Neo4j KB search failed: {exc}")
+            return []
     
     def _fuse_results(
         self,

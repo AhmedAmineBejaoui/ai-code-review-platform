@@ -10,6 +10,7 @@ Specializes in:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -40,7 +41,6 @@ class CodeContextAgent(BaseRAGAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._collection = settings.QDRANT_REPO_CONTEXT_COLLECTION
         self._enabled = settings.RAG_AGENT_CODE_CONTEXT_ENABLED
 
     def should_run(self, context: AgentContext) -> bool:
@@ -65,7 +65,7 @@ class CodeContextAgent(BaseRAGAgent):
 
     async def retrieve(self, context: AgentContext) -> list[RetrievedChunk]:
         """Retrieve code chunks relevant to the context."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        if not self.neo4j_client:
             return []
 
         chunks: list[RetrievedChunk] = []
@@ -75,8 +75,7 @@ class CodeContextAgent(BaseRAGAgent):
             queries = self._build_code_queries(context)
 
             for query_text in queries[:3]:  # Limit queries
-                # Use the existing Qdrant client search method
-                results = await self._search_qdrant(
+                results = await self._search_neo4j(
                     query_text=query_text,
                     repo_id=context.repo_id,
                     limit=context.max_chunks,
@@ -85,14 +84,14 @@ class CodeContextAgent(BaseRAGAgent):
                 for hit in results:
                     chunk = RetrievedChunk(
                         id=str(hit.get("id", "")),
-                        content=hit.get("payload", {}).get("content", ""),
+                        content=hit.get("content", ""),
                         score=hit.get("score", 0.0),
                         source="code",
                         metadata={
-                            "file_path": hit.get("payload", {}).get("file_path"),
-                            "language": hit.get("payload", {}).get("language"),
-                            "symbol_name": hit.get("payload", {}).get("symbol_name"),
-                            "symbol_type": hit.get("payload", {}).get("symbol_type"),
+                            "file_path": hit.get("file_path"),
+                            "language": hit.get("language"),
+                            "symbol_name": hit.get("symbol_name"),
+                            "symbol_type": hit.get("symbol_type"),
                         },
                     )
                     if chunk.id not in {c.id for c in chunks}:
@@ -186,39 +185,26 @@ class CodeContextAgent(BaseRAGAgent):
 
         return queries
 
-    async def _search_qdrant(
+    async def _search_neo4j(
         self,
         query_text: str,
         repo_id: str,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Search Qdrant for code chunks."""
-        if not self.qdrant_client:
+        """Search Neo4j for code chunks via vector similarity."""
+        if not self.neo4j_client:
             return []
 
         try:
-            # Use the existing knowledge base embeddings
-            from app.core.knowledge_base.embeddings import hash_embed_text
-
-            vector = hash_embed_text(query_text)
-
-            results = await self.qdrant_client.search(
-                collection_name=self._collection,
-                query_vector=list(vector),
+            results = await asyncio.to_thread(
+                self.neo4j_client.vector_search_chunks,
+                query_text=query_text,
+                repo_id=repo_id,
                 limit=limit,
-                filter_payload={"repo_id": repo_id},
             )
-
-            return [
-                {
-                    "id": hit.id,
-                    "score": hit.score,
-                    "payload": hit.payload,
-                }
-                for hit in results
-            ]
+            return results or []
         except Exception as e:
-            logger.warning(f"Qdrant search failed: {e}")
+            logger.warning(f"Neo4j vector search failed: {e}")
             return []
 
     async def _analyze_code_context(

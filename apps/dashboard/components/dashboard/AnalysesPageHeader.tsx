@@ -15,13 +15,13 @@ import {
   Folder,
   RefreshCw,
   Loader2,
-  Github,
   FileCode,
   Zap,
   User,
   Building,
   ExternalLink,
 } from "lucide-react"
+import { Github } from "@/components/ui/social-icons"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import {

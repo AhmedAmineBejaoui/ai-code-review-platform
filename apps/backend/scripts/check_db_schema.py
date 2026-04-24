@@ -238,34 +238,22 @@ def check_data_integrity(engine):
 
 
 def check_vector_db():
-    """Check Vector DB (Qdrant) connectivity."""
-    print("\n=== Checking Vector DB (Qdrant) ===")
-    
-    if not settings.QDRANT_ENABLED:
-        print("⚠️  Qdrant is disabled")
+    """Check Neo4j graph/vector store connectivity."""
+    print("\n=== Checking Vector DB (Neo4j) ===")
+
+    if not settings.NEO4J_ENABLED:
+        print("⚠️  Neo4j is disabled")
         return True
-    
+
     try:
-        from app.integrations.vector_store.qdrant_client import QdrantClient
-        import asyncio
-        
-        async def check_qdrant():
-            client = QdrantClient()
-            # Try to get collection info
-            try:
-                collection_info = await client.get_collection_info(collection_name=client.default_collection)
-                if collection_info:
-                    print(f"✅ Qdrant connected. Collection: {client.default_collection}")
-                else:
-                    print(f"⚠️  Qdrant connected but collection '{client.default_collection}' not found")
-                return True
-            except Exception as e:
-                print(f"❌ Qdrant connection failed: {e}")
-                return False
-        
-        return asyncio.run(check_qdrant())
+        from app.integrations.graph_database.neo4j_client import get_neo4j_client
+        client = get_neo4j_client()
+        # Lightweight probe — get_repo_stats on a dummy id just verifies connectivity
+        client.get_repo_stats("__probe__")
+        print("✅ Neo4j connected and responsive.")
+        return True
     except Exception as e:
-        print(f"❌ Error checking Qdrant: {e}")
+        print(f"❌ Neo4j connection failed: {e}")
         return False
 
 

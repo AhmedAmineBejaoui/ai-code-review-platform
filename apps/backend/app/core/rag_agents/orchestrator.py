@@ -25,7 +25,7 @@ from app.core.rag_agents.synthesis_agent import SynthesisAgent
 from app.settings import settings
 
 if TYPE_CHECKING:
-    from app.integrations.vector_store.qdrant_client import QdrantClient
+    from app.integrations.graph_database.neo4j_client import Neo4jClient
 
 logger = logging.getLogger(__name__)
 
@@ -69,28 +69,28 @@ class RAGOrchestrator:
     def __init__(
         self,
         *,
-        qdrant_client: QdrantClient | None = None,
+        neo4j_client: Neo4jClient | None = None,
         llm_client: object | None = None,
     ):
-        self.qdrant_client = qdrant_client
+        self.neo4j_client = neo4j_client
         self.llm_client = llm_client
 
         # Initialize agents
         self._agents: dict[AgentType, BaseRAGAgent] = {
             AgentType.CODE_CONTEXT: CodeContextAgent(
-                qdrant_client=qdrant_client,
+                neo4j_client=neo4j_client,
                 llm_client=llm_client,
             ),
             AgentType.DOCUMENTATION: DocumentationAgent(
-                qdrant_client=qdrant_client,
+                neo4j_client=neo4j_client,
                 llm_client=llm_client,
             ),
             AgentType.POLICY_RULES: PolicyRulesAgent(
-                qdrant_client=qdrant_client,
+                neo4j_client=neo4j_client,
                 llm_client=llm_client,
             ),
             AgentType.SYNTHESIS: SynthesisAgent(
-                qdrant_client=qdrant_client,
+                neo4j_client=neo4j_client,
                 llm_client=llm_client,
             ),
         }

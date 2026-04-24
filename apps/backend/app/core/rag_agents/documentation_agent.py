@@ -10,6 +10,7 @@ Specializes in:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 from typing import Any
@@ -40,7 +41,6 @@ class DocumentationAgent(BaseRAGAgent):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self._collection = settings.QDRANT_COLLECTION_KB_DOCUMENTS
         self._enabled = settings.RAG_AGENT_DOCUMENTATION_ENABLED
 
     def should_run(self, context: AgentContext) -> bool:
@@ -66,7 +66,7 @@ class DocumentationAgent(BaseRAGAgent):
 
     async def retrieve(self, context: AgentContext) -> list[RetrievedChunk]:
         """Retrieve documentation chunks relevant to the context."""
-        if not self.qdrant_client or not self.qdrant_client.enabled:
+        if not self.neo4j_client:
             return []
 
         chunks: list[RetrievedChunk] = []
@@ -75,26 +75,25 @@ class DocumentationAgent(BaseRAGAgent):
             queries = self._build_doc_queries(context)
 
             for query_text in queries[:3]:
-                results = await self._search_qdrant(
+                results = await self._search_neo4j(
                     query_text=query_text,
                     org_id=context.org_id,
                     limit=context.max_chunks,
                 )
 
                 for hit in results:
-                    payload = hit.get("payload", {})
                     chunk = RetrievedChunk(
                         id=str(hit.get("id", "")),
-                        content=payload.get("content", ""),
+                        content=hit.get("content", ""),
                         score=hit.get("score", 0.0),
                         source="documentation",
                         metadata={
-                            "title": payload.get("title"),
-                            "source_type": payload.get("source_type"),
-                            "source_uri": payload.get("source_uri"),
-                            "section_title": payload.get("section_title"),
-                            "page": payload.get("page"),
-                            "category": payload.get("category"),
+                            "title": hit.get("title"),
+                            "source_type": hit.get("source_type"),
+                            "source_uri": hit.get("source_uri"),
+                            "section_title": hit.get("section_title"),
+                            "page": hit.get("page"),
+                            "category": hit.get("category"),
                         },
                     )
                     if chunk.id not in {c.id for c in chunks}:
@@ -177,42 +176,26 @@ class DocumentationAgent(BaseRAGAgent):
 
         return queries if queries else ["project documentation"]
 
-    async def _search_qdrant(
+    async def _search_neo4j(
         self,
         query_text: str,
         org_id: str | None,
         limit: int,
     ) -> list[dict[str, Any]]:
-        """Search Qdrant for documentation chunks."""
-        if not self.qdrant_client:
+        """Search Neo4j for documentation chunks."""
+        if not self.neo4j_client:
             return []
 
         try:
-            from app.core.knowledge_base.embeddings import hash_embed_text
-
-            vector = hash_embed_text(query_text)
-
-            filter_payload = {}
-            if org_id:
-                filter_payload["org_id"] = org_id
-
-            results = await self.qdrant_client.search(
-                collection_name=self._collection,
-                query_vector=list(vector),
+            results = await asyncio.to_thread(
+                self.neo4j_client.vector_search_kb_docs,
+                query_text=query_text,
+                org_id=org_id,
                 limit=limit,
-                filter_payload=filter_payload if filter_payload else None,
             )
-
-            return [
-                {
-                    "id": hit.id,
-                    "score": hit.score,
-                    "payload": hit.payload,
-                }
-                for hit in results
-            ]
+            return results or []
         except Exception as e:
-            logger.warning(f"Qdrant search failed: {e}")
+            logger.warning(f"Neo4j KB search failed: {e}")
             return []
 
     def _summarize_documentation(self, chunks: list[RetrievedChunk]) -> str:

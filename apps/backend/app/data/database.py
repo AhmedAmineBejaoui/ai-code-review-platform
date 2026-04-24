@@ -666,7 +666,7 @@ def init_db() -> None:
                 CREATE TABLE IF NOT EXISTS analysis_review_outputs (
                     analysis_id TEXT PRIMARY KEY REFERENCES analyses(id) ON DELETE CASCADE,
                     source TEXT NOT NULL,
-                    qdrant_required BOOLEAN NOT NULL DEFAULT TRUE,
+                    graph_rag_required BOOLEAN NOT NULL DEFAULT TRUE,
                     payload_json JSONB NOT NULL DEFAULT '{}'::jsonb,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
                     updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

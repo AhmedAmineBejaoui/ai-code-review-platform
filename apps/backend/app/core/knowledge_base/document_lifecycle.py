@@ -21,11 +21,10 @@ from app.core.knowledge_base.document_ingestion import (
     utc_iso_now,
 )
 from app.core.knowledge_base.embeddings import hash_embed_text
-from app.core.knowledge_base.qdrant_ids import build_document_chunk_point_id
 from app.data.database import get_engine
 from app.data.repos.kb_repo import KBDocumentChunkRow
 from app.data.repos.repo_profiles_repo import RepoProfilesRepo
-from app.integrations.vector_store.qdrant_client import QdrantClient, QdrantPoint
+from app.integrations.graph_database.neo4j_client import get_neo4j_client
 from app.settings import settings
 
 logger = logging.getLogger(__name__)
@@ -162,7 +161,6 @@ def is_document_due_for_resync(item: DocumentSourceRecord, *, now: datetime | No
 async def resync_document_source(
     *,
     doc_id: str,
-    vector_store: QdrantClient | None = None,
     reason: str = "manual",
 ) -> dict[str, Any]:
     source = get_document_source(doc_id)
@@ -192,7 +190,6 @@ async def resync_document_source(
         tags=source.tags,
         doc_version=source.doc_version + 1,
         ingestion_result=result,
-        vector_store=vector_store or QdrantClient(),
         existing_tags_payload=source.tags_payload,
         sync_update={
             "last_sync_at": utc_iso_now(),
@@ -221,7 +218,6 @@ async def persist_document_ingestion(
     tags: list[str],
     doc_version: int,
     ingestion_result: DocumentIngestionResult,
-    vector_store: QdrantClient,
     existing_tags_payload: dict[str, Any] | None = None,
     sync_update: dict[str, Any] | None = None,
 ) -> None:
@@ -246,17 +242,29 @@ async def persist_document_ingestion(
         tags_payload=tags_payload,
         chunks=[{"content": item.content, "metadata": item.metadata} for item in ingestion_result.chunks],
     )
-    await _replace_document_vectors(
-        vector_store=vector_store,
-        repo_id=repo_id,
-        doc_id=doc_id,
-        title=title,
-        source_type=source_type,
-        path_or_url=path_or_url,
-        tags=tags,
-        doc_version=doc_version,
-        ingestion_result=ingestion_result,
-    )
+    # Store in Neo4j
+    neo4j_client = get_neo4j_client()
+    for index, chunk in enumerate(ingestion_result.chunks):
+        metadata = chunk_metadata_for_storage(dict(chunk.metadata))
+        await asyncio.to_thread(
+            neo4j_client.upsert_kb_document,
+            doc_id=doc_id,
+            repo_id=repo_id,
+            title=title,
+            source_type=source_type,
+            path_or_url=path_or_url,
+            chunk_index=index,
+            content=chunk.content,
+            embedding_text=chunk.embedding_text,
+            metadata={
+                **metadata,
+                "tags": list(tags),
+                "doc_version": doc_version,
+                "content_hash": ingestion_result.content_hash,
+                "version": ingestion_result.version or str(doc_version),
+                "source_uri": ingestion_result.source_uri,
+            },
+        )
     await asyncio.to_thread(_refresh_repo_profile_document_observability, repo_id)
 
 
@@ -267,13 +275,12 @@ async def run_due_document_maintenance(
     limit: int = 100,
     reason: str = "scheduled",
 ) -> dict[str, Any]:
-    vector_store = QdrantClient()
     due_sources = list_document_sources(repo_id=repo_id, source_type=source_type, only_due=True, limit=limit)
     completed = 0
     failed: list[dict[str, Any]] = []
     for source in due_sources:
         try:
-            await resync_document_source(doc_id=source.doc_id, vector_store=vector_store, reason=reason)
+            await resync_document_source(doc_id=source.doc_id, reason=reason)
             completed += 1
         except Exception as exc:  # noqa: BLE001
             failed.append({"doc_id": source.doc_id, "error": str(exc)})
@@ -377,66 +384,6 @@ def _upsert_document_rows(
                     "metadata_json": json.dumps(metadata),
                 },
             )
-
-
-async def _replace_document_vectors(
-    *,
-    vector_store: QdrantClient,
-    repo_id: str,
-    doc_id: str,
-    title: str,
-    source_type: str,
-    path_or_url: str | None,
-    tags: list[str],
-    doc_version: int,
-    ingestion_result: DocumentIngestionResult,
-) -> None:
-    if vector_store.enabled:
-        collection_name = settings.QDRANT_REPO_CONTEXT_COLLECTION
-        await vector_store.ensure_collection(collection_name=collection_name)
-        await vector_store.delete_by_filter(collection_name=collection_name, filter_payload={"doc_id": doc_id})
-        points: list[QdrantPoint] = []
-        for index, chunk in enumerate(ingestion_result.chunks):
-            metadata = chunk_metadata_for_storage(dict(chunk.metadata))
-            token_count = max(1, len(chunk.content) // 4)
-            points.append(
-                QdrantPoint(
-                    id=build_document_chunk_point_id(repo_id=repo_id, doc_id=doc_id, chunk_index=index),
-                    vector=hash_embed_text(chunk.embedding_text, vector_size=settings.REPO_CONTEXT_VECTOR_SIZE),
-                    payload={
-                        "type": "kb_document_chunk",
-                        "repo_id": repo_id,
-                        "doc_id": doc_id,
-                        "title": title,
-                        "source_type": source_type,
-                        "path_or_url": path_or_url,
-                        "path": path_or_url or ingestion_result.source_uri or title,
-                        "chunk_index": index,
-                        "content": chunk.content,
-                        "language": "text",
-                        "token_count": token_count,
-                        "file_type": source_type,
-                        "chunk_type": "document_chunk",
-                        "tags": list(tags),
-                        "source_uri": ingestion_result.source_uri,
-                        "content_hash": ingestion_result.content_hash,
-                        "version": ingestion_result.version or str(doc_version),
-                        "document_version": ingestion_result.version or str(doc_version),
-                        "page": metadata.get("page"),
-                        "section_title": metadata.get("section_title"),
-                        "heading_path": metadata.get("heading_path"),
-                        "entity_type": metadata.get("entity_type"),
-                        "entity_name": metadata.get("entity_name"),
-                        "line_start": metadata.get("line_start"),
-                        "line_end": metadata.get("line_end"),
-                        "domain": ingestion_result.domain,
-                        "crawl_timestamp": metadata.get("crawl_timestamp"),
-                        "source_id": doc_id,
-                        "chunk_id": f"{doc_id}:{index}",
-                    },
-                )
-    )
-    await vector_store.upsert_points(collection_name=collection_name, points=points)
 
 
 def _fetch_document_source_material(source: DocumentSourceRecord) -> dict[str, Any]:
