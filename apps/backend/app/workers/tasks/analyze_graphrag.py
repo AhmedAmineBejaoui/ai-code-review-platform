@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any
 from uuid import UUID
 
+from app.core.analysis.repository_resolution import resolve_repository_scope
 from app.core.analysis.orchestrator import AnalysisOrchestrator
 from app.core.analysis.graph.manager import GraphManager
 from app.core.analysis.history import AnalysisHistoryService, AnalysisStatus, AnalysisMetrics
@@ -196,20 +197,28 @@ async def _run_graphrag_pipeline_async(
         graph_manager = GraphManager(neo4j_client)
         history_service = AnalysisHistoryService(graph_manager)
         
-        # Get repository info
-        # Note: analysis.project_id is a FK to projects table
-        # We need to get repository_id from the analysis or project
-        # For now, we'll use project_id as a placeholder
-        # TODO: Add repository_id to analysis table or resolve from project
-        repository_id = UUID(str(analysis.project_id))  # Placeholder
-        project_id = UUID(str(analysis.project_id))
-        organization_id = UUID(str(analysis.organization_id)) if hasattr(analysis, 'organization_id') else None
-        
-        if not organization_id:
-            # Resolve from project
-            # TODO: Implement proper resolution
-            logger.warning(f"No organization_id for analysis {analysis_id}, using placeholder")
-            organization_id = UUID("00000000-0000-0000-0000-000000000000")
+        if not analysis.project_id:
+            raise ValueError(f"Analysis {analysis_id} is missing project_id; GraphRAG requires a canonical project")
+
+        resolved_scope = await asyncio.to_thread(
+            resolve_repository_scope,
+            str(analysis.project_id),
+            metadata=analysis.metadata,
+        )
+        if resolved_scope is None:
+            raise ValueError(f"Unable to resolve project profile for analysis {analysis_id}")
+        if not resolved_scope.organization_id:
+            raise ValueError(
+                f"Unable to resolve organization_id for project {resolved_scope.project_id} ({resolved_scope.repo_id})"
+            )
+        if not resolved_scope.repo_path:
+            raise ValueError(
+                f"Unable to resolve repo_path for project {resolved_scope.project_id} ({resolved_scope.repo_id})"
+            )
+
+        repository_id = UUID(resolved_scope.repository_id)
+        project_id = UUID(resolved_scope.project_id)
+        organization_id = UUID(resolved_scope.organization_id)
         
         # 5. Start analysis run in history
         logger.info(f"Starting analysis run in history for analysis {analysis_id}")
@@ -238,7 +247,7 @@ async def _run_graphrag_pipeline_async(
         )
         
         orchestration_result = await orchestrator.run(
-            repository_path=None,  # Will be resolved by orchestrator
+            repository_path=resolved_scope.repo_path,
             repository_id=str(repository_id),
             organization_id=str(organization_id),
             project_id=str(project_id),

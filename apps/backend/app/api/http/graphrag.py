@@ -10,6 +10,7 @@ Provides REST API for:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, Optional
 from uuid import UUID
@@ -22,6 +23,7 @@ from app.core.analysis.context.embeddings import EmbeddingGenerator, EmbeddingPr
 from app.core.analysis.context.repo_context_manager import RepoContextManager
 from app.core.analysis.graph.manager import GraphManager
 from app.core.analysis.history import AnalysisHistoryService, TrendData
+from app.core.analysis.repository_resolution import resolve_repository_scope
 from app.core.analysis.knowledge_base import (
     KnowledgeBaseIngestionService,
     KBDocumentType,
@@ -312,26 +314,41 @@ async def index_repository(
     logger.info(f"Indexing repository: {request.repository_id}, full={request.full_reindex}")
     
     try:
-        # TODO: Resolve repository path from repository_id
-        repo_path = "/path/to/repo"  # Placeholder
-        
-        if request.full_reindex:
-            result = await repo_context_manager.index_repository(
-                repository_path=repo_path,
-                repository_id=str(request.repository_id),
+        resolved_scope = await asyncio.to_thread(
+            resolve_repository_scope,
+            str(request.repository_id),
+        )
+        if resolved_scope is None:
+            raise HTTPException(status_code=404, detail="Project repository was not found")
+
+        organization_id = resolved_scope.organization_id or principal.organization_id
+        if not organization_id:
+            raise HTTPException(
+                status_code=409,
+                detail="Project organization could not be resolved for repository indexing",
             )
-        else:
-            result = await repo_context_manager.incremental_update(
-                repository_path=repo_path,
-                repository_id=str(request.repository_id),
+        if not resolved_scope.repo_path:
+            raise HTTPException(
+                status_code=404,
+                detail="Repository path could not be resolved for indexing",
             )
+
+        result = await repo_context_manager.index_repository(
+            organization_id=organization_id,
+            project_id=resolved_scope.project_id,
+            repository_id=resolved_scope.repository_id,
+            repo_path=resolved_scope.repo_path,
+            force_full=request.full_reindex,
+        )
         
         return IndexRepositoryResponse(
             repository_id=request.repository_id,
-            chunks_indexed=result.get("chunks_indexed", 0),
-            status="success",
+            chunks_indexed=result.chunks_created,
+            status="success" if result.success else "failed",
         )
     
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to index repository: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))

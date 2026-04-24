@@ -101,11 +101,13 @@ class RepoContextManager:
         repo_path: str,
         commit_sha: str | None = None,
         changed_files: list[str] | None = None,
+        force_full: bool = False,
     ) -> IndexingResult:
         """
         Index repository (full or incremental).
         
         Decision tree:
+        - If force_full is set → full indexing
         - If repository never indexed → full indexing
         - If changed_files provided → incremental update
         - If commit_sha differs from indexed_commit → incremental
@@ -118,6 +120,7 @@ class RepoContextManager:
             repo_path: Local path to repository
             commit_sha: Current commit SHA
             changed_files: List of changed files (for incremental)
+            force_full: Force a full re-index even if the repository already exists
             
         Returns:
             Indexing result with stats
@@ -131,7 +134,16 @@ class RepoContextManager:
                 {"id": repository_id}
             )
             
-            if repo_node is None:
+            if force_full:
+                logger.info(f"[{repository_id}] Forced full indexing")
+                result = await self._full_indexing(
+                    organization_id=organization_id,
+                    project_id=project_id,
+                    repository_id=repository_id,
+                    repo_path=repo_path,
+                    commit_sha=commit_sha,
+                )
+            elif repo_node is None:
                 # First-time indexing
                 logger.info(f"[{repository_id}] First-time indexing")
                 result = await self._full_indexing(

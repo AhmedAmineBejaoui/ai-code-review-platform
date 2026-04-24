@@ -80,7 +80,7 @@ def test_review_intelligence_service_generates_structured_output_with_fallbacks(
             }
         ],
         fallback_summary="This PR updates KB write paths and related tests.",
-        qdrant_enabled=True,
+        neo4j_enabled=True,
         kb_retrieval_mode="diff_with_incremental_update",
         kb_context_chunks_count=2,
         kb_retrieval_error=None,
@@ -94,12 +94,12 @@ def test_review_intelligence_service_generates_structured_output_with_fallbacks(
     assert output.merge_readiness.status == "blocked"
 
 
-def test_review_intelligence_service_requires_qdrant() -> None:
+def test_review_intelligence_service_requires_neo4j() -> None:
     service = _build_service()
 
     with pytest.raises(HybridRAGRequiredError):
         service.require_hybrid_rag(
-            qdrant_enabled=False,
+            neo4j_enabled=False,
             kb_retrieval_mode="diff_retrieval_only",
             kb_context_chunks_count=3,
             knowledge_base_context="context",
@@ -130,7 +130,7 @@ def test_review_intelligence_service_reports_hybrid_rag_unavailable_reason() -> 
     service = _build_service()
 
     enabled, reason = service.can_use_hybrid_rag(
-        qdrant_enabled=False,
+        neo4j_enabled=False,
         kb_retrieval_mode="diff_retrieval_only",
         kb_context_chunks_count=0,
         knowledge_base_context=None,
@@ -141,11 +141,11 @@ def test_review_intelligence_service_reports_hybrid_rag_unavailable_reason() -> 
     assert reason
 
 
-def test_review_intelligence_service_allows_non_qdrant_grounding_when_opted_in() -> None:
+def test_review_intelligence_service_allows_grounding_when_neo4j_context_exists() -> None:
     service = _build_service()
 
     enabled, reason = service.can_use_hybrid_rag(
-        qdrant_enabled=False,
+        neo4j_enabled=True,
         kb_retrieval_mode="lexical_only",
         kb_context_chunks_count=2,
         knowledge_base_context="grounded sql context",
@@ -161,7 +161,6 @@ def test_review_intelligence_service_allows_non_qdrant_grounding_when_opted_in()
                 "tags": ["policy"],
             }
         ],
-        allow_non_qdrant_grounding=True,
     )
 
     assert enabled is True
@@ -172,7 +171,7 @@ def test_review_intelligence_service_rejects_grounding_without_valid_citations()
     service = _build_service()
 
     enabled, reason = service.can_use_hybrid_rag(
-        qdrant_enabled=True,
+        neo4j_enabled=True,
         kb_retrieval_mode="diff_with_incremental_update",
         kb_context_chunks_count=2,
         knowledge_base_context="grounded context",
@@ -195,7 +194,7 @@ def test_review_intelligence_service_rejects_grounding_without_valid_citations()
             knowledge_base_context="KB context for authorization and knowledge-base write rules.",
             context_references=[],
             fallback_summary="This PR updates KB write paths and related tests.",
-            qdrant_enabled=True,
+            neo4j_enabled=True,
             kb_retrieval_mode="diff_with_incremental_update",
             kb_context_chunks_count=2,
             kb_retrieval_error=None,

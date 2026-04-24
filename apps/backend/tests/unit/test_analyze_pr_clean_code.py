@@ -41,9 +41,9 @@ class _FakeRetriever:
 
 
 class _FakeRagEngine:
-    def __init__(self, chunks: list[_FakeChunk], *, qdrant_enabled: bool) -> None:
+    def __init__(self, chunks: list[_FakeChunk], *, neo4j_grounded: bool) -> None:
         self._chunks = chunks
-        self._qdrant_enabled = qdrant_enabled
+        self._neo4j_grounded = neo4j_grounded
 
     async def retrieve_for_diff(self, **_: object):
         return SimpleNamespace(
@@ -66,7 +66,7 @@ class _FakeRagEngine:
                 for item in self._chunks
             ],
             grounded=bool(self._chunks),
-            qdrant_enabled=self._qdrant_enabled,
+            neo4j_grounded=self._neo4j_grounded,
             rag_confidence_score=0.91 if self._chunks else 0.0,
             trace={"selected_count": len(self._chunks)},
             error=None,
@@ -229,13 +229,12 @@ def _build_static_result() -> StaticAnalysisResult:
     )
 
 
-def _patch_common(monkeypatch, *, fake_repo: _FakeAnalysesRepo, fake_outputs: _FakeReviewOutputsRepo, chunks: list[_FakeChunk], qdrant_enabled: bool) -> None:
+def _patch_common(monkeypatch, *, fake_repo: _FakeAnalysesRepo, fake_outputs: _FakeReviewOutputsRepo, chunks: list[_FakeChunk], neo4j_grounded: bool) -> None:
     monkeypatch.setattr(analyze_pr, "AnalysesRepo", lambda: fake_repo)
     monkeypatch.setattr(analyze_pr, "ReviewOutputsRepo", lambda: fake_outputs)
     monkeypatch.setattr(analyze_pr, "RepoProfilesRepo", lambda: SimpleNamespace(get_profile=lambda repo_id: None, upsert_profile=lambda **_: None))
-    monkeypatch.setattr(analyze_pr, "build_rag_engines", lambda **_: (_FakeRagEngine(chunks, qdrant_enabled=qdrant_enabled), None))
+    monkeypatch.setattr(analyze_pr, "build_rag_engines", lambda **_: (_FakeRagEngine(chunks, neo4j_grounded=neo4j_grounded), None))
     monkeypatch.setattr(analyze_pr, "resolve_repo_context_repo_path", lambda **_: None)
-    monkeypatch.setattr(analyze_pr, "QdrantClient", lambda: SimpleNamespace(enabled=qdrant_enabled))
     monkeypatch.setattr(analyze_pr, "run_static_analysis_stage", lambda *args, **kwargs: _build_static_result())
     monkeypatch.setattr(analyze_pr, "_REVIEW_INTELLIGENCE_SERVICE", _build_review_service())
     monkeypatch.setattr(analyze_pr._SUMMARY_SERVICE, "generate_summary", lambda **_: (_ for _ in ()).throw(RuntimeError("summary unavailable")))
@@ -247,20 +246,20 @@ def _patch_common(monkeypatch, *, fake_repo: _FakeAnalysesRepo, fake_outputs: _F
     monkeypatch.setattr(analyze_pr.settings, "SECRET_SCAN_ENABLED", False)
     monkeypatch.setattr(analyze_pr.settings, "LLM_REVIEW_FINDINGS_ENABLED", False)
     monkeypatch.setattr(analyze_pr.settings, "REVIEW_INTELLIGENCE_ENABLED", True)
-    monkeypatch.setattr(analyze_pr.settings, "REVIEW_INTELLIGENCE_REQUIRE_QDRANT", True)
+    monkeypatch.setattr(analyze_pr.settings, "GRAPH_RAG_REQUIRED", True)
 
 
 def test_pipeline_falls_back_to_rule_engine_when_rag_is_unavailable(monkeypatch) -> None:
     fake_repo = _FakeAnalysesRepo(_build_analysis())
     fake_outputs = _FakeReviewOutputsRepo()
-    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[], qdrant_enabled=False)
+    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[], neo4j_grounded=False)
 
     result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
 
     assert result["status"] == "COMPLETED"
     assert fake_outputs.saved is not None
     assert fake_outputs.saved.source == "rule_engine"
-    assert fake_outputs.saved.qdrant_required is False
+    assert fake_outputs.saved.graph_rag_required is False
     assert fake_repo.summary
     assert any(item.source == "STATIC_CLEAN_CODE" for item in fake_repo.findings)
     assert fake_repo.status_updates[-1]["status"] == "COMPLETED"
@@ -269,14 +268,14 @@ def test_pipeline_falls_back_to_rule_engine_when_rag_is_unavailable(monkeypatch)
 def test_pipeline_keeps_hybrid_rag_source_when_grounded_context_exists(monkeypatch) -> None:
     fake_repo = _FakeAnalysesRepo(_build_analysis())
     fake_outputs = _FakeReviewOutputsRepo()
-    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], qdrant_enabled=True)
+    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], neo4j_grounded=True)
 
     result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
 
     assert result["status"] == "COMPLETED"
     assert fake_outputs.saved is not None
     assert fake_outputs.saved.source == "hybrid_rag"
-    assert fake_outputs.saved.qdrant_required is True
+    assert fake_outputs.saved.graph_rag_required is True
     assert any(item.source == "STATIC_CLEAN_CODE" for item in fake_repo.findings)
 
 
@@ -289,7 +288,7 @@ def test_pipeline_recovers_orphaned_running_task(monkeypatch) -> None:
 
     fake_repo = _FakeAnalysesRepo(analysis)
     fake_outputs = _FakeReviewOutputsRepo()
-    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], qdrant_enabled=True)
+    _patch_common(monkeypatch, fake_repo=fake_repo, fake_outputs=fake_outputs, chunks=[_FakeChunk()], neo4j_grounded=True)
     monkeypatch.setattr(analyze_pr, "is_celery_task_active", lambda _task_id: False)
 
     result = analyze_pr.run_minimal_analysis_pipeline.run("analysis-1")
