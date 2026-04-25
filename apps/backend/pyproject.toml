@@ -9,7 +9,7 @@ python = "^3.11"
 fastapi = ">=0.100,<0.137"
 pydantic = "^2.10.6"
 pydantic-settings = "^2.8.1"
-uvicorn = {version = ">=0.22,<0.45", extras = ["standard"]}
+uvicorn = {version = ">=0.22,<0.47", extras = ["standard"]}
 websockets = "^16.0"
 psycopg = {version = "^3.2.10", extras = ["binary"]}
 psycopg-pool = "^3.2.2"
@@ -34,7 +34,7 @@ langchain-ollama = "^1.0.1"
 tree-sitter = ">=0.24,<0.26"
 neo4j = ">=5.28,<7.0"
 pywebpush = "^2.0.3"
-anthropic = ">=0.95,<0.97"
+anthropic = ">=0.95,<0.98"
 psutil = "^7.2.2"
 sentence-transformers = ">=3.0,<4.0"
 openai = ">=1.0,<2.0"
