@@ -575,8 +575,10 @@ async def get_current_principal(
         try:
             return await _build_principal_from_clerk_token(token, repo)
         except Exception as exc:
-            # If auth enforcement is disabled, allow fallback to header-based auth
-            if not _is_auth_enforced():
+            # If auth enforcement is disabled, allow fallback to explicit
+            # header-based auth only. A bad bearer token must not silently
+            # become the local admin principal.
+            if not _is_auth_enforced() and x_user_id:
                 logger.debug("Bearer token validation failed; falling back to X-User-Id")
             else:
                 if isinstance(exc, HTTPException):

@@ -12,6 +12,30 @@ const path = require('path')
 const ROOT = path.resolve(__dirname, '..')
 const OUT_DIR = path.join(ROOT, 'out')
 
+function loadEnvFile(filePath) {
+  if (!fs.existsSync(filePath)) return
+  const content = fs.readFileSync(filePath, 'utf8')
+  for (const line of content.split(/\r?\n/)) {
+    const trimmed = line.trim()
+    if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue
+    const index = trimmed.indexOf('=')
+    const key = trimmed.slice(0, index).trim()
+    let value = trimmed.slice(index + 1).trim()
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      value = value.slice(1, -1)
+    }
+    if (key && process.env[key] === undefined) process.env[key] = value
+  }
+}
+
+loadEnvFile(path.join(ROOT, '.env.local'))
+loadEnvFile(path.join(ROOT, '.env'))
+
+const DEFAULT_MOBILE_API_BASE = process.env.MOBILE_API_BASE || 'http://10.0.2.2:8000'
+const CLERK_PUBLISHABLE_KEY =
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || process.env.CLERK_PUBLISHABLE_KEY || ''
+const CLERK_ASSETS_SOURCE = path.join(ROOT, 'public', 'vendor', 'clerk-js', 'current')
+
 function log(message) {
   console.log(`[mobile:apk] ${message}`)
 }
@@ -28,6 +52,13 @@ const html = String.raw`<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#0a0a0b" />
   <title>AI Code Review Mobile</title>
+  <script
+    defer
+    crossorigin="anonymous"
+    data-clerk-publishable-key="${CLERK_PUBLISHABLE_KEY}"
+    src="/vendor/clerk-js/current/clerk.browser.js"
+    type="text/javascript"
+  ></script>
   <style>
     :root {
       color-scheme: dark;
@@ -106,6 +137,7 @@ const html = String.raw`<!doctype html>
     .content { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 88px; }
     .view { display: none; padding: 16px; }
     .view.active { display: block; }
+    .hidden { display: none !important; }
     h1 { margin: 0; font-size: 21px; line-height: 1.15; letter-spacing: 0; }
     .subtitle { margin-top: 4px; color: var(--muted); font-size: 12px; }
     .page-head { margin-bottom: 14px; }
@@ -165,6 +197,24 @@ const html = String.raw`<!doctype html>
     .severity span { display: block; margin-top: 4px; font-size: 8px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; }
     .notice { border-radius: 14px; border: 1px solid rgba(245,158,11,.28); background: rgba(245,158,11,.1); padding: 13px; color: #fcd34d; font-size: 12px; line-height: 1.45; }
     .action { width: 100%; min-height: 48px; border-radius: 14px; background: var(--indigo); color: white; font-weight: 850; }
+    .input {
+      width: 100%;
+      min-height: 48px;
+      border-radius: 14px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.05);
+      color: var(--text);
+      padding: 0 14px;
+      outline: none;
+    }
+    .input:focus { border-color: rgba(99,102,241,.7); box-shadow: 0 0 0 3px rgba(99,102,241,.12); }
+    .login-card {
+      margin-top: 16px;
+      border-radius: 18px;
+      border: 1px solid var(--line);
+      background: rgba(255,255,255,.045);
+      padding: 16px;
+    }
     .back { width: 36px; height: 36px; border-radius: 12px; background: rgba(255,255,255,.06); display: grid; place-items: center; }
     .nav {
       position: fixed;
@@ -222,7 +272,19 @@ const html = String.raw`<!doctype html>
     </header>
 
     <main class="content">
-      <section id="view-prs" class="view active">
+      <section id="view-login" class="view active">
+        <div class="page-head">
+          <h1>Connexion Clerk</h1>
+          <div class="subtitle">Utilisez le meme compte que la plateforme web.</div>
+        </div>
+        <div class="login-card">
+          <div id="clerk-status" class="subtitle">Chargement de Clerk...</div>
+          <div id="clerk-sign-in" style="margin-top:12px"></div>
+          <div class="notice" style="margin-top:14px">L'APK envoie le JWT Clerk au backend local FastAPI sur <span id="login-api-base"></span>. Les roles Developer / Tech Lead viennent de Clerk et du RBAC plateforme.</div>
+        </div>
+      </section>
+
+      <section id="view-prs" class="view">
         <div class="page-head"><h1>All PRs</h1><div class="subtitle" id="prs-subtitle">Connexion au backend local...</div></div>
         <div class="tabs" id="tabs"></div>
         <div class="list" id="prs-list"><div class="loading">Chargement des analyses reelles...</div></div>
@@ -251,21 +313,23 @@ const html = String.raw`<!doctype html>
 
       <section id="view-dashboard" class="view">
         <div class="page-head"><h1>Dashboard</h1><div class="subtitle" id="dashboard-subtitle">Stats backend local</div></div>
+        <div class="card" id="account-card" style="margin-bottom:12px"></div>
         <div class="metric-grid" id="dashboard-grid"></div>
         <div class="section-title">Actions rapides</div>
         <div class="list">
           <button class="card" data-nav="prs"><div class="title">Nouvelles analyses</div><div class="meta">PRs en attente de revue</div></button>
           <button class="card" data-nav="notifications"><div class="title">Notifications</div><div class="meta">Alertes et resultats d'analyse</div></button>
-          <button class="card" data-nav="health"><div class="title">Sante plateforme</div><div class="meta">Queue, workers et services</div></button>
+          <button class="card" data-nav="health" data-tech-lead><div class="title">Sante plateforme</div><div class="meta">Queue, workers et services</div></button>
+          <button class="card" data-sign-out><div class="title">Deconnexion</div><div class="meta">Retirer le token mobile de cet emulateur</div></button>
         </div>
         <div class="notice" style="margin-top:16px">APK natif Capacitor. Les donnees viennent de <span id="api-base-label"></span>. Dans un emulateur Android, 10.0.2.2 pointe vers votre PC.</div>
       </section>
     </main>
 
-    <nav class="nav" id="nav">
+    <nav class="nav hidden" id="nav">
       <button class="active" data-nav="prs"><span class="ico">PR</span><span>All PRs</span></button>
       <button data-nav="notifications"><span class="ico">N</span><span>Notifs</span></button>
-      <button data-nav="health"><span class="ico">H</span><span>Sante</span></button>
+      <button data-nav="health" data-tech-lead><span class="ico">H</span><span>Sante</span></button>
       <button data-nav="dashboard"><span class="ico">D</span><span>Dashboard</span></button>
     </nav>
     <div class="toast" id="toast"></div>
@@ -273,8 +337,11 @@ const html = String.raw`<!doctype html>
 
   <script>
     const API_BASE_KEY = 'aiCodeReviewMobileApiBaseUrl';
-    const DEFAULT_API_BASE = 'http://10.0.2.2:8000';
+    const DEFAULT_API_BASE = ${JSON.stringify(DEFAULT_MOBILE_API_BASE)};
+    const CLERK_CONFIGURED = ${JSON.stringify(Boolean(CLERK_PUBLISHABLE_KEY))};
     let apiBase = localStorage.getItem(API_BASE_KEY) || DEFAULT_API_BASE;
+    let clerk = null;
+    let authSyncInFlight = false;
 
     const tabs = [
       { key: 'new_attention', label: 'New' },
@@ -285,14 +352,6 @@ const html = String.raw`<!doctype html>
       { key: 'waiting_author', label: 'Action' }
     ];
 
-    const demoPrs = [
-      { id: 'demo-a1', mobile_status: 'new_attention', title: 'Demo fallback: backend local indisponible', repo_name: 'localhost/backend', risk_level: 'HIGH', findings_count: 7, created_at: new Date().toISOString(), pr_summary: 'L APK a essaye de joindre le backend local mais la requete a echoue.', merge_readiness: false, test_suggestions: ['Verifier que FastAPI ecoute sur 0.0.0.0:8000', 'Tester http://localhost:8000/health depuis Windows'] },
-      { id: 'demo-a2', mobile_status: 'approved', title: 'Demo fallback: PR approuvee', repo_name: 'platform/demo', risk_level: 'LOW', findings_count: 0, created_at: new Date(Date.now() - 86400000).toISOString(), pr_summary: 'Exemple de donnees affiche uniquement si le backend ne repond pas.', merge_readiness: true, test_suggestions: [] }
-    ];
-    const demoNotifications = [
-      { id: 'demo-n1', type: 'info', title: 'Backend local non joignable', body: 'Demarrez FastAPI sur le port 8000 puis relancez ou appuyez sur le badge backend.', read: false, created_at: new Date().toISOString(), analysis_id: 'demo-a1' }
-    ];
-
     const state = {
       activeTab: 'new_attention',
       prs: [],
@@ -300,8 +359,8 @@ const html = String.raw`<!doctype html>
       notifications: [],
       health: null,
       stats: null,
-      backendOnline: false,
-      fallback: false
+      user: null,
+      backendOnline: false
     };
 
     function esc(value) {
@@ -314,14 +373,34 @@ const html = String.raw`<!doctype html>
       return apiBase.replace(/\/$/, '') + path;
     }
 
+    async function getClerkToken() {
+      if (!clerk || !clerk.session) return '';
+      const token = await clerk.session.getToken({ skipCache: false });
+      return token || '';
+    }
+
+    async function apiHeaders(extra) {
+      const headers = Object.assign({ Accept: 'application/json' }, extra || {});
+      const token = await getClerkToken();
+      if (token) headers.Authorization = 'Bearer ' + token;
+      return headers;
+    }
+
     async function apiGet(path) {
-      const response = await fetch(apiPath(path), { method: 'GET', headers: { Accept: 'application/json' } });
+      const response = await fetch(apiPath(path), { method: 'GET', headers: await apiHeaders() });
+      if (response.status === 401) handleAuthRejected();
       if (!response.ok) throw new Error('GET ' + path + ' failed: ' + response.status);
       return response.json();
     }
 
-    async function apiSend(path, method) {
-      const response = await fetch(apiPath(path), { method: method || 'POST', headers: { Accept: 'application/json' } });
+    async function apiSend(path, method, body) {
+      const options = { method: method || 'POST', headers: await apiHeaders() };
+      if (body !== undefined) {
+        options.headers = await apiHeaders({ 'Content-Type': 'application/json' });
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(apiPath(path), options);
+      if (response.status === 401) handleAuthRejected();
       if (!response.ok) throw new Error(method + ' ' + path + ' failed: ' + response.status);
       return response.json();
     }
@@ -331,7 +410,7 @@ const html = String.raw`<!doctype html>
       const dot = document.getElementById('api-dot');
       const text = document.getElementById('api-text');
       dot.className = 'dot ' + (online ? 'ok' : 'bad');
-      text.textContent = online ? 'Backend local' : 'Demo fallback';
+      text.textContent = online ? 'Backend local' : 'Backend indisponible';
       if (message) showToast(message);
     }
 
@@ -341,6 +420,154 @@ const html = String.raw`<!doctype html>
       toast.classList.add('show');
       clearTimeout(showToast.timer);
       showToast.timer = setTimeout(function () { toast.classList.remove('show'); }, 2600);
+    }
+
+    function hideNativeSplash() {
+      try {
+        const splash = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.SplashScreen;
+        if (splash && splash.hide) splash.hide();
+      } catch (_) {}
+    }
+
+    function isTechLead() {
+      return state.user && state.user.role === 'tech_lead';
+    }
+
+    function handleAuthRejected() {
+      state.user = null;
+      showLogin('Session mobile expiree. Reconnectez-vous.');
+    }
+
+    function applyRoleUi() {
+      document.querySelectorAll('[data-tech-lead]').forEach(function (node) {
+        node.classList.toggle('hidden', !isTechLead());
+      });
+      if (state.user) {
+        document.getElementById('dashboard-subtitle').textContent = state.user.role === 'tech_lead'
+          ? 'Connecte en Tech Lead'
+          : 'Connecte en Developer';
+      }
+    }
+
+    function showLogin(message) {
+      hideNativeSplash();
+      document.getElementById('nav').classList.add('hidden');
+      document.querySelectorAll('.view').forEach(function (view) { view.classList.remove('active'); });
+      document.getElementById('view-login').classList.add('active');
+      mountClerkSignIn();
+      if (message) showToast(message);
+    }
+
+    function showAuthenticatedShell() {
+      hideNativeSplash();
+      document.getElementById('nav').classList.remove('hidden');
+      applyRoleUi();
+      setView('prs');
+      loadPrs();
+      loadStats();
+    }
+
+    function waitForClerkGlobal() {
+      return new Promise(function (resolve, reject) {
+        const started = Date.now();
+        const timer = setInterval(function () {
+          if (window.Clerk) {
+            clearInterval(timer);
+            resolve(window.Clerk);
+            return;
+          }
+          if (Date.now() - started > 20000) {
+            clearInterval(timer);
+            reject(new Error('ClerkJS non charge'));
+          }
+        }, 100);
+      });
+    }
+
+    function mountClerkSignIn() {
+      const root = document.getElementById('clerk-sign-in');
+      const status = document.getElementById('clerk-status');
+      if (!CLERK_CONFIGURED) {
+        status.textContent = 'Configuration Clerk manquante: NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.';
+        root.innerHTML = '';
+        return;
+      }
+      if (!clerk || !clerk.mountSignIn) {
+        status.textContent = 'Chargement de Clerk...';
+        return;
+      }
+      status.textContent = 'Connectez-vous avec Clerk.';
+      root.innerHTML = '';
+      clerk.mountSignIn(root, {
+        routing: 'hash',
+        appearance: {
+          variables: {
+            colorPrimary: '#6366f1',
+            colorBackground: '#18181b',
+            colorInputBackground: '#27272a',
+            colorInputText: '#fafafa',
+            colorText: '#fafafa',
+            colorTextSecondary: '#a1a1aa',
+            borderRadius: '0.75rem'
+          },
+          elements: {
+            footer: { display: 'none' },
+            footerAction: { display: 'none' },
+            card: { backgroundColor: '#18181b', border: '1px solid #27272a', boxShadow: 'none' },
+            formButtonPrimary: { backgroundColor: '#6366f1' }
+          }
+        }
+      });
+    }
+
+    async function syncClerkSession() {
+      if (authSyncInFlight) return;
+      authSyncInFlight = true;
+      try {
+        const user = await apiGet('/v1/mobile/auth/me');
+        state.user = user;
+        showAuthenticatedShell();
+      } catch (error) {
+        state.user = null;
+        showLogin('Session Clerk non valide pour le backend: ' + error.message);
+      } finally {
+        authSyncInFlight = false;
+      }
+    }
+
+    async function bootstrapAuth() {
+      document.getElementById('login-api-base').textContent = apiBase;
+      if (!CLERK_CONFIGURED) {
+        showLogin('Ajoutez NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY puis rebuild APK');
+        return;
+      }
+      try {
+        clerk = await waitForClerkGlobal();
+        await clerk.load();
+        clerk.addListener(function (resources) {
+          if (resources && resources.session && resources.user) {
+            syncClerkSession();
+          }
+        });
+        if (clerk.isSignedIn && clerk.session) {
+          await syncClerkSession();
+        } else {
+          showLogin();
+        }
+      } catch (error) {
+        showLogin('Impossible de charger Clerk: ' + error.message);
+      }
+    }
+
+    async function signOut() {
+      try { await apiSend('/v1/mobile/auth/logout', 'POST'); } catch (_) {}
+      try { if (clerk) await clerk.signOut(); } catch (_) {}
+      state.user = null;
+      state.prs = [];
+      state.notifications = [];
+      state.health = null;
+      state.stats = null;
+      showLogin('Deconnecte');
     }
 
     function riskClass(risk) {
@@ -398,33 +625,33 @@ const html = String.raw`<!doctype html>
         const countData = await apiGet('/v1/mobile/analyses/counts');
         state.prs = (listData.items || listData.analyses || []).map(normalizePr);
         state.counts = countData || countsFromItems(state.prs);
-        state.fallback = false;
         setBackendStatus(true);
       } catch (error) {
-        state.fallback = true;
-        state.prs = demoPrs.filter(function (item) { return item.mobile_status === state.activeTab; }).map(normalizePr);
-        state.counts = countsFromItems(demoPrs.map(normalizePr));
-        setBackendStatus(false, 'Backend local indisponible: ' + error.message);
+        state.prs = [];
+        state.counts = {};
+        setBackendStatus(false, 'Backend/API indisponible: ' + error.message);
       }
       renderPrs();
     }
 
     async function loadAnalysis(id) {
-      const fallback = state.prs.find(function (item) { return item.id === id; }) || demoPrs.map(normalizePr)[0];
-      document.getElementById('analysis-title').textContent = fallback.title;
-      document.getElementById('analysis-repo').textContent = fallback.repo_name;
+      const cached = state.prs.find(function (item) { return item.id === id; });
+      document.getElementById('analysis-title').textContent = cached ? cached.title : 'Analyse';
+      document.getElementById('analysis-repo').textContent = cached ? cached.repo_name : '';
       document.getElementById('analysis-body').innerHTML = '<div class="loading">Chargement du resume...</div>';
       setView('analysis');
 
-      let item = fallback;
-      if (!state.fallback && !String(id).startsWith('demo-')) {
-        try {
-          item = normalizePr(await apiGet('/v1/mobile/analyses/' + encodeURIComponent(id) + '/summary'));
-        } catch (error) {
+      try {
+        const item = normalizePr(await apiGet('/v1/mobile/analyses/' + encodeURIComponent(id) + '/summary'));
+        renderAnalysis(item);
+      } catch (error) {
+        if (cached) {
           showToast('Resume indisponible: ' + error.message);
+          renderAnalysis(cached);
+          return;
         }
+        document.getElementById('analysis-body').innerHTML = '<div class="notice">Impossible de charger cette analyse depuis le backend: ' + esc(error.message) + '</div>';
       }
-      renderAnalysis(item);
     }
 
     async function loadNotifications() {
@@ -433,8 +660,8 @@ const html = String.raw`<!doctype html>
         state.notifications = data.notifications || data.items || [];
         setBackendStatus(true);
       } catch (error) {
-        state.notifications = demoNotifications.slice();
-        setBackendStatus(false, 'Notifications en demo: ' + error.message);
+        state.notifications = [];
+        setBackendStatus(false, 'Notifications indisponibles: ' + error.message);
       }
       renderNotifications();
     }
@@ -445,7 +672,7 @@ const html = String.raw`<!doctype html>
         setBackendStatus(true);
       } catch (error) {
         state.health = null;
-        setBackendStatus(false, 'Health en demo: ' + error.message);
+        setBackendStatus(false, 'Health indisponible: ' + error.message);
       }
       renderHealth();
     }
@@ -456,7 +683,7 @@ const html = String.raw`<!doctype html>
         setBackendStatus(true);
       } catch (error) {
         state.stats = { total_analyses: 0, approved_prs: 0, findings_this_week: 0, return_prs: 0 };
-        setBackendStatus(false, 'Stats en demo: ' + error.message);
+        setBackendStatus(false, 'Stats indisponibles: ' + error.message);
       }
       renderDashboard();
     }
@@ -471,6 +698,10 @@ const html = String.raw`<!doctype html>
     }
 
     function setView(name) {
+      if (name === 'health' && !isTechLead()) {
+        showToast('La sante plateforme est reservee au Tech Lead');
+        name = 'dashboard';
+      }
       document.querySelectorAll('.view').forEach(function (view) { view.classList.remove('active'); });
       document.getElementById('view-' + name).classList.add('active');
       document.querySelectorAll('#nav button').forEach(function (button) {
@@ -499,9 +730,8 @@ const html = String.raw`<!doctype html>
 
     function renderPrs() {
       renderTabs();
-      document.getElementById('prs-subtitle').textContent = state.fallback
-        ? 'Demo fallback - backend local non joignable'
-        : state.prs.length + ' pull request' + (state.prs.length === 1 ? '' : 's') + ' depuis backend local';
+      document.getElementById('prs-subtitle').textContent =
+        state.prs.length + ' pull request' + (state.prs.length === 1 ? '' : 's') + ' depuis backend local';
       const root = document.getElementById('prs-list');
       if (!state.prs.length) {
         root.innerHTML = '<div class="empty">Aucune PR dans cette categorie</div>';
@@ -551,9 +781,7 @@ const html = String.raw`<!doctype html>
           if (!item) return;
           item.read = true;
           renderNotifications();
-          if (!state.fallback && !String(item.id).startsWith('demo-')) {
-            try { await apiSend('/v1/mobile/notifications/' + encodeURIComponent(item.id) + '/read', 'PATCH'); } catch (_) {}
-          }
+          try { await apiSend('/v1/mobile/notifications/' + encodeURIComponent(item.id) + '/read', 'PATCH'); } catch (_) {}
           if (item.analysis_id) loadAnalysis(item.analysis_id);
         });
       });
@@ -591,6 +819,9 @@ const html = String.raw`<!doctype html>
 
     function renderDashboard() {
       const s = state.stats || {};
+      const user = state.user || {};
+      document.getElementById('account-card').innerHTML =
+        '<div class="between"><div class="grow"><div class="metric-label">Compte mobile</div><div class="title">' + esc(user.display_name || user.email || 'Utilisateur') + '</div><div class="meta">' + esc(user.email || '') + '</div></div><span class="badge ' + (user.role === 'tech_lead' ? 'risk-low' : '') + '">' + esc(user.role || 'developer') + '</span></div>';
       document.getElementById('dashboard-grid').innerHTML =
         metric('Total analyses', s.total_analyses || 0, '') +
         metric('PRs approuvees', s.approved_prs || 0, '') +
@@ -608,6 +839,7 @@ const html = String.raw`<!doctype html>
       if (externalNav && !externalNav.closest('#nav')) setView(externalNav.dataset.nav);
       if (event.target.closest('[data-back]')) setView('prs');
       if (event.target.closest('[data-refresh]')) await refreshCurrent();
+      if (event.target.closest('[data-sign-out]')) await signOut();
       if (event.target.closest('[data-mark-all]')) {
         state.notifications.forEach(function (item) { item.read = true; });
         renderNotifications();
@@ -617,8 +849,7 @@ const html = String.raw`<!doctype html>
     });
 
     renderTabs();
-    loadPrs();
-    loadStats();
+    bootstrapAuth();
   </script>
 </body>
 </html>`;
@@ -630,6 +861,11 @@ function main() {
   write(path.join(OUT_DIR, 'index.html'), html)
   write(path.join(OUT_DIR, '404.html'), html)
   write(path.join(OUT_DIR, 'mobile', 'prs', 'index.html'), html)
+  if (fs.existsSync(CLERK_ASSETS_SOURCE)) {
+    fs.cpSync(CLERK_ASSETS_SOURCE, path.join(OUT_DIR, 'vendor', 'clerk-js', 'current'), { recursive: true })
+  } else {
+    log('Warning: Clerk assets not found. Run npm run sync:clerk-assets before building the APK.')
+  }
 
   log('Syncing Android project without a dev server URL...')
   const env = { ...process.env }
@@ -637,7 +873,7 @@ function main() {
   delete env.CAPACITOR_START_PATH
   execSync('npx cap sync android', { cwd: ROOT, env, stdio: 'inherit' })
 
-  log('APK assets are ready. The app will call http://10.0.2.2:8000/v1/mobile from the emulator.')
+  log(`APK assets are ready. The app will call ${DEFAULT_MOBILE_API_BASE}/v1/mobile by default.`)
 }
 
 main()

@@ -8,16 +8,23 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
-from app.api.middleware.auth import AuthenticatedPrincipal, require_auth as require_authenticated
+from app.api.middleware.auth import (
+    AuthenticatedPrincipal,
+    normalize_role_code,
+    permissions_for_roles,
+    require_auth as require_authenticated,
+)
 from app.data.database import get_engine
 
 router = APIRouter(prefix="/mobile", tags=["mobile"])
+_mobile_bearer_scheme = HTTPBearer(auto_error=False)
 
 
-# ─── Response models ──────────────────────────────────────────────────────────
+# Response models
 
 class PlatformHealthResponse(BaseModel):
     status: str                    # "healthy" | "degraded" | "down"
@@ -111,7 +118,45 @@ class MobileCountsResponse(BaseModel):
         populate_by_name = True
 
 
-# ─── Helpers ──────────────────────────────────────────────────────────────────
+class MobileAuthenticatedUser(BaseModel):
+    id: str
+    email: str
+    display_name: str | None = None
+    role: str
+    permissions: list[str]
+
+
+def _principal_to_mobile_user(principal: AuthenticatedPrincipal) -> MobileAuthenticatedUser:
+    role = normalize_role_code(principal.role)
+    if role == "admin":
+        role = "tech_lead"
+    return MobileAuthenticatedUser(
+        id=principal.user_id,
+        email=principal.email,
+        display_name=principal.display_name,
+        role=role,
+        permissions=principal.permissions or permissions_for_roles([role]),
+    )
+
+
+def require_mobile_authenticated(
+    credentials: HTTPAuthorizationCredentials | None = Security(_mobile_bearer_scheme),
+    principal: AuthenticatedPrincipal | None = Depends(require_authenticated),
+) -> AuthenticatedPrincipal:
+    """Require a real Clerk bearer token for every native mobile endpoint."""
+    if credentials is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Mobile Clerk session required")
+
+    if principal is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Mobile Clerk session required")
+
+    if principal.user_id == "local-dev-user" or principal.email.endswith("@local.dev"):
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Mobile Clerk session required")
+
+    return principal
+
+
+# Helpers
 
 def _check_redis() -> bool:
     """Quick Redis ping."""
@@ -344,16 +389,33 @@ def _load_mobile_analysis_rows(limit: int) -> list[Any]:
         ).mappings().all()
 
 
-# ─── Endpoints ────────────────────────────────────────────────────────────────
+# Endpoints
+
+@router.get("/auth/me", response_model=MobileAuthenticatedUser)
+async def mobile_auth_me(
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
+):
+    return _principal_to_mobile_user(principal)
+
+
+@router.post("/auth/logout")
+async def mobile_auth_logout(
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
+):
+    return {"success": True}
+
 
 @router.get("/health", response_model=PlatformHealthResponse)
 async def mobile_platform_health(
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """
     Lightweight platform health snapshot for the Tech Lead mobile view.
     Gathers: Celery queue state, Redis ping, analysis failure rate.
     """
+    if normalize_role_code(principal.role) not in {"tech_lead", "admin"}:
+        raise HTTPException(status_code=403, detail="Platform health is available only for Tech Leads")
+
     engine = get_engine()
     celery_info = _celery_stats()
     redis_ok = _check_redis()
@@ -410,7 +472,7 @@ async def mobile_platform_health(
 async def mobile_analyses(
     status: str | None = Query(default=None),
     limit: int = Query(default=30, ge=1, le=100),
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """List analyses for the native APK All PRs screen."""
     try:
@@ -426,7 +488,7 @@ async def mobile_analyses(
 @router.get("/analyses/{analysis_id}/summary", response_model=AnalysisMobileSummary)
 async def mobile_analysis_summary(
     analysis_id: str,
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """Lightweight analysis summary from analyses plus analysis_review_outputs."""
     try:
@@ -467,7 +529,7 @@ async def mobile_analysis_summary(
 
 @router.get("/analyses/counts", response_model=dict)
 async def mobile_analyses_counts(
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """
     Count analyses per mobile status tab for the All PRs badges.
@@ -493,7 +555,7 @@ async def mobile_analyses_counts(
 @router.get("/notifications", response_model=MobileNotificationsResponse)
 async def mobile_notifications(
     limit: int = Query(default=50, ge=1, le=100),
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """Return in-app notifications in the shape used by the APK."""
     from app.services.notifications import NotificationService
@@ -524,7 +586,7 @@ async def mobile_notifications(
 
 @router.post("/notifications/mark-all-read")
 async def mobile_mark_all_notifications_read(
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     from app.services.notifications import NotificationService
 
@@ -535,7 +597,7 @@ async def mobile_mark_all_notifications_read(
 @router.patch("/notifications/{notification_id}/read")
 async def mobile_mark_notification_read(
     notification_id: str,
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     from app.services.notifications import NotificationService
 
@@ -548,7 +610,7 @@ async def mobile_mark_notification_read(
 
 @router.get("/statistics", response_model=MobileStatisticsResponse)
 async def mobile_statistics(
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """Small statistics payload for the native dashboard screen."""
     from sqlalchemy import text
@@ -599,7 +661,7 @@ async def mobile_statistics(
 @router.post("/push/subscribe")
 async def subscribe_push_token(
     body: PushSubscribeRequest,
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """
     Store a push notification token (FCM/APNS) for the authenticated user.
@@ -620,14 +682,14 @@ async def subscribe_push_token(
             })
         return {"success": True, "message": "Push token registered"}
     except Exception as exc:
-        # Table may not exist yet — return success to not break the app
+        # Table may not exist yet; return success to not break the app
         return {"success": False, "message": str(exc)}
 
 
 @router.delete("/push/unsubscribe")
 async def unsubscribe_push_token(
     token: str,
-    principal: AuthenticatedPrincipal = Depends(require_authenticated),
+    principal: AuthenticatedPrincipal = Depends(require_mobile_authenticated),
 ):
     """Remove a push token (on sign-out or token refresh)."""
     engine = get_engine()
