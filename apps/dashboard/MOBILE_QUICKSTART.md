@@ -1,133 +1,149 @@
-# 🚀 Quick Start - Mobile App
+# 🚀 Mobile App - Quick Start
 
-Get the AI Code Review mobile app running in 5 minutes!
-
-## Prerequisites
-
-- ✅ Node.js 18+ installed
-- ✅ All dependencies installed (`npm install` in `apps/dashboard`)
-- ✅ `.env.local` configured with Clerk keys
-
-**For iOS:** macOS + Xcode 14+
-**For Android:** Android Studio installed
-
-## Step 1: Build for Mobile
-
-```bash
-cd apps/dashboard
-npm run mobile:build
-```
-
-Expected output:
-```
-✓ Generating static pages (35/39)
-[Mobile Build] Mobile build completed successfully!
-```
-
-## Step 2: Add Platform
-
-### iOS (macOS only)
-```bash
-npm run mobile:add:ios
-```
-
-### Android
-```bash
-npm run mobile:add:android
-```
-
-## Step 3: Open & Run
-
-### iOS
-```bash
-npm run mobile:ios
-```
-
-Then in Xcode:
-1. Select a simulator (iPhone 15 recommended)
-2. Click Run (▶️)
-3. Wait for build & install
-4. App launches! 🎉
-
-### Android
-```bash
-npm run mobile:android
-```
-
-Then in Android Studio:
-1. Wait for Gradle sync
-2. Select an emulator or device
-3. Click Run (▶️)
-4. Wait for build & install
-5. App launches! 🎉
-
-## Making Changes
-
-After modifying code:
-
-```bash
-npm run mobile:build  # Rebuild
-npm run mobile:sync   # Sync to native
-# Then re-run in IDE
-```
-
-## Troubleshooting
-
-### "Server Actions not supported"
-✅ Already fixed! If you see this, run:
-```bash
-git pull  # Get latest changes
-npm install
-npm run mobile:build
-```
-
-### Build fails
-```bash
-# Clean everything
-cd apps/dashboard
-rm -rf .next out node_modules
-npm install
-npm run mobile:build
-```
-
-### App crashes on launch
-1. Check you have `.env.local` with valid Clerk keys
-2. Check logs:
-   - **iOS:** Xcode → Window → Devices → Open Console
-   - **Android:** Android Studio → Logcat
-
-### Assets not updating
-```bash
-npm run mobile:build  # Always rebuild first
-npm run mobile:sync   # Then sync
-
-# Then clean build in IDE:
-# Xcode: Product → Clean Build Folder
-# Android Studio: Build → Clean Project
-```
-
-## Need Help?
-
-📖 Full guide: `MOBILE.md`
-📝 Setup summary: `MOBILE_SETUP_SUMMARY.md`
-🐛 Issues: Check logs and documentation
-
-## What Works
-
-✅ Authentication (Clerk)
-✅ Dashboard pages
-✅ Projects list
-✅ Analyses view
-✅ Settings
-✅ Admin panel
-✅ Native features (haptics, safe areas, keyboard handling)
-
-## What Doesn't Work Yet
-
-❌ Dynamic routes (projects/[id]) - requires SPA fallback
-❌ OAuth redirects - may need custom URL scheme handling
-❌ File uploads - needs native file picker integration
+**3 étapes simples pour lancer l'app mobile avec les vraies pages**
 
 ---
 
-**You're all set! Happy mobile development! 📱✨**
+## ✅ Prérequis
+
+- Android Studio installé
+- Next.js dev server en cours d'exécution (`npm run dev`)
+- Backend FastAPI en cours d'exécution (optionnel pour tester les API)
+
+---
+
+## 🎯 Étape 1 : Vérifier l'environnement
+
+```powershell
+cd "c:\Users\Ahmed Amin Bejoui\Desktop\ai-code-review-platform\apps\dashboard"
+npm run mobile:check
+```
+
+**Résultat attendu :** Tous les checks ✅ passent.
+
+Si des erreurs ❌ apparaissent, suivre les instructions affichées.
+
+---
+
+## 🚀 Étape 2 : Lancer l'environnement mobile
+
+```powershell
+npm run mobile:dev
+```
+
+Le script va :
+1. ✅ Détecter votre IP LAN (ex: `192.168.1.26`)
+2. ✅ Démarrer le dev server Next.js sur `http://IP:3001`
+3. ✅ Configurer Capacitor avec l'URL correcte
+4. ✅ Ouvrir Android Studio automatiquement
+
+**⏳ Attendez 8 secondes** que le dev server initialise.
+
+---
+
+## 📱 Étape 3 : Lancer l'app dans Android Studio
+
+1. **Sélectionner un émulateur** dans la barre du haut
+   - Si aucun émulateur : **Device Manager** → **Create Device** → Pixel 6 API 35
+   
+2. **Cliquer sur ▶️ Run** (ou `Shift + F10`)
+
+3. **Attendre ~30 secondes** (première fois)
+
+4. **L'app démarre** et affiche `/mobile/prs` (All PRs) 🎉
+
+---
+
+## ✨ Résultat attendu
+
+Vous devriez voir :
+
+- **Header** : "AI Code Review" avec logo
+- **6 onglets PRs** : New attention, Return, Approved, Waiting reviewer, Drafts, Waiting author
+- **Bottom navigation** : 4 onglets (All PRs, Notifs, Santé, Dashboard)
+- **Live-reload actif** : Modifiez le code → l'app se recharge automatiquement
+
+---
+
+## 🔥 Live Development
+
+Toute modification dans `app/mobile/*` recharge l'app instantanément :
+
+```typescript
+// apps/dashboard/app/mobile/prs/page.tsx
+<h1>All PRs</h1>  // Modifiez ce titre
+```
+
+💾 Sauvegardez → l'app se recharge automatiquement en **<2s**
+
+---
+
+## 🚨 Problème : Écran blanc ?
+
+Si l'app affiche un **écran blanc** :
+
+### Solution rapide
+
+1. **Arrêter l'app** dans l'émulateur
+2. **Redémarrer le dev server** :
+   ```powershell
+   # Ctrl+C pour arrêter le serveur actuel
+   npm run dev
+   ```
+3. **Re-sync Capacitor** :
+   ```powershell
+   $env:CAPACITOR_DEV_SERVER_URL="http://192.168.1.26:3001"  # Votre IP
+   npx cap sync
+   ```
+4. **Relancer l'app** dans Android Studio (▶️ Run)
+
+### Diagnostic complet
+
+```powershell
+npm run mobile:check
+```
+
+Suivre les instructions pour corriger les erreurs détectées.
+
+### Guide détaillé
+
+Voir : [`MOBILE_TROUBLESHOOTING.md`](./MOBILE_TROUBLESHOOTING.md)
+
+---
+
+## 📖 Navigation mobile
+
+| Onglet | Route | Description |
+|--------|-------|-------------|
+| **All PRs** | `/mobile/prs` | Liste des PRs/analyses par statut (6 catégories) |
+| **Notifs** | `/mobile/notifications` | Centre de notifications avec mark as read |
+| **Santé** | `/mobile/health` | Santé plateforme (Tech Lead uniquement) |
+| **Dashboard** | `/mobile/dashboard` | Stats personnelles + Sign out |
+
+---
+
+## 🛑 Arrêter tout
+
+```powershell
+# Dans le terminal où tourne npm run mobile:dev
+Ctrl + C
+```
+
+Cela arrête :
+- Le dev server Next.js
+- Les processus de surveillance
+
+Vous pouvez ensuite fermer Android Studio.
+
+---
+
+## 📚 Documentation complète
+
+- **Guide complet** : [`MOBILE_README.md`](./MOBILE_README.md)
+- **Troubleshooting** : [`MOBILE_TROUBLESHOOTING.md`](./MOBILE_TROUBLESHOOTING.md)
+- **Architecture** : [`CLAUDE.md`](../../CLAUDE.md)
+
+---
+
+**Temps total de démarrage** : ~2 minutes  
+**Dernière mise à jour** : 26 avril 2026

@@ -71,7 +71,9 @@
       "Bash(find . -type f -name \"*.py\" -exec wc -l {} +)",
       "Bash(poetry --version)",
       "Bash(del nul *)",
-      "Bash(rm -f nul)"
+      "Bash(rm -f nul)",
+      "Bash(git checkout *)",
+      "Bash(ls \"c:/Users/Ahmed Amin Bejoui/Desktop/ai-code-review-platform/apps/dashboard/app/\")"
     ]
   }
 }

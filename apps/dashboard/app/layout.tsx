@@ -4,6 +4,8 @@ import { dark } from "@clerk/themes"
 import { IBM_Plex_Mono, Sora } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"
+import { MobileRedirect } from "@/components/mobile-redirect"
+import { CapacitorProvider } from "@/components/providers/capacitor-provider"
 import { Toaster } from "@/components/ui/sonner"
 import { getClerkRuntimeConfig } from "@/lib/clerk-runtime"
 import "./globals.css"
@@ -103,8 +105,11 @@ export default function RootLayout({
       <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
         <body className={`${sora.variable} ${mono.variable} bg-background text-foreground antialiased`}>
           <ThemeProvider>
-            {children}
-            <Toaster richColors closeButton />
+            <CapacitorProvider>
+              <MobileRedirect />
+              {children}
+              <Toaster richColors closeButton />
+            </CapacitorProvider>
           </ThemeProvider>
         </body>
       </html>

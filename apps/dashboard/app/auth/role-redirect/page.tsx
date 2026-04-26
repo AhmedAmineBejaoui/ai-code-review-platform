@@ -48,7 +48,18 @@ export default function RoleRedirectPage() {
       }
 
       if (!cancelled) {
-        router.replace(getRoleHomePath(role))
+        let redirectPath = getRoleHomePath(role)
+
+        try {
+          const { Capacitor } = await import("@capacitor/core")
+          if (Capacitor.isNativePlatform()) {
+            redirectPath = "/mobile/prs"
+          }
+        } catch {
+          // Keep the role-based web redirect outside Capacitor.
+        }
+
+        router.replace(redirectPath)
       }
     }
 

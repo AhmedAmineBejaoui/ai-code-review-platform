@@ -1,0 +1,201 @@
+# ==========================================
+# AI Code Review Platform - Dashboard Compose
+# ==========================================
+# Orchestrates Next.js dashboard with backend services
+# 
+# Usage:
+#   Development:  docker-compose -f docker-compose.dashboard.yml up
+#   Production:   docker-compose -f docker-compose.dashboard.yml --profile production up
+#   Build:        docker-compose -f docker-compose.dashboard.yml build
+# ==========================================
+
+services:
+  # ==========================================
+  # Dashboard (Next.js 16 + Clerk Auth)
+  # ==========================================
+  dashboard:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: runtime  # production build
+      args:
+        # Build-time environment variables (baked into build)
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+        NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
+        NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+        NEXT_PUBLIC_Y_WEBSOCKET_URL: ${NEXT_PUBLIC_Y_WEBSOCKET_URL:-ws://localhost:1234}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+        NEXT_PUBLIC_CLERK_JS_URL: ${NEXT_PUBLIC_CLERK_JS_URL}
+        NEXT_PUBLIC_CLERK_JS_VERSION: ${NEXT_PUBLIC_CLERK_JS_VERSION}
+        NEXT_PUBLIC_CLERK_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}
+        NEXT_PUBLIC_CLERK_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_IN_URL:-/auth/role-redirect}
+        NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL: ${NEXT_PUBLIC_CLERK_AFTER_SIGN_UP_URL:-/auth/role-redirect}
+    image: ${DOCKER_REGISTRY:-ahmedaminbejaoui}/ai-review-dashboard:${VERSION:-latest}
+    container_name: ai-review-dashboard
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-3001}:3001"
+    environment:
+      # Runtime environment variables (server-side)
+      NODE_ENV: production
+      PORT: 3001
+      HOSTNAME: "0.0.0.0"
+      
+      # Backend connection (server-side API routes)
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://backend:8000}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+      
+      # Clerk authentication (server-side)
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      
+      # Optional: admin emails override
+      DASHBOARD_ADMIN_EMAILS: ${DASHBOARD_ADMIN_EMAILS}
+      
+      # GitHub webhooks
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+      
+      # Y.js WebSocket URL
+      NEXT_PUBLIC_Y_WEBSOCKET_URL: ${NEXT_PUBLIC_Y_WEBSOCKET_URL:-ws://localhost:1234}
+      
+      # Timeouts for backend fetch
+      DASHBOARD_BACKEND_FETCH_TIMEOUT_MS: ${DASHBOARD_BACKEND_FETCH_TIMEOUT_MS:-15000}
+      DASHBOARD_BACKEND_WRITE_TIMEOUT_MS: ${DASHBOARD_BACKEND_WRITE_TIMEOUT_MS:-30000}
+    networks:
+      - ai-review-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3001/api/health', (r) => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 30s
+      timeout: 10s
+      start_period: 40s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 512M
+    labels:
+      - "com.ai-review.component=dashboard"
+      - "com.ai-review.version=${VERSION:-latest}"
+
+  # ==========================================
+  # Dashboard Development (Hot Reload)
+  # ==========================================
+  dashboard-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: development  # development build with hot reload
+    image: ${DOCKER_REGISTRY:-ahmedaminbejaoui}/ai-review-dashboard:dev
+    container_name: ai-review-dashboard-dev
+    restart: unless-stopped
+    profiles:
+      - development
+    ports:
+      - "${DASHBOARD_DEV_PORT:-3001}:3001"
+    volumes:
+      # Mount source code for hot reload
+      - ./app:/app/app:ro
+      - ./components:/app/components:ro
+      - ./lib:/app/lib:ro
+      - ./hooks:/app/hooks:ro
+      - ./styles:/app/styles:ro
+      - ./public:/app/public:ro
+      - ./scripts:/app/scripts:ro
+      - ./next.config.js:/app/next.config.js:ro
+      - ./tsconfig.json:/app/tsconfig.json:ro
+      - ./tailwind.config.ts:/app/tailwind.config.ts:ro
+      # Persist node_modules and .next across restarts
+      - dashboard-node-modules:/app/node_modules
+      - dashboard-next-cache:/app/.next
+    environment:
+      NODE_ENV: development
+      PORT: 3001
+      BACKEND_API_URL: ${BACKEND_API_URL:-http://backend:8000}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY}
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
+      NEXT_PUBLIC_BACKEND_URL: ${NEXT_PUBLIC_BACKEND_URL:-http://localhost:8000}
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3001}
+      NEXT_PUBLIC_Y_WEBSOCKET_URL: ${NEXT_PUBLIC_Y_WEBSOCKET_URL:-ws://localhost:1234}
+      GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET}
+    networks:
+      - ai-review-network
+    depends_on:
+      - backend
+
+  # ==========================================
+  # Y.js WebSocket Server (Real-time Collaboration)
+  # ==========================================
+  y-websocket:
+    build:
+      context: .
+      dockerfile: Dockerfile.production
+      target: base
+    image: ${DOCKER_REGISTRY:-ahmedaminbejaoui}/ai-review-y-websocket:${VERSION:-latest}
+    container_name: ai-review-y-websocket
+    restart: unless-stopped
+    command: ["node", "/app/scripts/y-websocket-server.cjs"]
+    ports:
+      - "${Y_WEBSOCKET_PORT:-1234}:1234"
+    volumes:
+      - ./scripts/y-websocket-server.cjs:/app/scripts/y-websocket-server.cjs:ro
+      - ./node_modules:/app/node_modules:ro
+    environment:
+      NODE_ENV: production
+      PORT: 1234
+    networks:
+      - ai-review-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('net').connect(1234, 'localhost').on('connect', () => process.exit(0)).on('error', () => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 256M
+
+  # ==========================================
+  # Backend (FastAPI + Celery) - placeholder
+  # ==========================================
+  backend:
+    image: ${DOCKER_REGISTRY:-ahmedaminbejaoui}/ai-review-api:${VERSION:-latest}
+    container_name: ai-review-backend
+    restart: unless-stopped
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - REDIS_URL=${REDIS_URL}
+    networks:
+      - ai-review-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# ==========================================
+# Networks
+# ==========================================
+networks:
+  ai-review-network:
+    name: ai-review-network
+    driver: bridge
+
+# ==========================================
+# Volumes (for development hot reload)
+# ==========================================
+volumes:
+  dashboard-node-modules:
+    name: ai-review-dashboard-node-modules
+  dashboard-next-cache:
+    name: ai-review-dashboard-next-cache

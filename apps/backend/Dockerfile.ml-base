@@ -1,0 +1,42 @@
+# ==========================================
+# BASE ML IMAGE (build once, reuse forever)
+# ==========================================
+# This image contains heavy ML dependencies (torch, transformers)
+# Build once: docker build -f Dockerfile.ml-base -t ai-review-ml-base:latest .
+# Reuse: FROM ai-review-ml-base:latest in main Dockerfile
+# ==========================================
+
+FROM python:3.11-slim AS ml-base
+
+WORKDIR /tmp
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Configure pip for stability
+ENV PIP_DEFAULT_TIMEOUT=1000
+ENV PIP_NO_CACHE_DIR=1
+ENV PIP_RETRIES=10
+ENV CUDA_VISIBLE_DEVICES=""
+ENV FORCE_CUDA=0
+
+# Install ONLY heavy ML packages (torch + sentence-transformers ecosystem)
+# These rarely change, so we cache them in a separate image
+RUN pip config set global.timeout 1000 && \
+    pip config set global.retries 10
+
+# Install torch CPU-only (174 MB)
+RUN pip install --no-cache-dir \
+    torch==2.5.1+cpu \
+    torchvision==0.20.1+cpu \
+    torchaudio==2.5.1+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
+
+# Install sentence-transformers (will use existing torch)
+RUN pip install --no-cache-dir \
+    sentence-transformers==3.0.1 \
+    transformers==4.44.2
+
+# Total size: ~2 GB (but built ONCE and reused)
