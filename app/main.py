@@ -19,6 +19,7 @@ from app.api.http import (
     internal_analysis_engine,
     jira_integration,
     knowledge_base,
+    mobile,
     notifications,
     object_storage,
     observability,
@@ -230,6 +231,7 @@ app.include_router(suggestions.router, prefix="/v1")
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
 app.include_router(graphrag_router)
+app.include_router(mobile.router, prefix="/v1")
 
 
 @app.get("/__routes")
