@@ -82,6 +82,7 @@ class Settings(BaseSettings):
     CLERK_AUDIENCE: str | None = None
     CLERK_JWT_LEEWAY_SECONDS: int = 10
     CLERK_ORGANIZATIONS_ENFORCED: bool = False
+    VSCODE_EXTENSION_API_TOKEN: str | None = None
     ADMIN_EMAILS: str | None = None
     API_DEFAULT_PAGE_SIZE: int = 20
     API_MAX_PAGE_SIZE: int = 100

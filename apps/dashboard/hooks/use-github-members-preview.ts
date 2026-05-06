@@ -67,8 +67,15 @@ export function useGitHubMembersPreview() {
       })
 
       if (!response.ok) {
-        const errorData = await response.json()
-        throw new Error(errorData.error || `HTTP ${response.status}`)
+        const raw = await response.text()
+        let errorMessage = `HTTP ${response.status}`
+        try {
+          const parsed = JSON.parse(raw) as { error?: string }
+          errorMessage = parsed.error || errorMessage
+        } catch {
+          errorMessage = raw || errorMessage
+        }
+        throw new Error(errorMessage)
       }
 
       const data: RepoMembersPreview = await response.json()

@@ -4,6 +4,7 @@ import { auth, currentUser } from "@clerk/nextjs/server"
 import { cache } from "react"
 
 import type { DashboardAuthUser } from "@/lib/dashboard-user"
+import { getBackendApiUrl } from "@/lib/backend-url"
 import {
   extractRoleFromClaims,
   getDefaultPermissionsForRole,
@@ -15,6 +16,7 @@ type BackendAuthSyncResponse = {
   user_id: string
   email: string
   display_name?: string | null
+  github_login?: string | null
   canonical_role?: string
   roles?: string[]
   permissions?: string[]
@@ -24,12 +26,11 @@ type BackendAuthSyncResponse = {
   org_role?: string | null
 }
 
-const BACKEND_API_BASE_URL =
-  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
 const BACKEND_SYNC_TIMEOUT_MS = Math.max(
   1_000,
   Number(process.env.DASHBOARD_BACKEND_SYNC_TIMEOUT_MS ?? "15000") || 15_000,
 )
+const CLERK_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim())
 
 function parseAdminEmails(rawValue: string | undefined): Set<string> {
   if (!rawValue || rawValue.trim().length === 0) {
@@ -81,17 +82,74 @@ function uniqueStrings(values: unknown[]): string[] {
   )
 }
 
+function firstRecordString(record: Record<string, unknown> | undefined, ...keys: string[]): string | undefined {
+  if (!record) {
+    return undefined
+  }
+
+  for (const key of keys) {
+    const value = record[key]
+    if (typeof value === "string" && value.trim().length > 0) {
+      return value.trim()
+    }
+  }
+
+  return undefined
+}
+
+function extractGithubLogin(user: Awaited<ReturnType<typeof currentUser>>): string | undefined {
+  if (!user) {
+    return undefined
+  }
+
+  const directUsername = typeof user.username === "string" ? user.username.trim() : ""
+  if (directUsername) {
+    return directUsername.toLowerCase()
+  }
+
+  const rawUser = user as unknown as Record<string, unknown>
+  const metadataBlocks = [
+    rawUser.publicMetadata,
+    rawUser.unsafeMetadata,
+    rawUser.privateMetadata,
+  ].filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object")
+
+  for (const block of metadataBlocks) {
+    const candidate = firstRecordString(block, "github_login", "githubLogin", "github_username", "githubUsername", "username")
+    if (candidate) {
+      return candidate.toLowerCase()
+    }
+  }
+
+  const externalAccounts = rawUser.externalAccounts
+  if (Array.isArray(externalAccounts)) {
+    for (const account of externalAccounts) {
+      if (!account || typeof account !== "object") continue
+      const record = account as Record<string, unknown>
+      const provider = firstRecordString(record, "provider", "providerId", "strategy")
+      if (!provider || !provider.toLowerCase().includes("github")) continue
+      const candidate = firstRecordString(record, "username", "login", "preferred_username")
+      if (candidate) {
+        return candidate.toLowerCase()
+      }
+    }
+  }
+
+  return undefined
+}
+
 async function syncAccessWithBackend(args: {
   token: string | null
   email: string | undefined
   displayName: string | undefined
+  githubLogin: string | undefined
   roleCandidate: AppRole
   orgId: string | null
   orgSlug: string | null
   orgRole: string | null
   orgNameCandidate: string | undefined
 }): Promise<BackendAuthSyncResponse | null> {
-  const { token, email, displayName, roleCandidate, orgId, orgSlug, orgRole, orgNameCandidate } = args
+  const { token, email, displayName, githubLogin, roleCandidate, orgId, orgSlug, orgRole, orgNameCandidate } = args
   if (!token) {
     return null
   }
@@ -100,7 +158,7 @@ async function syncAccessWithBackend(args: {
   const timeout = setTimeout(() => controller.abort(), BACKEND_SYNC_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${BACKEND_API_BASE_URL}/v1/auth/sync`, {
+    const response = await fetch(getBackendApiUrl("/v1/auth/sync"), {
       method: "POST",
       headers: {
         Authorization: `Bearer ${token}`,
@@ -109,6 +167,7 @@ async function syncAccessWithBackend(args: {
       body: JSON.stringify({
         email,
         display_name: displayName,
+        github_login: githubLogin,
         role: roleCandidate,
         org_id: orgId,
         org_slug: orgSlug,
@@ -133,6 +192,10 @@ async function syncAccessWithBackend(args: {
 }
 
 export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAuthUser | null> => {
+  if (!CLERK_CONFIGURED) {
+    return null
+  }
+
   const { userId, sessionClaims, orgId, orgRole, orgSlug, getToken } = await auth()
   if (!userId) {
     return null
@@ -174,6 +237,7 @@ export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAu
       user?.emailAddresses?.find((address) => address.id === user?.primaryEmailAddressId)?.emailAddress,
       user?.emailAddresses?.[0]?.emailAddress,
     ) ?? "unknown@example.local"
+  const githubLogin = extractGithubLogin(user) ?? firstString(claims.github_login, claims.githubUsername, claims.username)
 
   const metadataRoleCandidate =
     typeof user?.publicMetadata?.role === "string" ? normalizeRole(user.publicMetadata.role) : "developer"
@@ -188,10 +252,11 @@ export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAu
     token,
     email,
     displayName: name,
+    githubLogin,
     roleCandidate,
-    orgId,
-    orgSlug,
-    orgRole,
+    orgId: orgId ?? null,
+    orgSlug: orgSlug ?? null,
+    orgRole: orgRole ?? null,
     orgNameCandidate,
   })
 
@@ -230,6 +295,7 @@ export const getAuthenticatedDashboardUser = cache(async (): Promise<DashboardAu
     id: userId,
     name: synced?.display_name?.trim() || name,
     email: synced?.email?.trim() || email,
+    githubLogin: synced?.github_login?.trim() || githubLogin || null,
     role: canonicalRole,
     canonicalRole,
     legacyRoles,

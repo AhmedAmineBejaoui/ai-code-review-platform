@@ -108,6 +108,14 @@ interface RepositoryListResponse {
   pages: number
 }
 
+const EMPTY_REPOSITORY_RESPONSE: RepositoryListResponse = {
+  items: [],
+  total: 0,
+  page: 1,
+  limit: 20,
+  pages: 1,
+}
+
 const languageColors: Record<string, string> = {
   TypeScript: "bg-blue-500",
   JavaScript: "bg-yellow-400",
@@ -287,8 +295,16 @@ type DetectedMember = {
   github_login: string
   email: string | null
   display_name: string | null
+  source: string[]
   role: string
   hasAccount: boolean  // we don't know at step-2 time, always false until BFF resolves
+}
+
+type GithubDetectedMemberItem = {
+  login?: string
+  email?: string | null
+  name?: string | null
+  source?: string[]
 }
 
 export default function RepositoriesPage() {
@@ -337,17 +353,27 @@ export default function RepositoriesPage() {
         ...(languageFilter !== "all" && { language: languageFilter }),
         ...(visibilityFilter !== "all" && { visibility: visibilityFilter }),
       })
-
       const response = await fetch(`/api/dashboard/repositories?${params}`)
-      
+      const data = (await response.json().catch(() => null)) as Partial<RepositoryListResponse> | null
+
       if (!response.ok) {
+        const fallback = data ?? EMPTY_REPOSITORY_RESPONSE
+        setRepositories(Array.isArray(fallback.items) ? fallback.items : [])
+        setTotalPages(typeof fallback.pages === "number" ? fallback.pages : 1)
+        setTotal(typeof fallback.total === "number" ? fallback.total : 0)
         throw new Error(`Failed to fetch repositories: ${response.statusText}`)
       }
 
-      const data: RepositoryListResponse = await response.json()
-      setRepositories(data.items)
-      setTotalPages(data.pages)
-      setTotal(data.total)
+      const normalized: RepositoryListResponse = {
+        items: Array.isArray(data?.items) ? (data.items as Repository[]) : [],
+        total: typeof data?.total === "number" ? data.total : 0,
+        page: typeof data?.page === "number" ? data.page : 1,
+        limit: typeof data?.limit === "number" ? data.limit : 20,
+        pages: typeof data?.pages === "number" ? data.pages : 1,
+      }
+      setRepositories(normalized.items)
+      setTotalPages(normalized.pages)
+      setTotal(normalized.total)
     } catch (err) {
       console.error("Error fetching repositories:", err)
       setError(err instanceof Error ? err.message : "Failed to load repositories")
@@ -398,17 +424,33 @@ export default function RepositoriesPage() {
         `/api/dashboard/github/repos/collaborators?repo=${encodeURIComponent(fullName)}`,
       )
       if (res.ok) {
-        const data = await res.json()
-        const members: DetectedMember[] = (data.items ?? []).map(
-          (c: { login?: string; email?: string | null; name?: string | null }) => ({
-            github_login: c.login ?? "",
-            email: c.email ?? null,
-            display_name: c.name ?? null,
+        const data = (await res.json()) as { items?: GithubDetectedMemberItem[] }
+        const memberMap = new Map<string, DetectedMember>()
+        for (const item of Array.isArray(data.items) ? data.items : []) {
+          const login = typeof item?.login === "string" ? item.login.trim() : ""
+          if (!login) continue
+          const key = login.toLowerCase()
+          const existing = memberMap.get(key)
+          const sources = new Set<string>(existing?.source ?? [])
+          for (const source of Array.isArray(item?.source) ? item.source : []) {
+            if (typeof source === "string" && source.trim()) sources.add(source.trim())
+          }
+          memberMap.set(key, {
+            github_login: login,
+            email:
+              typeof item?.email === "string" && item.email.trim().length > 0
+                ? item.email.trim()
+                : existing?.email ?? null,
+            display_name:
+              typeof item?.name === "string" && item.name.trim().length > 0
+                ? item.name.trim()
+                : existing?.display_name ?? null,
+            source: Array.from(sources),
             role: "developer",
             hasAccount: false,
-          }),
-        )
-        setDetectedMembers(members)
+          })
+        }
+        setDetectedMembers(Array.from(memberMap.values()).sort((a, b) => a.github_login.localeCompare(b.github_login)))
       }
     } catch {
       // non-critical — user can still import without member list
@@ -774,7 +816,7 @@ export default function RepositoriesPage() {
 
                 {!isLoadingMembers && detectedMembers.length === 0 && (
                   <p className="text-sm text-muted-foreground py-2">
-                    No collaborators detected — you will be the sole admin.
+                    No collaborators, org members, or contributors detected — you will be the sole admin.
                   </p>
                 )}
 
@@ -784,6 +826,11 @@ export default function RepositoriesPage() {
                       <div key={m.github_login} className="flex items-center gap-3 py-1">
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium truncate">{m.display_name ?? m.github_login}</p>
+                          {m.source.length > 0 && (
+                            <p className="text-[10px] text-muted-foreground uppercase tracking-wide mt-0.5 truncate">
+                              {m.source.join(" / ")}
+                            </p>
+                          )}
                           {m.email ? (
                             <p className="text-xs text-muted-foreground flex items-center gap-1 truncate">
                               <Mail className="h-3 w-3 shrink-0" />

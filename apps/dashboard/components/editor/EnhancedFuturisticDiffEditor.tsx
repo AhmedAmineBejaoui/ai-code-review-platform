@@ -141,12 +141,14 @@ function QuantumGlowBorder({
   children, 
   className = "", 
   glowColor = "cyan",
-  animate = true 
+  animate = true,
+  showGlow = true,
 }: { 
   children: React.ReactNode
   className?: string 
   glowColor?: "cyan" | "purple" | "green" | "red" | "amber" | "blue"
   animate?: boolean
+  showGlow?: boolean
 }) {
   const glowVariants = {
     idle: { 
@@ -159,13 +161,21 @@ function QuantumGlowBorder({
   
   return (
     <motion.div 
-      className={`relative ${className} quantum-border`}
-      variants={animate ? glowVariants : {}}
-      whileHover={animate ? "hover" : undefined}
-      initial="idle"
+      className={`relative ${className} ${showGlow ? "quantum-border" : ""}`}
+      variants={animate && showGlow ? glowVariants : {}}
+      whileHover={animate && showGlow ? "hover" : undefined}
+      initial={animate && showGlow ? "idle" : false}
     >
-      <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-600 via-purple-600 to-emerald-600 rounded-lg blur opacity-20 animate-pulse" />
-      <div className="relative bg-background/95 backdrop-blur-sm rounded-lg border border-white/10">
+      {showGlow && (
+        <div className="absolute -inset-0.5 bg-gradient-to-r from-cyan-600 via-purple-600 to-blue-600 rounded-lg blur opacity-20 animate-pulse" />
+      )}
+      <div
+        className={
+          showGlow
+            ? "relative bg-background/95 backdrop-blur-sm rounded-lg border border-white/10"
+            : "relative h-full bg-[#101113] rounded-lg border border-white/10"
+        }
+      >
         {children}
       </div>
     </motion.div>
@@ -1047,11 +1057,8 @@ export function EnhancedFuturisticDiffEditor({
       {/* Main Editor Area with Enhanced Layout */}
       <div className={`flex-1 flex ${compact ? '' : 'space-x-4'}`}>
         <div className="flex-1">
-          <QuantumGlowBorder glowColor="cyan" className="h-full" animate={true}>
+          <QuantumGlowBorder glowColor="cyan" className="h-full" animate={!compact} showGlow={!compact}>
             <div className="h-full rounded-lg overflow-hidden relative">
-              {/* Matrix Rain Effect */}
-              {settings.theme === "quantum-dark" && <div className="matrix-rain" />}
-              
               <MonacoEditor
                 height="100%"
                 language={filePath?.split('.').pop() || "typescript"}

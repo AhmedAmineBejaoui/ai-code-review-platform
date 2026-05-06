@@ -8,13 +8,13 @@ self.addEventListener("push", (event) => {
     payload = event.data.json()
   } catch (_err) {
     payload = {
-      title: "AI Code Review",
+      title: "Devora",
       body: event.data.text(),
       data: {},
     }
   }
 
-  const title = payload.title || "AI Code Review"
+  const title = payload.title || "Devora"
   const body = payload.body || ""
   const data = payload.data || {}
   const icon = "/favicon.ico"

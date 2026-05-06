@@ -11,6 +11,7 @@ export interface DashboardAuthUser {
   id: string
   name: string
   email: string
+  githubLogin?: string | null
   role: AppRole
   canonicalRole: AppRole
   legacyRoles: string[]

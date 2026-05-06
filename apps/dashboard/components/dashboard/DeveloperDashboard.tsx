@@ -97,14 +97,14 @@ function ScoreRing({ score, size = 48 }: { score: number; size?: number }) {
   const radius = (size - 6) / 2;
   const circumference = 2 * Math.PI * radius;
   const color =
-    score >= 80 ? "#22c55e" : score >= 50 ? "#eab308" : score > 0 ? "#ef4444" : "#3f3f46";
+    score >= 80 ? "#22c55e" : score >= 50 ? "#eab308" : score > 0 ? "#ef4444" : "#a1a1aa";
   const glowColor =
     score >= 80 ? "rgba(34,197,94,0.3)" : score >= 50 ? "rgba(234,179,8,0.3)" : score > 0 ? "rgba(239,68,68,0.3)" : "transparent";
 
   return (
     <div className="relative" style={{ width: size, height: size }}>
       <svg width={size} height={size} className="-rotate-90">
-        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="#27272a" strokeWidth={3} />
+        <circle cx={size / 2} cy={size / 2} r={radius} fill="none" stroke="currentColor" strokeWidth={3} className="text-zinc-200 dark:text-zinc-700" />
         <motion.circle
           cx={size / 2} cy={size / 2} r={radius}
           fill="none" stroke={color} strokeWidth={3}
@@ -204,13 +204,13 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           if (!expanded) setTimeout(() => setShowInsights(true), 300);
           else setShowInsights(false);
         }}
-        whileHover={{ backgroundColor: "rgba(39, 39, 42, 0.3)" }}
+        whileHover={{ backgroundColor: "rgba(0,0,0,0.03)" }}
         className={`
           /* Mobile: Stack layout */
           flex flex-col gap-2 px-4 py-3
           /* Tablet+: Grid layout */
           md:grid md:grid-cols-[1fr_90px_70px_70px_80px_48px_32px] md:items-center md:gap-4 md:px-5 md:py-3.5
-          cursor-pointer transition-colors ${expanded ? "bg-zinc-800/50" : ""}
+          cursor-pointer transition-colors ${expanded ? "bg-zinc-100/80 dark:bg-zinc-800/50" : ""}
         `}
       >
         {/* Repo info */}
@@ -226,7 +226,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">
-                <span className="text-sm text-white truncate">{analysis.repo}</span>
+                <span className="text-sm text-foreground truncate">{analysis.repo}</span>
                 {analysis.prLabel && analysis.prLabel !== "Commit" && (
                 <Badge className="bg-orange/10 text-orange border-0 text-[10px] px-1.5 py-0">
                     {analysis.prLabel}
@@ -234,9 +234,9 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                 )}
                 <StatusIndicator status={s} size="sm" />
               </div>
-              <div className="flex items-center gap-2 text-[11px] text-zinc-500 mt-0.5">
+              <div className="flex items-center gap-2 text-[11px] text-zinc-400 dark:text-zinc-500 mt-0.5">
                 <GitPullRequest className="size-3" />
-                <span className="font-mono text-zinc-600 truncate">
+                <span className="font-mono text-zinc-500 dark:text-zinc-600 truncate">
                   {analysis.commitSha ? analysis.commitSha.slice(0, 8) : "—"}
                 </span>
               </div>
@@ -245,7 +245,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
         </div>
 
         {/* Author - hidden on mobile, shown in tablet+ */}
-        <span className="hidden md:block text-xs text-zinc-500 truncate">{analysis.author}</span>
+        <span className="hidden md:block text-xs text-zinc-500 dark:text-zinc-500 truncate">{analysis.author}</span>
 
         {/* Mobile: Inline stats row */}
         <div className="flex md:hidden items-center gap-3 flex-wrap">
@@ -264,7 +264,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
             </div>
           ) : null}
           {/* Duration */}
-          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-500">
             <Clock className="size-3" />
             {analysis.durationLabel ?? "—"}
           </div>
@@ -283,7 +283,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <span className="text-[11px] text-destructive">{analysis.blockerCount}</span>
             </motion.div>
           ) : (
-            <span className="text-xs text-zinc-700">—</span>
+            <span className="text-xs text-zinc-400 dark:text-zinc-700">—</span>
           )}
         </div>
 
@@ -295,12 +295,12 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
               <span className="text-[11px] text-amber-400">{analysis.warnCount}</span>
             </div>
           ) : (
-            <span className="text-xs text-zinc-700">—</span>
+            <span className="text-xs text-zinc-400 dark:text-zinc-700">—</span>
           )}
         </div>
 
         {/* Duration - tablet+ only */}
-        <div className="hidden md:flex items-center gap-1.5 text-[11px] text-zinc-500">
+        <div className="hidden md:flex items-center gap-1.5 text-[11px] text-zinc-500 dark:text-zinc-500">
           <Clock className="size-3" />
           {analysis.durationLabel ?? "—"}
         </div>
@@ -315,7 +315,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
           animate={{ rotate: expanded ? 180 : 0 }}
           transition={{ duration: 0.2 }}
         >
-          <ChevronDown className="size-4 text-zinc-600 group-hover:text-zinc-400 transition-colors" />
+          <ChevronDown className="size-4 text-zinc-400 dark:text-zinc-600 group-hover:text-zinc-600 dark:group-hover:text-zinc-400 transition-colors" />
         </motion.div>
       </motion.div>
 
@@ -329,11 +329,11 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
             className="overflow-hidden"
           >
-            <div className="px-4 pb-4 pt-2 md:px-5 md:pb-5 bg-zinc-800/30 border-t border-zinc-800/40">
+            <div className="px-4 pb-4 pt-2 md:px-5 md:pb-5 bg-zinc-50/80 dark:bg-zinc-800/30 border-t border-zinc-200/60 dark:border-zinc-800/40">
               <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-5 mt-2">
                 {/* AI Analysis panel */}
                 <div className="lg:col-span-7">
-                  <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
+                  <div className="bg-white dark:bg-zinc-900/80 rounded-xl p-4 border border-zinc-200/80 dark:border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
                     <div className="size-6 rounded-lg bg-orange/20 flex items-center justify-center">
                       <Sparkles className="size-3.5 text-orange" />
@@ -349,19 +349,19 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                       </div>
                     </div>
 
-                    <p className="text-sm text-zinc-300 leading-relaxed mb-4">
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed mb-4">
                       {aiSummary ?? "Revue du code par intelligence artificielle avec contexte RAG."}
                     </p>
 
                     {showInsights && insights.length > 0 && (
-                      <div className="space-y-2 pt-3 border-t border-zinc-800/60">
+                      <div className="space-y-2 pt-3 border-t border-zinc-200/60 dark:border-zinc-800/60">
                         {insights.map((insight, i) => (
                           <motion.div
                             key={i}
                             initial={{ opacity: 0, x: -10 }}
                             animate={{ opacity: 1, x: 0 }}
                             transition={{ delay: i * 0.15 }}
-                            className="flex items-start gap-2 text-xs text-zinc-400 leading-relaxed"
+                            className="flex items-start gap-2 text-xs text-zinc-500 dark:text-zinc-400 leading-relaxed"
                           >
                             <TypewriterText text={insight} delay={i * 400} />
                           </motion.div>
@@ -373,9 +373,9 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
 
                 {/* Stats panel */}
                 <div className="lg:col-span-5 space-y-3">
-                  <div className="bg-zinc-900/80 rounded-xl p-4 border border-zinc-800/40">
+                  <div className="bg-white dark:bg-zinc-900/80 rounded-xl p-4 border border-zinc-200/80 dark:border-zinc-800/40">
                     <div className="flex items-center gap-2 mb-3">
-                      <Code2 className="size-4 text-zinc-500" />
+                      <Code2 className="size-4 text-zinc-400 dark:text-zinc-500" />
                       <span className="text-xs text-zinc-500 uppercase tracking-wider">Résultats</span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -383,31 +383,31 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ delay: 0.1 }}
-                        className="bg-zinc-950/60 rounded-lg p-3 text-center"
+                        className="bg-zinc-50 dark:bg-zinc-950/60 rounded-lg p-3 text-center"
                       >
                         <ShieldAlert className="size-4 text-destructive mx-auto mb-1" />
-                        <p className="text-lg text-white">{analysis.blockerCount}</p>
-                        <p className="text-[9px] text-zinc-600 uppercase">Bloquants</p>
+                        <p className="text-lg text-foreground">{analysis.blockerCount}</p>
+                        <p className="text-[9px] text-zinc-400 dark:text-zinc-600 uppercase">Bloquants</p>
                       </motion.div>
                       <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ delay: 0.2 }}
-                        className="bg-zinc-950/60 rounded-lg p-3 text-center"
+                        className="bg-zinc-50 dark:bg-zinc-950/60 rounded-lg p-3 text-center"
                       >
                         <AlertTriangle className="size-4 text-amber-400 mx-auto mb-1" />
                         <p className="text-lg text-amber-400">{analysis.warnCount}</p>
-                        <p className="text-[9px] text-zinc-600 uppercase">Warnings</p>
+                        <p className="text-[9px] text-zinc-400 dark:text-zinc-600 uppercase">Warnings</p>
                       </motion.div>
                       <motion.div
                         initial={{ scale: 0.8, opacity: 0 }}
                         animate={{ scale: 1, opacity: 1 }}
                         transition={{ delay: 0.3 }}
-                        className="bg-zinc-950/60 rounded-lg p-3 text-center"
+                        className="bg-zinc-50 dark:bg-zinc-950/60 rounded-lg p-3 text-center"
                       >
                         <FileCode className="size-4 text-teal-400 mx-auto mb-1" />
                         <p className="text-lg text-teal-400">{analysis.infoCount}</p>
-                        <p className="text-[9px] text-zinc-600 uppercase">Infos</p>
+                        <p className="text-[9px] text-zinc-400 dark:text-zinc-600 uppercase">Infos</p>
                       </motion.div>
                     </div>
                   </div>
@@ -418,7 +418,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="w-full text-xs border-zinc-700/60 hover:bg-zinc-700/50 text-zinc-400"
+                        className="w-full text-xs border-zinc-300/60 dark:border-zinc-700/60 hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-zinc-600 dark:text-zinc-400"
                       >
                         <ExternalLink className="size-3 mr-1.5" />
                         Voir le rapport
@@ -427,7 +427,7 @@ function AnalysisRow({ analysis, index, aiSummary }: AnalysisRowProps) {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="text-xs border-zinc-700/60 hover:bg-zinc-700/50 text-zinc-400"
+                      className="text-xs border-zinc-300/60 dark:border-zinc-700/60 hover:bg-zinc-100 dark:hover:bg-zinc-700/50 text-zinc-600 dark:text-zinc-400"
                       onClick={() => navigator.clipboard.writeText(analysis.id)}
                     >
                       <Copy className="size-3" />
@@ -692,13 +692,13 @@ export function DeveloperDashboard() {
         className="flex items-center justify-between"
       >
         <div>
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2">
+          <h1 className="text-2xl font-bold text-foreground flex items-center gap-2">
             <span className="inline-block size-2 rounded-full bg-emerald-400 animate-pulse" />
             {isReviewer(currentUser.role) || currentUser.role === "admin"
               ? "Vue d'ensemble de l'équipe"
               : "Tableau de bord développeur"}
           </h1>
-          <p className="text-sm text-zinc-500 mt-1">
+          <p className="text-sm text-zinc-500 dark:text-zinc-500 mt-1">
             Analysez votre code avec l'IA — RAG-powered · Résultats en temps réel
           </p>
         </div>
@@ -721,7 +721,7 @@ export function DeveloperDashboard() {
         {/* â”€â”€ Success/Error Messages â”€â”€ */}
         {(formError || actionMessage) && (
           <motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }}>
-            <div className={`flex items-center gap-3 p-3 rounded-xl text-sm ${formError ? "bg-red-500/10 border border-red-500/20 text-red-300" : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-300"}`}>
+            <div className={`flex items-center gap-3 p-3 rounded-xl text-sm ${formError ? "bg-red-500/10 border border-red-500/20 text-red-500 dark:text-red-300" : "bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-300"}`}>
               {formError ? <AlertCircle className="size-4 shrink-0" /> : <CheckCircle2 className="size-4 shrink-0" />}
               {formError ?? actionMessage}
             </div>
@@ -737,7 +737,7 @@ export function DeveloperDashboard() {
               animate={isLoaded ? { opacity: 1, y: 0 } : {}}
               transition={{ delay: i * 0.1, duration: 0.4, ease: "easeOut" }}
               whileHover={{ y: -2, transition: { duration: 0.2 } }}
-              className={`bg-gradient-to-br ${metric.bg} border border-zinc-800/60 rounded-2xl p-5 hover:border-zinc-700/60 transition-all shadow-lg ${metric.glow} cursor-default`}
+              className={`bg-gradient-to-br ${metric.bg} border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl p-5 hover:border-zinc-300/80 dark:hover:border-zinc-700/60 transition-all shadow-sm dark:shadow-lg ${metric.glow} cursor-default`}
             >
               <div className="flex items-center justify-between mb-4">
                 <motion.div whileHover={{ rotate: 12 }} transition={{ type: "spring", stiffness: 300 }}>
@@ -747,11 +747,11 @@ export function DeveloperDashboard() {
                   {metric.trendUp ? "↗" : "↘"} {metric.trend}
                 </span>
               </div>
-              <div className="text-3xl text-white flex items-baseline gap-0.5">
+              <div className="text-3xl text-foreground flex items-baseline gap-0.5">
                 <AnimatedCounter value={metric.value} duration={1200} />
-                {metric.suffix && <span className="text-lg text-zinc-500">{metric.suffix}</span>}
+                {metric.suffix && <span className="text-lg text-zinc-400 dark:text-zinc-500">{metric.suffix}</span>}
               </div>
-              <p className="text-[11px] text-zinc-500 mt-1">{metric.label}</p>
+              <p className="text-[11px] text-zinc-500 dark:text-zinc-500 mt-1">{metric.label}</p>
             </motion.div>
           ))}
         </div>
@@ -761,17 +761,17 @@ export function DeveloperDashboard() {
           {/* Area chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.3, duration: 0.4 }}
-            className="col-span-1 md:col-span-1 lg:col-span-5 3xl:col-span-5 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
+            className="col-span-1 md:col-span-1 lg:col-span-5 3xl:col-span-5 bg-white dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
             <div className="flex items-center justify-between mb-4">
               <div>
-                <h3 className="text-sm text-white">Activité semaine</h3>
-                <p className="text-[11px] text-zinc-500 mt-0.5">Issues détectés vs résolus</p>
+                <h3 className="text-sm text-foreground">Activité semaine</h3>
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-500 mt-0.5">Issues détectés vs résolus</p>
               </div>
-              <div className="flex items-center gap-3 text-[10px]">
-                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-orange" /><span className="text-zinc-500">Issues</span></div>
-                <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500">Résolus</span></div>
-              </div>
+                <div className="flex items-center gap-3 text-[10px]">
+                  <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-orange" /><span className="text-zinc-500 dark:text-zinc-500">Issues</span></div>
+                  <div className="flex items-center gap-1.5"><span className="size-1.5 rounded-full bg-emerald-500" /><span className="text-zinc-500 dark:text-zinc-500">Résolus</span></div>
+                </div>
             </div>
             <ResponsiveContainer width="100%" height={180}>
               <AreaChart data={chartData}>
@@ -785,10 +785,10 @@ export function DeveloperDashboard() {
                     <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
                   </linearGradient>
                 </defs>
-                <CartesianGrid strokeDasharray="3 3" stroke="#27272a" />
-                <XAxis dataKey="day" tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} />
-                <YAxis tick={{ fill: "#52525b", fontSize: 10 }} axisLine={false} tickLine={false} width={25} />
-                <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "10px", fontSize: "11px", boxShadow: "0 8px 32px rgba(0,0,0,0.4)" }} labelStyle={{ color: "#a1a1aa" }} />
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-chart, #e4e4e7)" className="dark:[stroke:#27272a]" />
+                <XAxis dataKey="day" tick={{ fill: "#a1a1aa", fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: "#a1a1aa", fontSize: 10 }} axisLine={false} tickLine={false} width={25} />
+                <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: "10px", fontSize: "11px", boxShadow: "0 4px 12px rgba(0,0,0,0.08)", color: "#0c0c0d" }} labelStyle={{ color: "#52525b" }} />
                 <Area type="monotone" dataKey="issues" stroke="#e8713a" fill="url(#issuesG)" strokeWidth={2} />
                 <Area type="monotone" dataKey="resolved" stroke="#22c55e" fill="url(#resolvedG)" strokeWidth={2} />
               </AreaChart>
@@ -798,9 +798,9 @@ export function DeveloperDashboard() {
           {/* Pie chart */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.4, duration: 0.4 }}
-            className="col-span-1 md:col-span-1 lg:col-span-3 3xl:col-span-3 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5"
+            className="col-span-1 md:col-span-1 lg:col-span-3 3xl:col-span-3 bg-white dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl p-4 sm:p-5"
           >
-            <h3 className="text-sm text-white mb-1">Sévérité</h3>
+            <h3 className="text-sm text-foreground mb-1">Sévérité</h3>
             <p className="text-[11px] text-zinc-500 mb-2">Répartition des issues</p>
             {pieData.length > 0 ? (
               <>
@@ -809,7 +809,7 @@ export function DeveloperDashboard() {
                     <Pie data={pieData} cx="50%" cy="50%" innerRadius={35} outerRadius={55} paddingAngle={3} dataKey="value" strokeWidth={0}>
                       {pieData.map((entry) => <Cell key={entry.name} fill={entry.color} />)}
                     </Pie>
-                    <Tooltip contentStyle={{ background: "#18181b", border: "1px solid #3f3f46", borderRadius: "8px", fontSize: "11px" }} />
+                    <Tooltip contentStyle={{ background: "#ffffff", border: "1px solid #e4e4e7", borderRadius: "8px", fontSize: "11px" }} />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="grid grid-cols-2 gap-x-3 gap-y-1 mt-2">
@@ -823,7 +823,7 @@ export function DeveloperDashboard() {
                 </div>
               </>
             ) : (
-              <div className="flex items-center justify-center h-[130px] text-xs text-zinc-600">
+              <div className="flex items-center justify-center h-[130px] text-xs text-zinc-400 dark:text-zinc-600">
                 Aucune donnée
               </div>
             )}
@@ -832,7 +832,7 @@ export function DeveloperDashboard() {
           {/* Live activity feed */}
           <motion.div
             initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.5, duration: 0.4 }}
-            className="col-span-1 md:col-span-2 lg:col-span-4 3xl:col-span-4 bg-zinc-950/50 border border-zinc-800/60 rounded-2xl p-4 sm:p-5 overflow-hidden"
+            className="col-span-1 md:col-span-2 lg:col-span-4 3xl:col-span-4 bg-white dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl p-4 sm:p-5 overflow-hidden"
           >
             <LiveActivityFeed />
           </motion.div>
@@ -841,31 +841,31 @@ export function DeveloperDashboard() {
         {/* â”€â”€ Analyses Table â”€â”€ */}
         <motion.div
           initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.6, duration: 0.4 }}
-          className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden"
+          className="bg-white dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl overflow-hidden"
         >
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-zinc-800/60 gap-3 sm:gap-0">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between px-4 sm:px-5 py-3 sm:py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60 gap-3 sm:gap-0">
             <div className="flex items-center gap-3">
               <GitPullRequest className="size-4 text-orange" />
-              <h3 className="text-sm text-white">
+              <h3 className="text-sm text-foreground">
                 {isReviewer(currentUser.role) || currentUser.role === "admin"
                   ? "Analyses de l'équipe"
                   : "Vos analyses"}
               </h3>
-              <Badge className="bg-zinc-800 text-zinc-400 border-0 text-[10px]">
+              <Badge className="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-0 text-[10px]">
                 {insightsLoading ? "..." : filteredRows.length}
               </Badge>
             </div>
             <div className="flex items-center gap-2 sm:gap-3 overflow-x-auto pb-1 sm:pb-0">
               <Tabs value={statusFilter} onValueChange={setStatusFilter}>
-                <TabsList className="bg-zinc-800/50 h-7 flex-shrink-0">
-                  <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
-                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✓ Complétés</TabsTrigger>
-                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">◌ En cours</TabsTrigger>
-                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-zinc-700">✗ Échoués</TabsTrigger>
+                <TabsList className="bg-zinc-100 dark:bg-zinc-800/50 h-7 flex-shrink-0">
+                  <TabsTrigger value="all" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-700">Tous</TabsTrigger>
+                  <TabsTrigger value="completed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-700">✓ Complétés</TabsTrigger>
+                  <TabsTrigger value="running" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-700">◌ En cours</TabsTrigger>
+                  <TabsTrigger value="failed" className="text-[11px] h-5 px-2.5 data-[state=active]:bg-white dark:data-[state=active]:bg-zinc-700">✗ Échoués</TabsTrigger>
                 </TabsList>
               </Tabs>
               <Link href="/dashboard/analyses">
-                <Button size="sm" variant="outline" className="text-[11px] h-7 border-zinc-700/60 hover:bg-zinc-800 text-zinc-400">
+                <Button size="sm" variant="outline" className="text-[11px] h-7 border-zinc-300/60 dark:border-zinc-700/60 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 dark:text-zinc-400">
                   Voir tout <ArrowRight className="size-3 ml-1" />
                 </Button>
               </Link>
@@ -873,7 +873,7 @@ export function DeveloperDashboard() {
           </div>
 
           {/* Table header - hidden on mobile */}
-          <div className="hidden md:grid grid-cols-[1fr_90px_70px_70px_80px_48px_32px] items-center gap-4 px-5 py-2 text-[10px] text-zinc-600 uppercase tracking-widest border-b border-zinc-800/30">
+          <div className="hidden md:grid grid-cols-[1fr_90px_70px_70px_80px_48px_32px] items-center gap-4 px-5 py-2 text-[10px] text-zinc-400 dark:text-zinc-600 uppercase tracking-widest border-b border-zinc-200/40 dark:border-zinc-800/30">
             <span>Repository / Commit</span>
             <span>Auteur</span>
             <span>Bloquants</span>
@@ -885,12 +885,12 @@ export function DeveloperDashboard() {
 
           {/* Rows */}
           {insightsLoading ? (
-            <div className="flex items-center justify-center py-12 text-zinc-600">
+            <div className="flex items-center justify-center py-12 text-zinc-400 dark:text-zinc-600">
               <Loader2 className="size-5 animate-spin mr-2" />
               <span className="text-sm">Chargement des analyses...</span>
             </div>
           ) : (
-            <div className="divide-y divide-zinc-800/30">
+            <div className="divide-y divide-zinc-200/40 dark:divide-zinc-800/30">
               <AnimatePresence mode="popLayout">
                 {filteredRows.slice(0, 20).map((analysis, i) => (
                   <AnalysisRow
@@ -905,7 +905,7 @@ export function DeveloperDashboard() {
           )}
 
           {!insightsLoading && filteredRows.length === 0 && (
-            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 text-center text-sm text-zinc-600">
+            <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="py-12 text-center text-sm text-zinc-400 dark:text-zinc-600">
               Aucune analyse trouvée pour ce filtre
             </motion.div>
           )}
@@ -914,39 +914,39 @@ export function DeveloperDashboard() {
         {/* â”€â”€ AI PR Descriptions â”€â”€ */}
         {insights.prSummaries.length > 0 && (
           <motion.div initial={{ opacity: 0, y: 20 }} animate={isLoaded ? { opacity: 1, y: 0 } : {}} transition={{ delay: 0.7, duration: 0.4 }}>
-            <div className="bg-zinc-950/50 border border-zinc-800/60 rounded-2xl overflow-hidden">
-              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-800/60">
+            <div className="bg-white dark:bg-zinc-950/50 border border-zinc-200/80 dark:border-zinc-800/60 rounded-2xl overflow-hidden">
+              <div className="flex items-center gap-3 px-5 py-3.5 border-b border-zinc-200/60 dark:border-zinc-800/60">
                 <div className="size-6 rounded-lg bg-orange/20 flex items-center justify-center">
                   <Sparkles className="size-3.5 text-orange" />
                 </div>
-                <h3 className="text-sm text-white">
+                <h3 className="text-sm text-foreground">
                   {currentUser.role === "developer" ? "Descriptions IA de vos PRs" : "Descriptions IA des PRs récentes"}
                 </h3>
               </div>
-              <div className="divide-y divide-zinc-800/30">
+            <div className="divide-y divide-zinc-200/40 dark:divide-zinc-800/30">
                 {insights.prSummaries.slice(0, 5).map((summary, i) => (
                   <motion.div
                     key={summary.analysisId}
                     initial={{ opacity: 0, x: -10 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.08 }}
-                    className="px-5 py-4 hover:bg-zinc-800/20 transition-colors"
+                    className="px-5 py-4 hover:bg-zinc-50 dark:hover:bg-zinc-800/20 transition-colors"
                   >
                     <div className="flex items-center gap-2 mb-2">
                       <Badge className="bg-orange/10 text-orange border-0 text-[10px] px-2">{summary.repo}</Badge>
-                      <Badge className="bg-zinc-800 text-zinc-400 border-0 text-[10px] px-2">
+                      <Badge className="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 border-0 text-[10px] px-2">
                         {summary.prNumber ? `PR #${summary.prNumber}` : (summary.commitSha ?? "Commit")}
                       </Badge>
                       <Badge className={`border-0 text-[10px] px-2 capitalize ${summary.status === "COMPLETED" ? "bg-[color:var(--green-status)]/15 text-[color:var(--green-status)]" : summary.status === "FAILED" ? "bg-destructive/15 text-destructive" : "bg-muted text-muted-foreground"}`}>
                         {summary.status?.toLowerCase() ?? "—"}
                       </Badge>
                       {summary.createdAt && (
-                        <span className="text-[10px] text-zinc-600 ml-auto">
+                        <span className="text-[10px] text-zinc-400 dark:text-zinc-600 ml-auto">
                           {new Date(summary.createdAt).toLocaleString("fr-FR")}
                         </span>
                       )}
                     </div>
-                    <p className="text-sm text-zinc-300 leading-relaxed">{summary.summary}</p>
+                    <p className="text-sm text-zinc-600 dark:text-zinc-300 leading-relaxed">{summary.summary}</p>
                   </motion.div>
                 ))}
               </div>
@@ -957,16 +957,16 @@ export function DeveloperDashboard() {
 
       {/* â”€â”€ Launch Analysis Dialog â”€â”€ */}
       <Dialog open={analysisDialogOpen} onOpenChange={setAnalysisDialogOpen}>
-        <DialogContent className="sm:max-w-3xl bg-zinc-900 border-zinc-800 text-white">
+        <DialogContent className="sm:max-w-3xl bg-white dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800 text-foreground">
           <DialogHeader>
-            <DialogTitle className="text-white">Lancer une nouvelle analyse</DialogTitle>
-              <DialogDescription className="text-zinc-400">
+            <DialogTitle className="text-foreground">Lancer une nouvelle analyse</DialogTitle>
+              <DialogDescription className="text-zinc-500 dark:text-zinc-400">
               Sélectionnez un repository GitHub ou collez un diff pour lancer l'analyse.
               </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-2">
             <div className="grid gap-2">
-              <Label htmlFor="analysis-repo-select" className="text-zinc-300">Repository GitHub (compte connecté)</Label>
+              <Label htmlFor="analysis-repo-select" className="text-zinc-700 dark:text-zinc-300">Repository GitHub (compte connecté)</Label>
               <Select
                 value={githubRepoSelection}
                 onValueChange={(value) => {
@@ -974,13 +974,13 @@ export function DeveloperDashboard() {
                   if (value !== "manual") setRepoInput(value);
                 }}
               >
-                <SelectTrigger id="analysis-repo-select" className="bg-zinc-800 border-zinc-700 text-zinc-200">
+                <SelectTrigger id="analysis-repo-select" className="bg-zinc-50 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200">
                   <SelectValue placeholder={isLoadingGithubRepos ? "Chargement des repositories GitHub..." : "Choisir un repository GitHub"} />
                 </SelectTrigger>
-                <SelectContent className="bg-zinc-800 border-zinc-700">
-                  <SelectItem value="manual" className="text-zinc-200">Saisie manuelle</SelectItem>
+                <SelectContent className="bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700">
+                  <SelectItem value="manual" className="text-zinc-700 dark:text-zinc-200">Saisie manuelle</SelectItem>
                   {githubRepos.map((repo) => (
-                    <SelectItem key={repo.id} value={repo.fullName} className="text-zinc-200">
+                    <SelectItem key={repo.id} value={repo.fullName} className="text-zinc-700 dark:text-zinc-200">
                       {repo.fullName}{repo.private ? " (privé)" : ""}
                     </SelectItem>
                   ))}
@@ -992,7 +992,7 @@ export function DeveloperDashboard() {
               )}
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="analysis-repo" className="text-zinc-300">Repository</Label>
+              <Label htmlFor="analysis-repo" className="text-zinc-700 dark:text-zinc-300">Repository</Label>
               <Input
                 id="analysis-repo"
                 placeholder="ex: owner/repo ou backend-api"
@@ -1002,32 +1002,32 @@ export function DeveloperDashboard() {
                   setRepoInput(next);
                   if (githubRepoSelection !== "manual" && next.trim() !== githubRepoSelection) setGithubRepoSelection("manual");
                 }}
-                className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600"
+                className="bg-zinc-50 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600"
               />
             </div>
             <div className="grid gap-2 md:grid-cols-2 md:gap-4">
               <div className="grid gap-2">
-                <Label htmlFor="analysis-pr" className="text-zinc-300">Numéro PR (optionnel)</Label>
-                <Input id="analysis-pr" placeholder="ex: 456" value={prNumberInput} onChange={(e) => setPrNumberInput(e.target.value)} className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600" />
+                <Label htmlFor="analysis-pr" className="text-zinc-700 dark:text-zinc-300">Numéro PR (optionnel)</Label>
+                <Input id="analysis-pr" placeholder="ex: 456" value={prNumberInput} onChange={(e) => setPrNumberInput(e.target.value)} className="bg-zinc-50 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600" />
               </div>
               <div className="grid gap-2">
-                <Label htmlFor="analysis-commit" className="text-zinc-300">Commit SHA (optionnel)</Label>
-                <Input id="analysis-commit" placeholder="ex: a1b2c3d4" value={commitShaInput} onChange={(e) => setCommitShaInput(e.target.value)} className="bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600" />
+                <Label htmlFor="analysis-commit" className="text-zinc-700 dark:text-zinc-300">Commit SHA (optionnel)</Label>
+                <Input id="analysis-commit" placeholder="ex: a1b2c3d4" value={commitShaInput} onChange={(e) => setCommitShaInput(e.target.value)} className="bg-zinc-50 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600" />
               </div>
             </div>
             <div className="grid gap-2">
-              <Label htmlFor="analysis-diff" className="text-zinc-300">Diff technique (optionnel en mode GitHub distant)</Label>
+              <Label htmlFor="analysis-diff" className="text-zinc-700 dark:text-zinc-300">Diff technique (optionnel en mode GitHub distant)</Label>
               <Textarea
                 id="analysis-diff"
                 value={diffInput}
                 onChange={(e) => setDiffInput(e.target.value)}
                 placeholder="Importez un dossier ou collez un diff unifié (.patch/.diff)."
-                className="min-h-[200px] font-mono text-xs bg-zinc-800 border-zinc-700 text-zinc-200 placeholder-zinc-600"
+                className="min-h-[200px] font-mono text-xs bg-zinc-50 dark:bg-zinc-800 border-zinc-300 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 placeholder-zinc-400 dark:placeholder-zinc-600"
               />
             </div>
           </div>
           <DialogFooter className="gap-2">
-            <Button variant="outline" onClick={() => setAnalysisDialogOpen(false)} className="border-zinc-700 hover:bg-zinc-800 text-zinc-300">
+            <Button variant="outline" onClick={() => setAnalysisDialogOpen(false)} className="border-zinc-300 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
               Annuler
             </Button>
             <Button onClick={handleLaunchAnalysis} disabled={isSubmittingAnalysis} className="bg-orange hover:bg-orange-light text-white border-0">

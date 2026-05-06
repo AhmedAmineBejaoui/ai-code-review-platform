@@ -736,6 +736,12 @@ function getSidebarContent(
               href: "/dashboard/admin/organization",
               isActive: pathname.startsWith("/dashboard/admin/organization"),
             },
+            {
+              icon: <Group size={16} className="text-sidebar-foreground" />,
+              label: "Teams",
+              href: "/dashboard/admin/teams",
+              isActive: pathname.startsWith("/dashboard/admin/teams"),
+            },
           ],
         },
         {

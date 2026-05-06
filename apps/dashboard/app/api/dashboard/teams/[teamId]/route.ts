@@ -41,3 +41,20 @@ export async function GET(
     userId: authContext.userId,
   })
 }
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ teamId: string }> },
+) {
+  const authContext = await requireBackendAuth()
+  if (!authContext.ok) return authContext.response
+
+  const { teamId } = await context.params
+
+  return proxyBackendRequest({
+    method: "DELETE",
+    path: `/api/v1/teams/${encodeURIComponent(teamId)}`,
+    token: authContext.token,
+    userId: authContext.userId,
+  })
+}

@@ -54,7 +54,7 @@ const defaultNavLinks: (NavLink | NavDropdown)[] = [
   {
     label: 'Features',
     items: [
-      { label: 'AI Code Review', description: 'Automated code analysis', href: '#features' },
+      { label: 'Devora', description: 'Automated code analysis', href: '#features' },
       { label: 'Task Assignment', description: 'Intelligent task distribution', href: '#features' },
       { label: 'Analytics', description: 'Performance insights', href: '#insights' },
     ],
@@ -256,7 +256,7 @@ export function Header({
         <Zap className="h-6 w-6 text-blue-400 group-hover:text-blue-300 transition-colors" />
         <div className="absolute inset-0 bg-blue-400 blur-lg opacity-50 group-hover:opacity-70 transition-opacity" />
       </div>
-      <span className="font-bold text-lg text-white">Codebase AI</span>
+      <span className="font-bold text-lg text-white">Devora</span>
     </Link>
   );
 

@@ -163,11 +163,15 @@ export async function POST(request: Request) {
   const githubToken = await resolveGithubToken(client, userId)
 
   // 3. Fetch data from GitHub in parallel
-  const [repoInfo, branches, collaborators] = await Promise.all([
+  const [repoInfo, branches, collaborators, contributors] = await Promise.all([
     githubGet<GithubRepoInfo>(`/repos/${repoFullName}`, githubToken),
     githubGetList<GithubBranchItem>(`/repos/${repoFullName}/branches?per_page=100`, githubToken),
     githubGetList<GithubCollaboratorItem>(
       `/repos/${repoFullName}/collaborators?affiliation=all&per_page=100`,
+      githubToken,
+    ),
+    githubGetList<GithubCollaboratorItem>(
+      `/repos/${repoFullName}/contributors?per_page=100&anon=0`,
       githubToken,
     ),
   ])
@@ -193,9 +197,9 @@ export async function POST(request: Request) {
     )
   }
 
-  // 6. Deduplicate members (collaborators ∪ org members)
+  // 6. Deduplicate members (collaborators ∪ org members ∪ contributors)
   const memberMap = new Map<string, { login: string; email: string | null }>()
-  for (const c of [...collaborators, ...orgMembers]) {
+  for (const c of [...collaborators, ...orgMembers, ...contributors]) {
     if (typeof c.login === "string" && c.login.trim().length > 0) {
       const login = c.login.trim().toLowerCase()
       if (!memberMap.has(login)) {

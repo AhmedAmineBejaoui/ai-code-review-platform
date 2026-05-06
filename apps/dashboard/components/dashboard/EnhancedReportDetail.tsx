@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useParams } from "next/navigation"
+import { toast } from "sonner"
+import { generateAnalysisPdf } from "@/lib/pdf-report"
 import { motion, AnimatePresence } from "framer-motion"
 import {
   ArrowLeft,
@@ -495,6 +497,53 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
       })
   }, [id])
 
+  const handleExportPdf = async () => {
+    if (!report) return
+    const tid = toast.loading("Génération du PDF…")
+    try {
+      const allFindings = report.files.flatMap((f) => f.findings)
+      await generateAnalysisPdf({
+        id: report.id,
+        repo: report.repo,
+        prLabel: report.prLabel,
+        commitSha: report.commitSha,
+        author: report.author,
+        status: report.status,
+        createdAt: report.createdAt,
+        durationLabel: report.duration,
+        blockerCount: report.summary.blocker,
+        warnCount: report.summary.warn,
+        infoCount: report.summary.info,
+        score: Math.max(
+          0,
+          100 - report.summary.blocker * 10 - report.summary.warn * 3 - report.summary.info
+        ),
+        findings: allFindings.map((f) => ({
+          severity: f.severity,
+          category: f.category,
+          message: f.message,
+          filePath: f.filePath,
+          lineStart: f.lineStart ?? f.lineNumber,
+          suggestion: f.suggestion,
+        })),
+        files: report.files.map((f) => ({
+          path: f.path,
+          changeType: f.changeType,
+          additions: f.additions,
+          deletions: f.deletions,
+          findingsCount: f.findings.length,
+        })),
+      })
+      toast.dismiss(tid)
+      toast.success("PDF téléchargé !", { duration: 3000 })
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error("Échec de l'export PDF", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+      })
+    }
+  }
+
   const stats = useMemo(() => {
     if (!report) return null
 
@@ -591,9 +640,9 @@ export function EnhancedReportDetail({ analysisId }: { analysisId?: string }) {
             <RefreshCw className="h-4 w-4 mr-2" />
             Re-run
           </Button>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExportPdf}>
             <Download className="h-4 w-4 mr-2" />
-            Export
+            Export PDF
           </Button>
           <Button variant="outline" size="sm">
             <Share2 className="h-4 w-4 mr-2" />

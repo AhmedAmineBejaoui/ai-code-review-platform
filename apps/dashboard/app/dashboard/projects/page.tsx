@@ -44,12 +44,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import { CreateProjectDialog } from "@/components/dashboard/CreateProjectDialog"
 
 // Types for projects
 interface Project {
   id: string
   name: string
+  repo: string
   description: string
   language: string
   team: string
@@ -62,6 +64,55 @@ interface Project {
   commits: number
   contributors: number
   coverage: number
+}
+
+interface ApiProject {
+  id: string
+  name: string
+  repo?: string
+  description?: string | null
+  language?: string | null
+  team?: string | null
+  status?: string
+  defaultBranch?: string
+  memberCount?: number
+  healthScore?: number
+  analysisCount?: number
+  lastAnalysisAt?: string | null
+  updatedAt?: string
+}
+
+function formatProjectActivity(value?: string | null) {
+  if (!value) return "No activity yet"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return "No activity yet"
+  return date.toLocaleDateString("fr-FR", {
+    month: "short",
+    day: "numeric",
+  })
+}
+
+function normalizeProject(raw: ApiProject): Project {
+  const safeStatus =
+    raw.status === "maintenance" || raw.status === "archived" ? raw.status : "active"
+
+  return {
+    id: raw.id,
+    name: raw.name || raw.repo || raw.id,
+    repo: raw.repo || "",
+    description: raw.description || "No description available",
+    language: raw.language || "Unknown",
+    team: raw.team || "Unassigned",
+    status: safeStatus,
+    starred: false,
+    lastActivity: formatProjectActivity(raw.lastAnalysisAt || raw.updatedAt),
+    branches: raw.defaultBranch ? 1 : 0,
+    openIssues: 0,
+    healthScore: typeof raw.healthScore === "number" ? raw.healthScore : 0,
+    commits: typeof raw.analysisCount === "number" ? raw.analysisCount : 0,
+    contributors: typeof raw.memberCount === "number" ? raw.memberCount : 0,
+    coverage: 0,
+  }
 }
 
 const languageColors: Record<string, string> = {
@@ -79,18 +130,24 @@ const statusConfig = {
 }
 
 interface ProjectCardProps {
-  project: typeof projectsData[0]
+  project: Project
   viewMode: "grid" | "list"
   onClick: () => void
+  onStar?: (projectId: string, starred: boolean) => void
 }
 
-function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
+function ProjectCard({ project, viewMode, onClick, onStar }: ProjectCardProps) {
   const [isStarred, setIsStarred] = useState(project.starred)
   const status = statusConfig[project.status as keyof typeof statusConfig]
 
   const handleStarClick = (e: React.MouseEvent) => {
     e.stopPropagation()
-    setIsStarred(!isStarred)
+    const newStarred = !isStarred
+    setIsStarred(newStarred)
+    onStar?.(project.id, newStarred)
+    toast.success(newStarred ? "Projet ajouté aux favoris" : "Projet retiré des favoris", {
+      duration: 2000,
+    })
   }
 
   const handleDropdownClick = (e: React.MouseEvent) => {
@@ -162,7 +219,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
                       Parametres
                     </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); toast.info("Archivage non disponible depuis cette vue. Utilisez les paramètres du projet.", { duration: 4000 }) }}>
                       <Archive className="h-4 w-4 mr-2" />
                       Archiver
                     </DropdownMenuItem>
@@ -210,7 +267,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
                 <AlertTriangle className="h-4 w-4" />
                 {project.openIssues}
               </span>
-              <Badge variant="secondary" className={status.className}>
+              <Badge variant={status.variant}>
                 {status.label}
               </Badge>
             </div>
@@ -267,7 +324,7 @@ function ProjectCard({ project, viewMode, onClick }: ProjectCardProps) {
           </div>
 
           <div className="flex items-center justify-between pt-2 border-t">
-            <Badge variant="secondary" className={status.className}>
+            <Badge variant={status.variant}>
               {status.label}
             </Badge>
             <span className="text-xs text-muted-foreground flex items-center gap-1">
@@ -309,7 +366,10 @@ export default function ProjectsPage() {
       
       const data = await response.json()
       if (!cancelled) {
-        setProjects(data.items || [])
+        const normalized = Array.isArray(data.items)
+          ? data.items.map((item: ApiProject) => normalizeProject(item))
+          : []
+        setProjects(normalized)
       }
     } catch (err) {
       if (!cancelled) {
@@ -333,7 +393,8 @@ export default function ProjectsPage() {
 
   const filteredProjects = projects.filter((project) => {
     const matchesSearch = project.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      project.description.toLowerCase().includes(searchQuery.toLowerCase())
+      project.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      project.repo.toLowerCase().includes(searchQuery.toLowerCase())
     const matchesStatus = statusFilter === "all" || project.status === statusFilter
     const matchesTeam = teamFilter === "all" || project.team === teamFilter
     return matchesSearch && matchesStatus && matchesTeam
@@ -443,12 +504,14 @@ export default function ProjectsPage() {
                 <SelectValue placeholder="Equipe" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">Toutes les Equipes</SelectItem>
-                <SelectItem value="Development">Developpement</SelectItem>
-                <SelectItem value="DevOps">DevOps</SelectItem>
-                <SelectItem value="QA">QA</SelectItem>
-              </SelectContent>
-            </Select>
+              <SelectItem value="all">Toutes les Equipes</SelectItem>
+              {Array.from(new Set(projects.map((project) => project.team).filter(Boolean))).map((team) => (
+                <SelectItem key={team} value={team}>
+                  {team}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
             <div className="flex items-center border rounded-lg">
               <Button
                 variant={viewMode === "grid" ? "secondary" : "ghost"}
@@ -483,6 +546,7 @@ export default function ProjectsPage() {
                 project={project} 
                 viewMode={viewMode}
                 onClick={() => handleProjectClick(project.id)}
+                onStar={() => {}}
               />
             ))}
           </div>
@@ -499,6 +563,7 @@ export default function ProjectsPage() {
               project={project} 
               viewMode={viewMode}
               onClick={() => handleProjectClick(project.id)}
+              onStar={() => {}}
             />
           ))}
         </div>

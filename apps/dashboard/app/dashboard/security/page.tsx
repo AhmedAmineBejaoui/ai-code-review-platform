@@ -6,7 +6,7 @@ import { SecurityIssueTable } from "@/components/security/SecurityIssueTable"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
 export const metadata: Metadata = {
-  title: "Security Dashboard - AI Code Review Platform",
+  title: "Security Dashboard - Devora",
   description: "Monitor and manage security issues across all repositories",
 }
 

@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Mobile build script for AI Code Review Platform
+ * Mobile build script for Devora
  *
  * Steps:
  *  1. Back up server-side incompatible files

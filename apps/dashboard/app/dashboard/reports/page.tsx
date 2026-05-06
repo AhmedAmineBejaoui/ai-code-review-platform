@@ -1,417 +1,611 @@
 "use client"
 
-import { useState, useMemo } from "react"
-import { useSearchParams } from "next/navigation"
-import { motion } from "framer-motion"
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
+import { motion, AnimatePresence } from "framer-motion"
 import {
-  FileText,
-  Download,
-  Calendar,
-  Clock,
-  Filter,
-  Search,
-  ChevronRight,
-  Eye,
-  Share2,
-  Trash2,
-  MoreHorizontal,
-  CheckCircle2,
-  AlertTriangle,
-  XCircle,
-  TrendingUp,
-  BarChart3,
+  FileText, Download, RefreshCw, Clock, CheckCircle2,
+  XCircle, Loader2, AlertCircle, AlertTriangle, Info,
+  GitPullRequest, GitCommit, User, Search, Calendar,
+  TrendingUp, TrendingDown, Minus, BarChart3, Activity,
+  Eye, Trash2, FileDown, ChevronRight, Shield, Zap,
 } from "lucide-react"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { BADGE_SUCCESS, BADGE_WARNING, BADGE_ERROR, BADGE_DESTRUCTIVE, BADGE_DEFAULT } from "@/lib/design-tokens"
 import { Input } from "@/components/ui/input"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import { formatCompactRelativeTime as formatDate } from "@/lib/domain/dates"
+  generateSummaryPdf,
+  generateAnalysisPdf,
+  type PdfReportSummary,
+} from "@/lib/pdf-report"
 
-// Mock data for reports
-const reportsData = [
-  {
-    id: "RPT-001",
-    name: "Weekly Code Quality Summary",
-    type: "quality",
-    status: "completed",
-    createdAt: "2024-03-28T10:30:00",
-    size: "2.4 MB",
-    author: "System",
-    issues: { critical: 2, high: 5, medium: 12, low: 8 },
-  },
-  {
-    id: "RPT-002",
-    name: "Security Vulnerability Report",
-    type: "security",
-    status: "completed",
-    createdAt: "2024-03-28T08:15:00",
-    size: "1.8 MB",
-    author: "Alice Chen",
-    issues: { critical: 1, high: 3, medium: 7, low: 4 },
-  },
-  {
-    id: "RPT-003",
-    name: "Performance Analysis - API Gateway",
-    type: "performance",
-    status: "processing",
-    createdAt: "2024-03-28T14:45:00",
-    size: "—",
-    author: "Bob Smith",
-    issues: { critical: 0, high: 2, medium: 8, low: 15 },
-  },
-  {
-    id: "RPT-004",
-    name: "Sprint 23 Review Summary",
-    type: "review",
-    status: "completed",
-    createdAt: "2024-03-27T16:20:00",
-    size: "3.2 MB",
-    author: "Carol Williams",
-    issues: { critical: 0, high: 1, medium: 4, low: 6 },
-  },
-  {
-    id: "RPT-005",
-    name: "Database Migration Analysis",
-    type: "quality",
-    status: "failed",
-    createdAt: "2024-03-27T11:00:00",
-    size: "—",
-    author: "David Brown",
-    issues: { critical: 5, high: 8, medium: 12, low: 3 },
-  },
-  {
-    id: "RPT-006",
-    name: "Authentication Module Review",
-    type: "security",
-    status: "completed",
-    createdAt: "2024-03-26T09:30:00",
-    size: "1.5 MB",
-    author: "Eva Martinez",
-    issues: { critical: 0, high: 2, medium: 5, low: 9 },
-  },
-  {
-    id: "RPT-007",
-    name: "Frontend Performance Audit",
-    type: "performance",
-    status: "completed",
-    createdAt: "2024-03-25T14:00:00",
-    size: "2.1 MB",
-    author: "Alice Chen",
-    issues: { critical: 1, high: 4, medium: 11, low: 7 },
-  },
-  {
-    id: "RPT-008",
-    name: "Code Coverage Report",
-    type: "quality",
-    status: "completed",
-    createdAt: "2024-03-22T10:15:00",
-    size: "892 KB",
-    author: "System",
-    issues: { critical: 0, high: 0, medium: 3, low: 12 },
-  },
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+type ReportStatus = "completed" | "running" | "failed" | "queued" | "received"
+
+interface Report {
+  id: string
+  repo: string
+  prLabel: string
+  commitSha: string | null
+  author: string
+  status: ReportStatus
+  createdAt: string
+  updatedAt: string
+  durationLabel: string
+  blockerCount: number
+  warnCount: number
+  infoCount: number
+  score?: number
+}
+
+type Period = "24h" | "week" | "month" | "all"
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function formatTimeAgo(dateStr: string): string {
+  if (!dateStr) return "—"
+  const date = new Date(dateStr)
+  if (isNaN(date.getTime())) return "—"
+  const s = Math.floor((Date.now() - date.getTime()) / 1000)
+  if (s < 60)     return "à l'instant"
+  if (s < 3600)   return `il y a ${Math.floor(s / 60)} min`
+  if (s < 86400)  return `il y a ${Math.floor(s / 3600)} h`
+  if (s < 604800) return `il y a ${Math.floor(s / 86400)} j`
+  return date.toLocaleDateString("fr-FR", { month: "short", day: "numeric" })
+}
+
+function computeScore(r: Report): number {
+  return r.score ?? Math.max(0, 100 - r.blockerCount * 10 - r.warnCount * 3 - r.infoCount)
+}
+
+const STATUS_META: Record<string, { label: string; color: string; dot: string; Icon: React.ElementType }> = {
+  completed: { label: "Terminé",    color: "text-emerald-400", dot: "bg-emerald-500", Icon: CheckCircle2 },
+  running:   { label: "En cours",   color: "text-violet-400",  dot: "bg-violet-500 animate-pulse", Icon: Loader2 },
+  failed:    { label: "Échoué",     color: "text-red-400",     dot: "bg-red-500",     Icon: XCircle },
+  queued:    { label: "En attente", color: "text-amber-400",   dot: "bg-amber-500",   Icon: Clock },
+  received:  { label: "Reçu",       color: "text-blue-400",    dot: "bg-blue-500",    Icon: Activity },
+}
+
+function getStatus(s: string) {
+  return STATUS_META[s.toLowerCase()] ?? STATUS_META["queued"]
+}
+
+// ─── Period tab config ─────────────────────────────────────────────────────────
+
+const PERIOD_TABS: Array<{ value: Period; label: string; icon: React.ElementType; msWindow?: number }> = [
+  { value: "24h",   label: "Dernières 24h",  icon: Clock,     msWindow: 86_400_000 },
+  { value: "week",  label: "Cette semaine",  icon: Calendar,  msWindow: 7 * 86_400_000 },
+  { value: "month", label: "Ce mois",        icon: BarChart3, msWindow: 30 * 86_400_000 },
+  { value: "all",   label: "Tout",           icon: FileText },
 ]
 
-const statusConfig = {
-  completed: {
-    label: "Completed",
-    icon: CheckCircle2,
-    variant: BADGE_SUCCESS,
-  },
-  processing: {
-    label: "Processing",
-    icon: Clock,
-    variant: BADGE_WARNING,
-  },
-  failed: {
-    label: "Failed",
-    icon: XCircle,
-    variant: BADGE_ERROR,
-  },
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
+function ScorePill({ score }: { score: number }) {
+  const color = score >= 80 ? "text-emerald-400" : score >= 60 ? "text-amber-400" : "text-red-400"
+  const bg    = score >= 80 ? "bg-emerald-500/10 border-emerald-500/20" :
+                score >= 60 ? "bg-amber-500/10  border-amber-500/20"  :
+                              "bg-red-500/10    border-red-500/20"
+  const Icon  = score >= 80 ? TrendingUp : score >= 60 ? Minus : TrendingDown
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-xs font-bold border", bg, color)}>
+      <Icon className="h-3 w-3" />
+      {score}
+    </span>
+  )
 }
 
-const typeConfig = {
-  quality: { label: "Quality", variant: BADGE_DEFAULT },
-  security: { label: "Security", variant: BADGE_DESTRUCTIVE },
-  performance: { label: "Performance", variant: BADGE_WARNING },
-  review: { label: "Review", variant: BADGE_DEFAULT },
+function FindingsPill({ blockers, warns, infos }: { blockers: number; warns: number; infos: number }) {
+  if (blockers === 0 && warns === 0 && infos === 0)
+    return <span className="text-xs text-zinc-600">—</span>
+  return (
+    <div className="flex items-center gap-1.5">
+      {blockers > 0 && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-red-400">
+          <AlertCircle className="h-3 w-3" />{blockers}
+        </span>
+      )}
+      {warns > 0 && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-amber-400">
+          <AlertTriangle className="h-3 w-3" />{warns}
+        </span>
+      )}
+      {infos > 0 && (
+        <span className="inline-flex items-center gap-0.5 text-xs font-semibold text-blue-400">
+          <Info className="h-3 w-3" />{infos}
+        </span>
+      )}
+    </div>
+  )
 }
 
-function isWithinPeriod(dateString: string, period: string) {
-  const date = new Date(dateString)
-  const now = new Date()
-  const diffMs = now.getTime() - date.getTime()
-  const diffHours = diffMs / (1000 * 60 * 60)
-  const diffDays = diffMs / (1000 * 60 * 60 * 24)
-
-  switch (period) {
-    case "24h":
-      return diffHours <= 24
-    case "week":
-      return diffDays <= 7
-    case "month":
-      return diffDays <= 30
-    default:
-      return true
-  }
-}
-
-function ReportCard({ report }: { report: typeof reportsData[0] }) {
-  const status = statusConfig[report.status as keyof typeof statusConfig]
-  const type = typeConfig[report.type as keyof typeof typeConfig]
-  const StatusIcon = status.icon
+function ReportRow({
+  report,
+  index,
+  onExportPdf,
+  onDelete,
+}: {
+  report: Report
+  index: number
+  onExportPdf: (r: Report) => void
+  onDelete: (id: string) => void
+}) {
+  const st = getStatus(report.status)
+  const score = computeScore(report)
+  const isActive = ["running", "queued", "received"].includes(report.status)
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
+    <motion.tr
+      initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="group"
+      transition={{ duration: 0.2, delay: index * 0.025 }}
+      className="group border-b border-zinc-800/50 hover:bg-zinc-900/50 transition-colors"
     >
-      <Card className="hover:shadow-md transition-all cursor-pointer border-l-4 border-l-primary/50 hover:border-l-primary">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between">
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center gap-2 mb-2">
-                <FileText className="h-4 w-4 text-muted-foreground" />
-                <h3 className="font-medium truncate">{report.name}</h3>
-              </div>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant={status.variant}>
-                  <StatusIcon className="h-3 w-3 mr-1" />
-                  {status.label}
-                </Badge>
-                <Badge variant={type.variant}>
-                  {type.label}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {formatDate(report.createdAt)}
-                </span>
-              </div>
-            </div>
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" size="icon" className="opacity-0 group-hover:opacity-100">
-                  <MoreHorizontal className="h-4 w-4" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem>
-                  <Eye className="h-4 w-4 mr-2" />
-                  View Report
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Download className="h-4 w-4 mr-2" />
-                  Download
-                </DropdownMenuItem>
-                <DropdownMenuItem>
-                  <Share2 className="h-4 w-4 mr-2" />
-                  Share
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="text-destructive">
-                  <Trash2 className="h-4 w-4 mr-2" />
-                  Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+      {/* Status */}
+      <td className="py-3 pl-4 pr-3 w-28">
+        <div className="flex items-center gap-2">
+          <span className={cn("h-1.5 w-1.5 rounded-full flex-shrink-0", st.dot)} />
+          <st.Icon
+            className={cn("h-3.5 w-3.5 flex-shrink-0", st.color, isActive && "animate-spin")}
+          />
+          <span className={cn("text-xs font-medium", st.color)}>{st.label}</span>
+        </div>
+      </td>
+
+      {/* Repo + PR */}
+      <td className="py-3 pr-4 min-w-0">
+        <div className="flex flex-col gap-0.5">
+          <span className="text-sm font-semibold text-zinc-100 truncate">{report.repo}</span>
+          <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+            {report.prLabel.includes("PR") ? (
+              <GitPullRequest className="h-3 w-3" />
+            ) : (
+              <GitCommit className="h-3 w-3" />
+            )}
+            {report.prLabel}
+            {report.commitSha && (
+              <span className="font-mono">{report.commitSha.slice(0, 8)}</span>
+            )}
           </div>
-          {report.status === "completed" && (
-            <div className="mt-3 flex items-center gap-4 text-xs">
-              <span className="flex items-center gap-1 text-destructive">
-                <AlertTriangle className="h-3 w-3" />
-                {report.issues.critical} Critical
-              </span>
-              <span className="flex items-center gap-1 text-orange-600">
-                {report.issues.high} High
-              </span>
-              <span className="flex items-center gap-1 text-[color:var(--orange)]">
-                {report.issues.medium} Medium
-              </span>
-              <span className="flex items-center gap-1 text-muted-foreground">
-                {report.issues.low} Low
-              </span>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+        </div>
+      </td>
+
+      {/* Findings */}
+      <td className="py-3 pr-4 w-32">
+        <FindingsPill blockers={report.blockerCount} warns={report.warnCount} infos={report.infoCount} />
+      </td>
+
+      {/* Score */}
+      <td className="py-3 pr-4 w-20">
+        <ScorePill score={score} />
+      </td>
+
+      {/* Author */}
+      <td className="py-3 pr-4 w-32 hidden md:table-cell">
+        <div className="flex items-center gap-1.5 text-xs text-zinc-500">
+          <User className="h-3 w-3" />
+          {report.author}
+        </div>
+      </td>
+
+      {/* Date */}
+      <td className="py-3 pr-4 w-28">
+        <span className="text-xs text-zinc-500">{formatTimeAgo(report.createdAt)}</span>
+      </td>
+
+      {/* Actions */}
+      <td className="py-3 pr-4 w-28">
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Link href={`/dashboard/report/${report.id}`}>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-7 w-7 text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10"
+              title="Voir le rapport"
+            >
+              <Eye className="h-3.5 w-3.5" />
+            </Button>
+          </Link>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-zinc-400 hover:text-emerald-400 hover:bg-emerald-500/10"
+            title="Télécharger PDF"
+            onClick={() => onExportPdf(report)}
+          >
+            <FileDown className="h-3.5 w-3.5" />
+          </Button>
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10"
+            title="Supprimer"
+            onClick={() => onDelete(report.id)}
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
+      </td>
+    </motion.tr>
+  )
+}
+
+// ─── Stat card ────────────────────────────────────────────────────────────────
+
+function StatCard({
+  label, value, icon: Icon, color, glow,
+}: {
+  label: string
+  value: number
+  icon: React.ElementType
+  color: string
+  glow: string
+}) {
+  return (
+    <motion.div
+      className={cn("flex items-center gap-3 rounded-xl border bg-zinc-900/60 px-4 py-3", glow)}
+      whileHover={{ scale: 1.02 }}
+      transition={{ duration: 0.15 }}
+    >
+      <Icon className={cn("h-4 w-4", color)} />
+      <div>
+        <p className="text-xl font-bold text-zinc-100">{value}</p>
+        <p className="text-[11px] text-zinc-500">{label}</p>
+      </div>
     </motion.div>
   )
 }
 
-export default function ReportsPage() {
+// ─── Empty state ──────────────────────────────────────────────────────────────
+
+function EmptyReports({ period }: { period: Period }) {
+  const label = PERIOD_TABS.find((t) => t.value === period)?.label ?? "cette période"
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      className="flex flex-col items-center justify-center py-20 gap-4 text-center"
+    >
+      <div className="rounded-full bg-zinc-800/60 p-5">
+        <FileText className="h-9 w-9 text-zinc-600" />
+      </div>
+      <p className="text-sm font-medium text-zinc-400">Aucun rapport pour {label}</p>
+      <p className="text-xs text-zinc-600">Les analyses apparaîtront ici dès qu'elles seront terminées.</p>
+    </motion.div>
+  )
+}
+
+// ─── Main content ─────────────────────────────────────────────────────────────
+
+function ReportsContent() {
+  const router = useRouter()
   const searchParams = useSearchParams()
-  const periodParam = searchParams.get("period") || "all"
-  const [searchQuery, setSearchQuery] = useState("")
-  const [typeFilter, setTypeFilter] = useState("all")
-  const [statusFilter, setStatusFilter] = useState("all")
+  const initialPeriod = (searchParams.get("period") as Period) || "24h"
 
-  const filteredReports = useMemo(() => {
-    return reportsData.filter((report) => {
-      const matchesSearch = report.name.toLowerCase().includes(searchQuery.toLowerCase())
-      const matchesType = typeFilter === "all" || report.type === typeFilter
-      const matchesStatus = statusFilter === "all" || report.status === statusFilter
-      const matchesPeriod = periodParam === "all" || isWithinPeriod(report.createdAt, periodParam)
-      return matchesSearch && matchesType && matchesStatus && matchesPeriod
-    })
-  }, [searchQuery, typeFilter, statusFilter, periodParam])
+  const [period, setPeriod]     = useState<Period>(initialPeriod)
+  const [reports, setReports]   = useState<Report[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState("")
+  const [exporting, setExporting] = useState(false)
 
-  const stats = {
-    total: reportsData.length,
-    completed: reportsData.filter((r) => r.status === "completed").length,
-    processing: reportsData.filter((r) => r.status === "processing").length,
-    failed: reportsData.filter((r) => r.status === "failed").length,
+  // ── Fetch ────────────────────────────────────────────────────────────────────
+
+  const load = useCallback(async (p: Period) => {
+    setLoading(true)
+    try {
+      const qs = new URLSearchParams({ size: "200" })
+      if (p !== "all") qs.set("period", p)
+      const res = await fetch(`/api/dashboard/analyses?${qs}`)
+      if (!res.ok) throw new Error(`HTTP ${res.status}`)
+      const data = await res.json()
+      setReports((data.items as Report[]) || [])
+    } catch (err) {
+      toast.error("Impossible de charger les rapports", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => { void load(period) }, [period, load])
+
+  // Update URL when period changes
+  const changePeriod = (p: Period) => {
+    setPeriod(p)
+    router.replace(`/dashboard/reports?period=${p}`, { scroll: false })
   }
 
+  // ── Filtering ─────────────────────────────────────────────────────────────────
+
+  const filtered = useMemo(() => {
+    if (!search.trim()) return reports
+    const q = search.toLowerCase()
+    return reports.filter(
+      (r) =>
+        r.repo.toLowerCase().includes(q) ||
+        r.author.toLowerCase().includes(q) ||
+        r.prLabel.toLowerCase().includes(q) ||
+        r.commitSha?.toLowerCase().includes(q)
+    )
+  }, [reports, search])
+
+  // ── Stats ─────────────────────────────────────────────────────────────────────
+
+  const stats = useMemo(() => ({
+    total:     reports.length,
+    completed: reports.filter((r) => r.status === "completed").length,
+    running:   reports.filter((r) => ["running","queued","received"].includes(r.status)).length,
+    failed:    reports.filter((r) => r.status === "failed").length,
+    avgScore:  reports.length
+      ? Math.round(reports.reduce((s, r) => s + computeScore(r), 0) / reports.length)
+      : 0,
+  }), [reports])
+
+  // ── Export handlers ───────────────────────────────────────────────────────────
+
+  const handleExportAll = async () => {
+    if (filtered.length === 0) return
+    setExporting(true)
+    const tid = toast.loading("Génération du PDF en cours…")
+    try {
+      await generateSummaryPdf(filtered as PdfReportSummary[])
+      toast.dismiss(tid)
+      toast.success("PDF téléchargé !", { duration: 3000 })
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error("Échec de l'export PDF", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+      })
+    } finally {
+      setExporting(false)
+    }
+  }
+
+  const handleExportSingle = async (r: Report) => {
+    const tid = toast.loading(`Génération du rapport PDF pour ${r.repo}…`)
+    try {
+      // Fetch full details for richer PDF
+      const res = await fetch(`/api/dashboard/analyses/${r.id}`)
+      let data = r as Record<string, unknown>
+      if (res.ok) {
+        const full = await res.json()
+        data = full
+      }
+      await generateAnalysisPdf({
+        id: r.id,
+        repo: r.repo,
+        prLabel: r.prLabel,
+        commitSha: r.commitSha,
+        author: r.author,
+        status: r.status,
+        createdAt: r.createdAt,
+        durationLabel: r.durationLabel,
+        blockerCount: r.blockerCount,
+        warnCount: r.warnCount,
+        infoCount: r.infoCount,
+        score: computeScore(r),
+        findings: (data.findings as any[])?.map((f: any) => ({
+          severity: f.severity,
+          category: f.category ?? "style",
+          message: f.message,
+          filePath: f.filePath ?? "",
+          lineStart: f.lineStart,
+          suggestion: f.suggestion,
+        })),
+        files: (data.files as any[])?.map((f: any) => ({
+          path: f.pathNew ?? f.path ?? "",
+          changeType: f.changeType ?? "modified",
+          additions: f.additionsCount ?? f.additions ?? 0,
+          deletions: f.deletionsCount ?? f.deletions ?? 0,
+          findingsCount: 0,
+        })),
+      })
+      toast.dismiss(tid)
+      toast.success("PDF téléchargé !", { duration: 3000 })
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error("Échec de l'export PDF", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+      })
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm("Supprimer ce rapport ?")) return
+    try {
+      await fetch(`/api/dashboard/analyses/${id}`, { method: "DELETE" })
+      setReports((p) => p.filter((r) => r.id !== id))
+      toast.success("Rapport supprimé")
+    } catch {
+      toast.error("Échec de la suppression")
+    }
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────────
+
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
-          <h1 className="card-heading text-foreground">Recent Reports</h1>
-          <p className="text-muted-foreground mt-1">
-            {periodParam === "24h" && "Reports from the last 24 hours"}
-            {periodParam === "week" && "Reports from this week"}
-            {periodParam === "month" && "Reports from this month"}
-            {periodParam === "all" && "All generated reports and analyses"}
-          </p>
-        </div>
-        <Button className="gap-2">
-          <FileText className="h-4 w-4" />
-          Generate New Report
-        </Button>
-      </div>
+    <div className="flex flex-col h-full space-y-0">
 
-      {/* Stats */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Reports
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-[color:var(--green-status)]">
-              Completed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-[color:var(--green-status)]">{stats.completed}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-teal-400">
-              Processing
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-teal-400">{stats.processing}</div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-destructive">
-              Failed
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold text-destructive">{stats.failed}</div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Filters */}
-      <Card>
-        <CardContent className="pt-6">
-          <div className="flex flex-col gap-4 md:flex-row md:items-center">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input
-                placeholder="Search reports..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="pl-10"
-              />
+      {/* ── Top header ─────────────────────────────────────────────────────────── */}
+      <div className="border-b border-zinc-800/60 bg-zinc-950/60 px-6 py-5">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <motion.div
+              animate={{ boxShadow: ["0 0 20px rgba(99,102,241,0.3)", "0 0 40px rgba(99,102,241,0.1)", "0 0 20px rgba(99,102,241,0.3)"] }}
+              transition={{ duration: 3, repeat: Infinity }}
+              className="p-2.5 rounded-xl bg-primary/10"
+            >
+              <FileText className="h-5 w-5 text-primary" />
+            </motion.div>
+            <div>
+              <h1 className="text-xl font-bold text-zinc-100">Rapports</h1>
+              <p className="text-xs text-zinc-500 mt-0.5">
+                {stats.total} analyse{stats.total !== 1 ? "s" : ""} ·{" "}
+                <span className="text-emerald-400">{stats.completed} terminée{stats.completed !== 1 ? "s" : ""}</span>
+              </p>
             </div>
-            <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Type" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Types</SelectItem>
-                <SelectItem value="quality">Quality</SelectItem>
-                <SelectItem value="security">Security</SelectItem>
-                <SelectItem value="performance">Performance</SelectItem>
-                <SelectItem value="review">Review</SelectItem>
-              </SelectContent>
-            </Select>
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
-              <SelectTrigger className="w-[150px]">
-                <SelectValue placeholder="Status" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All Statuses</SelectItem>
-                <SelectItem value="completed">Completed</SelectItem>
-                <SelectItem value="processing">Processing</SelectItem>
-                <SelectItem value="failed">Failed</SelectItem>
-              </SelectContent>
-            </Select>
           </div>
-        </CardContent>
-      </Card>
 
-      {/* Reports Grid */}
-      <div className="grid gap-4 md:grid-cols-2">
-        {filteredReports.map((report, index) => (
-          <motion.div
-            key={report.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: index * 0.05 }}
-          >
-            <ReportCard report={report} />
-          </motion.div>
-        ))}
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => load(period)}
+              className="h-8 gap-1.5 text-xs border-zinc-700/60 text-zinc-400 hover:text-zinc-200"
+            >
+              <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} />
+              Actualiser
+            </Button>
+            <Button
+              size="sm"
+              onClick={handleExportAll}
+              disabled={exporting || filtered.length === 0}
+              className="h-8 gap-1.5 text-xs bg-primary/90 hover:bg-primary"
+            >
+              {exporting ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <Download className="h-3.5 w-3.5" />
+              )}
+              Exporter PDF
+            </Button>
+          </div>
+        </div>
+
+        {/* Period tabs */}
+        <div className="flex items-center gap-1 mt-5">
+          {PERIOD_TABS.map((tab) => {
+            const active = period === tab.value
+            return (
+              <button
+                key={tab.value}
+                onClick={() => changePeriod(tab.value)}
+                className={cn(
+                  "flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all",
+                  active
+                    ? "bg-violet-500/15 text-violet-300 border border-violet-500/30"
+                    : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/60 border border-transparent"
+                )}
+              >
+                <tab.icon className="h-3.5 w-3.5" />
+                {tab.label}
+                {active && !loading && (
+                  <span className="ml-0.5 rounded-full bg-violet-500/30 px-1.5 py-0.5 text-[10px] font-bold text-violet-300">
+                    {stats.total}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
       </div>
 
-      {filteredReports.length === 0 && (
-        <Card className="py-12">
-          <CardContent className="text-center">
-            <FileText className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium">No reports found</h3>
-            <p className="text-muted-foreground mt-1">
-              Try adjusting your filters or generate a new report
-            </p>
-          </CardContent>
-        </Card>
+      {/* ── Stats bar ──────────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 px-6 py-4">
+        <StatCard label="Total"     value={stats.total}     icon={BarChart3}    color="text-zinc-400"   glow="border-zinc-700/50" />
+        <StatCard label="Terminées" value={stats.completed} icon={CheckCircle2} color="text-emerald-400" glow="border-emerald-500/20" />
+        <StatCard label="En cours"  value={stats.running}   icon={Activity}     color="text-violet-400" glow="border-violet-500/20" />
+        <StatCard label="Échouées"  value={stats.failed}    icon={XCircle}      color="text-red-400"    glow="border-red-500/20" />
+      </div>
+
+      {/* ── Search bar ─────────────────────────────────────────────────────────── */}
+      <div className="px-6 pb-3">
+        <div className="relative max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+          <Input
+            placeholder="Rechercher par repo, auteur, PR…"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-8 pl-9 text-sm bg-zinc-900/60 border-zinc-700/60 placeholder:text-zinc-600"
+          />
+        </div>
+      </div>
+
+      {/* ── Table ──────────────────────────────────────────────────────────────── */}
+      <div className="flex-1 overflow-auto px-6 pb-6">
+        {loading ? (
+          <div className="space-y-2 pt-2">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-xl" />
+            ))}
+          </div>
+        ) : filtered.length === 0 ? (
+          <EmptyReports period={period} />
+        ) : (
+          <div className="rounded-xl border border-zinc-800/60 overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-zinc-800/60 bg-zinc-950/60">
+                  <th className="py-2.5 pl-4 pr-3 text-left w-28">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Statut</span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Repo / PR</span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left w-32">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Findings</span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left w-20">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Score</span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left w-32 hidden md:table-cell">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Auteur</span>
+                  </th>
+                  <th className="py-2.5 pr-4 text-left w-28">
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-zinc-500">Date</span>
+                  </th>
+                  <th className="py-2.5 pr-4 w-28" />
+                </tr>
+              </thead>
+              <tbody>
+                <AnimatePresence mode="popLayout">
+                  {filtered.map((r, i) => (
+                    <ReportRow
+                      key={r.id}
+                      report={r}
+                      index={i}
+                      onExportPdf={handleExportSingle}
+                      onDelete={handleDelete}
+                    />
+                  ))}
+                </AnimatePresence>
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      {/* ── Footer count ───────────────────────────────────────────────────────── */}
+      {!loading && filtered.length > 0 && (
+        <div className="border-t border-zinc-800/60 px-6 py-2 text-xs text-zinc-600">
+          {filtered.length} rapport{filtered.length !== 1 ? "s" : ""} affiché{filtered.length !== 1 ? "s" : ""}
+          {search && ` · filtrés sur "${search}"`}
+        </div>
       )}
     </div>
+  )
+}
+
+// ─── Page export ──────────────────────────────────────────────────────────────
+
+export default function ReportsPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex items-center justify-center py-20">
+          <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+        </div>
+      }
+    >
+      <ReportsContent />
+    </Suspense>
   )
 }

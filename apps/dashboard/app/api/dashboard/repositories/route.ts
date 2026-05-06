@@ -36,10 +36,33 @@ export async function GET(request: Request) {
   })
 
   if (proxied.status >= 500 || proxied.status === 502) {
-    return NextResponse.json({ items: [], total: 0, page: 1, limit: 20 }, { status: 200 })
+    return NextResponse.json({ items: [], total: 0, page: Number(page) || 1, limit: Number(limit) || 20, pages: 1 }, { status: 200 })
   }
 
-  return proxied
+  const raw = (await proxied.json().catch(() => null)) as
+    | { items?: unknown[]; total?: number; page?: number; limit?: number; pages?: number }
+    | null
+
+  const items = Array.isArray(raw?.items) ? raw.items : []
+  const normalizedPage = typeof raw?.page === "number" ? raw.page : Number(page) || 1
+  const normalizedLimit = typeof raw?.limit === "number" ? raw.limit : Number(limit) || 20
+  const normalizedTotal = typeof raw?.total === "number" ? raw.total : items.length
+  const normalizedPages =
+    typeof raw?.pages === "number"
+      ? raw.pages
+      : Math.max(1, Math.ceil(normalizedTotal / Math.max(1, normalizedLimit)))
+
+  return NextResponse.json(
+    {
+      ...(raw && typeof raw === "object" ? raw : {}),
+      items,
+      total: normalizedTotal,
+      page: normalizedPage,
+      limit: normalizedLimit,
+      pages: normalizedPages,
+    },
+    { status: proxied.status },
+  )
 }
 
 /**

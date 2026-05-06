@@ -3,6 +3,7 @@
 import { useAuth } from "@clerk/nextjs"
 import { useCallback, useEffect, useMemo, useState } from "react"
 import { Notification } from "@/components/ui/notification-popover"
+import { getBackendWebSocketBaseUrl } from "@/lib/backend-url-client"
 
 interface UseNotificationsOptions {
   userId?: string
@@ -18,9 +19,6 @@ type BackendNotification = {
   read: boolean
   created_at: string
 }
-
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
-const WS_BASE = BACKEND_URL.replace(/^http/i, "ws").replace(/\/$/, "")
 
 export function useNotifications(options: UseNotificationsOptions = {}) {
   const { userId, enableRealtime = true } = options
@@ -127,6 +125,9 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
     let socket: WebSocket | null = null
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null
     let closed = false
+    let reconnectAttempts = 0
+    const maxReconnectAttempts = 3
+    const wsBase = getBackendWebSocketBaseUrl()
 
     const connect = async () => {
       try {
@@ -137,7 +138,10 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
         if (token) {
           params.set("token", token)
         }
-        socket = new WebSocket(`${WS_BASE}/ws/notifications?${params.toString()}`)
+        socket = new WebSocket(`${wsBase}/ws/notifications?${params.toString()}`)
+        socket.onopen = () => {
+          reconnectAttempts = 0
+        }
         socket.onmessage = (event) => {
           try {
             const payload = JSON.parse(event.data ?? "{}")
@@ -158,17 +162,31 @@ export function useNotifications(options: UseNotificationsOptions = {}) {
             console.error("Invalid notification websocket payload:", parseErr)
           }
         }
+        socket.onerror = () => {
+          if (!closed) {
+            socket?.close()
+          }
+        }
         socket.onclose = () => {
           if (closed) return
+          if (reconnectAttempts >= maxReconnectAttempts) {
+            console.warn("Notification websocket unavailable; realtime updates paused.")
+            return
+          }
+          reconnectAttempts += 1
           reconnectTimer = setTimeout(() => {
             void connect()
-          }, 2000)
+          }, Math.min(5000, 1500 * reconnectAttempts))
         }
       } catch (connectErr) {
-        console.error("Notification websocket connection failed:", connectErr)
+        console.warn("Notification websocket connection failed:", connectErr)
+        if (reconnectAttempts >= maxReconnectAttempts) {
+          return
+        }
+        reconnectAttempts += 1
         reconnectTimer = setTimeout(() => {
           if (!closed) void connect()
-        }, 3000)
+        }, Math.min(5000, 1500 * reconnectAttempts))
       }
     }
 

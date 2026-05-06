@@ -39,6 +39,8 @@ type DashboardProjectItem = {
   visibility: string
   defaultBranch: string
   status: string
+  team: string | null
+  memberCount: number
   healthScore: number
   analysisCount: number
   lastAnalysisAt: string | null
@@ -60,6 +62,8 @@ function normalizeProject(raw: BackendProjectItem): DashboardProjectItem | null 
     visibility: raw.visibility ?? "private",
     defaultBranch: raw.default_branch ?? "main",
     status: raw.status ?? "active",
+    team: raw.team_name ?? null,
+    memberCount: raw.member_count ?? 0,
     healthScore: raw.health_score ?? 0,
     analysisCount: raw.analysis_count ?? 0,
     lastAnalysisAt: raw.last_analysis_at ?? null,

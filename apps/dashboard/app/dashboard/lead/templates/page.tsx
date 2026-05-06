@@ -9,12 +9,11 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Switch } from "@/components/ui/switch"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Separator } from "@/components/ui/separator"
 import {
   Plus, Search, FileText, Lock, Globe, Edit, Copy, Trash2,
-  Settings, List, Shield, Zap, Code, Database, CheckCircle,
-  AlertTriangle, Clock, Target, Users
+  List, Shield, Zap, Code, Database, CheckCircle, AlertTriangle
 } from "lucide-react"
 import { useDashboardUser } from "@/components/dashboard/dashboard-user-provider"
 import { isReviewerLead } from "@/lib/roles"
@@ -53,59 +52,102 @@ const TEMPLATE_CATEGORIES = [
   { value: "backend", label: "Backend Specific", icon: Database },
 ]
 
-const DEFAULT_TEMPLATES = [
-  {
-    id: "default_general",
-    name: "General Code Review",
-    description: "Standard checklist for all code reviews",
-    category: "general",
-    is_default: true,
-    is_public: true,
-    created_by: "system",
-    created_by_name: "System",
-    usage_count: 156,
-    checklist_items: [
-      { id: "1", label: "Code follows project conventions", checked: false },
-      { id: "2", label: "No obvious security vulnerabilities", checked: false },
-      { id: "3", label: "Error handling is appropriate", checked: false },
-      { id: "4", label: "Code is well-documented", checked: false },
-      { id: "5", label: "Tests cover new functionality", checked: false },
-    ],
-    guidelines: "Review code for quality, security, and maintainability.",
-    auto_apply_rules: {},
-    created_at: "2024-01-01T00:00:00Z",
-    updated_at: "2024-01-01T00:00:00Z"
-  },
-  {
-    id: "default_security",
-    name: "Security Review",
-    description: "Comprehensive security-focused review checklist",
-    category: "security",
-    is_default: true,
-    is_public: true,
-    created_by: "system",
-    created_by_name: "System",
-    usage_count: 89,
-    checklist_items: [
-      { id: "1", label: "Input validation is implemented", checked: false },
-      { id: "2", label: "SQL injection protection in place", checked: false },
-      { id: "3", label: "XSS prevention measures applied", checked: false },
-      { id: "4", label: "Authentication & authorization checks", checked: false },
-      { id: "5", label: "Sensitive data is properly encrypted", checked: false },
-      { id: "6", label: "No hardcoded secrets or credentials", checked: false },
-    ],
-    guidelines: "Focus on security vulnerabilities and best practices.",
-    auto_apply_rules: { categories: ["security"] },
-    created_at: "2024-01-01T00:00:00Z",
-    updated_at: "2024-01-01T00:00:00Z"
+const TEMPLATE_ENDPOINT = "/api/dashboard/reviews/templates"
+
+function parseErrorMessage(payload: unknown, fallback: string): string {
+  if (!payload || typeof payload !== "object") return fallback
+  const record = payload as Record<string, unknown>
+  if (typeof record.error === "string" && record.error.trim().length > 0) return record.error
+  if (typeof record.detail === "string" && record.detail.trim().length > 0) return record.detail
+  return fallback
+}
+
+function normalizeChecklistItems(input: unknown): ReviewTemplate["checklist_items"] {
+  if (!Array.isArray(input)) return []
+  return input.map((item, index) => {
+    const row = item && typeof item === "object" ? (item as Record<string, unknown>) : {}
+    const label = typeof row.label === "string" && row.label.trim().length > 0
+      ? row.label
+      : `Checklist item ${index + 1}`
+    return {
+      id: typeof row.id === "string" && row.id.trim().length > 0 ? row.id : `${index + 1}`,
+      label,
+      description: typeof row.description === "string" ? row.description : "",
+      checked: Boolean(row.checked),
+    }
+  })
+}
+
+function normalizeTemplate(raw: unknown): ReviewTemplate | null {
+  if (!raw || typeof raw !== "object") return null
+  const row = raw as Record<string, unknown>
+  const id = typeof row.id === "string" ? row.id : ""
+  const name = typeof row.name === "string" ? row.name : ""
+  const category = typeof row.category === "string" ? row.category : "general"
+  if (!id || !name) return null
+
+  const autoApplyRules = row.auto_apply_rules && typeof row.auto_apply_rules === "object"
+    ? (row.auto_apply_rules as { severity?: string[]; categories?: string[] })
+    : {}
+
+  return {
+    id,
+    name,
+    description: typeof row.description === "string" ? row.description : "",
+    category,
+    is_default: Boolean(row.is_default),
+    is_public: Boolean(row.is_public),
+    created_by: typeof row.created_by === "string" ? row.created_by : "",
+    created_by_name: typeof row.created_by_name === "string" ? row.created_by_name : undefined,
+    usage_count: typeof row.usage_count === "number" ? row.usage_count : 0,
+    checklist_items: normalizeChecklistItems(row.checklist_items),
+    guidelines: typeof row.guidelines === "string" ? row.guidelines : "",
+    auto_apply_rules: autoApplyRules,
+    created_at: typeof row.created_at === "string" ? row.created_at : new Date().toISOString(),
+    updated_at: typeof row.updated_at === "string" ? row.updated_at : new Date().toISOString(),
   }
-]
+}
+
+function buildTemplatePayload(template: ReviewTemplate): Record<string, unknown> {
+  return {
+    name: template.name.trim(),
+    description: template.description.trim() || null,
+    category: template.category,
+    is_default: template.is_default,
+    is_public: template.is_public,
+    checklist_items: template.checklist_items
+      .filter((item) => item.label.trim().length > 0)
+      .map((item) => ({
+        id: item.id,
+        label: item.label.trim(),
+        description: item.description?.trim() || "",
+        checked: Boolean(item.checked),
+      })),
+    guidelines: template.guidelines.trim() || null,
+    auto_apply_rules: template.auto_apply_rules ?? {},
+  }
+}
+
+async function fetchTemplatesFromApi(): Promise<ReviewTemplate[]> {
+  const response = await fetch(TEMPLATE_ENDPOINT, { cache: "no-store" })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) {
+    throw new Error(parseErrorMessage(payload, "Failed to fetch templates"))
+  }
+  if (!Array.isArray(payload)) {
+    throw new Error("Invalid templates payload")
+  }
+  return payload.map(normalizeTemplate).filter((item): item is ReviewTemplate => item !== null)
+}
 
 export default function TemplatesPage() {
   const currentUser = useDashboardUser()
   const [templates, setTemplates] = useState<ReviewTemplate[]>([])
   const [filteredTemplates, setFilteredTemplates] = useState<ReviewTemplate[]>([])
   const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [busyTemplateId, setBusyTemplateId] = useState<string | null>(null)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedCategory, setSelectedCategory] = useState("all")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
@@ -114,22 +156,37 @@ export default function TemplatesPage() {
   const hasPermission = isReviewerLead(currentUser.role)
 
   useEffect(() => {
-    if (!hasPermission) return
+    if (!hasPermission) {
+      setLoading(false)
+      return
+    }
 
-    const fetchTemplates = async () => {
+    let cancelled = false
+    const load = async () => {
       try {
         setLoading(true)
-        // Mock API call - would fetch from /api/v1/reviews/templates
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        setTemplates(DEFAULT_TEMPLATES)
+        setErrorMessage(null)
+        const rows = await fetchTemplatesFromApi()
+        if (!cancelled) {
+          setTemplates(rows)
+        }
       } catch (err) {
         console.error("Failed to fetch templates:", err)
+        if (!cancelled) {
+          setTemplates([])
+          setErrorMessage(err instanceof Error ? err.message : "Failed to load templates")
+        }
       } finally {
-        setLoading(false)
+        if (!cancelled) {
+          setLoading(false)
+        }
       }
     }
 
-    fetchTemplates()
+    void load()
+    return () => {
+      cancelled = true
+    }
   }, [hasPermission])
 
   useEffect(() => {
@@ -148,6 +205,17 @@ export default function TemplatesPage() {
 
     setFilteredTemplates(filtered)
   }, [templates, searchTerm, selectedCategory])
+
+  const reloadTemplates = async () => {
+    try {
+      setErrorMessage(null)
+      const rows = await fetchTemplatesFromApi()
+      setTemplates(rows)
+    } catch (err) {
+      console.error("Failed to reload templates:", err)
+      setErrorMessage(err instanceof Error ? err.message : "Failed to reload templates")
+    }
+  }
 
   // Check permissions after hooks
   if (!hasPermission) {
@@ -220,33 +288,90 @@ export default function TemplatesPage() {
 
   const handleSaveTemplate = async () => {
     if (!editingTemplate) return
+    if (editingTemplate.name.trim().length === 0) {
+      setErrorMessage("Template name is required")
+      return
+    }
 
     try {
-      // Mock save - would call API
+      setSubmitting(true)
+      setErrorMessage(null)
+      const body = buildTemplatePayload(editingTemplate)
+
+      let response: Response
       if (editingTemplate.id) {
-        // Update existing
-        setTemplates(prev => prev.map(t => t.id === editingTemplate.id ? editingTemplate : t))
+        response = await fetch(`${TEMPLATE_ENDPOINT}/${encodeURIComponent(editingTemplate.id)}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
       } else {
-        // Create new
-        const newTemplate = { ...editingTemplate, id: `custom_${Date.now()}` }
-        setTemplates(prev => [...prev, newTemplate])
+        response = await fetch(TEMPLATE_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        })
+      }
+
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to save template"))
       }
 
       setIsCreateDialogOpen(false)
       setEditingTemplate(null)
+      await reloadTemplates()
     } catch (err) {
       console.error("Failed to save template:", err)
+      setErrorMessage(err instanceof Error ? err.message : "Failed to save template")
+    } finally {
+      setSubmitting(false)
     }
   }
 
   const handleDeleteTemplate = async (templateId: string) => {
     if (confirm("Are you sure you want to delete this template?")) {
       try {
-        // Mock delete - would call API
-        setTemplates(prev => prev.filter(t => t.id !== templateId))
+        setBusyTemplateId(templateId)
+        setErrorMessage(null)
+        const response = await fetch(`${TEMPLATE_ENDPOINT}/${encodeURIComponent(templateId)}`, {
+          method: "DELETE",
+        })
+        if (!response.ok) {
+          const payload = await response.json().catch(() => ({}))
+          throw new Error(parseErrorMessage(payload, "Failed to delete template"))
+        }
+        await reloadTemplates()
       } catch (err) {
         console.error("Failed to delete template:", err)
+        setErrorMessage(err instanceof Error ? err.message : "Failed to delete template")
+      } finally {
+        setBusyTemplateId(null)
       }
+    }
+  }
+
+  const handleUseTemplate = async (templateId: string) => {
+    try {
+      setBusyTemplateId(templateId)
+      setErrorMessage(null)
+      const response = await fetch(`${TEMPLATE_ENDPOINT}/${encodeURIComponent(templateId)}/use`, {
+        method: "POST",
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(parseErrorMessage(payload, "Failed to use template"))
+      }
+      const updated = normalizeTemplate(payload)
+      if (!updated) {
+        throw new Error("Invalid template payload")
+      }
+      setTemplates((prev) => prev.map((item) => (item.id === templateId ? updated : item)))
+    } catch (err) {
+      console.error("Failed to use template:", err)
+      setErrorMessage(err instanceof Error ? err.message : "Failed to use template")
+    } finally {
+      setBusyTemplateId(null)
     }
   }
 
@@ -289,7 +414,7 @@ export default function TemplatesPage() {
   if (loading) {
     return (
       <div className="space-y-6 animate-pulse">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="h-8 w-48 bg-gray-200 rounded"></div>
           <div className="h-10 w-32 bg-gray-200 rounded"></div>
         </div>
@@ -305,18 +430,26 @@ export default function TemplatesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
           <h1 className="card-heading text-foreground">Review Templates</h1>
           <p className="text-muted-foreground mt-1">
             Create and manage reusable review checklists and guidelines
           </p>
         </div>
-        <Button onClick={handleCreateTemplate}>
+        <Button onClick={handleCreateTemplate} className="w-full sm:w-auto">
           <Plus className="h-4 w-4 mr-2" />
           Create Template
         </Button>
       </div>
+
+      {errorMessage && (
+        <Card className="border-red-200 bg-red-50/40">
+          <CardContent className="py-3 text-sm text-red-700">
+            {errorMessage}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <Card>
@@ -334,7 +467,7 @@ export default function TemplatesPage() {
               </div>
             </div>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
-              <SelectTrigger className="w-48">
+              <SelectTrigger className="w-full sm:w-56">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -354,13 +487,13 @@ export default function TemplatesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredTemplates.map(template => {
           const CategoryIcon = getCategoryIcon(template.category)
-          const canEdit = template.created_by === currentUser.id || !template.is_default
+          const canEdit = template.created_by === currentUser.id || currentUser.role === "admin"
 
           return (
             <Card key={template.id} className="relative group hover:shadow-md transition-shadow">
               <CardHeader className="pb-3">
-                <div className="flex items-start justify-between">
-                  <div className="flex items-center space-x-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 flex-wrap items-center gap-2">
                     <CategoryIcon className="h-5 w-5 text-teal-400" />
                     <Badge variant={template.is_default ? "default" : "secondary"}>
                       {TEMPLATE_CATEGORIES.find(cat => cat.value === template.category)?.label}
@@ -401,16 +534,22 @@ export default function TemplatesPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center justify-between text-sm text-muted-foreground">
+                <div className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
                   <span>Used {template.usage_count} times</span>
-                  <span>by {template.created_by_name || "Unknown"}</span>
+                  <span className="truncate">by {template.created_by_name || "Unknown"}</span>
                 </div>
 
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <Button variant="outline" size="sm">
+                <div className="flex flex-col gap-2 border-t pt-2 sm:flex-row sm:items-center sm:justify-between">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => void handleUseTemplate(template.id)}
+                    disabled={busyTemplateId === template.id}
+                    className="w-full sm:w-auto"
+                  >
                     Use Template
                   </Button>
-                  <div className="flex items-center space-x-1">
+                  <div className="flex items-center justify-end space-x-1">
                     <Button
                       variant="ghost"
                       size="sm"
@@ -436,6 +575,7 @@ export default function TemplatesPage() {
                             onClick={() => handleDeleteTemplate(template.id)}
                             title="Delete"
                             className="text-destructive hover:text-red-700"
+                            disabled={busyTemplateId === template.id}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -469,7 +609,7 @@ export default function TemplatesPage() {
 
       {/* Create/Edit Template Dialog */}
       <Dialog open={isCreateDialogOpen} onOpenChange={setIsCreateDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="w-[95vw] max-w-4xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <DialogTitle>
               {editingTemplate?.id ? "Edit Template" : "Create New Template"}
@@ -521,13 +661,13 @@ export default function TemplatesPage() {
                 />
               </div>
 
-              <div className="flex items-center space-x-6">
-                <div className="flex items-center space-x-2">
+              <div className="flex flex-col items-start gap-3">
+                <div className="flex items-start space-x-2">
                   <Switch
                     checked={editingTemplate.is_public}
                     onCheckedChange={(checked) => setEditingTemplate({ ...editingTemplate, is_public: checked })}
                   />
-                  <Label>Make template public (visible to team)</Label>
+                  <Label className="leading-5">Make template public (visible to team)</Label>
                 </div>
               </div>
 
@@ -544,7 +684,7 @@ export default function TemplatesPage() {
                 </div>
                 <div className="space-y-3">
                   {editingTemplate.checklist_items.map((item, index) => (
-                    <div key={item.id} className="flex items-start space-x-3 p-3 border border-gray-200 rounded-lg">
+                    <div key={item.id} className="flex flex-col gap-3 rounded-lg border border-gray-200 p-3 sm:flex-row sm:items-start sm:space-x-3 sm:gap-0">
                       <div className="flex-1 space-y-2">
                         <Input
                           value={item.label}
@@ -561,7 +701,7 @@ export default function TemplatesPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => removeChecklistItem(item.id)}
-                        className="text-destructive hover:text-red-700"
+                        className="self-end text-destructive hover:text-red-700 sm:self-auto"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -586,18 +726,24 @@ export default function TemplatesPage() {
               </div>
 
               {/* Actions */}
-              <div className="flex items-center justify-end space-x-3 pt-4 border-t">
+              <div className="flex flex-col-reverse gap-2 border-t pt-4 sm:flex-row sm:items-center sm:justify-end sm:space-x-3 sm:gap-0">
                 <Button
                   variant="outline"
                   onClick={() => {
                     setIsCreateDialogOpen(false)
                     setEditingTemplate(null)
                   }}
+                  disabled={submitting}
+                  className="w-full sm:w-auto"
                 >
                   Cancel
                 </Button>
-                <Button onClick={handleSaveTemplate}>
-                  {editingTemplate.id ? "Update Template" : "Create Template"}
+                <Button onClick={handleSaveTemplate} disabled={submitting} className="w-full sm:w-auto">
+                  {submitting
+                    ? "Saving..."
+                    : editingTemplate.id
+                      ? "Update Template"
+                      : "Create Template"}
                 </Button>
               </div>
             </div>

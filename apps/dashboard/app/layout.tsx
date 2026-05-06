@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
-import { dark } from "@clerk/themes"
 import { IBM_Plex_Mono, Sora } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"
@@ -22,10 +21,12 @@ const mono = IBM_Plex_Mono({
 })
 
 const clerkRuntimeConfig = getClerkRuntimeConfig()
+const clerkPublishableKey =
+  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || "pk_test_devora_placeholder"
 
 export const metadata: Metadata = {
-  title: "Developer Dashboard Features",
-  description: "AI code review dashboard",
+  title: "Devora",
+  description: "Devora - AI code review platform",
   icons: {
     icon: "/icon.svg",
     shortcut: "/icon.svg",
@@ -38,69 +39,59 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <ClerkProvider
+      publishableKey={clerkPublishableKey}
       {...clerkRuntimeConfig}
       signInFallbackRedirectUrl="/auth/role-redirect"
       signUpFallbackRedirectUrl="/auth/role-redirect"
       appearance={{
-        baseTheme: dark,
         layout: {
           logoPlacement: "none",
           showOptionalFields: false,
           socialButtonsPlacement: "bottom",
         },
         variables: {
-          colorPrimary: "#6366f1",
-          colorBackground: "#0a0a0b",
-          colorInputBackground: "#18181b",
-          colorInputText: "#fafafa",
-          colorText: "#fafafa",
-          colorTextSecondary: "#a1a1aa",
-          borderRadius: "0.5rem",
-        },
+          colorPrimary: "var(--orange)",
+          colorBackground: "var(--bg-card)",
+          colorInputBackground: "var(--bg-card-inner)",
+          colorInputText: "var(--text-primary)",
+          colorText: "var(--text-primary)",
+          colorTextSecondary: "var(--text-muted)",
+          borderRadius: "0px",
+        } as any,
         elements: {
-          // Hide Clerk branding
-          footer: { display: "none" },
-          footerAction: { display: "none" },
-          footerActionLink: { display: "none" },
           footerPages: { display: "none" },
-          // Card styling
           card: {
-            backgroundColor: "#18181b",
-            border: "1px solid #27272a",
-            boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.5)",
+            backgroundColor: "var(--bg-card)",
+            border: "1px solid var(--border-card)",
+            boxShadow: "none",
           },
-          // Form styling
           formButtonPrimary: {
-            backgroundColor: "#6366f1",
-            "&:hover": { backgroundColor: "#4f46e5" },
+            backgroundColor: "var(--orange)",
+            "&:hover": { backgroundColor: "var(--orange-hover)" },
           },
           formFieldInput: {
-            backgroundColor: "#27272a",
-            borderColor: "#3f3f46",
-            "&:focus": { borderColor: "#6366f1" },
+            backgroundColor: "var(--bg-card-inner)",
+            borderColor: "var(--border-card)",
+            "&:focus": { borderColor: "var(--orange)" },
           },
-          // Header styling
-          headerTitle: { color: "#fafafa" },
-          headerSubtitle: { color: "#a1a1aa" },
-          // Social buttons
+          headerTitle: { color: "var(--text-primary)" },
+          headerSubtitle: { color: "var(--text-muted)" },
           socialButtonsBlockButton: {
-            backgroundColor: "#27272a",
-            borderColor: "#3f3f46",
-            "&:hover": { backgroundColor: "#3f3f46" },
+            backgroundColor: "var(--bg-card-inner)",
+            borderColor: "var(--border-card)",
+            "&:hover": { backgroundColor: "var(--bg-card-hover)" },
           },
-          // Divider
-          dividerLine: { backgroundColor: "#3f3f46" },
-          dividerText: { color: "#71717a" },
-          // User button
+          dividerLine: { backgroundColor: "var(--border-card)" },
+          dividerText: { color: "var(--text-muted)" },
           userButtonPopoverCard: {
-            backgroundColor: "#18181b",
-            border: "1px solid #27272a",
+            backgroundColor: "var(--bg-card)",
+            border: "1px solid var(--border-card)",
           },
           userButtonPopoverActionButton: {
-            "&:hover": { backgroundColor: "#27272a" },
+            "&:hover": { backgroundColor: "var(--bg-card-hover)" },
           },
         },
-      }}
+      } as any}
     >
       <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
         <body className={`${sora.variable} ${mono.variable} bg-background text-foreground antialiased`}>

@@ -16,8 +16,8 @@ function buildServerUrl(baseUrl: string): string {
 }
 
 const config: CapacitorConfig = {
-  appId: 'com.aicodereview.app',
-  appName: 'AI Code Review',
+  appId: 'com.devora.app',
+  appName: 'Devora',
   webDir: 'out',
   server: DEV_SERVER_URL
     ? {

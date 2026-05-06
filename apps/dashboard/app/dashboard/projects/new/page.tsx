@@ -41,6 +41,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { fetchGithubRepos } from "@/lib/github-repos"
+import { toast } from "sonner"
 
 // Types
 interface Team {
@@ -258,16 +259,20 @@ export default function NewProjectPage() {
   const handleSubmit = async () => {
     // Validation
     if (!name.trim()) {
+      toast.error("Le nom du projet est requis")
       setError("Le nom du projet est requis")
       return
     }
     if (!fullName.trim()) {
+      toast.error("Le nom complet (owner/repo) est requis")
       setError("Le nom complet (owner/repo) est requis")
       return
     }
 
     setIsSubmitting(true)
     setError(null)
+
+    const toastId = toast.loading("Création du projet en cours...")
 
     try {
       const response = await fetch("/api/dashboard/projects", {
@@ -309,6 +314,11 @@ export default function NewProjectPage() {
       }
 
       const project = await response.json()
+      toast.dismiss(toastId)
+      toast.success("Projet créé avec succès !", {
+        description: `Le projet "${project.name || name}" est prêt.`,
+        duration: 4000,
+      })
       setSuccess(true)
       
       // Redirect after short delay
@@ -316,7 +326,13 @@ export default function NewProjectPage() {
         router.push(`/dashboard/projects/${encodeURIComponent(project.id)}`)
       }, 1500)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue")
+      const msg = err instanceof Error ? err.message : "Erreur inconnue"
+      toast.dismiss(toastId)
+      toast.error("Échec de la création du projet", {
+        description: msg,
+        duration: 6000,
+      })
+      setError(msg)
     } finally {
       setIsSubmitting(false)
     }

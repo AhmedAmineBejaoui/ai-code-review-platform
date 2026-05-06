@@ -1,48 +1,18 @@
-# Déploiement VPS
+# VPS Deployment Layout
 
-Cette stack lance l'application complète sur un seul VPS :
+This folder aligns the repository with the deployment guide used for the current project:
 
-- `caddy` pour TLS et reverse proxy
-- `dashboard` (Next.js)
-- `api` (FastAPI)
-- `worker` (Celery)
-- `postgres`, `redis`, `qdrant`, `minio`
-- `yjs` pour l'édition collaborative
+- `infra/vps/docker-compose.yml`: infrastructure stack for PostgreSQL, Redis, Qdrant, Neo4j, MinIO, Prometheus, Grafana, pgAdmin, Flower
+- `infra/vps/backend/`: backend compose and environment template
+- `infra/vps/frontend/`: frontend compose and environment template
+- `infra/vps/prometheus/`: Prometheus scrape config
+- `infra/vps/grafana/`: Grafana provisioning
+- `infra/vps/create-ai-review-files.sh`: VPS bootstrap script for `/opt/ai-review`
+- `infra/vps/setup-nginx-devora.sh`: Nginx and Certbot setup
 
-## Préparation
+The guide is split in two phases:
 
-1. Copier `infra/vps/.env.vps.example` vers `infra/vps/.env.vps`.
-2. Renseigner au minimum :
-   - `APP_DOMAIN`
-   - `API_DOMAIN`
-   - `YJS_DOMAIN`
-   - `POSTGRES_PASSWORD`
-   - `MINIO_ROOT_PASSWORD`
-   - `GITHUB_WEBHOOK_SECRET`
-   - `SECRETS_ENCRYPTION_KEY`
-3. Pointer les entrées DNS `APP_DOMAIN`, `API_DOMAIN` et `YJS_DOMAIN` vers l'IP du VPS.
+1. Deploy by public IP while the domain is not active.
+2. Switch to DNS + Nginx + HTTPS once the domain is ready.
 
-## Lancement
-
-```bash
-docker compose --env-file infra/vps/.env.vps -f infra/vps/docker-compose.yml up -d --build
-```
-
-## Vérification
-
-```bash
-docker compose --env-file infra/vps/.env.vps -f infra/vps/docker-compose.yml ps
-docker compose --env-file infra/vps/.env.vps -f infra/vps/docker-compose.yml logs -f caddy api dashboard worker
-```
-
-URLs attendues :
-
-- `https://APP_DOMAIN`
-- `https://API_DOMAIN/healthz`
-- `wss://YJS_DOMAIN`
-
-## Notes
-
-- Le frontend bake les variables `NEXT_PUBLIC_*` au build. Après changement de domaine ou de config Clerk publique, rebuild obligatoire.
-- Les migrations Alembic sont appliquées au démarrage du service `api`.
-- `Ollama` et `Neo4j` ne sont pas inclus dans cette première stack VPS. Garder leurs features désactivées ou pointer vers des services externes.
+The current repository remains a monorepo. The guide's `backend`, `frontend`, and `infra` separation is represented through subfolders and dedicated compose files instead of physically splitting the application codebase.

@@ -4,6 +4,8 @@ import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { motion, AnimatePresence, useInView } from "framer-motion"
+import { toast } from "sonner"
+import { generateSummaryPdf, generateAnalysisPdf } from "@/lib/pdf-report"
 import {
   FileText,
   Search,
@@ -813,16 +815,60 @@ export function EnhancedRecentReports({
     // API rerun call would go here
   }
 
-  const handleExport = (report: RecentReport) => {
-    const blob = new Blob([JSON.stringify(report, null, 2)], {
-      type: "application/json",
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement("a")
-    a.href = url
-    a.download = `report-${report.id}.json`
-    a.click()
-    URL.revokeObjectURL(url)
+  const handleExport = async (report: RecentReport) => {
+    const tid = toast.loading(`Génération du PDF pour ${report.repo}…`)
+    try {
+      // Try to fetch full details for richer PDF
+      let findings: any[] = []
+      let files: any[] = []
+      try {
+        const res = await fetch(`/api/dashboard/analyses/${report.id}`)
+        if (res.ok) {
+          const full = await res.json()
+          findings = (full.findings ?? []).map((f: any) => ({
+            severity: f.severity,
+            category: f.category ?? "style",
+            message: f.message,
+            filePath: f.filePath ?? "",
+            lineStart: f.lineStart,
+            suggestion: f.suggestion,
+          }))
+          files = (full.files ?? []).map((f: any) => ({
+            path: f.pathNew ?? f.path ?? "",
+            changeType: f.changeType ?? "modified",
+            additions: f.additionsCount ?? f.additions ?? 0,
+            deletions: f.deletionsCount ?? f.deletions ?? 0,
+            findingsCount: findings.filter((fi: any) => fi.filePath === (f.pathNew ?? f.path ?? "")).length,
+          }))
+        }
+      } catch {
+        // fall through with empty findings/files
+      }
+      const score = report.score ?? Math.max(0, 100 - report.blockerCount * 10 - report.warnCount * 3 - report.infoCount)
+      await generateAnalysisPdf({
+        id: report.id,
+        repo: report.repo,
+        prLabel: report.prLabel,
+        commitSha: report.commitSha,
+        author: report.author,
+        status: report.status,
+        createdAt: report.createdAt,
+        durationLabel: report.durationLabel,
+        blockerCount: report.blockerCount,
+        warnCount: report.warnCount,
+        infoCount: report.infoCount,
+        score,
+        findings,
+        files,
+      })
+      toast.dismiss(tid)
+      toast.success("PDF téléchargé !", { duration: 3000 })
+    } catch (err) {
+      toast.dismiss(tid)
+      toast.error("Échec de l'export PDF", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+      })
+    }
   }
 
   const handleClearFilters = () => {
@@ -925,6 +971,32 @@ export function EnhancedRecentReports({
                   </div>
                 </motion.div>
 
+                <Button
+                  variant="outline"
+                  size="sm"
+                  disabled={reports.length === 0}
+                  onClick={async () => {
+                    const tid = toast.loading("Export PDF en cours…")
+                    try {
+                      await generateSummaryPdf(
+                        reports.map((r) => ({
+                          ...r,
+                          score: r.score ?? Math.max(0, 100 - r.blockerCount * 10 - r.warnCount * 3 - r.infoCount),
+                        }))
+                      )
+                      toast.dismiss(tid)
+                      toast.success("PDF téléchargé !", { duration: 3000 })
+                    } catch (err) {
+                      toast.dismiss(tid)
+                      toast.error("Échec de l'export PDF", {
+                        description: err instanceof Error ? err.message : "Erreur inconnue",
+                      })
+                    }
+                  }}
+                >
+                  <Download className="h-4 w-4 mr-2" />
+                  Export PDF
+                </Button>
                 <Button variant="outline" size="sm" onClick={loadReports}>
                   <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
                   Refresh

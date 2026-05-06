@@ -12,6 +12,10 @@ import {
   X,
   Sparkles,
   Wand2,
+  SplitSquareVertical,
+  GitCompareArrows,
+  Edit3,
+  Play,
 } from "lucide-react"
 import { extractApiErrorMessage } from "@/lib/display"
 import { 
@@ -170,6 +174,7 @@ export function CodeEditor({
   const [commitMessage, setCommitMessage] = useState("")
   const [effectiveBranch, setEffectiveBranch] = useState(branch)
   const [aiSuggestion, setAiSuggestion] = useState<string | null>(null)
+  const [editorMode, setEditorMode] = useState<"edit" | "diff" | "split">("edit")
   const editorRef = useRef<unknown>(null)
   const lastExternalSaveTrigger = useRef<number | undefined>(saveTrigger)
   const mountedRef = useRef(false)
@@ -373,7 +378,7 @@ export function CodeEditor({
         branch: effectiveBranch,
         message:
           commitMessage.trim() ||
-          `Update ${filePath.split("/").pop()} via AI Code Review Platform`,
+          `Update ${filePath.split("/").pop()} via Devora`,
       }, {
         repository: `${owner}/${repo}`,
         operation: "commit_file"
@@ -621,10 +626,11 @@ export function CodeEditor({
       : null
 
   return (
-    <div
-      className="flex h-full flex-col overflow-hidden rounded-md border"
-      style={{ borderColor: "#232832", background: "#0f1012", color: "#d7dce5" }}
-    >
+    <>
+      <div
+        className="flex h-full flex-col overflow-hidden rounded-md border"
+        style={{ borderColor: "#232832", background: "#0f1012", color: "#d7dce5" }}
+      >
       <div
         className="flex h-7 items-center border-b px-3"
         style={{ borderColor: "#232832", background: "#15171a" }}
@@ -861,7 +867,101 @@ export function CodeEditor({
           )}
           Commit
         </button>
+        </div>
       </div>
-    </div>
+
+      {/* Toolbar with Split, Diff, Edit, Save, Run buttons */}
+      <div
+        className="flex h-10 items-center justify-between border-b px-3"
+        style={{ borderColor: "#232832", background: "#101214" }}
+      >
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-colors"
+            style={{
+              borderColor: editorMode === "split" ? "#3d5a80" : "#2e3440",
+              background: editorMode === "split" ? "#1e3a5f" : "#171b22",
+              color: editorMode === "split" ? "#90b4ff" : "#8fa2c8",
+            }}
+            onClick={() => setEditorMode("split")}
+            title="Split view"
+          >
+            <SplitSquareVertical className="h-3.5 w-3.5" />
+            Split
+          </button>
+          
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-colors"
+            style={{
+              borderColor: editorMode === "diff" ? "#3d5a80" : "#2e3440",
+              background: editorMode === "diff" ? "#1e3a5f" : "#171b22",
+              color: editorMode === "diff" ? "#90b4ff" : "#8fa2c8",
+            }}
+            onClick={() => setEditorMode("diff")}
+            title="Diff view"
+          >
+            <GitCompareArrows className="h-3.5 w-3.5" />
+            Diff
+          </button>
+          
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-colors"
+            style={{
+              borderColor: editorMode === "edit" ? "#3d5a80" : "#2e3440",
+              background: editorMode === "edit" ? "#1e3a5f" : "#171b22",
+              color: editorMode === "edit" ? "#90b4ff" : "#8fa2c8",
+            }}
+            onClick={() => setEditorMode("edit")}
+            title="Edit mode"
+          >
+            <Edit3 className="h-3.5 w-3.5" />
+            Edit
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-colors disabled:opacity-50"
+            style={{
+              borderColor: "#1e5e35",
+              background: "#1e7a43",
+              color: "#e7fff0",
+            }}
+            onClick={handleSave}
+            disabled={!isDirty || status === "saving" || status === "loading"}
+            title="Save changes"
+          >
+            {status === "saving" ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Save className="h-3.5 w-3.5" />
+            )}
+            Save
+          </button>
+          
+          <button
+            type="button"
+            className="inline-flex h-7 items-center gap-1.5 rounded border px-2.5 text-xs font-medium transition-colors"
+            style={{
+              borderColor: "#2e3440",
+              background: "#171b22",
+              color: "#8fa2c8",
+            }}
+            onClick={() => {
+              // TODO: Add run functionality
+              console.log("Run clicked")
+            }}
+            title="Run code"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Run
+          </button>
+        </div>
+      </div>
+    </>
   )
 }

@@ -1,10 +1,13 @@
+# syntax=docker/dockerfile:1.7
+
 FROM node:20-bookworm-slim AS deps
 WORKDIR /app
 
 ENV NEXT_TELEMETRY_DISABLED=1
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN --mount=type=cache,target=/root/.npm \
+    npm ci
 
 FROM node:20-bookworm-slim AS build
 WORKDIR /app
@@ -43,7 +46,6 @@ ENV NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FOR
 ENV NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL}
 
 RUN npm run build
-RUN npm prune --omit=dev
 
 FROM node:20-bookworm-slim AS runner
 WORKDIR /app
@@ -51,15 +53,12 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV PORT=3001
+ENV HOSTNAME=0.0.0.0
 
-COPY --from=build /app/package.json ./package.json
-COPY --from=build /app/package-lock.json ./package-lock.json
-COPY --from=build /app/next.config.js ./next.config.js
-COPY --from=build /app/.next ./.next
+COPY --from=build /app/.next/standalone ./
+COPY --from=build /app/.next/static ./.next/static
 COPY --from=build /app/public ./public
-COPY --from=build /app/scripts ./scripts
-COPY --from=build /app/node_modules ./node_modules
 
 EXPOSE 3001
 
-CMD ["npm", "run", "start"]
+CMD ["node", "server.js"]

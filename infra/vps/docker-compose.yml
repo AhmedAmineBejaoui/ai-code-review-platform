@@ -1,315 +1,209 @@
-x-backend-common-env: &backend_common_env
-  ENV: "${ENV:-production}"
-  DATABASE_URL: "postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}"
-  REDIS_URL: "redis://redis:6379/0"
-  CELERY_BROKER_URL: "redis://redis:6379/0"
-  CELERY_RESULT_BACKEND: "redis://redis:6379/1"
-  ANALYSIS_QUEUE_NAME: "${ANALYSIS_QUEUE_NAME:-analyses}"
-  GITHUB_WEBHOOK_SECRET: "${GITHUB_WEBHOOK_SECRET}"
-  GITHUB_APP_ID: "${GITHUB_APP_ID:-}"
-  GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:-}"
-  GITHUB_APP_PRIVATE_KEY_PEM: "${GITHUB_APP_PRIVATE_KEY_PEM:-}"
-  GITHUB_API_BASE_URL: "${GITHUB_API_BASE_URL:-https://api.github.com}"
-  SECRETS_ENCRYPTION_KEY: "${SECRETS_ENCRYPTION_KEY}"
-  SECRETS_BOOTSTRAP_FROM_ENV: "${SECRETS_BOOTSTRAP_FROM_ENV:-true}"
-  RBAC_ENFORCEMENT_ENABLED: "${RBAC_ENFORCEMENT_ENABLED:-false}"
-  CLERK_AUTH_ENABLED: "${CLERK_AUTH_ENABLED:-false}"
-  CLERK_ISSUER_URL: "${CLERK_ISSUER_URL:-}"
-  CLERK_JWKS_URL: "${CLERK_JWKS_URL:-}"
-  CLERK_AUDIENCE: "${CLERK_AUDIENCE:-}"
-  CLERK_JWT_LEEWAY_SECONDS: "${CLERK_JWT_LEEWAY_SECONDS:-10}"
-  CLERK_ORGANIZATIONS_ENFORCED: "${CLERK_ORGANIZATIONS_ENFORCED:-false}"
-  ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
-  CORS_ALLOWED_ORIGINS: "https://${APP_DOMAIN}"
-  STATIC_ANALYSIS_ENABLED: "${STATIC_ANALYSIS_ENABLED:-true}"
-  STATIC_ANALYSIS_GIT_TOKEN: "${STATIC_ANALYSIS_GIT_TOKEN:-}"
-  STATIC_ANALYSIS_TIMEOUT_SECONDS: "${STATIC_ANALYSIS_TIMEOUT_SECONDS:-60}"
-  STATIC_ANALYSIS_MAX_FILES: "${STATIC_ANALYSIS_MAX_FILES:-200}"
-  STATIC_ANALYSIS_MAX_FINDINGS: "${STATIC_ANALYSIS_MAX_FINDINGS:-200}"
-  STATIC_ANALYSIS_FILTER_CHANGED_LINES: "${STATIC_ANALYSIS_FILTER_CHANGED_LINES:-true}"
-  STATIC_ANALYSIS_WORKSPACE_PATH: "/var/ai-review/workspace"
-  STATIC_ANALYSIS_CHECKOUT_BASE_PATH: "/var/ai-review/workspace"
-  REPO_CONTEXT_ALLOWED_ROOTS: "/var/ai-review/workspace"
-  LLM_ENABLED: "${LLM_ENABLED:-false}"
-  LLM_PROVIDER: "${LLM_PROVIDER:-ollama}"
-  OPENAI_API_KEY: "${OPENAI_API_KEY:-}"
-  OPENAI_MODEL: "${OPENAI_MODEL:-gpt-4o-mini}"
-  OPENAI_MAX_TOKENS: "${OPENAI_MAX_TOKENS:-2048}"
-  ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
-  ANTHROPIC_MODEL: "${ANTHROPIC_MODEL:-claude-sonnet-4-20250514}"
-  ANTHROPIC_MAX_TOKENS: "${ANTHROPIC_MAX_TOKENS:-4096}"
-  ANTHROPIC_TEMPERATURE: "${ANTHROPIC_TEMPERATURE:-0.0}"
-  OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-}"
-  OLLAMA_MODEL: "${OLLAMA_MODEL:-}"
-  OLLAMA_TIMEOUT_SECONDS: "${OLLAMA_TIMEOUT_SECONDS:-60}"
-  OLLAMA_TEMPERATURE: "${OLLAMA_TEMPERATURE:-0.2}"
-  OLLAMA_NUM_PREDICT: "${OLLAMA_NUM_PREDICT:-400}"
-  REVIEW_INTELLIGENCE_ENABLED: "${REVIEW_INTELLIGENCE_ENABLED:-true}"
-  REVIEW_INTELLIGENCE_REQUIRE_QDRANT: "${REVIEW_INTELLIGENCE_REQUIRE_QDRANT:-true}"
-  QDRANT_ENABLED: "true"
-  QDRANT_MODE: "http"
-  QDRANT_URL: "http://qdrant:6333"
-  QDRANT_API_KEY: "${QDRANT_API_KEY:-}"
-  QDRANT_COLLECTION: "${QDRANT_COLLECTION:-code_review_rules}"
-  QDRANT_REPO_CONTEXT_COLLECTION: "${QDRANT_REPO_CONTEXT_COLLECTION:-repo_context}"
-  OBJECT_STORAGE_ENABLED: "true"
-  MINIO_ENDPOINT: "minio:9000"
-  MINIO_ACCESS_KEY: "${MINIO_ROOT_USER}"
-  MINIO_SECRET_KEY: "${MINIO_ROOT_PASSWORD}"
-  MINIO_BUCKET: "${MINIO_BUCKET:-ai-review-artifacts}"
-  MINIO_SECURE: "false"
-  EMAIL_ENABLED: "${EMAIL_ENABLED:-false}"
-  EMAIL_PROVIDER: "${EMAIL_PROVIDER:-sendgrid}"
-  SENDGRID_API_KEY: "${SENDGRID_API_KEY:-}"
-  SENDGRID_FROM_EMAIL: "${SENDGRID_FROM_EMAIL:-}"
-  SENDGRID_FROM_NAME: "${SENDGRID_FROM_NAME:-}"
-  SMTP_HOST: "${SMTP_HOST:-}"
-  SMTP_PORT: "${SMTP_PORT:-587}"
-  SMTP_USERNAME: "${SMTP_USERNAME:-}"
-  SMTP_PASSWORD: "${SMTP_PASSWORD:-}"
-  SMTP_USE_TLS: "${SMTP_USE_TLS:-true}"
-  SMTP_FROM_EMAIL: "${SMTP_FROM_EMAIL:-}"
-  SLACK_ENABLED: "${SLACK_ENABLED:-false}"
-  SLACK_WEBHOOK_URL: "${SLACK_WEBHOOK_URL:-}"
-  SLACK_DEFAULT_CHANNEL: "${SLACK_DEFAULT_CHANNEL:-}"
-  SLACK_BOT_TOKEN: "${SLACK_BOT_TOKEN:-}"
-  TEAMS_ENABLED: "${TEAMS_ENABLED:-false}"
-  TEAMS_WEBHOOK_URL: "${TEAMS_WEBHOOK_URL:-}"
-  TEAMS_DEFAULT_CHANNEL: "${TEAMS_DEFAULT_CHANNEL:-}"
-  PUSH_NOTIFICATIONS_ENABLED: "${PUSH_NOTIFICATIONS_ENABLED:-false}"
-  VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
-  VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
-  VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+networks:
+  ai-review-network:
+    name: ai-review-network
+    driver: bridge
 
-x-dashboard-build-args: &dashboard_build_args
-  NEXT_PUBLIC_API_URL: "https://${APP_DOMAIN}"
-  NEXT_PUBLIC_APP_URL: "https://${APP_DOMAIN}"
-  NEXT_PUBLIC_BACKEND_URL: "https://${API_DOMAIN}"
-  NEXT_PUBLIC_Y_WEBSOCKET_URL: "wss://${YJS_DOMAIN}"
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}"
-  NEXT_PUBLIC_CLERK_JS_URL: "${NEXT_PUBLIC_CLERK_JS_URL:-}"
-  NEXT_PUBLIC_CLERK_JS_VERSION: "${NEXT_PUBLIC_CLERK_JS_VERSION:-}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-}"
-
-x-dashboard-common-env: &dashboard_common_env
-  NODE_ENV: "production"
-  PORT: "3001"
-  BACKEND_API_URL: "http://api:8000"
-  NEXT_PUBLIC_API_URL: "https://${APP_DOMAIN}"
-  NEXT_PUBLIC_APP_URL: "https://${APP_DOMAIN}"
-  NEXT_PUBLIC_BACKEND_URL: "https://${API_DOMAIN}"
-  NEXT_PUBLIC_Y_WEBSOCKET_URL: "wss://${YJS_DOMAIN}"
-  NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: "${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}"
-  NEXT_PUBLIC_CLERK_JS_URL: "${NEXT_PUBLIC_CLERK_JS_URL:-}"
-  NEXT_PUBLIC_CLERK_JS_VERSION: "${NEXT_PUBLIC_CLERK_JS_VERSION:-}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_URL:-/sign-in}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_URL:-/sign-up}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_FORCE_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_FORCE_REDIRECT_URL:-}"
-  NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL: "${NEXT_PUBLIC_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL:-}"
-  CLERK_SECRET_KEY: "${CLERK_SECRET_KEY:-}"
-  CLERK_WEBHOOK_SECRET: "${CLERK_WEBHOOK_SECRET:-}"
-  CLERK_ORGANIZATIONS_ENFORCED: "${CLERK_ORGANIZATIONS_ENFORCED:-false}"
-  GITHUB_WEBHOOK_SECRET: "${GITHUB_WEBHOOK_SECRET}"
-  GITHUB_API_BASE_URL: "${GITHUB_API_BASE_URL:-https://api.github.com}"
-  GITHUB_APP_ID: "${GITHUB_APP_ID:-}"
-  GITHUB_APP_INSTALLATION_ID: "${GITHUB_APP_INSTALLATION_ID:-}"
-  GITHUB_APP_PRIVATE_KEY_PEM: "${GITHUB_APP_PRIVATE_KEY_PEM:-}"
-  GH_TOKEN: "${GH_TOKEN:-}"
-  GITHUB_OAUTH_TOKEN: "${GITHUB_OAUTH_TOKEN:-}"
-  DASHBOARD_ALLOW_GLOBAL_GITHUB_TOKEN_FALLBACK: "${DASHBOARD_ALLOW_GLOBAL_GITHUB_TOKEN_FALLBACK:-false}"
-  ADMIN_EMAILS: "${ADMIN_EMAILS:-}"
-  DASHBOARD_ADMIN_EMAILS: "${DASHBOARD_ADMIN_EMAILS:-}"
-  ALLOWED_GITHUB_ORGS: "${ALLOWED_GITHUB_ORGS:-}"
-  ALLOWED_GITHUB_TEAMS: "${ALLOWED_GITHUB_TEAMS:-}"
-  DASHBOARD_GITHUB_REQUIRE_ORG_CONTEXT: "${DASHBOARD_GITHUB_REQUIRE_ORG_CONTEXT:-false}"
-  DASHBOARD_GITHUB_ENFORCE_OWNER_MATCH: "${DASHBOARD_GITHUB_ENFORCE_OWNER_MATCH:-false}"
-  DASHBOARD_GITHUB_TEAM_OWNER_MAP: "${DASHBOARD_GITHUB_TEAM_OWNER_MAP:-}"
-  DASHBOARD_BACKEND_FETCH_TIMEOUT_MS: "${DASHBOARD_BACKEND_FETCH_TIMEOUT_MS:-15000}"
-  DASHBOARD_BACKEND_SYNC_TIMEOUT_MS: "${DASHBOARD_BACKEND_SYNC_TIMEOUT_MS:-15000}"
-  DASHBOARD_BACKEND_WRITE_TIMEOUT_MS: "${DASHBOARD_BACKEND_WRITE_TIMEOUT_MS:-30000}"
+volumes:
+  postgres_data:
+  redis_data:
+  qdrant_data:
+  neo4j_data:
+  neo4j_logs:
+  minio_data:
+  grafana_data:
+  pgadmin_data:
+  prometheus_data:
 
 services:
-  caddy:
-    image: caddy:2.8-alpine
-    restart: unless-stopped
-    depends_on:
-      dashboard:
-        condition: service_healthy
-      api:
-        condition: service_healthy
-      yjs:
-        condition: service_healthy
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-
-  dashboard:
-    image: ai-review-dashboard:vps
-    build:
-      context: ../../apps/dashboard
-      dockerfile: Dockerfile
-      args:
-        <<: *dashboard_build_args
-    restart: unless-stopped
-    environment:
-      <<: *dashboard_common_env
-    expose:
-      - "3001"
-    depends_on:
-      api:
-        condition: service_healthy
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          node -e "fetch('http://127.0.0.1:3001').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 30s
-
-  yjs:
-    image: ai-review-dashboard:vps
-    build:
-      context: ../../apps/dashboard
-      dockerfile: Dockerfile
-      args:
-        <<: *dashboard_build_args
-    restart: unless-stopped
-    command: ["npm", "run", "start:y-websocket"]
-    environment:
-      <<: *dashboard_common_env
-      PORT: "1234"
-    expose:
-      - "1234"
-    healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          node -e "fetch('http://127.0.0.1:1234').then((res) => process.exit(res.ok ? 0 : 1)).catch(() => process.exit(1))"
-      interval: 15s
-      timeout: 5s
-      retries: 10
-      start_period: 15s
-
-  db:
+  postgres:
     image: postgres:15
+    container_name: ai-review-postgres
     restart: unless-stopped
     environment:
-      POSTGRES_DB: "${POSTGRES_DB}"
-      POSTGRES_USER: "${POSTGRES_USER}"
-      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD}"
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 10s
+
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    container_name: ai-review-pgadmin
+    restart: unless-stopped
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_EMAIL}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_PASSWORD}
+      PGADMIN_LISTEN_PORT: 5050
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:5050:5050"
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   redis:
     image: redis:7-alpine
+    container_name: ai-review-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes"]
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb"]
     volumes:
       - redis_data:/data
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 20
+      start_period: 5s
 
   qdrant:
     image: qdrant/qdrant:v1.9.2
+    container_name: ai-review-qdrant
     restart: unless-stopped
     volumes:
       - qdrant_data:/qdrant/storage
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:6333:6333"
+
+  neo4j:
+    image: neo4j:5.15-community
+    container_name: ai-review-neo4j
+    restart: unless-stopped
+    environment:
+      NEO4J_AUTH: "${NEO4J_USER}/${NEO4J_PASSWORD}"
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+      NEO4J_dbms_memory_heap_initial__size: "512m"
+      NEO4J_dbms_memory_heap_max__size: "1G"
+      NEO4J_dbms_memory_pagecache_size: "256m"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:7474:7474"
+      - "127.0.0.1:7687:7687"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:7474 || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 40s
 
   minio:
     image: minio/minio:RELEASE.2024-03-21T23-13-43Z
+    container_name: ai-review-minio
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: "${MINIO_ROOT_USER}"
-      MINIO_ROOT_PASSWORD: "${MINIO_ROOT_PASSWORD}"
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
     volumes:
       - minio_data:/data
-
-  api:
-    image: ai-review-backend:vps
-    build:
-      context: ../../apps/backend
-      dockerfile: Dockerfile
-    restart: unless-stopped
-    command:
-      - /bin/sh
-      - -c
-      - alembic -c /app/alembic.ini upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 8000
-    environment:
-      <<: *backend_common_env
-    volumes:
-      - analysis_workspace:/var/ai-review/workspace
-    expose:
-      - "8000"
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-      qdrant:
-        condition: service_started
-      minio:
-        condition: service_started
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:9000:9000"
+      - "127.0.0.1:9001:9001"
     healthcheck:
-      test:
-        - CMD-SHELL
-        - >-
-          python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz')"
-      interval: 15s
+      test: ["CMD-SHELL", "mc ready local || exit 1"]
+      interval: 10s
       timeout: 5s
       retries: 10
-      start_period: 45s
+      start_period: 15s
 
-  worker:
-    image: ai-review-backend:vps
-    build:
-      context: ../../apps/backend
-      dockerfile: Dockerfile
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: ai-review-prometheus
     restart: unless-stopped
-    command:
-      - celery
-      - -A
-      - app.workers.celery_app.celery_app
-      - worker
-      - --loglevel=info
-      - -Q
-      - analyses
-      - --concurrency=2
-    environment:
-      <<: *backend_common_env
-      CELERY_WORKER_POOL: "prefork"
     volumes:
-      - analysis_workspace:/var/ai-review/workspace
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:9090:9090"
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
     depends_on:
-      api:
-        condition: service_healthy
+      - node-exporter
+      - cadvisor
 
-volumes:
-  caddy_data:
-  caddy_config:
-  postgres_data:
-  redis_data:
-  qdrant_data:
-  minio_data:
-  analysis_workspace:
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: ai-review-node-exporter
+    restart: unless-stopped
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:9100:9100"
+    command:
+      - "--path.rootfs=/host"
+    volumes:
+      - "/:/host:ro,rslave"
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: ai-review-cadvisor
+    restart: unless-stopped
+    privileged: true
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:8080:8080"
+    volumes:
+      - "/:/rootfs:ro"
+      - "/var/run:/var/run:ro"
+      - "/sys:/sys:ro"
+      - "/var/lib/docker/:/var/lib/docker:ro"
+      - "/dev/disk/:/dev/disk:ro"
+
+  grafana:
+    image: grafana/grafana:10.4.2
+    container_name: ai-review-grafana
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  flower:
+    image: mher/flower:2.0
+    container_name: ai-review-flower
+    restart: unless-stopped
+    command: celery --broker=redis://ai-review-redis:6379/0 flower --port=5555
+    networks:
+      - ai-review-network
+    ports:
+      - "127.0.0.1:5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy

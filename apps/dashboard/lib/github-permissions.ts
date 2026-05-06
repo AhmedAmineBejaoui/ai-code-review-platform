@@ -43,8 +43,15 @@ class GitHubPermissionValidator {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || `HTTP ${response.status}`)
+      const raw = await response.text()
+      let errorMessage = `HTTP ${response.status}`
+      try {
+        const parsed = JSON.parse(raw) as { error?: string }
+        errorMessage = parsed.error || errorMessage
+      } catch {
+        errorMessage = raw || errorMessage
+      }
+      throw new Error(errorMessage)
     }
 
     return response.json()
@@ -59,8 +66,15 @@ class GitHubPermissionValidator {
     })
 
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || `HTTP ${response.status}`)
+      const raw = await response.text()
+      let errorMessage = `HTTP ${response.status}`
+      try {
+        const parsed = JSON.parse(raw) as { error?: string }
+        errorMessage = parsed.error || errorMessage
+      } catch {
+        errorMessage = raw || errorMessage
+      }
+      throw new Error(errorMessage)
     }
 
     return response.json()

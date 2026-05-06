@@ -4,7 +4,7 @@ import SimpleEditor from "@/components/SimpleEditor"
 import MonacoEditor from "@/components/MonacoEditor"
 
 export const metadata: Metadata = {
-  title: "Code Review Demo - AI Code Review Platform",
+  title: "Code Review Demo - Devora",
   description: "Experience AI-powered code review in action",
 }
 

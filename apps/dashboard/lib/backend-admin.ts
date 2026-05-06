@@ -3,8 +3,7 @@ import "server-only"
 import { auth } from "@clerk/nextjs/server"
 import { NextResponse } from "next/server"
 
-const BACKEND_API_BASE_URL =
-  process.env.BACKEND_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+import { getBackendApiUrl } from "@/lib/backend-url"
 
 const BACKEND_TIMEOUT_MS = Math.max(
   1_000,
@@ -76,7 +75,7 @@ export async function proxyBackendRequest(options: ProxyOptions): Promise<NextRe
   const timeout = setTimeout(() => controller.abort(), timeoutMs ?? BACKEND_TIMEOUT_MS)
 
   try {
-    const response = await fetch(`${BACKEND_API_BASE_URL}${path}`, {
+    const response = await fetch(getBackendApiUrl(path), {
       method,
       headers: {
         Authorization: `Bearer ${token}`,
@@ -95,7 +94,7 @@ export async function proxyBackendRequest(options: ProxyOptions): Promise<NextRe
       if (isHtmlPayload(rawBody, contentType)) {
         parsedBody = {
           error:
-            "Backend target returned HTML instead of JSON. Check BACKEND_API_URL / NEXT_PUBLIC_BACKEND_URL and ensure the backend is reachable on http://localhost:8000.",
+            "Backend target returned HTML instead of JSON. Check BACKEND_API_URL / NEXT_PUBLIC_BACKEND_URL and ensure the backend is reachable.",
         }
       } else {
         try {

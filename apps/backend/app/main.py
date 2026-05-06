@@ -43,6 +43,7 @@ from app.api.http import (
     suggestions,
     teams,
     webhook_github,
+    vscode_reviews,
     integrations,
 )
 from app.api.websockets import notifications as notifications_ws
@@ -204,6 +205,7 @@ app.include_router(reviews.router)
 app.include_router(review_queue.router)
 app.include_router(review_states.router)
 app.include_router(reviewer_metrics.router)
+app.include_router(vscode_reviews.router)
 app.include_router(notifications.router)
 app.include_router(knowledge_base.router)
 app.include_router(admin.router)

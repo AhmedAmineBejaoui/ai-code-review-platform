@@ -103,48 +103,63 @@ export async function GET(request: NextRequest) {
     return authContext.response
   }
 
-  const search = asString(request.nextUrl.searchParams.get("search"))
+  try {
+    const search = asString(request.nextUrl.searchParams.get("search"))
 
-  const [backendResponse, githubOrganizations, clerkOrganizations] = await Promise.all([
-    fetchBackendJson<{ items?: BackendOrganization[] }>(
-      authContext.token,
-      authContext.userId,
-      "/v1/organizations",
-      { method: "GET" },
-    ),
-    listGithubOrganizationsForUser(authContext.userId),
-    listClerkOrganizations().catch(() => []),
-  ])
+    const [backendResponse, githubOrganizations, clerkOrganizations] = await Promise.all([
+      fetchBackendJson<{ items?: BackendOrganization[] }>(
+        authContext.token,
+        authContext.userId,
+        "/v1/organizations",
+        { method: "GET" },
+      ),
+      listGithubOrganizationsForUser(authContext.userId),
+      listClerkOrganizations().catch(() => []),
+    ])
 
-  const backendItems =
-    backendResponse.ok &&
-    Array.isArray((backendResponse.data as { items?: BackendOrganization[] } | null)?.items)
-      ? ((backendResponse.data as { items?: BackendOrganization[] }).items ?? [])
-      : []
+    const backendItems =
+      backendResponse.ok &&
+      Array.isArray((backendResponse.data as { items?: BackendOrganization[] } | null)?.items)
+        ? ((backendResponse.data as { items?: BackendOrganization[] }).items ?? [])
+        : []
 
-  const organizations = backendItems
-    .map((org) => normalizeOrganization(org, findMatchingClerkOrganization(org, clerkOrganizations)))
-    .filter((org) => {
-      if (!search) {
-        return true
-      }
-      const haystack = [org.name, org.slug, org.githubOrgLogin, org.clerkOrgId]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase()
-      return haystack.includes(search.toLowerCase())
+    const organizations = backendItems
+      .map((org) => normalizeOrganization(org, findMatchingClerkOrganization(org, clerkOrganizations)))
+      .filter((org) => {
+        if (!search) {
+          return true
+        }
+        const haystack = [org.name, org.slug, org.githubOrgLogin, org.clerkOrgId]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+        return haystack.includes(search.toLowerCase())
+      })
+
+    return NextResponse.json({
+      organizations,
+      githubOrganizations,
+      clerkOrganizations,
+      capabilities: {
+        canCreateGithubOrganizations: false,
+        githubCreationReason:
+          "GitHub organizations must already exist. This workflow creates the platform + Clerk organization, then links an existing GitHub organization.",
+      },
     })
-
-  return NextResponse.json({
-    organizations,
-    githubOrganizations,
-    clerkOrganizations,
-    capabilities: {
-      canCreateGithubOrganizations: false,
-      githubCreationReason:
-        "GitHub organizations must already exist. This workflow creates the platform + Clerk organization, then links an existing GitHub organization.",
-    },
-  })
+  } catch (error) {
+    console.error("[admin/organizations][GET] unexpected failure", error)
+    return NextResponse.json({
+      organizations: [],
+      githubOrganizations: [],
+      clerkOrganizations: [],
+      capabilities: {
+        canCreateGithubOrganizations: false,
+        githubCreationReason:
+          "GitHub organizations must already exist. This workflow creates the platform + Clerk organization, then links an existing GitHub organization.",
+      },
+      warning: "Organization data is temporarily unavailable.",
+    })
+  }
 }
 
 /**

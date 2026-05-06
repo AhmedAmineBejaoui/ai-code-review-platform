@@ -54,6 +54,8 @@ interface AnalysesPageHeaderProps {
   view?: string | null
   action?: string | null
   period?: string | null
+  /** When true, renders only the "+ Nouvelle analyse" dialog trigger */
+  buttonOnly?: boolean
 }
 
 const filterLabels: Record<string, { title: string; description: string; icon: React.ElementType }> = {
@@ -112,7 +114,7 @@ const statusLabels: Record<string, { title: string; description: string; icon: R
   },
 }
 
-export function AnalysesPageHeader({ filter, status, view, action, period }: AnalysesPageHeaderProps) {
+export function AnalysesPageHeader({ filter, status, view, action, period, buttonOnly }: AnalysesPageHeaderProps) {
   const router = useRouter()
   const { user } = useUser()
   const { openSignIn, openUserProfile } = useClerk()
@@ -461,20 +463,22 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
     <motion.div
       initial={{ opacity: 0, y: -10 }}
       animate={{ opacity: 1, y: 0 }}
-      className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between"
+      className={buttonOnly ? "" : "flex flex-col gap-4 md:flex-row md:items-center md:justify-between"}
     >
-      <div className="flex items-center gap-3">
-        <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
-          <Icon className="h-6 w-6 text-primary" />
+      {!buttonOnly && (
+        <div className="flex items-center gap-3">
+          <div className="h-12 w-12 rounded-xl bg-primary/10 flex items-center justify-center">
+            <Icon className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="card-heading text-foreground">{title}</h1>
+            <p className="text-muted-foreground">{description}</p>
+          </div>
         </div>
-        <div>
-          <h1 className="card-heading text-foreground">{title}</h1>
-          <p className="text-muted-foreground">{description}</p>
-        </div>
-      </div>
+      )}
 
       <div className="flex items-center gap-2">
-        {(filter || status || view || period) && (
+        {!buttonOnly && (filter || status || view || period) && (
           <Badge variant="secondary" className="text-sm">
             {period || filter || status || view}
           </Badge>
@@ -485,9 +489,9 @@ export function AnalysesPageHeader({ filter, status, view, action, period }: Ana
           if (!open) resetForm()
         }}>
           <DialogTrigger asChild>
-            <Button className="gap-2">
+            <Button className="gap-2 bg-[#E8713A] hover:bg-[#E8713A]/90 text-white">
               <Plus className="h-4 w-4" />
-              New Analysis
+              + Nouvelle analyse
             </Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-[550px]">

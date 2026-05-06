@@ -164,7 +164,7 @@ export function AnimatedAuth({
   onGithubAuth,
   showSocialAuth = true,
   className,
-  brandName = 'Codebase AI',
+  brandName = 'Devora',
   brandLogo,
 }: AnimatedAuthProps) {
   const [currentMode, setCurrentMode] = useState(mode);
@@ -526,14 +526,6 @@ export function ClerkAuthWrapper({
     <div
       className={cn(
         'clerk-auth-wrapper',
-        // Hide Clerk's development mode banner
-        '[&_.cl-internal-b3fm6y]:hidden',
-        '[&_.cl-internal-16vtvd6]:hidden',
-        // Hide "Secured by Clerk" footer
-        '[&_.cl-footer]:hidden',
-        '[&_.cl-footerAction]:hidden',
-        // Custom styling for the card
-        '[&_.cl-card]:bg-transparent [&_.cl-card]:shadow-none [&_.cl-card]:border-0',
         className
       )}
     >

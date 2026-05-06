@@ -1,6 +1,7 @@
 const nextConfig = {
   reactStrictMode: true,
   trailingSlash: true,
+  output: "standalone",
 
   typescript: {
     ignoreBuildErrors: true,

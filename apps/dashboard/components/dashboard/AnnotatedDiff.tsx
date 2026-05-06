@@ -16,7 +16,6 @@ import {
   Loader2,
   MessageSquarePlus,
   PhoneCall,
-  Play,
   Save,
   Search,
   Settings,
@@ -495,7 +494,7 @@ export function AnnotatedDiff() {
   const [clarificationTarget, setClarificationTarget] = useState<DashboardAnalysisFinding | null>(null)
 
   // Real GitHub editing/review state
-  const [viewMode, setViewMode] = useState<"diff" | "edit">("edit")
+  const [viewMode, setViewMode] = useState<"split" | "diff" | "edit">("edit")
   const [activeBranch, setActiveBranch] = useState("main")
   const [branchLoading, setBranchLoading] = useState(false)
   const [editorSaveTrigger, setEditorSaveTrigger] = useState(0)
@@ -720,8 +719,13 @@ export function AnnotatedDiff() {
   const handleToolbarSave = useCallback(() => {
     if (!repoCoordinates) { setGithubActionMessage({ type: "error", text: "Repository information is missing (owner/repo)." }); return }
     if (!selectedFilePath) { setGithubActionMessage({ type: "error", text: "Select a file before saving." }); return }
+    if (viewMode === "split") {
+      setViewMode("edit")
+      window.setTimeout(() => setEditorSaveTrigger((value) => value + 1), 0)
+      return
+    }
     setEditorSaveTrigger((value) => value + 1)
-  }, [repoCoordinates, selectedFilePath])
+  }, [repoCoordinates, selectedFilePath, viewMode])
 
   const submitGitHubReview = useCallback(
     async (event: "APPROVE" | "REQUEST_CHANGES") => {
@@ -734,7 +738,7 @@ export function AnnotatedDiff() {
           method: "POST", headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "submit_pr_review",
-            payload: { owner: repoCoordinates.owner, repo: repoCoordinates.repo, pullNumber: analysis.prNumber, event, body: event === "APPROVE" ? "Approved from AI Code Review Platform." : "Changes requested from AI Code Review Platform." },
+            payload: { owner: repoCoordinates.owner, repo: repoCoordinates.repo, pullNumber: analysis.prNumber, event,             body: event === "APPROVE" ? "Approved from Devora." : "Changes requested from Devora." },
           }),
         })
         const data = await response.json().catch(() => ({}))
@@ -806,6 +810,348 @@ export function AnnotatedDiff() {
     }
     return picked
   })()
+  const isEditorVisible = viewMode === "edit" || viewMode === "split"
+  const splitRows = (() => {
+    type DiffLineModel = DashboardAnalysisDiffFile["lines"][number]
+    const rows: Array<{ key: string; left?: DiffLineModel; right?: DiffLineModel; changed: boolean }> = []
+    const lines = selectedFile?.lines ?? []
+
+    for (let index = 0; index < lines.length;) {
+      const line = lines[index]
+
+      if (!line || line.lineType === "header") {
+        index += 1
+        continue
+      }
+
+      if (line.lineType === "context") {
+        rows.push({ key: `context-${index}`, left: line, right: line, changed: false })
+        index += 1
+        continue
+      }
+
+      const removed: DiffLineModel[] = []
+      const added: DiffLineModel[] = []
+
+      while (lines[index]?.lineType === "remove") {
+        removed.push(lines[index])
+        index += 1
+      }
+
+      while (lines[index]?.lineType === "add") {
+        added.push(lines[index])
+        index += 1
+      }
+
+      const maxRows = Math.max(removed.length, added.length)
+      for (let changeIndex = 0; changeIndex < maxRows; changeIndex += 1) {
+        rows.push({
+          key: `change-${index}-${changeIndex}`,
+          left: removed[changeIndex],
+          right: added[changeIndex],
+          changed: true,
+        })
+      }
+    }
+
+    return rows
+  })()
+
+  const renderSplitCodeCell = (
+    line: DashboardAnalysisDiffFile["lines"][number] | undefined,
+    side: "left" | "right",
+    rowIndex: number,
+  ) => {
+    const isRemove = side === "left" && line?.lineType === "remove"
+    const isAdd = side === "right" && line?.lineType === "add"
+    const lineNumber = side === "left" ? line?.oldLineNo : line?.newLineNo
+    const background = isRemove
+      ? "rgba(254,226,226,0.88)"
+      : isAdd
+      ? "rgba(220,252,231,0.86)"
+      : rowIndex % 2 === 0
+      ? "#ffffff"
+      : "#fbfcff"
+    const contentColor = isRemove ? "#b91c1c" : isAdd ? "#166534" : "#1f2937"
+
+    return (
+      <div
+        className="flex min-w-0 items-center border-b"
+        style={{
+          minHeight: 22,
+          background,
+          borderColor: "#edf1f7",
+          boxShadow: isRemove
+            ? "inset 3px 0 0 rgba(239,68,68,0.45)"
+            : isAdd
+            ? "inset 3px 0 0 rgba(34,197,94,0.45)"
+            : "none",
+        }}
+      >
+        <span
+          className="w-9 flex-shrink-0 select-none pr-2 text-right"
+          style={{
+            color: line ? "#64748b" : "#cbd5e1",
+            fontSize: 11,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+          }}
+        >
+          {lineNumber ?? ""}
+        </span>
+        <code
+          className="min-w-0 flex-1 overflow-hidden text-ellipsis whitespace-pre px-2"
+          style={{
+            color: contentColor,
+            fontSize: 12,
+            fontFamily: "'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace",
+            fontWeight: isRemove || isAdd ? 600 : 500,
+          }}
+        >
+          {line?.content ?? ""}
+        </code>
+      </div>
+    )
+  }
+
+  const renderSplitReviewPanel = () => {
+    const finding = selectedFinding ?? fileFindings.find((item) => !dismissedFindings.has(item.id))
+    if (!finding) return null
+
+    const findingLineLabel = finding.lineStart != null
+      ? `ligne ${finding.lineStart}${finding.lineEnd != null ? `-${finding.lineEnd}` : ""}`
+      : "ligne"
+
+    return (
+      <div
+        className="flex-shrink-0 border-t bg-white px-4 py-3"
+        style={{ borderColor: "#dbe3ef", boxShadow: "0 -8px 20px rgba(15,23,42,0.04)" }}
+      >
+        <div className="rounded-md border bg-white" style={{ borderColor: "#b9d2ff" }}>
+          <div className="flex items-center gap-2 border-b px-3 py-2" style={{ borderColor: "#dbeafe" }}>
+            <span
+              className="inline-flex h-6 w-6 items-center justify-center rounded-full text-[10px] font-bold"
+              style={{ background: "#fef3c7", color: "#ca8a04", border: "1px solid #fde68a" }}
+            >
+              AI
+            </span>
+            <span className="text-[12px] font-bold" style={{ color: "#1e293b" }}>RAG Reviewer</span>
+            <span className="text-[11px]" style={{ color: "#64748b" }}>{findingLineLabel}</span>
+            <span className="text-[11px]" style={{ color: "#64748b" }}>·</span>
+            <span className="text-[11px]" style={{ color: "#f97316" }}>{finding.severity === "BLOCKER" ? "blocker" : "warning"}</span>
+            {finding.ruleId && (
+              <span
+                className="rounded px-1.5 py-0.5 text-[10px] font-semibold"
+                style={{ color: "#b45309", background: "#fef3c7", border: "1px solid #fde68a" }}
+              >
+                {finding.ruleId}
+              </span>
+            )}
+          </div>
+          <div className="px-3 py-2">
+            <p className="text-[12px] leading-relaxed" style={{ color: "#334155" }}>
+              {finding.message}
+              {finding.suggestion && <span style={{ color: "#2563eb" }}> — {finding.suggestion}</span>}
+            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <button
+                className="inline-flex h-7 items-center gap-1 rounded border px-3 text-[11px] font-semibold"
+                style={{ color: "#2563eb", background: "#eff6ff", borderColor: "#bfdbfe" }}
+              >
+                Appliquer correction
+              </button>
+              <button
+                className="inline-flex h-7 items-center gap-1 rounded border px-3 text-[11px] font-semibold"
+                style={{ color: "#475569", background: "#ffffff", borderColor: "#d8e0ec" }}
+                onClick={() => finding.lineStart != null && setActiveCommentLine(finding.lineStart)}
+              >
+                Commenter
+              </button>
+              <button
+                className="inline-flex h-7 items-center gap-1 rounded border px-3 text-[11px] font-semibold"
+                style={{ color: "#2563eb", background: "#eff6ff", borderColor: "#bfdbfe" }}
+                onClick={() => setClarificationTarget(finding)}
+              >
+                <PhoneCall className="h-3 w-3" />
+                Appel
+              </button>
+              <button
+                className="inline-flex h-7 items-center gap-1 rounded border px-3 text-[11px] font-semibold"
+                style={{ color: "#64748b", background: "#ffffff", borderColor: "#d8e0ec" }}
+                onClick={() => setDismissedFindings((prev) => new Set([...prev, finding.id]))}
+              >
+                Ignorer
+              </button>
+            </div>
+          </div>
+          <div className="border-t px-3 py-2" style={{ borderColor: "#dbeafe", background: "#fbfdff" }}>
+            <div className="mb-1.5 flex items-center gap-2">
+              <MessageSquarePlus className="h-3.5 w-3.5" style={{ color: "#2563eb" }} />
+              <span className="text-[11px] font-semibold" style={{ color: "#1e293b" }}>Ajouter un commentaire</span>
+              <span className="text-[10px]" style={{ color: "#64748b" }}>{findingLineLabel}</span>
+            </div>
+            <div
+              className="rounded border px-3 py-2 text-[12px]"
+              style={{ minHeight: 48, color: "#94a3b8", background: "#ffffff", borderColor: "#cbd5e1" }}
+            >
+              Ecrivez un commentaire...
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  const renderSplitComparisonPane = () => (
+    <div className="flex h-full min-w-0 flex-1 flex-col bg-white">
+      <div className="grid flex-shrink-0 grid-cols-2 border-b" style={{ borderColor: "#dbe3ef", background: "#f8fafc" }}>
+        <div className="border-r px-4 py-2 text-[12px] font-semibold" style={{ color: "#64748b", borderColor: "#dbe3ef" }}>
+          Ancienne version ({activeBranch || "main"})
+        </div>
+        <div className="px-4 py-2 text-[12px] font-semibold" style={{ color: "#64748b" }}>
+          Nouvelle version (branche)
+        </div>
+      </div>
+      <div className="min-h-0 flex-1 overflow-auto bg-white">
+        {!selectedFile || splitRows.length === 0 ? (
+          <div className="p-8 text-[13px]" style={{ color: "#64748b" }}>
+            No detailed diff is available for this file.
+          </div>
+        ) : (
+          <div className="min-w-[900px]">
+            {splitRows.map((row, index) => (
+              <div key={row.key} className="grid grid-cols-2">
+                <div className="min-w-0 border-r" style={{ borderColor: "#dbe3ef" }}>
+                  {renderSplitCodeCell(row.left, "left", index)}
+                </div>
+                <div className="min-w-0">
+                  {renderSplitCodeCell(row.right, "right", index)}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+      {renderSplitReviewPanel()}
+    </div>
+  )
+
+  const renderEditorPane = () => (
+    <div className="h-full min-w-0 flex-1">
+      {!repoCoordinates ? (
+        <div className="p-8 text-[13px] flex items-center gap-3" style={{ color: "#f87171" }}>
+          <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+          Cannot open editor: repository format is invalid.
+        </div>
+      ) : (
+        <EnhancedFuturisticDiffEditor
+          owner={repoCoordinates.owner}
+          repo={repoCoordinates.repo}
+          branch={activeBranch}
+          filePath={selectedFilePath}
+          onSaved={handleEditorSaved}
+          saveTrigger={editorSaveTrigger}
+          onBranchResolved={setActiveBranch}
+          originalContent={selectedFile?.lines?.map(l => l.content).join('\n') || ""}
+          modifiedContent={selectedFile?.lines?.filter((l) => l.lineType !== "remove").map((l) => l.content).join('\n') || ""}
+          findingId={selectedFinding?.id}
+          findingDescription={selectedFinding?.message}
+          diffMode="side-by-side"
+          collaborativeMode={true}
+          showMinimap={viewMode !== "split"}
+          showLineNumbers={true}
+          fontSize={viewMode === "split" ? 13 : 14}
+          compact={true}
+        />
+      )}
+    </div>
+  )
+
+  const renderDiffPane = (showMarkers = true) => (
+    <div className="flex h-full min-w-0 flex-1 overflow-hidden">
+      <div className="min-w-0 flex-1 overflow-auto" style={{ background: "var(--bg-page)" }}>
+        {!selectedFile || selectedFile.lines.length === 0 ? (
+          <div className="p-8 text-[13px]" style={{ color: "var(--text-subtle)" }}>
+            No detailed diff is available for this file.
+          </div>
+        ) : (
+          <div className="py-1">
+            {selectedFile.lines.map((line, idx) => {
+              const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
+              return (
+                <div key={`${selectedFile.id}-${idx}`}>
+                  <DiffLine
+                    line={line}
+                    lineNumber={lineNumber}
+                    findings={fileFindings}
+                    dismissedFindings={dismissedFindings}
+                    onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
+                    onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
+                    onRequestCall={(finding) => setClarificationTarget(finding)}
+                    isCommenting={activeCommentLine === lineNumber}
+                  />
+                  {commentsByLine.get(lineNumber)?.map((comment) => (
+                    <div key={comment.id} className="mx-4 my-2">
+                      <CommentThread
+                        rootComment={comment}
+                        replies={getReplies(comment.id)}
+                        authors={commentAuthors}
+                        currentUserId={currentUser.id}
+                        onReply={handleReplyToComment}
+                        onResolve={handleResolveComment}
+                        onUnresolve={handleUnresolveComment}
+                      />
+                    </div>
+                  ))}
+                  <AnimatePresence>
+                    {activeCommentLine === lineNumber && (
+                      <InlineCommentForm
+                        analysisId={id!}
+                        filePath={selectedFilePath!}
+                        lineStart={lineNumber}
+                        codeSnippet={line.content}
+                        onSubmit={handleAddPendingComment}
+                        onCancel={() => setActiveCommentLine(null)}
+                      />
+                    )}
+                  </AnimatePresence>
+                </div>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {showMarkers && (
+        <div
+          className="w-[70px] flex-shrink-0 overflow-hidden border-l px-1.5 pt-3"
+          style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
+        >
+          <div
+            className="mb-2.5 h-12 rounded-md"
+            style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
+          />
+          {fileFindings.slice(0, 14).map((finding, index) => {
+            const color = finding.severity === "BLOCKER"
+              ? "rgba(248,113,113,0.7)"
+              : finding.severity === "WARN"
+              ? "rgba(251,191,36,0.7)"
+              : "rgba(99,102,241,0.7)"
+            const width = 20 + (((finding.lineStart ?? index + 1) * 17) % 30)
+            return (
+              <motion.div
+                key={finding.id}
+                initial={{ opacity: 0, scaleX: 0 }}
+                animate={{ opacity: 1, scaleX: 1 }}
+                transition={{ delay: index * 0.06, duration: 0.3 }}
+                className="mb-[5px] rounded-full origin-left"
+                style={{ height: 3, width: `${width}px`, background: color }}
+              />
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
 
   return (
     <motion.div
@@ -1056,14 +1402,14 @@ export function AnnotatedDiff() {
                       <motion.div
                         layoutId="activeTab"
                         className="absolute inset-x-0 top-0 h-0.5"
-                        style={{ background: "linear-gradient(90deg, #6366f1, #818cf8)" }}
+                        style={{ background: "linear-gradient(90deg, #f97316, #fb923c)" }}
                         transition={{ type: "spring", stiffness: 500, damping: 40 }}
                       />
                     )}
                     <ExtBadge ext={info.ext} color={info.extColor} />
                     <span
                       className="flex-1 truncate text-left text-[11.5px] font-medium"
-                      style={{ color: isActive ? "#e2e8f0" : "#475569" }}
+                      style={{ color: isActive ? "#0f172a" : "#64748b" }}
                     >
                       {info.filename}
                     </span>
@@ -1103,52 +1449,54 @@ export function AnnotatedDiff() {
               {/* Toolbar buttons */}
               <div className="flex items-center gap-1 flex-shrink-0">
                 {[
-                  { label: "Split", icon: SplitSquareHorizontal, action: undefined, active: false },
-                  { label: "Diff", icon: FileDiff, action: () => setViewMode("diff"), active: viewMode === "diff" },
-                  { label: "Edit", icon: Eye, action: () => setViewMode("edit"), active: viewMode === "edit" },
-                ].map((btn) => (
-                  <button
-                    key={btn.label}
-                    onClick={btn.action}
-                    className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-medium transition-all"
-                    style={{
-                      borderRadius: 5,
-                      background: btn.active
-                        ? "linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(129,140,248,0.15) 100%)"
-                        : "rgba(255,255,255,0.04)",
-                      color: btn.active ? "#a5b4fc" : "#475569",
-                      border: btn.active ? "1px solid rgba(99,102,241,0.35)" : "1px solid rgba(255,255,255,0.06)",
-                    }}
-                  >
-                    <btn.icon className="h-3 w-3" />
-                    {btn.label}
-                  </button>
-                ))}
+                  { label: "Split", icon: SplitSquareHorizontal, action: () => setViewMode("split"), active: viewMode === "split", tone: "#f97316" },
+                  { label: "Diff", icon: FileDiff, action: () => setViewMode("diff"), active: viewMode === "diff", tone: "#2563eb" },
+                  { label: "Editeur", icon: Eye, action: () => setViewMode("edit"), active: viewMode === "edit", tone: "#64748b" },
+                ].map((btn) => {
+                  const activeBackground = btn.label === "Split" ? "#fff7ed" : btn.label === "Diff" ? "#eff6ff" : "#f8fafc"
+                  const inactiveBackground = "#ffffff"
+                  return (
+                    <button
+                      key={btn.label}
+                      onClick={btn.action}
+                      className="flex h-7 items-center gap-1 rounded-md border px-3 text-[11px] font-semibold transition-all"
+                      style={{
+                        background: btn.active ? activeBackground : inactiveBackground,
+                        color: btn.active ? btn.tone : "#475569",
+                        borderColor: btn.active ? btn.tone : "#d8e0ec",
+                        boxShadow: btn.active ? `0 0 0 2px ${btn.tone}12` : "none",
+                      }}
+                    >
+                      <btn.icon className="h-3.5 w-3.5" />
+                      {btn.label}
+                    </button>
+                  )
+                })}
                 <button
                   onClick={handleToolbarSave}
-                  disabled={viewMode !== "edit" || !selectedFilePath || !repoCoordinates || branchLoading}
-                  className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  disabled={!isEditorVisible || !selectedFilePath || !repoCoordinates || branchLoading}
+                  className="flex h-7 items-center gap-1 rounded-md border px-3 text-[11px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
-                    borderRadius: 5,
-                    background: "rgba(34,197,94,0.15)",
-                    color: "#4ade80",
-                    border: "1px solid rgba(34,197,94,0.25)",
+                    background: "#ecfdf5",
+                    color: "#16a34a",
+                    borderColor: "#86efac",
                   }}
                 >
-                  <Save className="h-3 w-3" />
-                  Save
+                  <Save className="h-3.5 w-3.5" />
+                  Enregistrer
                 </button>
                 <button
-                  className="flex h-6 items-center gap-1 px-2.5 text-[10.5px] font-medium"
+                  className="flex h-7 items-center gap-1 rounded-md border px-3 text-[11px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                  onClick={() => submitGitHubReview("APPROVE")}
+                  disabled={!analysis.prNumber || isSubmittingGitHubReview}
                   style={{
-                    borderRadius: 5,
-                    background: "rgba(168,85,247,0.12)",
-                    color: "#c084fc",
-                    border: "1px solid rgba(168,85,247,0.2)",
+                    background: "#ffffff",
+                    color: "#f97316",
+                    borderColor: "#fdba74",
                   }}
                 >
-                  <Play className="h-3 w-3" />
-                  Run
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+                  Approuver
                 </button>
               </div>
             </div>
@@ -1156,7 +1504,18 @@ export function AnnotatedDiff() {
             {/* Editor / Diff Content */}
             <div className="flex min-h-0 flex-1 overflow-hidden">
               <AnimatePresence mode="wait">
-                {viewMode === "edit" ? (
+                {viewMode === "split" ? (
+                  <motion.div
+                    key="split"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="flex min-w-0 flex-1 overflow-hidden"
+                  >
+                    {renderSplitComparisonPane()}
+                  </motion.div>
+                ) : viewMode === "edit" ? (
                   <motion.div
                     key="edit"
                     initial={{ opacity: 0 }}
@@ -1165,32 +1524,7 @@ export function AnnotatedDiff() {
                     transition={{ duration: 0.15 }}
                     className="min-w-0 flex-1"
                   >
-                    {!repoCoordinates ? (
-                      <div className="p-8 text-[13px] flex items-center gap-3" style={{ color: "#f87171" }}>
-                        <AlertTriangle className="h-5 w-5 flex-shrink-0" />
-                        Cannot open editor: repository format is invalid.
-                      </div>
-                    ) : (
-                      <EnhancedFuturisticDiffEditor
-                        owner={repoCoordinates.owner}
-                        repo={repoCoordinates.repo}
-                        branch={activeBranch}
-                        filePath={selectedFilePath}
-                        onSaved={handleEditorSaved}
-                        saveTrigger={editorSaveTrigger}
-                        onBranchResolved={setActiveBranch}
-                        originalContent={selectedFile?.lines?.map(l => l.content).join('\n') || ""}
-                        modifiedContent={selectedFile?.lines?.filter((l) => l.lineType !== "remove").map((l) => l.content).join('\n') || ""}
-                        findingId={selectedFinding?.id}
-                        findingDescription={selectedFinding?.message}
-                        diffMode="side-by-side"
-                        collaborativeMode={true}
-                        showMinimap={true}
-                        showLineNumbers={true}
-                        fontSize={14}
-                        compact={true}
-                      />
-                    )}
+                    {renderEditorPane()}
                   </motion.div>
                 ) : (
                   <motion.div
@@ -1201,88 +1535,7 @@ export function AnnotatedDiff() {
                     transition={{ duration: 0.15 }}
                     className="flex min-w-0 flex-1 overflow-hidden"
                   >
-                    {/* Diff lines */}
-                    <div className="min-w-0 flex-1 overflow-auto" style={{ background: "var(--bg-page)" }}>
-                      {!selectedFile || selectedFile.lines.length === 0 ? (
-                        <div className="p-8 text-[13px]" style={{ color: "var(--text-subtle)" }}>
-                          No detailed diff is available for this file.
-                        </div>
-                      ) : (
-                        <div className="py-1">
-                          {selectedFile.lines.map((line, idx) => {
-                            const lineNumber = line.newLineNo ?? line.oldLineNo ?? idx + 1
-                            return (
-                              <div key={`${selectedFile.id}-${idx}`}>
-                                <DiffLine
-                                  line={line}
-                                  lineNumber={lineNumber}
-                                  findings={fileFindings}
-                                  dismissedFindings={dismissedFindings}
-                                  onDismiss={(fid) => setDismissedFindings((prev) => new Set([...prev, fid]))}
-                                  onComment={(targetLine) => setActiveCommentLine((prev) => (prev === targetLine ? null : targetLine))}
-                                  onRequestCall={(finding) => setClarificationTarget(finding)}
-                                  isCommenting={activeCommentLine === lineNumber}
-                                />
-                                {commentsByLine.get(lineNumber)?.map((comment) => (
-                                  <div key={comment.id} className="mx-4 my-2">
-                                    <CommentThread
-                                      rootComment={comment}
-                                      replies={getReplies(comment.id)}
-                                      authors={commentAuthors}
-                                      currentUserId={currentUser.id}
-                                      onReply={handleReplyToComment}
-                                      onResolve={handleResolveComment}
-                                      onUnresolve={handleUnresolveComment}
-                                    />
-                                  </div>
-                                ))}
-                                <AnimatePresence>
-                                  {activeCommentLine === lineNumber && (
-                                    <InlineCommentForm
-                                      analysisId={id!}
-                                      filePath={selectedFilePath!}
-                                      lineStart={lineNumber}
-                                      codeSnippet={line.content}
-                                      onSubmit={handleAddPendingComment}
-                                      onCancel={() => setActiveCommentLine(null)}
-                                    />
-                                  )}
-                                </AnimatePresence>
-                              </div>
-                            )
-                          })}
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Mini-map / severity markers */}
-                    <div
-                      className="w-[70px] flex-shrink-0 overflow-hidden border-l px-1.5 pt-3"
-                      style={{ background: "var(--bg-card)", borderColor: "var(--border-card)" }}
-                    >
-                      <div
-                        className="mb-2.5 h-12 rounded-md"
-                        style={{ background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.04)" }}
-                      />
-                      {fileFindings.slice(0, 14).map((finding, index) => {
-                        const color = finding.severity === "BLOCKER"
-                          ? "rgba(248,113,113,0.7)"
-                          : finding.severity === "WARN"
-                          ? "rgba(251,191,36,0.7)"
-                          : "rgba(99,102,241,0.7)"
-                        const width = 20 + (((finding.lineStart ?? index + 1) * 17) % 30)
-                        return (
-                          <motion.div
-                            key={finding.id}
-                            initial={{ opacity: 0, scaleX: 0 }}
-                            animate={{ opacity: 1, scaleX: 1 }}
-                            transition={{ delay: index * 0.06, duration: 0.3 }}
-                            className="mb-[5px] rounded-full origin-left"
-                            style={{ height: 3, width: `${width}px`, background: color }}
-                          />
-                        )
-                      })}
-                    </div>
+                    {renderDiffPane(true)}
                   </motion.div>
                 )}
               </AnimatePresence>
@@ -1471,7 +1724,7 @@ export function AnnotatedDiff() {
                   whileHover={{ scale: 1.01 }}
                   whileTap={{ scale: 0.98 }}
                   onClick={handleToolbarSave}
-                  disabled={viewMode !== "edit" || !selectedFilePath || !repoCoordinates || branchLoading}
+                  disabled={!isEditorVisible || !selectedFilePath || !repoCoordinates || branchLoading}
                   className="flex h-9 w-full items-center justify-center gap-2 text-[12px] font-semibold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{
                     borderRadius: 8,

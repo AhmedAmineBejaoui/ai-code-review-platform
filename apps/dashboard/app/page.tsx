@@ -15,9 +15,9 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Codebase AI | Context-aware code review for modern teams',
+  title: 'Devora | Context-aware code review for modern teams',
   description:
-    'Codebase AI reviews pull requests with full codebase context, team-specific rules, AI summaries, and security-first workflows.',
+    'Devora reviews pull requests with full codebase context, team-specific rules, AI summaries, and security-first workflows.',
 };
 
 export default function HomePage() {

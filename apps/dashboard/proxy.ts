@@ -8,8 +8,9 @@ import {
 
 const isProtectedRoute = createRouteMatcher(["/dashboard(.*)", "/auth/role-redirect(.*)"])
 const isInvitationAuthRoute = createRouteMatcher(["/sign-in(.*)", "/sign-up(.*)", "/accept-invitation(.*)"])
+const clerkEnabled = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim())
 
-export default clerkMiddleware(async (auth, req) => {
+const protectedProxy = clerkMiddleware(async (auth, req) => {
   const hasInvitationToken = hasClerkInvitationToken(req.nextUrl.searchParams)
   if (hasInvitationToken && !isInvitationAuthRoute(req)) {
     const acceptInvitePath = buildPathWithForwardedClerkAuthParams("/accept-invitation", req.nextUrl.searchParams)
@@ -22,6 +23,14 @@ export default clerkMiddleware(async (auth, req) => {
 
   return NextResponse.next()
 })
+
+export default function proxy(...args: Parameters<typeof protectedProxy>) {
+  if (!clerkEnabled) {
+    return NextResponse.next()
+  }
+
+  return protectedProxy(...args)
+}
 
 export const config = {
   matcher: [

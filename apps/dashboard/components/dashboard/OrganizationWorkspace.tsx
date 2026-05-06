@@ -3,7 +3,6 @@
 import { Building2, Info, MailPlus, UserCog } from "lucide-react"
 import { CreateOrganization, OrganizationProfile, OrganizationSwitcher, useAuth } from "@clerk/nextjs"
 
-import { clerkAuthAppearance } from "@/components/auth/clerk-auth-appearance"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 
@@ -46,7 +45,7 @@ export function OrganizationWorkspace({
 
           <div className="rounded-xl border border-gray-200/70 bg-gray-50/70 p-4 dark:border-gray-800/70 dark:bg-gray-950/60">
             <div className="mb-2 text-sm font-medium text-foreground dark:text-gray-100">Switch organization</div>
-            <OrganizationSwitcher hidePersonal={false} appearance={clerkAuthAppearance} />
+            <OrganizationSwitcher hidePersonal={false} />
           </div>
 
           {!orgId && (
@@ -55,7 +54,7 @@ export function OrganizationWorkspace({
                 <Info className="h-4 w-4" />
                 Aucun org selectionne. Tu restes en mode individuel.
               </div>
-              <CreateOrganization appearance={clerkAuthAppearance} />
+              <CreateOrganization />
             </div>
           )}
         </CardContent>
@@ -75,7 +74,7 @@ export function OrganizationWorkspace({
           <CardContent>
             {orgId ? (
               isOrgAdmin ? (
-                <OrganizationProfile path={profilePath} routing="path" appearance={clerkAuthAppearance} />
+                <OrganizationProfile path={profilePath} routing="path" />
               ) : (
                 <div className="rounded-xl border border-amber-300/70 bg-amber-50/70 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/20 dark:text-amber-300">
                   <div className="mb-1 flex items-center gap-2 font-medium">

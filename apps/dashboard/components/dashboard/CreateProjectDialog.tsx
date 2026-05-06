@@ -30,6 +30,7 @@ import { PermissionValidationDialog } from "./PermissionValidationDialog"
 import { auditService } from "@/lib/audit-service"
 import { type PermissionValidationResult } from "@/lib/github-permissions"
 import { fetchGithubRepos } from "@/lib/github-repos"
+import { toast } from "sonner"
 
 // Types
 interface Team {
@@ -284,7 +285,9 @@ export function CreateProjectDialog({
       setShowMembersPreview(true)
     } else {
       // Show error for insufficient permissions
-      setError("Permissions insuffisantes pour importer ce repository. Contactez le propriétaire du repository.")
+      const msg = "Permissions insuffisantes pour importer ce repository. Contactez le propriétaire du repository."
+      toast.error("Permissions insuffisantes", { description: msg, duration: 6000 })
+      setError(msg)
       setShowPermissionValidation(false)
       setIsSubmitting(false)
     }
@@ -295,6 +298,8 @@ export function CreateProjectDialog({
 
     setIsSubmitting(true)
     setError(null)
+
+    const toastId = toast.loading("Import du projet GitHub en cours...")
 
     try {
       // Import repository with selected members
@@ -332,6 +337,11 @@ export function CreateProjectDialog({
 
       const result = await response.json()
       
+      toast.dismiss(toastId)
+      toast.success("Projet importé avec succès !", {
+        description: `Le projet "${pendingImportData.name}" a été importé depuis GitHub.`,
+        duration: 5000,
+      })
       // Record audit action for project import
       try {
         const importStats = {
@@ -388,7 +398,10 @@ export function CreateProjectDialog({
         router.push(`/dashboard/projects/${encodeURIComponent(result.project_id)}`)
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Erreur inconnue")
+      const msg = err instanceof Error ? err.message : "Erreur inconnue"
+      toast.dismiss(toastId)
+      toast.error("Échec de l'import du projet", { description: msg, duration: 6000 })
+      setError(msg)
     } finally {
       setIsSubmitting(false)
     }

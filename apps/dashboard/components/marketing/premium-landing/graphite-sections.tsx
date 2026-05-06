@@ -98,7 +98,7 @@ function SlackNotification({ className }: { className?: string }) {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-sm font-semibold text-white">Codebase AI</span>
+            <span className="text-sm font-semibold text-white">Devora</span>
             <span className="text-xs text-white/40">22m ago</span>
           </div>
           <p className="text-sm text-white/70 leading-snug">
@@ -167,10 +167,10 @@ function AIChatVisual({ className }: { className?: string }) {
     <div className={cn('rounded-lg border border-white/10 bg-[#111] overflow-hidden', className)}>
       <div className="px-4 py-3 border-b border-white/10 flex items-center gap-2">
         <Bot className="w-4 h-4 text-violet-400" />
-        <span className="text-sm text-white font-medium">Ask Codebase AI</span>
+        <span className="text-sm text-white font-medium">Ask Devora</span>
       </div>
       <div className="p-4 space-y-3">
-        <div className="text-xs text-white/40 font-mono">Ask Codebase AI to:</div>
+        <div className="text-xs text-white/40 font-mono">Ask Devora to:</div>
         <ul className="space-y-1">
           {['Explain code changes', 'Fix issues and CI failures', 'Address comments', 'Search the knowledge base'].map((item) => (
             <li key={item} className="flex items-center gap-2 text-xs text-white/70">
@@ -197,7 +197,7 @@ function AIChatVisual({ className }: { className?: string }) {
           <input
             type="text"
             readOnly
-            placeholder="Ask Codebase AI about this PR…"
+            placeholder="Ask Devora about this PR…"
             className="flex-1 bg-transparent text-xs text-white/40 outline-none placeholder:text-white/30"
           />
         </div>
@@ -305,7 +305,7 @@ export function GraphiteSections({ monoClassName, displayClassName }: Props) {
                     <Bot className="w-5 h-5 text-[#00F5D4]" />
                   </div>
                   <div>
-                    <p className="text-sm font-semibold text-white mb-0.5">Codebase AI</p>
+                    <p className="text-sm font-semibold text-white mb-0.5">Devora</p>
                     <p className="text-sm text-white/60">
                       ✅ Analysis complete on{' '}
                       <span className="text-[#00F5D4]">[#27024] fix: auth token refresh</span>

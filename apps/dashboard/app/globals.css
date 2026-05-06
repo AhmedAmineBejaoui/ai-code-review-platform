@@ -73,6 +73,29 @@
   --dur-base: 200ms;
   --dur-slow: 300ms;
 
+  /* Auth surfaces */
+  --auth-page-bg: #EDEFF3;
+  --auth-bg: #F3F3F1;
+  --auth-frame: #FFFFFF;
+  --auth-panel: #FFFFFF;
+  --auth-panel-muted: #F7F7F5;
+  --auth-card: rgba(255, 255, 255, 0.88);
+  --auth-field: rgba(255, 255, 255, 0.76);
+  --auth-glass: rgba(255, 255, 255, 0.74);
+  --auth-border: rgba(15, 18, 24, 0.13);
+  --auth-grid: rgba(73, 82, 127, 0.08);
+  --auth-card-shadow: rgba(15, 18, 24, 0.10);
+  --auth-page-shadow: rgba(15, 18, 24, 0.18);
+  --auth-orange-shadow: rgba(232, 113, 58, 0.28);
+  --auth-diagram-line: rgba(47, 124, 255, 0.22);
+  --auth-diagram-node: #EEF5FF;
+  --auth-diagram-shadow: rgba(47, 124, 255, 0.18);
+  --auth-accent-soft: rgba(232, 113, 58, 0.12);
+  --auth-dot: #D6D9DF;
+  --auth-video-bg: #FFFFFF;
+  --auth-video-caption: rgba(250, 250, 248, 0.72);
+  --auth-video-glow: rgba(47, 124, 255, 0.10);
+
   /* === Core shadcn tokens === */
   --background: var(--bg-page);
   --foreground: var(--text-primary);
@@ -160,6 +183,29 @@
   --glow-violet: 0 0 24px rgba(124,58,237,0.40);
   --shadow-card: 0 4px 16px rgba(0,0,0,0.50), 0 1px 3px rgba(0,0,0,0.30);
   --shadow-elevated: 0 12px 32px rgba(0,0,0,0.60), 0 4px 8px rgba(0,0,0,0.30);
+
+  /* Auth surfaces */
+  --auth-page-bg: #070A10;
+  --auth-bg: #0F1218;
+  --auth-frame: #10131A;
+  --auth-panel: #151923;
+  --auth-panel-muted: #11151F;
+  --auth-card: rgba(19, 23, 34, 0.76);
+  --auth-field: rgba(15, 19, 28, 0.74);
+  --auth-glass: rgba(19, 23, 34, 0.72);
+  --auth-border: rgba(255, 255, 255, 0.12);
+  --auth-grid: rgba(126, 136, 181, 0.08);
+  --auth-card-shadow: rgba(0, 0, 0, 0.34);
+  --auth-page-shadow: rgba(0, 0, 0, 0.55);
+  --auth-orange-shadow: rgba(255, 107, 43, 0.32);
+  --auth-diagram-line: rgba(95, 143, 255, 0.28);
+  --auth-diagram-node: rgba(255, 255, 255, 0.88);
+  --auth-diagram-shadow: rgba(47, 124, 255, 0.20);
+  --auth-accent-soft: rgba(255, 107, 43, 0.16);
+  --auth-dot: rgba(148, 163, 184, 0.35);
+  --auth-video-bg: #0B0D12;
+  --auth-video-caption: rgba(11, 13, 18, 0.72);
+  --auth-video-glow: rgba(47, 124, 255, 0.16);
 
   /* === Core shadcn tokens === */
   --background: var(--bg-page);
@@ -677,3 +723,10 @@ input, textarea, [contenteditable="true"], .selectable {
 .dark [data-badge="orange"] { background: rgba(255,107,43,0.20); color: #FFAA70; border: 1px solid rgba(255,107,43,0.30); }
 .dark [data-badge="teal"]   { background: rgba(0,245,212,0.15); color: #00F5D4; border: 1px solid rgba(0,245,212,0.25); }
 .dark [data-badge="emerald"]{ background: rgba(16,185,129,0.15); color: #34D399; border: 1px solid rgba(16,185,129,0.25); }
+
+/* Hide Clerk dev footer only */
+.cl-footer { display: none !important; }
+[data-localization-key="footerPageLink__privacy"] { display: none !important; }
+[data-localization-key="footerPageLink__terms"] { display: none !important; }
+[data-localization-key="footerPageLink__help"] { display: none !important; }
+

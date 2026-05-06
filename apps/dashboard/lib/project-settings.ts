@@ -5,7 +5,7 @@
  * including auto-analysis toggle management.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:8000"
+import { getBackendApiUrl } from "@/lib/backend-url-client"
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -100,7 +100,7 @@ export async function getAutoAnalysisState(
   token?: string
 ): Promise<AutoAnalysisState> {
   const response = await fetchWithAuth(
-    `${API_BASE}/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis`,
+    getBackendApiUrl(`/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis`),
     { method: "GET" },
     token
   )
@@ -122,7 +122,7 @@ export async function updateAutoAnalysisState(
   token?: string
 ): Promise<AutoAnalysisState> {
   const response = await fetchWithAuth(
-    `${API_BASE}/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis`,
+    getBackendApiUrl(`/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis`),
     {
       method: "PUT",
       body: JSON.stringify(request),
@@ -147,7 +147,7 @@ export async function temporaryDisableAutoAnalysis(
   token?: string
 ): Promise<AutoAnalysisState> {
   const response = await fetchWithAuth(
-    `${API_BASE}/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/temporary-disable`,
+    getBackendApiUrl(`/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/temporary-disable`),
     {
       method: "POST",
       body: JSON.stringify(request),
@@ -171,7 +171,7 @@ export async function clearTemporaryDisable(
   token?: string
 ): Promise<AutoAnalysisState> {
   const response = await fetchWithAuth(
-    `${API_BASE}/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/temporary-disable`,
+    getBackendApiUrl(`/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/temporary-disable`),
     { method: "DELETE" },
     token
   )
@@ -197,7 +197,9 @@ export async function getAutoAnalysisAuditLog(
   if (options.offset) params.set("offset", options.offset.toString())
 
   const queryString = params.toString()
-  const url = `${API_BASE}/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/audit-log${queryString ? `?${queryString}` : ""}`
+  const url = getBackendApiUrl(
+    `/api/v1/projects/${encodeProjectId(projectId)}/settings/auto-analysis/audit-log${queryString ? `?${queryString}` : ""}`,
+  )
 
   const response = await fetchWithAuth(url, { method: "GET" }, token)
 

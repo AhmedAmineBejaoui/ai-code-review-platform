@@ -131,7 +131,7 @@ function createMinimalHomePage() {
           color: '#1a202c',
           marginBottom: '16px'
         }}>
-          AI Code Review
+          Devora
         </h1>
         <p style={{ 
           fontSize: '16px',
@@ -182,7 +182,7 @@ function createMinimalLayout() {
   
   // Create minimal layout without ANY imports
   const minimalLayout = `export const metadata = {
-  title: 'AI Code Review - Mobile',
+  title: 'Devora',
   description: 'AI-powered code review platform',
 }
 

@@ -1,394 +1,441 @@
 "use client"
 
-import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import {
+  Suspense, useCallback, useEffect, useMemo, useRef, useState,
+} from "react"
+import { useSearchParams } from "next/navigation"
 import Link from "next/link"
 import { motion, AnimatePresence } from "framer-motion"
 import {
-  Search, Filter, SlidersHorizontal, ChevronDown, ChevronUp,
-  Eye, Trash2, RotateCw, GitCompare, AlertCircle, AlertTriangle,
-  Info, Clock, CheckCircle2, XCircle, Loader2, Plus, CalendarDays,
-  FolderGit2, GitBranch, BarChart3, Activity, Zap, ArrowUpDown,
-  ArrowUp, ArrowDown, ListFilter, RefreshCw, Terminal,
+  Search, Eye, Trash2, GitCompare, AlertTriangle, XCircle,
+  Clock, CheckCircle2, Loader2, CalendarDays, FolderGit2,
+  BarChart3, Activity, ArrowUpDown, ArrowUp, ArrowDown,
+  RefreshCw, Terminal, ChevronUp, ChevronDown, ChevronLeft,
+  ChevronRight, Filter, Plus,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Badge } from "@/components/ui/badge"
+import { Button }   from "@/components/ui/button"
+import { Input }    from "@/components/ui/input"
 import { Checkbox } from "@/components/ui/checkbox"
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "@/components/ui/select"
-import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { AnalysesPageHeader } from "@/components/dashboard/AnalysesPageHeader"
+import { Separator }  from "@/components/ui/separator"
+import { cn } from "@/lib/utils"
 import {
   deleteDashboardAnalysis,
   fetchDashboardAnalyses,
   hasActiveDashboardAnalysis,
   type DashboardAnalysisItem,
 } from "@/lib/dashboard-analyses"
-import { normalizeAnalysisStatus as normalizeStatus } from "@/lib/domain/analysis-status"
+import { normalizeAnalysisStatus as norm } from "@/lib/domain/analysis-status"
+import { AnalysesPageHeader } from "@/components/dashboard/AnalysesPageHeader"
 import AgentPlan from "@/components/ui/agent-plan"
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
+// ─── Design tokens ────────────────────────────────────────────────────────────
+const ORANGE = "#E8713A"
+const PAGE_SIZE = 6
 
-function formatDate(value: string) {
-  if (!value) return "-"
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return "-"
-  return d.toLocaleString("fr-FR", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })
+// ─── Date formatter ───────────────────────────────────────────────────────────
+function fmtDate(v: string) {
+  if (!v) return "—"
+  const d = new Date(v)
+  if (isNaN(d.getTime())) return "—"
+  // e.g. "19 avr. 2025\n05:34"
+  const date = d.toLocaleDateString("fr-FR", { day: "numeric", month: "short", year: "numeric" })
+  const time = d.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })
+  return { date, time }
 }
 
 type SortField = "created_at" | "status" | "repo" | "findings"
-type SortDir = "asc" | "desc"
+type SortDir   = "asc" | "desc"
 
-// ─── Status UI helpers ────────────────────────────────────────────────────────
-
-const STATUS_META: Record<string, { label: string; color: string; icon: React.ElementType; dot: string }> = {
-  COMPLETED:  { label: "Terminé",     color: "text-emerald-400", icon: CheckCircle2, dot: "bg-emerald-500" },
-  FAILED:     { label: "Échoué",      color: "text-red-400",     icon: XCircle,      dot: "bg-red-500" },
-  RUNNING:    { label: "En cours",    color: "text-violet-400",  icon: Loader2,      dot: "bg-violet-500" },
-  QUEUED:     { label: "En attente",  color: "text-amber-400",   icon: Clock,        dot: "bg-amber-500" },
-  RECEIVED:   { label: "Reçu",        color: "text-blue-400",    icon: Activity,     dot: "bg-blue-500" },
-  PENDING:    { label: "Pending",     color: "text-zinc-400",    icon: Clock,        dot: "bg-zinc-500" },
+// ─── Status config ────────────────────────────────────────────────────────────
+const S: Record<string, {
+  label: string
+  dot: string          // tailwind bg class for dot
+  text: string         // tailwind text class
+  pill: string         // tailwind classes for pill bg + border
+  icon: React.ElementType
+}> = {
+  COMPLETED: {
+    label: "Terminé",
+    dot:  "bg-emerald-500",
+    text: "text-emerald-600 dark:text-emerald-400",
+    pill: "bg-emerald-50 border-emerald-200 dark:bg-emerald-500/10 dark:border-emerald-500/25",
+    icon: CheckCircle2,
+  },
+  RUNNING: {
+    label: "En cours",
+    dot:  "bg-orange-500",
+    text: "text-orange-600 dark:text-orange-400",
+    pill: "bg-orange-50 border-orange-200 dark:bg-orange-500/10 dark:border-orange-500/25",
+    icon: Loader2,
+  },
+  QUEUED: {
+    label: "En attente",
+    dot:  "bg-amber-500",
+    text: "text-amber-600 dark:text-amber-400",
+    pill: "bg-amber-50 border-amber-200 dark:bg-amber-500/10 dark:border-amber-500/25",
+    icon: Clock,
+  },
+  FAILED: {
+    label: "Échouée",
+    dot:  "bg-red-500",
+    text: "text-red-600 dark:text-red-400",
+    pill: "bg-red-50 border-red-200 dark:bg-red-500/10 dark:border-red-500/25",
+    icon: XCircle,
+  },
+  RECEIVED: {
+    label: "Reçu",
+    dot:  "bg-blue-500",
+    text: "text-blue-600 dark:text-blue-400",
+    pill: "bg-blue-50 border-blue-200 dark:bg-blue-500/10 dark:border-blue-500/25",
+    icon: Activity,
+  },
+}
+const SFALLBACK = S["QUEUED"]
+function sm(raw: string) {
+  const k = norm(raw)?.toUpperCase() ?? raw?.toUpperCase() ?? ""
+  return S[k] ?? SFALLBACK
 }
 
-function getStatusMeta(raw: string) {
-  const normalized = normalizeStatus(raw)?.toUpperCase() ?? raw?.toUpperCase() ?? "PENDING"
-  return STATUS_META[normalized] ?? STATUS_META["PENDING"]
-}
-
-// ─── Severity badge ───────────────────────────────────────────────────────────
-
-function FindingsBadge({ blockers = 0, warns = 0, infos = 0 }: { blockers?: number; warns?: number; infos?: number }) {
-  if (blockers === 0 && warns === 0 && infos === 0)
-    return <span className="text-xs text-zinc-600">—</span>
+// ─── Status pill ──────────────────────────────────────────────────────────────
+function StatusPill({ raw }: { raw: string }) {
+  const m = sm(raw)
+  const active = ["RUNNING","QUEUED","RECEIVED"].includes(norm(raw)?.toUpperCase() ?? "")
   return (
-    <div className="flex items-center gap-1">
-      {blockers > 0 && (
-        <span className="flex items-center gap-0.5 text-[11px] font-semibold text-red-400">
-          <AlertCircle className="h-3 w-3" />{blockers}
-        </span>
-      )}
-      {warns > 0 && (
-        <span className="flex items-center gap-0.5 text-[11px] font-semibold text-amber-400">
-          <AlertTriangle className="h-3 w-3" />{warns}
-        </span>
-      )}
-      {infos > 0 && (
-        <span className="flex items-center gap-0.5 text-[11px] font-semibold text-blue-400">
-          <Info className="h-3 w-3" />{infos}
-        </span>
-      )}
+    <span className={cn(
+      "inline-flex items-center gap-1.5 rounded-md border px-2.5 py-0.5 text-xs font-semibold",
+      m.pill, m.text,
+    )}>
+      <span className={cn("h-2 w-2 rounded-full flex-shrink-0", m.dot, active && "animate-pulse")} />
+      {m.label}
+    </span>
+  )
+}
+
+// ─── Findings badge ───────────────────────────────────────────────────────────
+function FindingsBadge({ b = 0, w = 0 }: { b?: number; w?: number }) {
+  if (b === 0 && w === 0) return <span className="text-xs text-muted-foreground/40">—</span>
+  return (
+    <div className="flex items-center gap-2.5">
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-red-500">
+        <XCircle className="h-3.5 w-3.5" />
+        {b > 0 ? b : "—"}
+      </span>
+      <span className="inline-flex items-center gap-1 text-xs font-semibold text-amber-500">
+        <AlertTriangle className="h-3.5 w-3.5" />
+        {w > 0 ? w : "—"}
+      </span>
     </div>
   )
 }
 
-// ─── Sidebar filters ──────────────────────────────────────────────────────────
+// ─── Sort header ──────────────────────────────────────────────────────────────
+function SortTh({
+  field, label, cur, dir, onSort,
+}: {
+  field: SortField; label: string; cur: SortField; dir: SortDir
+  onSort: (f: SortField) => void
+}) {
+  const active = field === cur
+  return (
+    <button
+      onClick={() => onSort(field)}
+      className={cn(
+        "inline-flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider transition-colors select-none",
+        active ? "text-[#E8713A]" : "text-muted-foreground hover:text-foreground",
+      )}
+    >
+      {label}
+      {active
+        ? dir === "asc"
+          ? <ArrowUp className="h-3 w-3" />
+          : <ArrowDown className="h-3 w-3" style={{ color: ORANGE }} />
+        : <ArrowUpDown className="h-3 w-3 opacity-30" />
+      }
+    </button>
+  )
+}
 
-const FILTER_SECTIONS = [
-  {
-    key: "time",
-    label: "Période",
-    icon: CalendarDays,
-    options: [
-      { value: "today",   label: "Aujourd'hui" },
-      { value: "week",    label: "Cette semaine" },
-      { value: "month",   label: "Ce mois" },
-      { value: "all",     label: "Tout" },
-    ],
-  },
-  {
-    key: "status",
-    label: "Statut",
-    icon: Activity,
-    options: [
-      { value: "COMPLETED", label: "Terminé" },
-      { value: "RUNNING",   label: "En cours" },
-      { value: "QUEUED",    label: "En attente" },
-      { value: "FAILED",    label: "Échoué" },
-      { value: "RECEIVED",  label: "Reçu" },
-    ],
-  },
-  {
-    key: "severity",
-    label: "Sévérité",
-    icon: AlertTriangle,
-    options: [
-      { value: "blocker",  label: "Bloquants" },
-      { value: "warn",     label: "Avertissements" },
-      { value: "info",     label: "Informatifs" },
-      { value: "clean",    label: "Sans findings" },
-    ],
-  },
+// ─── Stat card ────────────────────────────────────────────────────────────────
+function StatCard({
+  value, label, icon: Icon, iconBg, iconFg,
+}: {
+  value: number; label: string; icon: React.ElementType
+  iconBg: string; iconFg: string
+}) {
+  return (
+    <div className="flex items-center gap-4 rounded-2xl border border-border bg-card px-5 py-4 shadow-sm">
+      <div className={cn("flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl", iconBg)}>
+        <Icon className={cn("h-5 w-5", iconFg)} />
+      </div>
+      <div>
+        <p className="text-3xl font-bold leading-tight text-foreground">{value}</p>
+        <p className="text-xs text-muted-foreground">{label}</p>
+      </div>
+    </div>
+  )
+}
+
+// ─── Sidebar ──────────────────────────────────────────────────────────────────
+const PERIODS = [
+  { v: "today", l: "Aujourd'hui" },
+  { v: "week",  l: "Cette semaine" },
+  { v: "month", l: "Ce mois" },
+  { v: "all",   l: "Tout" },
+]
+const STATUSES = [
+  { v: "COMPLETED", l: "Terminé",    dot: "bg-emerald-500" },
+  { v: "RUNNING",   l: "En cours",   dot: "bg-orange-500" },
+  { v: "QUEUED",    l: "En attente", dot: "bg-amber-500" },
+  { v: "FAILED",    l: "Échouée",    dot: "bg-red-500" },
 ]
 
-function SidebarFilter({
-  activeTime, activeStatuses, activeSeverity,
-  onTimeChange, onStatusToggle, onSeverityToggle,
+function Sidebar({
+  period, statuses,
+  onPeriod, onStatus, onReset,
 }: {
-  activeTime: string
-  activeStatuses: string[]
-  activeSeverity: string[]
-  onTimeChange: (v: string) => void
-  onStatusToggle: (v: string) => void
-  onSeverityToggle: (v: string) => void
+  period: string; statuses: string[]
+  onPeriod: (v: string) => void
+  onStatus: (v: string) => void
+  onReset: () => void
 }) {
-  const [collapsed, setCollapsed] = useState<Record<string, boolean>>({})
+  const [pOpen, setPOpen] = useState(true)
+  const [sOpen, setSOpen] = useState(true)
 
   return (
-    <aside className="w-56 flex-shrink-0 border-r border-zinc-800/60 bg-zinc-950/40">
-      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/60">
-        <div className="flex items-center gap-2">
-          <ListFilter className="h-3.5 w-3.5 text-violet-400" />
-          <span className="text-xs font-semibold uppercase tracking-wider text-zinc-400">Filtres</span>
+    <aside className="w-[220px] flex-shrink-0 border-r border-border bg-card/50 flex flex-col">
+      {/* Header */}
+      <div className="flex items-center justify-between border-b border-border px-4 py-3">
+        <div className="flex items-center gap-2" style={{ color: ORANGE }}>
+          <Filter className="h-4 w-4" />
+          <span className="text-xs font-extrabold uppercase tracking-widest">FILTRES</span>
         </div>
         <button
-          onClick={() => { onTimeChange("all"); activeStatuses.forEach(onStatusToggle); activeSeverity.forEach(onSeverityToggle) }}
-          className="text-[10px] text-zinc-600 hover:text-violet-400 transition-colors"
+          onClick={onReset}
+          className="text-[11px] font-medium text-muted-foreground hover:text-foreground transition-colors"
         >
-          Reset
+          Réinitialiser
         </button>
       </div>
 
-      <ScrollArea className="h-[calc(100vh-220px)]">
-        <div className="py-2">
-          {FILTER_SECTIONS.map((section) => {
-            const isCollapsed = collapsed[section.key]
-            return (
-              <div key={section.key} className="mb-1">
-                <button
-                  className="flex w-full items-center justify-between px-4 py-2 text-xs font-medium text-zinc-400 hover:text-zinc-200 transition-colors"
-                  onClick={() => setCollapsed((p) => ({ ...p, [section.key]: !p[section.key] }))}
-                >
-                  <div className="flex items-center gap-2">
-                    <section.icon className="h-3.5 w-3.5" />
-                    {section.label}
-                  </div>
-                  {isCollapsed ? <ChevronDown className="h-3 w-3" /> : <ChevronUp className="h-3 w-3" />}
-                </button>
+      <ScrollArea className="flex-1">
+        <div className="px-3 py-2 space-y-0.5">
 
-                <AnimatePresence initial={false}>
-                  {!isCollapsed && (
-                    <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: "auto", opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.2 }}
-                      className="overflow-hidden"
-                    >
-                      <div className="px-3 pb-2 space-y-0.5">
-                        {section.options.map((opt) => {
-                          const isTime = section.key === "time"
-                          const isStatus = section.key === "status"
-                          const isActive = isTime
-                            ? activeTime === opt.value
-                            : isStatus
-                            ? activeStatuses.includes(opt.value)
-                            : activeSeverity.includes(opt.value)
-
-                          const toggle = isTime
-                            ? () => onTimeChange(opt.value)
-                            : isStatus
-                            ? () => onStatusToggle(opt.value)
-                            : () => onSeverityToggle(opt.value)
-
-                          return (
-                            <button
-                              key={opt.value}
-                              onClick={toggle}
-                              className={`flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-xs transition-all ${
-                                isActive
-                                  ? "bg-violet-500/15 text-violet-300 font-medium"
-                                  : "text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50"
-                              }`}
-                            >
-                              {!isTime && (
-                                <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-                                  isActive ? "bg-violet-400" : "bg-zinc-700"
-                                }`} />
-                              )}
-                              {isTime && (
-                                <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${
-                                  isActive ? "bg-violet-500" : "border border-zinc-700"
-                                }`} />
-                              )}
-                              {opt.label}
-                              {section.key === "status" && STATUS_META[opt.value] && (
-                                <span className={`ml-auto h-1.5 w-1.5 rounded-full ${STATUS_META[opt.value].dot}`} />
-                              )}
-                            </button>
-                          )
-                        })}
-                      </div>
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-
-                <div className="mx-4 border-t border-zinc-800/40" />
+          {/* Période */}
+          <div>
+            <button
+              onClick={() => setPOpen(p => !p)}
+              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-semibold text-foreground hover:bg-accent transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                Période
               </div>
-            )
-          })}
-
-          {/* Recent filters section */}
-          <div className="px-4 pt-3">
-            <p className="text-[10px] uppercase tracking-wider text-zinc-600 mb-2">Vues rapides</p>
-            {[
-              { label: "En cours d'analyse", icon: Loader2, action: () => onStatusToggle("RUNNING") },
-              { label: "Nécessite attention", icon: AlertCircle, action: () => onStatusToggle("FAILED") },
-              { label: "Archivé", icon: FolderGit2, action: () => onTimeChange("all") },
-            ].map((item) => (
-              <button
-                key={item.label}
-                onClick={item.action}
-                className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-xs text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800/50 transition-all"
-              >
-                <item.icon className="h-3 w-3" />
-                {item.label}
-              </button>
-            ))}
+              {pOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              }
+            </button>
+            <AnimatePresence initial={false}>
+              {pOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pb-1 pt-0.5 space-y-0.5">
+                    {PERIODS.map(opt => {
+                      const active = period === opt.v
+                      return (
+                        <button
+                          key={opt.v}
+                          onClick={() => onPeriod(opt.v)}
+                          className={cn(
+                            "flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-all",
+                            active
+                              ? "font-semibold"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                          )}
+                          style={active ? {
+                            background: `${ORANGE}15`,
+                            color: ORANGE,
+                          } : undefined}
+                        >
+                          {/* Radio */}
+                          <span className={cn(
+                            "flex h-3.5 w-3.5 items-center justify-center rounded-full border-2 flex-shrink-0 transition-colors",
+                          )}
+                          style={{
+                            borderColor: active ? ORANGE : undefined,
+                          }}
+                          >
+                            {active && (
+                              <span
+                                className="h-1.5 w-1.5 rounded-full"
+                                style={{ background: ORANGE }}
+                              />
+                            )}
+                          </span>
+                          {opt.l}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
+
+          <Separator className="my-1" />
+
+          {/* Statut */}
+          <div>
+            <button
+              onClick={() => setSOpen(p => !p)}
+              className="flex w-full items-center justify-between rounded-md px-2 py-2 text-sm font-semibold text-foreground hover:bg-accent transition-colors"
+            >
+              <div className="flex items-center gap-2">
+                <Activity className="h-4 w-4 text-muted-foreground" />
+                Statut
+              </div>
+              {sOpen
+                ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+              }
+            </button>
+            <AnimatePresence initial={false}>
+              {sOpen && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: "auto", opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.18 }}
+                  className="overflow-hidden"
+                >
+                  <div className="pb-1 pt-0.5 space-y-0.5">
+                    {STATUSES.map(opt => {
+                      const active = statuses.includes(opt.v)
+                      return (
+                        <button
+                          key={opt.v}
+                          onClick={() => onStatus(opt.v)}
+                          className={cn(
+                            "flex w-full items-center gap-2.5 rounded-md px-3 py-1.5 text-sm transition-all",
+                            active
+                              ? "font-semibold"
+                              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+                          )}
+                          style={active ? { color: ORANGE } : undefined}
+                        >
+                          <span className={cn("h-2 w-2 rounded-full flex-shrink-0", opt.dot)} />
+                          {opt.l}
+                        </button>
+                      )
+                    })}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+
         </div>
       </ScrollArea>
     </aside>
   )
 }
 
-// ─── Sort header cell ─────────────────────────────────────────────────────────
-
-function SortHeader({ field, label, current, dir, onSort }: {
-  field: SortField; label: string; current: SortField; dir: SortDir
-  onSort: (f: SortField) => void
-}) {
-  const active = field === current
-  return (
-    <button
-      className={`flex items-center gap-1 text-xs font-semibold uppercase tracking-wider transition-colors ${
-        active ? "text-violet-400" : "text-zinc-500 hover:text-zinc-300"
-      }`}
-      onClick={() => onSort(field)}
-    >
-      {label}
-      {active ? (
-        dir === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />
-      ) : (
-        <ArrowUpDown className="h-3 w-3 opacity-40" />
-      )}
-    </button>
-  )
-}
-
 // ─── Table row ────────────────────────────────────────────────────────────────
-
-function AnalysisRow({
-  item, selected, onSelect, onDelete, index,
+function Row({
+  item, sel, onSel, onDel, idx,
 }: {
-  item: DashboardAnalysisItem; selected: boolean
-  onSelect: () => void; onDelete: () => void; index: number
+  item: DashboardAnalysisItem
+  sel: boolean
+  onSel: () => void
+  onDel: () => void
+  idx: number
 }) {
-  const status = getStatusMeta(item.status)
-  const StatusIcon = status.icon
-  const projectTargetId = item.projectId && item.projectId.trim().length > 0 ? item.projectId : item.id
-  const isActive = ["RUNNING", "QUEUED", "RECEIVED"].includes(
-    normalizeStatus(item.status)?.toUpperCase() ?? ""
-  )
+  const fmt = fmtDate(item.createdAt)
+  const projectId = item.projectId?.trim().length ? item.projectId : item.id
 
   return (
     <motion.tr
-      initial={{ opacity: 0, y: 8 }}
+      key={item.id}
+      initial={{ opacity: 0, y: 5 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.25, delay: index * 0.03 }}
-      className={`group border-b border-zinc-800/50 transition-colors hover:bg-zinc-900/60 ${
-        selected ? "bg-violet-500/5" : ""
-      }`}
+      transition={{ duration: 0.18, delay: idx * 0.02 }}
+      className={cn(
+        "group border-b border-border transition-colors",
+        sel ? "bg-orange-500/5" : "hover:bg-accent/40",
+      )}
     >
       {/* Checkbox */}
-      <td className="w-10 pl-4 pr-2 py-3">
+      <td className="w-10 pl-5 pr-2 py-3.5">
         <Checkbox
-          checked={selected}
-          onCheckedChange={onSelect}
-          className="border-zinc-700 data-[state=checked]:bg-violet-500 data-[state=checked]:border-violet-500"
+          checked={sel}
+          onCheckedChange={onSel}
+          className="border-border data-[state=checked]:bg-[#E8713A] data-[state=checked]:border-[#E8713A]"
         />
       </td>
 
       {/* Status */}
-      <td className="py-3 pr-4 w-28">
-        <div className="flex items-center gap-2">
-          <div className={`h-1.5 w-1.5 rounded-full flex-shrink-0 ${status.dot} ${isActive ? "animate-pulse" : ""}`} />
-          <StatusIcon className={`h-3.5 w-3.5 ${status.color} ${isActive ? "animate-spin" : ""} flex-shrink-0`}
-            style={isActive && StatusIcon !== Loader2 ? {} : undefined}
-          />
-          <span className={`text-xs font-medium ${status.color}`}>{status.label}</span>
-        </div>
+      <td className="py-3.5 pr-4 w-[130px]">
+        <StatusPill raw={item.status} />
       </td>
 
-      {/* Repo + PR */}
-      <td className="py-3 pr-4 min-w-0">
-        <div className="flex flex-col gap-0.5 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <FolderGit2 className="h-3.5 w-3.5 text-zinc-500 flex-shrink-0" />
-            <span className="text-sm font-medium text-zinc-200 truncate">
-              {item.repo || "—"}
-            </span>
-          </div>
-          {item.prLabel && item.prLabel !== "Commit" && (
-            <div className="flex items-center gap-1 text-[11px] text-zinc-500">
-              <GitBranch className="h-3 w-3" />
-              <span className="truncate">{item.prLabel}</span>
-            </div>
-          )}
+      {/* Repo */}
+      <td className="py-3.5 pr-6 min-w-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <FolderGit2 className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+          <span className="text-sm font-medium text-foreground truncate">
+            {item.repo || "—"}
+          </span>
         </div>
       </td>
 
       {/* Findings */}
-      <td className="py-3 pr-4 w-32">
-        <FindingsBadge
-          blockers={item.blockerCount}
-          warns={item.warnCount}
-          infos={item.infoCount}
-        />
+      <td className="py-3.5 pr-6 w-[160px]">
+        <FindingsBadge b={item.blockerCount} w={item.warnCount} />
       </td>
 
       {/* Date */}
-      <td className="py-3 pr-4 w-32">
-        <span className="text-xs text-zinc-500">{formatDate(item.createdAt)}</span>
+      <td className="py-3.5 pr-4 w-[140px]">
+        {typeof fmt === "object" ? (
+          <div className="flex flex-col leading-tight">
+            <span className="text-sm text-foreground">{fmt.date}</span>
+            <span className="text-xs text-muted-foreground">{fmt.time}</span>
+          </div>
+        ) : (
+          <span className="text-sm text-muted-foreground">{fmt}</span>
+        )}
       </td>
 
       {/* Actions */}
-      <td className="py-3 pr-4 w-32">
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <Link href={`/dashboard/projects/${encodeURIComponent(projectTargetId)}`}>
-            <Button
-              size="icon"
-              variant="ghost"
-              title="Voir le projet"
-              className="h-7 w-7 text-zinc-400 hover:text-violet-400 hover:bg-violet-500/10"
+      <td className="py-3.5 pr-5 w-[110px]">
+        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+          <Link href={`/dashboard/report/${item.id}`}>
+            <Button size="icon" variant="ghost"
+              className="h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+              title="Voir"
             >
-              <Eye className="h-3.5 w-3.5" />
+              <Eye className="h-4 w-4" />
             </Button>
           </Link>
           <Link href={`/dashboard/diff/${encodeURIComponent(item.id)}`}>
-            <Button
-              size="icon"
-              variant="ghost"
-              title="Voir le diff"
-              className="h-7 w-7 text-zinc-400 hover:text-cyan-300 hover:bg-cyan-500/10"
+            <Button size="icon" variant="ghost"
+              className="h-8 w-8 rounded-md text-muted-foreground hover:text-foreground hover:bg-accent"
+              title="Voir diff"
             >
-              <GitCompare className="h-3.5 w-3.5" />
+              <GitCompare className="h-4 w-4" />
             </Button>
           </Link>
-          <Button
-            size="icon"
-            variant="ghost"
+          <Button size="icon" variant="ghost"
+            className="h-8 w-8 rounded-md text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
             title="Supprimer"
-            onClick={onDelete}
-            className="h-7 w-7 text-zinc-400 hover:text-red-400 hover:bg-red-500/10"
+            onClick={onDel}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash2 className="h-4 w-4" />
           </Button>
         </div>
       </td>
@@ -396,293 +443,309 @@ function AnalysisRow({
   )
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Pagination ───────────────────────────────────────────────────────────────
+function Pages({
+  page, total, size, go,
+}: {
+  page: number; total: number; size: number; go: (p: number) => void
+}) {
+  const count = Math.max(1, Math.ceil(total / size))
+  if (count <= 1) return null
+  return (
+    <div className="flex items-center gap-1">
+      <Button variant="ghost" size="icon" className="h-7 w-7 rounded"
+        disabled={page === 1} onClick={() => go(page - 1)}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </Button>
+      {Array.from({ length: count }, (_, i) => i + 1).map(p => (
+        <button
+          key={p}
+          onClick={() => go(p)}
+          className={cn(
+            "h-7 w-7 rounded text-xs font-semibold transition-colors",
+            p === page
+              ? "text-white"
+              : "text-muted-foreground hover:bg-accent hover:text-foreground",
+          )}
+          style={p === page ? { background: ORANGE } : undefined}
+        >
+          {p}
+        </button>
+      ))}
+      <Button variant="ghost" size="icon" className="h-7 w-7 rounded"
+        disabled={page === count} onClick={() => go(page + 1)}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </Button>
+    </div>
+  )
+}
 
+// ─── Main ─────────────────────────────────────────────────────────────────────
 function AnalysesContent() {
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const sp      = useSearchParams()
+  const filter  = sp.get("filter") ?? "all"
+  const status  = sp.get("status") ?? ""
+  const action  = sp.get("action") ?? ""
 
-  // URL-derived state
-  const filter = searchParams.get("filter") ?? "all"
-  const status = searchParams.get("status") ?? ""
-  const action = searchParams.get("action") ?? ""
-
-  // Data state
-  const [analyses, setAnalyses] = useState<DashboardAnalysisItem[]>([])
-  const [loading, setLoading] = useState(true)
-  const [deleteBusy, setDeleteBusy] = useState<string | null>(null)
-  const analysesRef = useRef<DashboardAnalysisItem[]>(analyses)
-  analysesRef.current = analyses
-
-  // UI state
-  const [search, setSearch] = useState("")
-  const [sortField, setSortField] = useState<SortField>("created_at")
-  const [sortDir, setSortDir] = useState<SortDir>("desc")
-  const [selected, setSelected] = useState<Set<string>>(new Set())
-  const [activeTime, setActiveTime] = useState(filter !== "all" ? filter : "all")
-  const [activeStatuses, setActiveStatuses] = useState<string[]>(status ? [status.toUpperCase()] : [])
-  const [activeSeverity, setActiveSeverity] = useState<string[]>([])
-  const [showAgentPlan, setShowAgentPlan] = useState(false)
+  const [items, setItems]         = useState<DashboardAnalysisItem[]>([])
+  const [loading, setLoading]     = useState(true)
+  const [search, setSearch]       = useState("")
+  const [sortF, setSortF]         = useState<SortField>("created_at")
+  const [sortD, setSortD]         = useState<SortDir>("desc")
+  const [sel, setSel]             = useState<Set<string>>(new Set())
+  const [period, setPeriod]       = useState("all")
+  const [statuses, setStatuses]   = useState<string[]>([])
+  const [pipeline, setPipeline]   = useState(false)
   const [hasActive, setHasActive] = useState(false)
+  const [page, setPage]           = useState(1)
+  const ref = useRef<DashboardAnalysisItem[]>(items)
+  ref.current = items
 
   const load = useCallback(async () => {
     try {
-      const data = await fetchDashboardAnalyses({ size: 200 })
-      setAnalyses(data)
-      setHasActive(hasActiveDashboardAnalysis(data))
-    } catch {
-      // silently fail
-    } finally {
-      setLoading(false)
-    }
+      const d = await fetchDashboardAnalyses({ size: 200 })
+      setItems(d)
+      setHasActive(hasActiveDashboardAnalysis(d))
+    } catch { /* silent */ }
+    finally { setLoading(false) }
   }, [])
 
-  useEffect(() => {
-    void load()
-  }, [load])
+  useEffect(() => { void load() }, [load])
 
-  // Poll when there are active analyses
   useEffect(() => {
     if (!hasActive) return
     const id = setInterval(async () => {
-      const data = await fetchDashboardAnalyses({ size: 200 }).catch(() => analysesRef.current)
-      setAnalyses(data)
-      setHasActive(hasActiveDashboardAnalysis(data))
+      const d = await fetchDashboardAnalyses({ size: 200 }).catch(() => ref.current)
+      setItems(d)
+      setHasActive(hasActiveDashboardAnalysis(d))
     }, 8_000)
     return () => clearInterval(id)
   }, [hasActive])
 
-  // Show agent plan when active analysis exists
-  useEffect(() => {
-    setShowAgentPlan(hasActive)
-  }, [hasActive])
+  useEffect(() => { setPipeline(hasActive) }, [hasActive])
 
-  const handleSort = (field: SortField) => {
-    if (field === sortField) setSortDir((d) => d === "asc" ? "desc" : "asc")
-    else { setSortField(field); setSortDir("desc") }
+  const handleSort = (f: SortField) => {
+    if (f === sortF) setSortD(d => d === "asc" ? "desc" : "asc")
+    else { setSortF(f); setSortD("desc") }
   }
 
-  const toggleStatus = (s: string) =>
-    setActiveStatuses((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s])
-
-  const toggleSeverity = (s: string) =>
-    setActiveSeverity((p) => p.includes(s) ? p.filter((x) => x !== s) : [...p, s])
-
-  const handleDelete = async (id: string) => {
+  const handleDel = async (id: string) => {
     if (!confirm("Supprimer cette analyse ?")) return
-    setDeleteBusy(id)
     await deleteDashboardAnalysis(id).catch(() => {})
-    setAnalyses((p) => p.filter((a) => a.id !== id))
-    setDeleteBusy(null)
+    setItems(p => p.filter(a => a.id !== id))
   }
 
-  // Filtering + sorting
-  const filtered = useMemo(() => {
-    let list = [...analyses]
+  const reset = () => {
+    setPeriod("all"); setStatuses([]); setSearch(""); setPage(1)
+  }
 
-    // Text search
+  const filtered = useMemo(() => {
+    let l = [...items]
     if (search.trim()) {
       const q = search.toLowerCase()
-      list = list.filter(
-        (a) =>
-          (a.repo ?? "").toLowerCase().includes(q) ||
-          (a.prLabel ?? "").toLowerCase().includes(q) ||
-          (a.author ?? "").toLowerCase().includes(q)
+      l = l.filter(a =>
+        (a.repo ?? "").toLowerCase().includes(q) ||
+        (a.prLabel ?? "").toLowerCase().includes(q) ||
+        (a.author ?? "").toLowerCase().includes(q),
       )
     }
-
-    // Time filter
     const now = Date.now()
-    if (activeTime === "today") {
-      list = list.filter((a) => now - new Date(a.createdAt).getTime() < 86_400_000)
-    } else if (activeTime === "week") {
-      list = list.filter((a) => now - new Date(a.createdAt).getTime() < 7 * 86_400_000)
-    } else if (activeTime === "month") {
-      list = list.filter((a) => now - new Date(a.createdAt).getTime() < 30 * 86_400_000)
-    }
-
-    // Status filter
-    if (activeStatuses.length > 0) {
-      list = list.filter((a) =>
-        activeStatuses.includes(normalizeStatus(a.status)?.toUpperCase() ?? a.status?.toUpperCase() ?? "")
-      )
-    }
-
-    // Severity filter
-    if (activeSeverity.length > 0) {
-      list = list.filter((a) => {
-        if (activeSeverity.includes("blocker") && (a.blockerCount ?? 0) > 0) return true
-        if (activeSeverity.includes("warn") && (a.warnCount ?? 0) > 0) return true
-        if (activeSeverity.includes("info") && (a.infoCount ?? 0) > 0) return true
-        if (activeSeverity.includes("clean") && (a.blockerCount ?? 0) === 0 && (a.warnCount ?? 0) === 0 && (a.infoCount ?? 0) === 0) return true
-        return false
-      })
-    }
-
-    // Sort
-    list.sort((a, b) => {
-      let av: number | string = 0, bv: number | string = 0
-      if (sortField === "created_at") { av = a.createdAt ?? ""; bv = b.createdAt ?? "" }
-      if (sortField === "status") { av = a.status ?? ""; bv = b.status ?? "" }
-      if (sortField === "repo") { av = a.repo ?? ""; bv = b.repo ?? "" }
-      if (sortField === "findings") { av = (a.blockerCount ?? 0) * 100 + (a.warnCount ?? 0); bv = (b.blockerCount ?? 0) * 100 + (b.warnCount ?? 0) }
-      if (av < bv) return sortDir === "asc" ? -1 : 1
-      if (av > bv) return sortDir === "asc" ? 1 : -1
-      return 0
+    if (period === "today") l = l.filter(a => now - new Date(a.createdAt).getTime() < 86_400_000)
+    if (period === "week")  l = l.filter(a => now - new Date(a.createdAt).getTime() < 7 * 86_400_000)
+    if (period === "month") l = l.filter(a => now - new Date(a.createdAt).getTime() < 30 * 86_400_000)
+    if (statuses.length)
+      l = l.filter(a => statuses.includes(norm(a.status)?.toUpperCase() ?? ""))
+    l.sort((a, b) => {
+      let av: string | number = 0, bv: string | number = 0
+      if (sortF === "created_at") { av = a.createdAt ?? ""; bv = b.createdAt ?? "" }
+      if (sortF === "status")     { av = a.status ?? ""; bv = b.status ?? "" }
+      if (sortF === "repo")       { av = a.repo ?? ""; bv = b.repo ?? "" }
+      if (sortF === "findings")   {
+        av = (a.blockerCount ?? 0) * 100 + (a.warnCount ?? 0)
+        bv = (b.blockerCount ?? 0) * 100 + (b.warnCount ?? 0)
+      }
+      return (av < bv ? -1 : av > bv ? 1 : 0) * (sortD === "asc" ? 1 : -1)
     })
+    return l
+  }, [items, search, period, statuses, sortF, sortD])
 
-    return list
-  }, [analyses, search, activeTime, activeStatuses, activeSeverity, sortField, sortDir])
+  useEffect(() => { setPage(1) }, [search, period, statuses])
 
-  const allSelected = filtered.length > 0 && filtered.every((a) => selected.has(a.id))
-  const toggleAll = () => {
-    if (allSelected) setSelected(new Set())
-    else setSelected(new Set(filtered.map((a) => a.id)))
-  }
+  const paged = useMemo(() => {
+    const s = (page - 1) * PAGE_SIZE
+    return filtered.slice(s, s + PAGE_SIZE)
+  }, [filtered, page])
 
   const stats = useMemo(() => ({
-    total: analyses.length,
-    completed: analyses.filter((a) => normalizeStatus(a.status)?.toUpperCase() === "COMPLETED").length,
-    running: analyses.filter((a) => ["RUNNING","QUEUED","RECEIVED"].includes(normalizeStatus(a.status)?.toUpperCase() ?? "")).length,
-    failed: analyses.filter((a) => normalizeStatus(a.status)?.toUpperCase() === "FAILED").length,
-  }), [analyses])
+    total:     items.length,
+    completed: items.filter(a => norm(a.status)?.toUpperCase() === "COMPLETED").length,
+    running:   items.filter(a => ["RUNNING","QUEUED","RECEIVED"].includes(norm(a.status)?.toUpperCase() ?? "")).length,
+    failed:    items.filter(a => norm(a.status)?.toUpperCase() === "FAILED").length,
+  }), [items])
+
+  const allSel  = paged.length > 0 && paged.every(a => sel.has(a.id))
+  const togAll  = () => {
+    if (allSel) setSel(new Set())
+    else setSel(new Set(paged.map(a => a.id)))
+  }
 
   return (
-    <div className="flex h-full flex-col">
-      {/* Header with new analysis button */}
-      <div className="px-6 pt-5 pb-3">
-        <AnalysesPageHeader filter={filter} status={status} view={null} action={action} />
-      </div>
+    <div className="flex h-full flex-col overflow-hidden bg-background">
 
-      {/* Stats bar */}
-      <div className="grid grid-cols-4 gap-3 px-6 pb-3">
-        {[
-          { label: "Total", value: stats.total, icon: BarChart3, color: "text-zinc-400", glow: "border-zinc-700/50" },
-          { label: "Terminées", value: stats.completed, icon: CheckCircle2, color: "text-emerald-400", glow: "border-emerald-500/20" },
-          { label: "En cours", value: stats.running, icon: Activity, color: "text-violet-400", glow: "border-violet-500/20" },
-          { label: "Échouées", value: stats.failed, icon: XCircle, color: "text-red-400", glow: "border-red-500/20" },
-        ].map((s) => (
-          <motion.div
-            key={s.label}
-            className={`flex items-center gap-3 rounded-xl border ${s.glow} bg-zinc-900/60 px-4 py-3`}
-            whileHover={{ scale: 1.02, borderColor: "rgba(139,92,246,0.3)" }}
-            transition={{ duration: 0.15 }}
+      {/* ── TOP HEADER ───────────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between border-b border-border bg-background px-6 py-4 flex-shrink-0">
+        <div className="flex items-center gap-3">
+          <div
+            className="flex h-9 w-9 items-center justify-center rounded-lg"
+            style={{ background: `${ORANGE}18` }}
           >
-            <s.icon className={`h-4 w-4 ${s.color}`} />
-            <div>
-              <p className="text-xl font-bold text-zinc-100">{s.value}</p>
-              <p className="text-[11px] text-zinc-500">{s.label}</p>
-            </div>
-          </motion.div>
-        ))}
+            <Filter className="h-5 w-5" style={{ color: ORANGE }} />
+          </div>
+          <div>
+            <h1 className="text-xl font-bold text-foreground leading-tight">Analyses IA</h1>
+            <p className="text-xs text-muted-foreground">
+              Consulter et gérer toutes les analyses de revue de code
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2">
+          {/* Status quick-filter dropdown */}
+          <div className="relative">
+            <select
+              className="h-9 rounded-lg border border-border bg-background px-3 pr-7 text-sm text-foreground appearance-none cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-1"
+              style={{ focusRingColor: ORANGE } as React.CSSProperties}
+              value={statuses[0] ?? "all"}
+              onChange={e => {
+                const v = e.target.value
+                setStatuses(v === "all" ? [] : [v])
+              }}
+            >
+              <option value="all">Tout</option>
+              <option value="COMPLETED">Terminé</option>
+              <option value="RUNNING">En cours</option>
+              <option value="QUEUED">En attente</option>
+              <option value="FAILED">Échouée</option>
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          </div>
+
+          {/* + Nouvelle analyse (reuses existing dialog) */}
+          <AnalysesPageHeader
+            filter={filter}
+            status={status}
+            view={null}
+            action={action}
+            buttonOnly
+          />
+        </div>
       </div>
 
-      {/* Body: sidebar + table */}
-      <div className="flex flex-1 overflow-hidden border-t border-zinc-800/60">
+      {/* ── STAT CARDS ───────────────────────────────────────────────────────── */}
+      <div className="grid grid-cols-4 gap-4 px-6 py-4 flex-shrink-0">
+        <StatCard value={stats.total}
+          label="Total"
+          icon={BarChart3}
+          iconBg="bg-blue-50 dark:bg-blue-500/10"
+          iconFg="text-blue-500"
+        />
+        <StatCard value={stats.completed}
+          label="Terminées"
+          icon={CheckCircle2}
+          iconBg="bg-emerald-50 dark:bg-emerald-500/10"
+          iconFg="text-emerald-500"
+        />
+        <StatCard value={stats.running}
+          label="En cours"
+          icon={Activity}
+          iconBg="bg-orange-50 dark:bg-orange-500/10"
+          iconFg="text-orange-500"
+        />
+        <StatCard value={stats.failed}
+          label="Échouées"
+          icon={XCircle}
+          iconBg="bg-red-50 dark:bg-red-500/10"
+          iconFg="text-red-500"
+        />
+      </div>
+
+      {/* ── BODY ─────────────────────────────────────────────────────────────── */}
+      <div className="flex flex-1 overflow-hidden border-t border-border">
+
         {/* Sidebar */}
-        <SidebarFilter
-          activeTime={activeTime}
-          activeStatuses={activeStatuses}
-          activeSeverity={activeSeverity}
-          onTimeChange={setActiveTime}
-          onStatusToggle={toggleStatus}
-          onSeverityToggle={toggleSeverity}
+        <Sidebar
+          period={period}
+          statuses={statuses}
+          onPeriod={p => { setPeriod(p); setPage(1) }}
+          onStatus={v => {
+            setStatuses(p => p.includes(v) ? p.filter(x => x !== v) : [...p, v])
+            setPage(1)
+          }}
+          onReset={reset}
         />
 
-        {/* Main area */}
+        {/* Main */}
         <div className="flex flex-1 flex-col overflow-hidden">
+
           {/* Toolbar */}
-          <div className="flex items-center gap-3 border-b border-zinc-800/60 px-4 py-2.5 bg-zinc-950/30">
-            <div className="relative flex-1 max-w-sm">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-zinc-500" />
+          <div className="flex items-center gap-3 border-b border-border bg-background/60 px-4 py-2.5 flex-shrink-0">
+            <div className="relative flex-1 max-w-[360px]">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 placeholder="Rechercher une analyse..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                className="h-8 pl-9 text-sm bg-zinc-900/60 border-zinc-700/60 focus:border-violet-500/50 focus:ring-violet-500/20 placeholder:text-zinc-600"
+                onChange={e => setSearch(e.target.value)}
+                className="h-8 pl-9 text-sm bg-background border-border placeholder:text-muted-foreground/50"
               />
             </div>
 
             <div className="flex items-center gap-1 ml-auto">
               {hasActive && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => setShowAgentPlan((p) => !p)}
-                  className={`h-8 gap-1.5 text-xs border-zinc-700/60 ${
-                    showAgentPlan
-                      ? "bg-violet-500/15 text-violet-300 border-violet-500/30"
-                      : "text-zinc-400 hover:text-violet-300"
-                  }`}
+                <Button size="sm" variant="outline"
+                  onClick={() => setPipeline(p => !p)}
+                  className={cn(
+                    "h-8 gap-1.5 text-xs border-border",
+                    pipeline ? "text-orange-500 border-orange-500/30 bg-orange-500/10" : "text-muted-foreground",
+                  )}
                 >
                   <Terminal className="h-3.5 w-3.5" />
                   Pipeline
-                  {hasActive && <span className="h-1.5 w-1.5 rounded-full bg-violet-500 animate-pulse" />}
+                  <span className="h-1.5 w-1.5 rounded-full bg-orange-500 animate-pulse" />
                 </Button>
               )}
-
-              <Button
-                size="sm"
-                variant="ghost"
+              <Button size="icon" variant="ghost"
                 onClick={load}
-                className="h-8 w-8 p-0 text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/60"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground hover:bg-accent"
               >
                 <RefreshCw className="h-3.5 w-3.5" />
               </Button>
-
-              {selected.size > 0 && (
-                <Button
-                  size="sm"
-                  variant="ghost"
+              {sel.size > 0 && (
+                <Button size="sm" variant="ghost"
+                  className="h-8 gap-1.5 text-xs text-red-500 hover:bg-red-500/10"
                   onClick={async () => {
-                    if (!confirm(`Supprimer ${selected.size} analyses ?`)) return
-                    for (const id of Array.from(selected)) await deleteDashboardAnalysis(id).catch(() => {})
-                    setAnalyses((p) => p.filter((a) => !selected.has(a.id)))
-                    setSelected(new Set())
+                    if (!confirm(`Supprimer ${sel.size} analyses ?`)) return
+                    for (const id of Array.from(sel)) await deleteDashboardAnalysis(id).catch(() => {})
+                    setItems(p => p.filter(a => !sel.has(a.id)))
+                    setSel(new Set())
                   }}
-                  className="h-8 gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-500/10"
                 >
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {selected.size}
+                  <Trash2 className="h-3.5 w-3.5" /> {sel.size}
                 </Button>
               )}
             </div>
-
-            {/* Active filter pills */}
-            {(activeStatuses.length > 0 || activeSeverity.length > 0 || (activeTime !== "all" && activeTime !== "")) && (
-              <div className="flex items-center gap-1 border-l border-zinc-800 pl-3">
-                {activeStatuses.map((s) => (
-                  <button
-                    key={s}
-                    onClick={() => toggleStatus(s)}
-                    className="flex items-center gap-1 rounded-full bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 text-[10px] text-violet-300 hover:bg-violet-500/20 transition-colors"
-                  >
-                    {STATUS_META[s]?.label ?? s}
-                    <XCircle className="h-2.5 w-2.5" />
-                  </button>
-                ))}
-                {activeTime !== "all" && activeTime !== "" && (
-                  <button
-                    onClick={() => setActiveTime("all")}
-                    className="flex items-center gap-1 rounded-full bg-amber-500/10 border border-amber-500/20 px-2 py-0.5 text-[10px] text-amber-300 hover:bg-amber-500/20 transition-colors"
-                  >
-                    {FILTER_SECTIONS[0].options.find((o) => o.value === activeTime)?.label ?? activeTime}
-                    <XCircle className="h-2.5 w-2.5" />
-                  </button>
-                )}
-              </div>
-            )}
           </div>
 
-          {/* Agent Plan panel (slide-in) */}
+          {/* Pipeline */}
           <AnimatePresence>
-            {showAgentPlan && (
+            {pipeline && (
               <motion.div
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 280, opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                transition={{ duration: 0.3, ease: [0.2, 0.65, 0.3, 0.9] }}
-                className="overflow-hidden border-b border-zinc-800/60"
+                transition={{ duration: 0.28, ease: [0.2, 0.65, 0.3, 0.9] }}
+                className="overflow-hidden border-b border-border flex-shrink-0"
               >
                 <AgentPlan />
               </motion.div>
@@ -692,14 +755,9 @@ function AnalysesContent() {
           {/* Table */}
           <div className="flex-1 overflow-auto">
             {loading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="flex flex-col items-center gap-3">
-                  <div className="relative h-10 w-10">
-                    <div className="absolute inset-0 rounded-full border-2 border-violet-500/20 animate-ping" />
-                    <Loader2 className="h-10 w-10 animate-spin text-violet-500" />
-                  </div>
-                  <p className="text-sm text-zinc-500">Chargement des analyses…</p>
-                </div>
+              <div className="flex flex-col items-center justify-center h-64 gap-3">
+                <Loader2 className="h-9 w-9 animate-spin" style={{ color: ORANGE }} />
+                <p className="text-sm text-muted-foreground">Chargement des analyses…</p>
               </div>
             ) : filtered.length === 0 ? (
               <motion.div
@@ -707,59 +765,65 @@ function AnalysesContent() {
                 animate={{ opacity: 1 }}
                 className="flex flex-col items-center justify-center h-64 gap-4"
               >
-                <div className="rounded-full bg-zinc-800/60 p-4">
-                  <GitCompare className="h-8 w-8 text-zinc-600" />
+                <div className="rounded-full bg-muted p-4">
+                  <GitCompare className="h-8 w-8 text-muted-foreground/40" />
                 </div>
                 <div className="text-center">
-                  <p className="text-sm font-medium text-zinc-400">Aucune analyse trouvée</p>
-                  <p className="text-xs text-zinc-600 mt-1">
-                    {search ? "Essayez d'autres termes de recherche" : "Lancez votre première analyse avec le bouton +"}
+                  <p className="text-sm font-medium text-foreground">Aucune analyse trouvée</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {search
+                      ? "Essayez d'autres termes de recherche"
+                      : "Lancez votre première analyse avec le bouton +"}
                   </p>
                 </div>
               </motion.div>
             ) : (
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-zinc-800/60 bg-zinc-950/40">
-                    <th className="w-10 pl-4 pr-2 py-2.5">
+                  <tr className="border-b border-border bg-muted/20 sticky top-0">
+                    <th className="w-10 pl-5 pr-2 py-3">
                       <Checkbox
-                        checked={allSelected}
-                        onCheckedChange={toggleAll}
-                        className="border-zinc-700 data-[state=checked]:bg-violet-500 data-[state=checked]:border-violet-500"
+                        checked={allSel}
+                        onCheckedChange={togAll}
+                        className="border-border data-[state=checked]:bg-[#E8713A] data-[state=checked]:border-[#E8713A]"
                       />
                     </th>
-                    <th className="py-2.5 pr-4 text-left w-28">
-                      <SortHeader field="status" label="Statut" current={sortField} dir={sortDir} onSort={handleSort} />
+                    <th className="py-3 pr-4 text-left w-[130px]">
+                      <SortTh field="status"     label="STATUT"     cur={sortF} dir={sortD} onSort={handleSort} />
                     </th>
-                    <th className="py-2.5 pr-4 text-left">
-                      <SortHeader field="repo" label="Repo / PR" current={sortField} dir={sortDir} onSort={handleSort} />
+                    <th className="py-3 pr-6 text-left">
+                      <SortTh field="repo"       label="REPO / PR"  cur={sortF} dir={sortD} onSort={handleSort} />
                     </th>
-                    <th className="py-2.5 pr-4 text-left w-32">
-                      <SortHeader field="findings" label="Findings" current={sortField} dir={sortDir} onSort={handleSort} />
+                    <th className="py-3 pr-6 text-left w-[160px]">
+                      <SortTh field="findings"   label="FINDINGS"   cur={sortF} dir={sortD} onSort={handleSort} />
                     </th>
-                    <th className="py-2.5 pr-4 text-left w-32">
-                      <SortHeader field="created_at" label="Date" current={sortField} dir={sortDir} onSort={handleSort} />
+                    <th className="py-3 pr-4 text-left w-[140px]">
+                      <SortTh field="created_at" label="DATE"       cur={sortF} dir={sortD} onSort={handleSort} />
                     </th>
-                    <th className="py-2.5 pr-4 w-32" />
+                    <th className="py-3 pr-5 text-right w-[110px]">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+                        ACTIONS
+                      </span>
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filtered.map((item, i) => (
-                    <AnalysisRow
-                      key={item.id}
-                      item={item}
-                      selected={selected.has(item.id)}
-                      onSelect={() => {
-                        setSelected((p) => {
-                          const next = new Set(p)
-                          next.has(item.id) ? next.delete(item.id) : next.add(item.id)
-                          return next
-                        })
-                      }}
-                      onDelete={() => handleDelete(item.id)}
-                      index={i}
-                    />
-                  ))}
+                  <AnimatePresence mode="popLayout">
+                    {paged.map((item, i) => (
+                      <Row
+                        key={item.id}
+                        item={item}
+                        idx={i}
+                        sel={sel.has(item.id)}
+                        onSel={() => setSel(p => {
+                          const n = new Set(p)
+                          n.has(item.id) ? n.delete(item.id) : n.add(item.id)
+                          return n
+                        })}
+                        onDel={() => handleDel(item.id)}
+                      />
+                    ))}
+                  </AnimatePresence>
                 </tbody>
               </table>
             )}
@@ -767,13 +831,14 @@ function AnalysesContent() {
 
           {/* Footer */}
           {!loading && filtered.length > 0 && (
-            <div className="flex items-center justify-between border-t border-zinc-800/60 px-4 py-2 text-xs text-zinc-600">
-              <span>{selected.size > 0 ? `${selected.size} sélectionnée(s) · ` : ""}{filtered.length} analyse(s)</span>
-              <span className="text-zinc-700">
-                {analyses.length} au total
+            <div className="flex items-center justify-between border-t border-border bg-background/60 px-5 py-2.5 flex-shrink-0">
+              <span className="text-sm text-muted-foreground">
+                {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, filtered.length)} sur {filtered.length} analyse{filtered.length > 1 ? "s" : ""}
               </span>
+              <Pages page={page} total={filtered.length} size={PAGE_SIZE} go={setPage} />
             </div>
           )}
+
         </div>
       </div>
     </div>
@@ -784,7 +849,7 @@ export default function AnalysesPage() {
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-violet-500" />
+        <Loader2 className="h-8 w-8 animate-spin" style={{ color: ORANGE }} />
       </div>
     }>
       <AnalysesContent />

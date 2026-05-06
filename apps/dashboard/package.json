@@ -1,5 +1,5 @@
 {
-  "name": "ai-code-review-dashboard",
+  "name": "devora",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -18,7 +18,8 @@
     "mobile:dev": "node ./scripts/mobile-dev-fixed.js",
     "mobile:check": "node ./scripts/mobile-diagnostic.js",
     "mobile:apk": "node ./scripts/build-mobile-apk.js",
-    "mobile:build": "node ./scripts/build-mobile-apk.js",
+    "mobile:build:vps": "node ./scripts/build-mobile-vps.js",
+    "mobile:build": "npm run mobile:build:vps",
     "mobile:build:minimal": "node ./scripts/build-mobile-minimal.js",
     "mobile:build:full": "node ./scripts/build-mobile.js",
     "mobile:build:landing": "node ./scripts/build-mobile-landing.js",
@@ -48,6 +49,7 @@
     "@clerk/clerk-react": "^5.61.4",
     "@clerk/nextjs": "^7.2.3",
     "@clerk/themes": "^2.4.57",
+    "@clerk/ui": "^1.6.7",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",

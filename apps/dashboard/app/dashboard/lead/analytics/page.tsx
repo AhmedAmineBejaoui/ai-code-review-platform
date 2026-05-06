@@ -47,6 +47,37 @@ interface PersonalMetrics {
   }
 }
 
+const EMPTY_METRICS: PersonalMetrics = {
+  reviewer_id: "",
+  period: {
+    start: new Date().toISOString(),
+    end: new Date().toISOString(),
+    days: 30,
+  },
+  current_period: {
+    reviews_completed: 0,
+    avg_review_time_minutes: 0,
+    avg_comments_per_review: 0,
+    sla_compliance_rate: 0,
+    approvals: 0,
+    warnings: 0,
+    blocks: 0,
+    findings_identified: 0,
+  },
+  trends: {
+    dates: [],
+    reviews_completed: [],
+    avg_review_time: [],
+    sla_compliance: [],
+    avg_comments: [],
+  },
+  rankings: {
+    reviews_count: 0,
+    quality_score: 0,
+    response_time: 0,
+  },
+}
+
 export default function ReviewerAnalyticsPage() {
   const currentUser = useDashboardUser()
   const [metrics, setMetrics] = useState<PersonalMetrics | null>(null)
@@ -58,13 +89,21 @@ export default function ReviewerAnalyticsPage() {
     try {
       setLoading(true)
       const response = await fetch(`/api/dashboard/reviewer/metrics?period_days=${period}`)
+      const data = await response.json().catch(() => null)
 
       if (!response.ok) {
+        setMetrics({
+          ...EMPTY_METRICS,
+          reviewer_id: currentUser.userId ?? "",
+          period: {
+            ...EMPTY_METRICS.period,
+            days: Number(period) || 30,
+          },
+        })
         throw new Error("Failed to fetch metrics")
       }
 
-      const data = await response.json()
-      setMetrics(data)
+      setMetrics((data as PersonalMetrics) ?? EMPTY_METRICS)
       setError(null)
     } catch (err) {
       setError(err instanceof Error ? err.message : "An error occurred")
@@ -137,7 +176,7 @@ export default function ReviewerAnalyticsPage() {
     )
   }
 
-  if (error) {
+  if (error && !metrics) {
     return (
       <div className="flex items-center justify-center h-96">
         <Card className="w-full max-w-md">

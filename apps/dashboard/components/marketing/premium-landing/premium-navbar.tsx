@@ -52,7 +52,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
           <Link href="#top" className="flex items-center gap-3 text-primary-color">
             <BrandMark className="size-9" tone={isDark ? "dark" : "light"} />
             <div>
-              <p className="text-[1.6rem] font-semibold leading-none tracking-[-0.03em]">CodeRabbit</p>
+              <p className="text-[1.6rem] font-semibold leading-none tracking-[-0.03em]">Devora</p>
             </div>
           </Link>
 
@@ -114,7 +114,7 @@ export function PremiumNavbar({ monoClassName }: PremiumNavbarProps) {
                 >
                   <Link href="/dashboard">Open dashboard</Link>
                 </Button>
-                <UserButton afterSignOutUrl="/" />
+                <UserButton />
               </>
             )}
           </div>

@@ -41,6 +41,7 @@ import {
 } from "@/components/ui/breadcrumb"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 import {
   LANGUAGE_COLORS,
   STATUS_CONFIG,
@@ -148,8 +149,17 @@ export function ProjectHeader({
   const handleRunAnalysis = async () => {
     if (!onRunAnalysis || isAnalyzing) return
     setIsAnalyzing(true)
+    const toastId = toast.loading("Analyse en cours...")
     try {
       await onRunAnalysis()
+      toast.dismiss(toastId)
+      toast.success("Analyse lancée avec succès !", { duration: 4000 })
+    } catch (err) {
+      toast.dismiss(toastId)
+      toast.error("Échec du lancement de l'analyse", {
+        description: err instanceof Error ? err.message : "Erreur inconnue",
+        duration: 6000,
+      })
     } finally {
       setIsAnalyzing(false)
     }
@@ -159,6 +169,7 @@ export function ProjectHeader({
     if (!project) return
     await navigator.clipboard.writeText(project.id)
     setCopied(true)
+    toast.success("ID du projet copié !", { duration: 2000 })
     setTimeout(() => setCopied(false), 2000)
   }
 
@@ -325,11 +336,17 @@ export function ProjectHeader({
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="text-[color:var(--orange)]">
+              <DropdownMenuItem 
+                className="text-[color:var(--orange)]"
+                onClick={() => toast.info("Archivage disponible dans les paramètres du projet.", { duration: 4000 })}
+              >
                 <Archive className="h-4 w-4 mr-2" />
                 Archive Project
               </DropdownMenuItem>
-              <DropdownMenuItem className="text-destructive">
+              <DropdownMenuItem 
+                className="text-destructive"
+                onClick={() => toast.info("Suppression disponible dans les paramètres du projet.", { duration: 4000 })}
+              >
                 <Trash2 className="h-4 w-4 mr-2" />
                 Delete Project
               </DropdownMenuItem>

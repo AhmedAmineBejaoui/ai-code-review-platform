@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/collapsible"
 import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/components/ui/utils"
+import { toast } from "sonner"
 
 import {
   type AutoAnalysisState,
@@ -172,8 +173,11 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
       setState(data)
       setRemainingSeconds(data.temporary_disable_remaining_seconds)
       setError(null)
+      toast.success("Analyse automatique activée", { duration: 3000 })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to enable auto-analysis")
+      const msg = err instanceof Error ? err.message : "Failed to enable auto-analysis"
+      setError(msg)
+      toast.error("Échec de l'activation", { description: msg, duration: 5000 })
     } finally {
       setUpdating(false)
     }
@@ -198,8 +202,11 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
       setRemainingSeconds(null)
       setDisableReason("")
       setError(null)
+      toast.success("Analyse automatique désactivée", { duration: 3000 })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to disable auto-analysis")
+      const msg = err instanceof Error ? err.message : "Failed to disable auto-analysis"
+      setError(msg)
+      toast.error("Échec de la désactivation", { description: msg, duration: 5000 })
     } finally {
       setUpdating(false)
     }
@@ -222,8 +229,11 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
       setRemainingSeconds(data.temporary_disable_remaining_seconds)
       setTempDisableReason("")
       setError(null)
+      toast.success(`Analyse mise en pause pour ${tempDisableDuration} minutes`, { duration: 3000 })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to set temporary disable")
+      const msg = err instanceof Error ? err.message : "Failed to set temporary disable"
+      setError(msg)
+      toast.error("Échec de la mise en pause", { description: msg, duration: 5000 })
     } finally {
       setUpdating(false)
     }
@@ -237,8 +247,11 @@ export function AutoAnalysisToggle({ projectId, className }: AutoAnalysisToggleP
       setState(data)
       setRemainingSeconds(null)
       setError(null)
+      toast.success("Analyse reprise avec succès", { duration: 3000 })
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to clear temporary disable")
+      const msg = err instanceof Error ? err.message : "Failed to clear temporary disable"
+      setError(msg)
+      toast.error("Échec de la reprise", { description: msg, duration: 5000 })
     } finally {
       setUpdating(false)
     }
