@@ -411,6 +411,10 @@ export default function ProjectsPage() {
     setCreateDialogOpen(true)
   }
 
+  const handleImportGithub = () => {
+    router.push("/dashboard/projects/import")
+  }
+
   const handleProjectCreated = (projectId: string) => {
     // Clear any project-related caches
     if (typeof clearProjectCaches === 'function') {
@@ -469,10 +473,16 @@ export default function ProjectsPage() {
             Gerer et surveiller tous vos projets
           </p>
         </div>
-        <Button className="gap-2" onClick={handleNewProject}>
-          <Plus className="h-4 w-4" />
-          Nouveau Projet
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" className="gap-2" onClick={handleImportGithub}>
+            <Folder className="h-4 w-4" />
+            Importer GitHub
+          </Button>
+          <Button className="gap-2" onClick={handleNewProject}>
+            <Plus className="h-4 w-4" />
+            Nouveau Projet
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}

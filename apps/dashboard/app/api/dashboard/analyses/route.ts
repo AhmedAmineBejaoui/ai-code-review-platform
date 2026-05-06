@@ -835,7 +835,9 @@ export async function GET(request: NextRequest) {
   const role = resolveUserRole(null, sessionClaims)
   const email = extractEmailFromClaims(sessionClaims)
   const size = normalizeDashboardAnalysesSize(request.nextUrl.searchParams.get("size"))
-  const cacheKey = `${userId}:${role}:${email ?? ""}:${size}`
+  const projectFilter = asNonEmptyString(request.nextUrl.searchParams.get("project_id"))?.toLowerCase() ?? null
+  const repoFilter = asNonEmptyString(request.nextUrl.searchParams.get("repo"))?.toLowerCase() ?? null
+  const cacheKey = `${userId}:${role}:${email ?? ""}:${size}:${projectFilter ?? "-"}:${repoFilter ?? "-"}`
   const now = Date.now()
   const cachedEntry = analysesRouteCache.get(cacheKey)
   if (cachedEntry && cachedEntry.expiresAt > now) {
@@ -886,7 +888,19 @@ export async function GET(request: NextRequest) {
         )
       : baseItems
 
-  const selectedItems = scopedItems.slice(0, size)
+  const filteredByProject = scopedItems.filter((item) => {
+    const normalizedProject = item.projectId?.trim().toLowerCase() ?? null
+    const normalizedRepo = item.repo.trim().toLowerCase()
+    if (projectFilter && normalizedProject !== projectFilter) {
+      return false
+    }
+    if (repoFilter && normalizedRepo !== repoFilter) {
+      return false
+    }
+    return true
+  })
+
+  const selectedItems = filteredByProject.slice(0, size)
   const enrichedItems: DashboardAnalysisListItem[] = selectedItems.map((item) => ({
     id: item.id,
     projectId: item.projectId,

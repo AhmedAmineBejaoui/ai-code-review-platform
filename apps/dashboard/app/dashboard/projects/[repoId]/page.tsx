@@ -11,7 +11,10 @@ import {
   Folder,
   GitBranch,
   Loader2,
+  Play,
   ShieldCheck,
+  SlidersHorizontal,
+  UserPlus,
   Users,
 } from "lucide-react"
 import { Github } from "@/components/ui/social-icons"
@@ -310,14 +313,45 @@ export default function ProjectDetailPage() {
         <Button onClick={handleBack} variant="outline" size="icon">
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div>
-          <h1 className="flex items-center gap-3 text-3xl font-bold">
-            <Folder className="h-8 w-8 text-blue-500" />
-            {project.name}
-          </h1>
-          <p className="mt-1 text-muted-foreground">
-            {project.description || project.fullName}
-          </p>
+        <div className="flex w-full flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="flex items-center gap-3 text-3xl font-bold">
+              <Folder className="h-8 w-8 text-blue-500" />
+              {project.name}
+            </h1>
+            <p className="mt-1 text-muted-foreground">
+              {project.description || project.fullName}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              onClick={() => router.push(`/dashboard/projects/${encodeURIComponent(project.id)}/analyses/new`)}
+            >
+              <Play className="mr-2 h-4 w-4" />
+              Nouvelle analyse
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/dashboard/projects/${encodeURIComponent(project.id)}/analyses`)}
+            >
+              <ShieldCheck className="mr-2 h-4 w-4" />
+              Analyses
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/dashboard/projects/${encodeURIComponent(project.id)}/collaborators`)}
+            >
+              <UserPlus className="mr-2 h-4 w-4" />
+              Collaborateurs
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => router.push(`/dashboard/projects/${encodeURIComponent(project.id)}/settings`)}
+            >
+              <SlidersHorizontal className="mr-2 h-4 w-4" />
+              Parametres
+            </Button>
+          </div>
         </div>
       </div>
 
