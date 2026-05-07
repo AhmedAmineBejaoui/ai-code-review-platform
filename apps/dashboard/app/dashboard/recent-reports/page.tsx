@@ -10,7 +10,7 @@ function RecentReportsContent() {
   const period = searchParams.get("period") ?? "all"
 
   return (
-    <div className="container mx-auto py-8">
+    <div className="mx-auto w-full max-w-[1260px] px-4 py-6 md:px-6 md:py-8">
       <EnhancedRecentReports limit={50} showHeader={true} defaultPeriod={period} />
     </div>
   )

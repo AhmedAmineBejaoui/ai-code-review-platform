@@ -1,81 +1,34 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import Link from "next/link"
-import { useRouter } from "next/navigation"
-import { motion, AnimatePresence, useInView } from "framer-motion"
-import { toast } from "sonner"
-import { generateSummaryPdf, generateAnalysisPdf } from "@/lib/pdf-report"
+import { useEffect, useState } from "react"
+import { AnimatePresence, motion } from "framer-motion"
 import {
-  FileText,
-  Search,
-  Filter,
-  RefreshCw,
-  Download,
-  MoreVertical,
-  Eye,
-  GitPullRequest,
-  GitCommit,
-  Clock,
-  CheckCircle2,
-  AlertCircle,
-  XCircle,
-  Loader2,
-  ChevronRight,
-  Calendar,
-  ArrowUpDown,
-  Tag,
-  User,
-  Folder,
-  X,
-  SlidersHorizontal,
-  LayoutGrid,
-  List,
-  BarChart3,
-  ArrowUp,
-  ArrowDown,
-  TrendingDown,
-  Zap,
-  Shield,
   Activity,
-  FolderOpen,
-  FileCode2,
-  GitBranch,
-  Sparkles,
-  TrendingUp,
-  Minus as TrendingEqual,
-  Target,
-  Hexagon,
-  CircleDot,
-  Waves,
-  Keyboard,
+  CheckCircle2,
+  ChevronRight,
+  Clock3,
+  FileText,
+  Filter,
+  GitCommit,
+  GitPullRequest,
+  LayoutGrid,
+  RefreshCw,
+  Search,
+  User,
+  XCircle,
 } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select"
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover"
-import { Checkbox } from "@/components/ui/checkbox"
-import { Label } from "@/components/ui/label"
-import { Skeleton } from "@/components/ui/skeleton"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 export type ReportStatus = "completed" | "running" | "failed" | "queued" | "received"
 
@@ -94,616 +47,260 @@ export interface RecentReport {
   infoCount: number
   metadata?: Record<string, unknown>
   score?: number
-  changeType?: "feature" | "bugfix" | "refactor" | "docs" | "test" | "chore"
 }
 
-// API call function
+type PeriodFilter = "24h" | "week" | "month" | "all"
+type StatusFilter = "all" | "completed" | "running" | "failed"
+
+const PERIOD_LABELS: Record<PeriodFilter, string> = {
+  "24h": "Last 24 hours",
+  week: "This week",
+  month: "This month",
+  all: "All time",
+}
+
 async function fetchRecentReports(params: {
-  status?: string
   period?: string
-  repo?: string
-  author?: string
   limit?: number
 }): Promise<RecentReport[]> {
   const searchParams = new URLSearchParams()
-  
-  if (params.status && params.status !== "all") searchParams.set("status", params.status)
-  if (params.period) searchParams.set("period", params.period)
-  if (params.repo) searchParams.set("repo", params.repo)
-  if (params.author) searchParams.set("author", params.author)
-  searchParams.set("size", String(params.limit || 50))
+
+  if (params.period && params.period !== "all") {
+    searchParams.set("period", params.period)
+  }
+
+  searchParams.set("size", String(params.limit ?? 50))
 
   const response = await fetch(`/api/dashboard/analyses?${searchParams.toString()}`)
-  
   if (!response.ok) {
     throw new Error(`Failed to fetch reports: ${response.status}`)
   }
 
   const data = await response.json()
-  return data.items || []
+  return data.items ?? []
 }
 
 function formatTimeAgo(dateStr: string): string {
-  if (!dateStr) return "-"
+  if (!dateStr) return "Unknown"
+
   const date = new Date(dateStr)
-  if (isNaN(date.getTime())) return "-"
+  if (Number.isNaN(date.getTime())) return "Unknown"
 
-  const s = Math.floor((Date.now() - date.getTime()) / 1000)
-  if (s < 60) return "just now"
-  if (s < 3600) return `${Math.floor(s / 60)}m ago`
-  if (s < 86400) return `${Math.floor(s / 3600)}h ago`
-  if (s < 604800) return `${Math.floor(s / 86400)}d ago`
-  return date.toLocaleDateString()
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000)
+
+  if (seconds < 60) return "Just now"
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`
+  if (seconds < 604800) return `${Math.floor(seconds / 86400)}d ago`
+
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  })
 }
 
-function statusConfig(status: ReportStatus) {
-  const configs = {
-    completed: {
-      color: "#10b981",
-      bg: "bg-emerald-500/10",
-      border: "border-emerald-500/30",
-      label: "Completed",
-      icon: CheckCircle2,
-    },
-    running: {
-      color: "#3b82f6",
-      bg: "bg-blue-500/10",
-      border: "border-blue-500/30",
-      label: "Running",
-      icon: Loader2,
-    },
-    failed: {
-      color: "#ef4444",
-      bg: "bg-red-500/10",
-      border: "border-red-500/30",
-      label: "Failed",
-      icon: XCircle,
-    },
-    queued: {
-      color: "#f59e0b",
-      bg: "bg-amber-500/10",
-      border: "border-amber-500/30",
-      label: "Queued",
-      icon: Clock,
-    },
-    received: {
-      color: "#8b5cf6",
-      bg: "bg-violet-500/10",
-      border: "border-violet-500/30",
-      label: "Received",
-      icon: AlertCircle,
-    },
+function computeScore(report: RecentReport): number {
+  if (typeof report.score === "number") return report.score
+  return Math.max(0, 100 - report.blockerCount * 10 - report.warnCount * 4 - report.infoCount * 2)
+}
+
+function isRunningStatus(status: ReportStatus) {
+  return status === "running" || status === "queued" || status === "received"
+}
+
+function matchesStatus(report: RecentReport, filter: StatusFilter) {
+  if (filter === "all") return true
+  if (filter === "running") return isRunningStatus(report.status)
+  return report.status === filter
+}
+
+function getStatusMeta(status: ReportStatus) {
+  switch (status) {
+    case "completed":
+      return {
+        label: "Completed",
+        badge: "bg-emerald-500/10 text-emerald-300 border-emerald-500/20",
+        dot: "bg-emerald-400",
+        Icon: CheckCircle2,
+      }
+    case "failed":
+      return {
+        label: "Failed",
+        badge: "bg-red-500/10 text-red-300 border-red-500/20",
+        dot: "bg-red-400",
+        Icon: XCircle,
+      }
+    default:
+      return {
+        label: "Running",
+        badge: "bg-amber-500/10 text-amber-300 border-amber-500/20",
+        dot: "bg-amber-400",
+        Icon: Activity,
+      }
   }
-  return configs[status] || configs.completed
 }
 
-function changeTypeConfig(type?: string) {
-  const configs = {
-    feature: { label: "Feature", color: "#8b5cf6", bg: "bg-violet-500/10" },
-    bugfix: { label: "Bug Fix", color: "#ef4444", bg: "bg-red-500/10" },
-    refactor: { label: "Refactor", color: "#3b82f6", bg: "bg-blue-500/10" },
-    docs: { label: "Docs", color: "#10b981", bg: "bg-emerald-500/10" },
-    test: { label: "Test", color: "#f59e0b", bg: "bg-amber-500/10" },
-    chore: { label: "Chore", color: "#6b7280", bg: "bg-gray-500/10" },
-  }
-  return configs[type as keyof typeof configs] || configs.chore
-}
-
-// Status Badge Component
-function StatusBadge({ status }: { status: ReportStatus }) {
-  const config = statusConfig(status)
-  const Icon = config.icon
-
+function LoadingCard({ dense }: { dense: boolean }) {
   return (
-    <span
+    <div
       className={cn(
-        "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs font-semibold border",
-        config.bg,
-        config.border
+        "rounded-2xl border border-white/6 bg-[#101015] px-5 py-5 shadow-[0_0_0_1px_rgba(255,255,255,0.02)]",
+        dense ? "min-h-[188px]" : "min-h-[208px]",
       )}
-      style={{ color: config.color }}
     >
-      {status === "running" && (
-        <motion.span
-          animate={{ rotate: 360 }}
-          transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-        >
-          <Icon className="h-3 w-3" />
-        </motion.span>
-      )}
-      {status !== "running" && <Icon className="h-3 w-3" />}
-      {config.label}
-    </span>
-  )
-}
+      <div className="flex items-start justify-between gap-4">
+        <div className="w-full max-w-[74%] space-y-3">
+          <div className="h-4 w-3/4 rounded-full bg-[#ff6b2b]" />
+          <div className="h-3 w-1/2 rounded-full bg-[#ff6b2b]/90" />
+          <div className="h-3 w-1/3 rounded-full bg-[#ff6b2b]/85" />
+          <div className="flex gap-2 pt-3">
+            <div className="h-6 w-16 rounded-md bg-[#ff6b2b]" />
+            <div className="h-6 w-12 rounded-md bg-[#ff6b2b]" />
+            <div className="h-6 w-14 rounded-md bg-[#ff6b2b]" />
+          </div>
+        </div>
 
-// Change Type Badge Component
-function ChangeTypeBadge({ type }: { type?: string }) {
-  const config = changeTypeConfig(type)
-
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider",
-        config.bg
-      )}
-      style={{ color: config.color }}
-    >
-      {config.label}
-    </span>
-  )
-}
-
-// Finding Count Badge
-function FindingBadge({ type, count }: { type: "blocker" | "warn" | "info"; count: number }) {
-  if (count === 0) return null
-
-  const config = {
-    blocker: { bg: "bg-red-500/15", color: "#ef4444", icon: AlertCircle },
-    warn: { bg: "bg-amber-500/15", color: "#f59e0b", icon: AlertCircle },
-    info: { bg: "bg-blue-500/15", color: "#3b82f6", icon: AlertCircle },
-  }
-
-  const { bg, color, icon: Icon } = config[type]
-
-  return (
-    <span
-      className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-bold", bg)}
-      style={{ color }}
-    >
-      <Icon className="h-3 w-3" />
-      {count}
-    </span>
-  )
-}
-
-// Premium Score Ring Component with Glow Effect
-function ScoreRing(props: { score: number; size?: number }) {
-  const { score, size = 48 } = props
-  let color = "#10b981"
-  let label = "Excellent"
-  let Icon = TrendingUp
-  let glow = "0 0 20px rgba(16, 185, 129, 0.4)"
-
-  if (score < 70) {
-    color = "#f59e0b"
-    label = "Good"
-    Icon = TrendingEqual
-    glow = "0 0 20px rgba(245, 158, 11, 0.4)"
-  }
-  if (score < 50) {
-    color = "#ef4444"
-    label = "Needs Work"
-    Icon = TrendingDown
-    glow = "0 0 20px rgba(239, 68, 68, 0.4)"
-  }
-  if (score < 30) {
-    color = "#dc2626"
-    label = "Critical"
-    Icon = TrendingDown
-    glow = "0 0 25px rgba(220, 38, 38, 0.5)"
-  }
-
-  const radius = (size - 8) / 2
-  const circumference = 2 * Math.PI * radius
-  const progress = (score / 100) * circumference
-
-  return (
-    <motion.div
-      initial={{ scale: 0, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      transition={{ type: "spring", stiffness: 200, damping: 15 }}
-      className="relative flex items-center justify-center"
-      style={{ width: size, height: size }}
-    >
-      {/* Glow effect */}
-      <motion.div
-        animate={{
-          boxShadow: [glow, `0 0 30px ${color}60`, glow],
-        }}
-        transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
-        className="absolute inset-0 rounded-full"
-        style={{ background: color, opacity: 0.15 }}
-      />
-      
-      {/* SVG Ring */}
-      <svg
-        width={size}
-        height={size}
-        style={{ transform: "rotate(-90deg)" }}
-        className="absolute inset-0"
-      >
-        {/* Background ring */}
-        <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={3}
-          className="text-muted/20"
-          opacity={0.3}
-        />
-        {/* Progress ring */}
-        <motion.circle
-          cx={size / 2}
-          cy={size / 2}
-          r={radius}
-          fill="none"
-          stroke={color}
-          strokeWidth={3}
-          strokeLinecap="round"
-          strokeDasharray={circumference}
-          initial={{ strokeDashoffset: circumference }}
-          animate={{ strokeDashoffset: circumference - progress }}
-          transition={{ duration: 1.2, delay: 0.2, ease: "easeOut" }}
-        />
-      </svg>
-
-      {/* Center content */}
-      <div className="flex flex-col items-center justify-center z-10">
-        <motion.span
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          transition={{ delay: 0.4 }}
-          className="text-[10px] font-bold"
-          style={{ color, lineHeight: 1 }}
-        >
-          {score}
-        </motion.span>
-        <motion.span
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="text-[7px] opacity-60 uppercase tracking-wider"
-          style={{ color }}
-        >
-          {label}
-        </motion.span>
+        <div className="h-12 w-12 rounded-full bg-[#ff6b2b]" />
       </div>
-    </motion.div>
+    </div>
   )
 }
 
-// Compact Score Badge
-function ScoreBadge({ score }: { score: number }) {
-  let color = "#10b981"
-  let label = "Excellent"
-  let Icon = TrendingUp
+function EmptyState({ period }: { period: PeriodFilter }) {
+  return (
+    <div className="rounded-3xl border border-white/6 bg-[#101015] px-6 py-16 text-center">
+      <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-white/8 bg-white/[0.03]">
+        <FileText className="h-6 w-6 text-[#ff6b2b]" />
+      </div>
+      <h3 className="text-lg font-semibold text-white">No recent reports</h3>
+      <p className="mt-2 text-sm text-zinc-500">
+        Nothing matched {PERIOD_LABELS[period].toLowerCase()} with the current filters.
+      </p>
+    </div>
+  )
+}
 
-  if (score < 70) {
-    color = "#f59e0b"
-    label = "Good"
-    Icon = TrendingEqual
-  }
-  if (score < 50) {
-    color = "#ef4444"
-    label = "Needs Work"
-    Icon = TrendingDown
-  }
-  if (score < 30) {
-    color = "#dc2626"
-    label = "Critical"
-    Icon = TrendingDown
-  }
+function MetricChip({
+  label,
+  value,
+  tone,
+}: {
+  label: string
+  value: number
+  tone: "emerald" | "amber"
+}) {
+  const toneClass =
+    tone === "emerald"
+      ? "border-emerald-500/15 bg-emerald-500/[0.07] text-emerald-300"
+      : "border-amber-500/15 bg-amber-500/[0.07] text-amber-300"
 
   return (
-    <motion.div
-      initial={{ scale: 0.8, opacity: 0 }}
-      animate={{ scale: 1, opacity: 1 }}
-      whileHover={{ scale: 1.05 }}
-      className={cn(
-        "flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border cursor-pointer",
-        "transition-all duration-200"
-      )}
-      style={{
-        borderColor: `${color}30`,
-        background: `${color}08`,
-        color,
-      }}
-    >
-      <Icon className="h-3.5 w-3.5" />
-      <span className="text-sm font-bold font-mono">{score}</span>
-      <span className="text-[9px] opacity-60 uppercase tracking-wider">{label}</span>
-    </motion.div>
+    <div className={cn("flex items-center gap-2 rounded-xl border px-3 py-2 text-xs", toneClass)}>
+      <span className="font-mono font-semibold">{value}</span>
+      <span className="text-zinc-400">/{label}</span>
+    </div>
   )
 }
 
-// Report Card Component
 function ReportCard({
   report,
   index,
-  onDelete,
-  onRerun,
-  onExport,
+  dense,
 }: {
   report: RecentReport
   index: number
-  onDelete: (id: string) => void
-  onRerun: (id: string) => void
-  onExport: (report: RecentReport) => void
+  dense: boolean
 }) {
-  const [expanded, setExpanded] = useState(false)
-  const isRunning = ["running", "queued", "received"].includes(report.status)
-
-  const totalFindings =
-    report.blockerCount + report.warnCount + report.infoCount
-  const score = report.score ?? Math.max(0, 100 - totalFindings * 5)
+  const status = getStatusMeta(report.status)
+  const score = computeScore(report)
+  const totalFindings = report.blockerCount + report.warnCount + report.infoCount
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.4, delay: index * 0.03 }}
-      className={cn(
-        "group relative rounded-xl border bg-card/50 backdrop-blur-sm transition-all hover:bg-card/80",
-        "hover:border-border/80 hover:shadow-lg hover:shadow-black/5"
-      )}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.22, delay: index * 0.03 }}
     >
-      <div
-        className="p-4 cursor-pointer"
-        onClick={() => setExpanded(!expanded)}
-      >
-        {/* Header Row */}
-        <div className="flex items-start justify-between gap-3">
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-mono font-semibold text-sm text-foreground truncate">
-                {report.repo}
-              </span>
-              <ChangeTypeBadge type={report.changeType} />
-              {report.prLabel.includes("PR") ? (
-                <Badge variant="outline" className="gap-1 text-[10px]">
-                  <GitPullRequest className="h-3 w-3" />
-                  {report.prLabel}
-                </Badge>
-              ) : (
-                <Badge variant="outline" className="gap-1 text-[10px]">
-                  <GitCommit className="h-3 w-3" />
-                  Commit
-                </Badge>
-              )}
-            </div>
-            {report.commitSha && (
-              <span className="text-xs font-mono text-muted-foreground mt-1 block">
-                {report.commitSha.slice(0, 10)}
-              </span>
-            )}
-          </div>
-
-          <div className="flex items-center gap-2">
-            <ScoreBadge score={score} />
-            <StatusBadge status={report.status} />
-          </div>
-        </div>
-
-        {/* Meta Row */}
-        <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground">
-          <span className="flex items-center gap-1">
-            <User className="h-3 w-3" />
-            {report.author}
-          </span>
-          <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            {formatTimeAgo(report.createdAt)}
-          </span>
-          <span className="text-muted-foreground/50">|</span>
-          <span>{report.durationLabel}</span>
-        </div>
-
-        {/* Findings Row */}
-        <div className="flex items-center gap-2 mt-3 flex-wrap">
-          <FindingBadge type="blocker" count={report.blockerCount} />
-          <FindingBadge type="warn" count={report.warnCount} />
-          <FindingBadge type="info" count={report.infoCount} />
-          {totalFindings === 0 && (
-            <span className="text-xs text-muted-foreground">No findings</span>
+      <Link href={`/dashboard/report/${report.id}`} className="block h-full">
+        <div
+          className={cn(
+            "group relative flex h-full flex-col overflow-hidden rounded-2xl border border-white/6 bg-[#101015] p-5 transition-all duration-200",
+            "shadow-[0_0_0_1px_rgba(255,255,255,0.02)] hover:border-[#ff6b2b]/20 hover:bg-[#121219] hover:shadow-[0_16px_40px_rgba(0,0,0,0.35)]",
+            dense ? "min-h-[188px]" : "min-h-[208px]",
           )}
-          <div className="flex-1" />
-          <motion.span
-            animate={{ rotate: expanded ? 180 : 0 }}
-            className="text-muted-foreground/40"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </motion.span>
-        </div>
-      </div>
+        >
+          <div className="pointer-events-none absolute inset-0 opacity-30 [background-image:linear-gradient(rgba(255,255,255,0.02)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.02)_1px,transparent_1px)] [background-size:24px_24px]" />
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-[#ff6b2b]/35 to-transparent" />
 
-      {/* Expanded Actions */}
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            className="overflow-hidden"
-          >
-            <div className="px-4 pb-4 pt-2 border-t border-border/50">
-              <div className="flex flex-wrap gap-2 mt-3">
-                <Link href={`/dashboard/report/${report.id}`}>
-                  <Button variant="outline" size="sm" className="gap-2">
-                    <Eye className="h-4 w-4" />
-                    View Report
-                  </Button>
-                </Link>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onRerun(report.id)
-                  }}
-                  disabled={isRunning}
-                >
-                  <RefreshCw className="h-4 w-4" />
-                  Re-run
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onExport(report)
-                  }}
-                >
-                  <Download className="h-4 w-4" />
-                  Export
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="gap-2 text-destructive hover:text-destructive hover:bg-red-500/10"
-                  onClick={(e) => {
-                    e.stopPropagation()
-                    onDelete(report.id)
-                  }}
-                >
-                  <XCircle className="h-4 w-4" />
-                  Delete
-                </Button>
+          <div className="relative flex items-start justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className={cn("h-2 w-2 rounded-full", status.dot)} />
+                <span className="truncate text-sm font-semibold text-white">{report.repo}</span>
+              </div>
+
+              <div className="mt-3 flex items-center gap-2 text-xs text-zinc-500">
+                {report.prLabel.includes("PR") ? (
+                  <GitPullRequest className="h-3.5 w-3.5 text-[#ff6b2b]" />
+                ) : (
+                  <GitCommit className="h-3.5 w-3.5 text-[#ff6b2b]" />
+                )}
+                <span className="truncate text-zinc-300">{report.prLabel}</span>
+                {report.commitSha ? (
+                  <span className="truncate font-mono text-zinc-500">{report.commitSha.slice(0, 8)}</span>
+                ) : null}
               </div>
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border border-[#ff6b2b]/30 bg-[#ff6b2b]/12 text-sm font-semibold text-[#ff6b2b] shadow-[0_0_22px_rgba(255,107,43,0.14)]">
+              {score}
+            </div>
+          </div>
+
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <span className={cn("inline-flex items-center rounded-full border px-2.5 py-1 text-[11px] font-medium", status.badge)}>
+              <status.Icon className={cn("mr-1.5 h-3 w-3", isRunningStatus(report.status) && "animate-pulse")} />
+              {status.label}
+            </span>
+            <span className="inline-flex items-center rounded-full border border-white/6 bg-white/[0.03] px-2.5 py-1 text-[11px] text-zinc-300">
+              {totalFindings} findings
+            </span>
+            <span className="inline-flex items-center rounded-full border border-white/6 bg-white/[0.03] px-2.5 py-1 text-[11px] text-zinc-300">
+              {report.durationLabel || "Unknown duration"}
+            </span>
+          </div>
+
+          <div className="relative mt-4 flex flex-wrap gap-2">
+            <span className="rounded-md bg-[#ff6b2b] px-2 py-1 text-[11px] font-medium text-black">
+              {report.blockerCount} blocker{report.blockerCount === 1 ? "" : "s"}
+            </span>
+            <span className="rounded-md bg-[#ff6b2b] px-2 py-1 text-[11px] font-medium text-black">
+              {report.warnCount} warning{report.warnCount === 1 ? "" : "s"}
+            </span>
+            <span className="rounded-md bg-[#ff6b2b] px-2 py-1 text-[11px] font-medium text-black">
+              {report.infoCount} info
+            </span>
+          </div>
+
+          <div className="relative mt-auto flex items-center justify-between gap-3 pt-5 text-xs text-zinc-500">
+            <div className="flex min-w-0 items-center gap-2">
+              <User className="h-3.5 w-3.5 shrink-0 text-zinc-600" />
+              <span className="truncate">{report.author}</span>
+            </div>
+
+            <div className="flex shrink-0 items-center gap-2">
+              <Clock3 className="h-3.5 w-3.5 text-zinc-600" />
+              <span>{formatTimeAgo(report.createdAt)}</span>
+              <ChevronRight className="h-3.5 w-3.5 text-[#ff6b2b] transition-transform duration-200 group-hover:translate-x-0.5" />
+            </div>
+          </div>
+        </div>
+      </Link>
     </motion.div>
   )
 }
 
-// Filter Panel Component
-function FilterPanel({
-  filters,
-  onFilterChange,
-  onClear,
-}: {
-  filters: {
-    search: string
-    status: string
-    period: string
-    sortBy: string
-    sortOrder: "asc" | "desc"
-  }
-  onFilterChange: (key: string, value: string) => void
-  onClear: () => void
-}) {
-  const [open, setOpen] = useState(false)
-
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <SlidersHorizontal className="h-4 w-4" />
-          Filters
-          {(filters.status !== "all" ||
-            filters.period !== "all" ||
-            filters.sortBy !== "createdAt") && (
-            <span className="flex h-2 w-2">
-              <span className="absolute inline-flex h-full w-full rounded-full bg-primary opacity-75" />
-            </span>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-80" align="end">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h4 className="font-semibold text-sm">Filters</h4>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-6 text-xs"
-              onClick={onClear}
-            >
-              Clear all
-            </Button>
-          </div>
-
-          <div className="space-y-3">
-            <div className="space-y-2">
-              <Label className="text-xs">Status</Label>
-              <Select
-                value={filters.status}
-                onValueChange={(v) => onFilterChange("status", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Status</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="running">Running</SelectItem>
-                  <SelectItem value="failed">Failed</SelectItem>
-                  <SelectItem value="queued">Queued</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs">Time Period</Label>
-              <Select
-                value={filters.period}
-                onValueChange={(v) => onFilterChange("period", v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Time</SelectItem>
-                  <SelectItem value="24h">Last 24 Hours</SelectItem>
-                  <SelectItem value="week">Last 7 Days</SelectItem>
-                  <SelectItem value="month">Last 30 Days</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-xs">Sort By</Label>
-              <div className="flex gap-2">
-                <Select
-                  value={filters.sortBy}
-                  onValueChange={(v) => onFilterChange("sortBy", v)}
-                >
-                  <SelectTrigger className="flex-1">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="createdAt">Date</SelectItem>
-                    <SelectItem value="updatedAt">Updated</SelectItem>
-                    <SelectItem value="score">Score</SelectItem>
-                    <SelectItem value="repo">Repository</SelectItem>
-                  </SelectContent>
-                </Select>
-                <Button
-                  variant="outline"
-                  size="icon"
-                  onClick={() =>
-                    onFilterChange(
-                      "sortOrder",
-                      filters.sortOrder === "asc" ? "desc" : "asc"
-                    )
-                  }
-                >
-                  {filters.sortOrder === "asc" ? (
-                    <ArrowUp className="h-4 w-4" />
-                  ) : (
-                    <ArrowDown className="h-4 w-4" />
-                  )}
-                </Button>
-              </div>
-            </div>
-          </div>
-        </div>
-      </PopoverContent>
-    </Popover>
-  )
-}
-
-// Main Component
 interface EnhancedRecentReportsProps {
   limit?: number
   showHeader?: boolean
@@ -720,497 +317,233 @@ export function EnhancedRecentReports({
   const [reports, setReports] = useState<RecentReport[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // Filter States
   const [search, setSearch] = useState("")
-  const [statusFilter, setStatusFilter] = useState("all")
-  const [periodFilter, setPeriodFilter] = useState(defaultPeriod)
-  const [sortBy, setSortBy] = useState("createdAt")
-  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc")
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid")
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>(
+    defaultPeriod === "24h" || defaultPeriod === "week" || defaultPeriod === "month" || defaultPeriod === "all"
+      ? defaultPeriod
+      : "all",
+  )
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all")
+  const [denseCards, setDenseCards] = useState(false)
 
-  // Fetch Reports
-  const loadReports = useCallback(async () => {
+  async function loadReports() {
     setLoading(true)
     setError(null)
+
     try {
       const data = await fetchRecentReports({
-        status: statusFilter,
         period: periodFilter,
         limit,
       })
       setReports(data)
     } catch (err) {
-      console.error("Failed to fetch reports:", err)
-      setError(err instanceof Error ? err.message : "Failed to load reports")
+      const message = err instanceof Error ? err.message : "Failed to load reports"
+      setError(message)
+      toast.error("Unable to load reports", {
+        description: message,
+      })
     } finally {
       setLoading(false)
     }
-  }, [statusFilter, periodFilter, limit])
+  }
 
   useEffect(() => {
-    loadReports()
-  }, [loadReports])
+    void loadReports()
+  }, [periodFilter, limit])
 
-  // Auto-refresh
   useEffect(() => {
-    const hasRunning = reports.some((r) =>
-      ["running", "queued", "received"].includes(r.status)
+    const hasActiveReports = reports.some((report) => isRunningStatus(report.status))
+    const timeout = window.setInterval(
+      () => {
+        void loadReports()
+      },
+      hasActiveReports ? 8000 : 30000,
     )
-    const interval = setInterval(loadReports, hasRunning ? 5000 : 30000)
-    return () => clearInterval(interval)
-  }, [reports, loadReports])
 
-  // Filter & Sort
-  const filteredReports = useMemo(() => {
-    let filtered = [...reports]
+    return () => window.clearInterval(timeout)
+  }, [reports, periodFilter, limit])
 
-    // Search filter
-    if (search) {
-      const query = search.toLowerCase()
-      filtered = filtered.filter(
-        (r) =>
-          r.repo.toLowerCase().includes(query) ||
-          r.author.toLowerCase().includes(query) ||
-          r.prLabel.toLowerCase().includes(query) ||
-          r.commitSha?.toLowerCase().includes(query)
+  const stats = {
+    total: reports.length,
+    completed: reports.filter((report) => report.status === "completed").length,
+    running: reports.filter((report) => isRunningStatus(report.status)).length,
+    failed: reports.filter((report) => report.status === "failed").length,
+  }
+
+  const query = search.trim().toLowerCase()
+  const filteredReports = reports
+    .filter((report) => matchesStatus(report, statusFilter))
+    .filter((report) => {
+      if (!query) return true
+
+      return (
+        report.repo.toLowerCase().includes(query) ||
+        report.author.toLowerCase().includes(query) ||
+        report.prLabel.toLowerCase().includes(query) ||
+        report.commitSha?.toLowerCase().includes(query)
       )
-    }
-
-    // Sort
-    filtered.sort((a, b) => {
-      let cmp = 0
-      if (sortBy === "createdAt") {
-        cmp = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-      } else if (sortBy === "score") {
-        cmp = (a.score || 0) - (b.score || 0)
-      } else if (sortBy === "repo") {
-        cmp = a.repo.localeCompare(b.repo)
-      }
-      return sortOrder === "asc" ? cmp : -cmp
     })
 
-    return filtered
-  }, [reports, search, sortBy, sortOrder])
-
-  // Stats
-  const stats = useMemo(() => {
-    const completed = reports.filter((r) => r.status === "completed").length
-    const failed = reports.filter((r) => r.status === "failed").length
-    const running = reports.filter((r) =>
-      ["running", "queued", "received"].includes(r.status)
-    ).length
-    return { total: reports.length, completed, failed, running }
-  }, [reports])
-
-  // Handlers
-  const handleDelete = async (id: string) => {
-    if (!confirm("Delete this report?")) return
-    // API delete call would go here
-    setReports((prev) => prev.filter((r) => r.id !== id))
-  }
-
-  const handleRerun = async (id: string) => {
-    console.log("Re-running report:", id)
-    // API rerun call would go here
-  }
-
-  const handleExport = async (report: RecentReport) => {
-    const tid = toast.loading(`Génération du PDF pour ${report.repo}…`)
-    try {
-      // Try to fetch full details for richer PDF
-      let findings: any[] = []
-      let files: any[] = []
-      try {
-        const res = await fetch(`/api/dashboard/analyses/${report.id}`)
-        if (res.ok) {
-          const full = await res.json()
-          findings = (full.findings ?? []).map((f: any) => ({
-            severity: f.severity,
-            category: f.category ?? "style",
-            message: f.message,
-            filePath: f.filePath ?? "",
-            lineStart: f.lineStart,
-            suggestion: f.suggestion,
-          }))
-          files = (full.files ?? []).map((f: any) => ({
-            path: f.pathNew ?? f.path ?? "",
-            changeType: f.changeType ?? "modified",
-            additions: f.additionsCount ?? f.additions ?? 0,
-            deletions: f.deletionsCount ?? f.deletions ?? 0,
-            findingsCount: findings.filter((fi: any) => fi.filePath === (f.pathNew ?? f.path ?? "")).length,
-          }))
-        }
-      } catch {
-        // fall through with empty findings/files
-      }
-      const score = report.score ?? Math.max(0, 100 - report.blockerCount * 10 - report.warnCount * 3 - report.infoCount)
-      await generateAnalysisPdf({
-        id: report.id,
-        repo: report.repo,
-        prLabel: report.prLabel,
-        commitSha: report.commitSha,
-        author: report.author,
-        status: report.status,
-        createdAt: report.createdAt,
-        durationLabel: report.durationLabel,
-        blockerCount: report.blockerCount,
-        warnCount: report.warnCount,
-        infoCount: report.infoCount,
-        score,
-        findings,
-        files,
-      })
-      toast.dismiss(tid)
-      toast.success("PDF téléchargé !", { duration: 3000 })
-    } catch (err) {
-      toast.dismiss(tid)
-      toast.error("Échec de l'export PDF", {
-        description: err instanceof Error ? err.message : "Erreur inconnue",
-      })
-    }
-  }
-
-  const handleClearFilters = () => {
-    setSearch("")
-    setStatusFilter("all")
-    setPeriodFilter("all")
-    setSortBy("createdAt")
-    setSortOrder("desc")
-  }
+  const statusTabs: Array<{ key: StatusFilter; label: string; count: number }> = [
+    { key: "all", label: "All", count: stats.total },
+    { key: "completed", label: "Completed", count: stats.completed },
+    { key: "running", label: "Running", count: stats.running },
+    { key: "failed", label: "Failed", count: stats.failed },
+  ]
 
   return (
-    <div className={cn("space-y-6", className)}>
-      {/* Premium Header */}
-      {showHeader && (
-        <motion.div
-          initial={{ opacity: 0, y: -20 }}
-          animate={{ opacity: 1, y: 0 }}
-          className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-card via-card to-muted/20 border p-6"
-        >
-          {/* Animated background pattern */}
-          <div className="absolute inset-0 opacity-30">
-            <motion.div
-              animate={{
-                backgroundPosition: ["0% 0%", "100% 100%"],
-              }}
-              transition={{
-                duration: 20,
-                repeat: Infinity,
-                ease: "linear",
-              }}
-              className="absolute inset-0 bg-[linear-gradient(45deg,transparent_25%,rgba(16,185,129,0.1)_50%,transparent_75%)] bg-[length:500%_500%]"
+    <div className={cn("space-y-5", className)}>
+      {showHeader ? (
+        <section className="overflow-hidden rounded-[24px] border border-emerald-500/10 bg-[radial-gradient(circle_at_top_left,rgba(52,211,153,0.08),transparent_30%),linear-gradient(180deg,#12151a_0%,#101216_100%)] px-6 py-5 shadow-[0_24px_60px_rgba(0,0,0,0.28)]">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex items-start gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-violet-400/10 bg-violet-500/10 text-violet-300 shadow-[0_0_24px_rgba(139,92,246,0.12)]">
+                <FileText className="h-5 w-5" />
+              </div>
+
+              <div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h1 className="text-2xl font-semibold tracking-tight text-white">Recent Reports</h1>
+                  <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/15 bg-emerald-500/10 px-2 py-0.5 text-[11px] font-medium text-emerald-300">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    LIVE
+                  </span>
+                </div>
+
+                <p className="mt-1 text-sm text-zinc-500">
+                  <span className="font-medium text-white">{stats.total}</span> analyses
+                  <span className="mx-1.5 text-zinc-700">•</span>
+                  <span className="text-emerald-300">{stats.completed} completed</span>
+                  <span className="mx-1.5 text-zinc-700">•</span>
+                  <span className="text-amber-300">{stats.running} running</span>
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              <MetricChip label="Done" value={stats.completed} tone="emerald" />
+              <MetricChip label="Active" value={stats.running} tone="amber" />
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => void loadReports()}
+                className="h-9 rounded-xl border-white/8 bg-white/[0.03] px-3 text-zinc-300 hover:bg-white/[0.06] hover:text-white"
+              >
+                <RefreshCw className={cn("mr-2 h-4 w-4", loading && "animate-spin")} />
+                Refresh
+              </Button>
+            </div>
+          </div>
+        </section>
+      ) : null}
+
+      <section className="space-y-4 rounded-[24px] bg-transparent">
+        <div className="flex flex-col gap-3 lg:flex-row">
+          <div className="relative flex-1">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-600" />
+            <Input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search reports by repo, author, PR..."
+              className="h-11 rounded-none border-white/6 bg-[#14141c] pl-10 text-sm text-zinc-100 placeholder:text-zinc-600"
             />
           </div>
 
-          <div className="relative z-10">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-4">
-                {/* Logo/Icon */}
-                <motion.div
-                  animate={{
-                    boxShadow: [
-                      "0 0 20px rgba(16,185,129,0.3)",
-                      "0 0 40px rgba(16,185,129,0.1)",
-                      "0 0 20px rgba(16,185,129,0.3)",
-                    ],
-                  }}
-                  transition={{ duration: 3, repeat: Infinity }}
-                  className="p-3 rounded-xl bg-primary/10"
-                >
-                  <FileText className="h-6 w-6 text-primary" />
-                </motion.div>
-
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-                    Recent Reports
-                    {/* Live indicator */}
-                    <motion.span
-                      initial={{ scale: 0 }}
-                      animate={{ scale: 1 }}
-                      className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-500 text-xs"
-                    >
-                      <motion.span
-                        animate={{ scale: [1, 1.5, 1], opacity: [1, 0.5, 1] }}
-                        transition={{ duration: 1.5, repeat: Infinity }}
-                        className="w-1.5 h-1.5 rounded-full bg-emerald-500"
-                      />
-                      LIVE
-                    </motion.span>
-                  </h2>
-                  <div className="flex items-center gap-4 mt-1">
-                    <p className="text-sm text-muted-foreground">
-                      <span className="font-bold text-foreground">{stats.total}</span> analyses ·{" "}
-                      <span className="text-emerald-500 font-bold">{stats.completed}</span> completed ·{" "}
-                      <span className="text-blue-500 font-bold">{stats.running}</span> running
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                {/* Quick Stats */}
-                <motion.div
-                  initial={{ opacity: 0, x: 20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  className="hidden md:flex items-center gap-2"
-                >
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/50 border text-xs">
-                    <Activity className="h-3 w-3 text-emerald-500" />
-                    <span className="font-mono">
-                      <span className="text-emerald-500 font-bold">{stats.completed}</span>
-                      <span className="text-muted-foreground">/Done</span>
-                    </span>
-                  </div>
-                  <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-background/50 border text-xs">
-                    <Zap className="h-3 w-3 text-amber-500" />
-                    <span className="font-mono">
-                      <span className="text-amber-500 font-bold">{stats.running}</span>
-                      <span className="text-muted-foreground">/Active</span>
-                    </span>
-                  </div>
-                </motion.div>
-
+          <div className="flex gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
                 <Button
                   variant="outline"
-                  size="sm"
-                  disabled={reports.length === 0}
-                  onClick={async () => {
-                    const tid = toast.loading("Export PDF en cours…")
-                    try {
-                      await generateSummaryPdf(
-                        reports.map((r) => ({
-                          ...r,
-                          score: r.score ?? Math.max(0, 100 - r.blockerCount * 10 - r.warnCount * 3 - r.infoCount),
-                        }))
-                      )
-                      toast.dismiss(tid)
-                      toast.success("PDF téléchargé !", { duration: 3000 })
-                    } catch (err) {
-                      toast.dismiss(tid)
-                      toast.error("Échec de l'export PDF", {
-                        description: err instanceof Error ? err.message : "Erreur inconnue",
-                      })
-                    }
-                  }}
+                  className="h-11 rounded-none border-white/6 bg-[#14141c] px-4 text-zinc-300 hover:bg-[#1a1a22] hover:text-white"
                 >
-                  <Download className="h-4 w-4 mr-2" />
-                  Export PDF
+                  <Filter className="mr-2 h-4 w-4" />
+                  Filters
                 </Button>
-                <Button variant="outline" size="sm" onClick={loadReports}>
-                  <RefreshCw className={cn("h-4 w-4 mr-2", loading && "animate-spin")} />
-                  Refresh
-                </Button>
-              </div>
-            </div>
-          </div>
-        </motion.div>
-      )}
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48 border-white/8 bg-[#14141c] text-zinc-200">
+                {(["all", "24h", "week", "month"] as PeriodFilter[]).map((period) => (
+                  <DropdownMenuItem
+                    key={period}
+                    onClick={() => setPeriodFilter(period)}
+                    className={cn("cursor-pointer", periodFilter === period && "text-[#ff6b2b]")}
+                  >
+                    {PERIOD_LABELS[period]}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-      {/* Search & Filters Bar */}
-      <div className="flex flex-col sm:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search reports by repo, author, PR..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="pl-10"
-          />
-          {search && (
             <Button
-              variant="ghost"
-              size="sm"
-              className="absolute right-1 top-1/2 -translate-y-1/2 h-6 w-6 p-0"
-              onClick={() => setSearch("")}
+              variant="outline"
+              size="icon"
+              onClick={() => setDenseCards((current) => !current)}
+              className="h-11 w-11 rounded-none border-white/6 bg-[#14141c] text-zinc-300 hover:bg-[#1a1a22] hover:text-white"
+              title={denseCards ? "Comfortable cards" : "Dense cards"}
             >
-              <X className="h-3 w-3" />
+              <LayoutGrid className="h-4 w-4" />
             </Button>
-          )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <FilterPanel
-            filters={{
-              search,
-              status: statusFilter,
-              period: periodFilter,
-              sortBy,
-              sortOrder,
-            }}
-            onFilterChange={(key, value) => {
-              if (key === "status") setStatusFilter(value)
-              if (key === "period") setPeriodFilter(value)
-              if (key === "sortBy") setSortBy(value)
-              if (key === "sortOrder") setSortOrder(value as "asc" | "desc")
-            }}
-            onClear={handleClearFilters}
-          />
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                {viewMode === "grid" ? (
-                  <LayoutGrid className="h-4 w-4" />
-                ) : (
-                  <List className="h-4 w-4" />
-                )}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setViewMode("grid")}>
-                <LayoutGrid className="h-4 w-4 mr-2" />
-                Grid View
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setViewMode("list")}>
-                <List className="h-4 w-4 mr-2" />
-                List View
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
 
-      {/* Status Filter Tabs */}
-      <div className="flex gap-2 flex-wrap">
-        {[
-          { key: "all", label: "All", count: stats.total },
-          { key: "completed", label: "Completed", count: stats.completed, color: "#10b981" },
-          { key: "running", label: "Running", count: stats.running, color: "#3b82f6" },
-          { key: "failed", label: "Failed", count: stats.failed, color: "#ef4444" },
-        ].map((tab) => (
-          <Button
-            key={tab.key}
-            variant={statusFilter === tab.key ? "secondary" : "outline"}
-            size="sm"
-            onClick={() => setStatusFilter(tab.key)}
-            className="gap-2"
-            style={
-              statusFilter === tab.key && tab.color
-                ? { borderColor: `${tab.color}40`, background: `${tab.color}15` }
-                : undefined
-            }
-          >
-            {tab.label}
-            <span
+        <div className="flex flex-wrap gap-2">
+          {statusTabs.map((tab) => (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setStatusFilter(tab.key)}
               className={cn(
-                "ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold",
+                "inline-flex items-center gap-2 rounded-md border px-3 py-1.5 text-xs transition-colors",
                 statusFilter === tab.key
-                  ? "bg-background"
-                  : "bg-muted"
+                  ? "border-white/12 bg-white/[0.06] text-white"
+                  : "border-white/6 bg-[#111118] text-zinc-400 hover:bg-[#171720] hover:text-zinc-200",
               )}
             >
-              {tab.count}
-            </span>
-          </Button>
-        ))}
-      </div>
-
-      {/* Premium Loading Skeletons */}
-      {loading ? (
-        <div
-          className={cn(
-            "grid gap-4",
-            viewMode === "grid"
-              ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-              : "grid-cols-1"
-          )}
-        >
-          {Array.from({ length: 6 }).map((_, i) => (
-            <motion.div
-              key={i}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: i * 0.1 }}
-              className="rounded-xl border bg-card/50 p-4 space-y-4"
-            >
-              {/* Header skeleton */}
-              <div className="flex items-center justify-between">
-                <div className="space-y-2 flex-1">
-                  <Skeleton className="h-4 w-3/4 rounded-lg" />
-                  <Skeleton className="h-3 w-1/2 rounded-lg" />
-                </div>
-                <Skeleton className="h-10 w-10 rounded-full" />
-              </div>
-              
-              {/* Meta skeleton */}
-              <div className="flex items-center gap-4">
-                <Skeleton className="h-3 w-20 rounded-lg" />
-                <Skeleton className="h-3 w-16 rounded-lg" />
-              </div>
-              
-              {/* Badges skeleton */}
-              <div className="flex gap-2">
-                <Skeleton className="h-6 w-14 rounded-md" />
-                <Skeleton className="h-6 w-14 rounded-md" />
-                <Skeleton className="h-6 w-14 rounded-md" />
-              </div>
-
-              {/* Animated shimmer */}
-              <motion.div
-                animate={{ x: ["-100%", "200%"] }}
-                transition={{
-                  duration: 1.5,
-                  repeat: Infinity,
-                  ease: "easeInOut",
-                }}
-                className="h-px rounded-full"
-                style={{
-                  background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent)",
-                }}
-              />
-            </motion.div>
+              {tab.label}
+              <span className="rounded bg-black/35 px-1.5 py-0.5 text-[10px] text-zinc-400">{tab.count}</span>
+            </button>
           ))}
         </div>
-      ) : error ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <XCircle className="h-12 w-12 text-destructive mb-4" />
-          <p className="text-destructive font-medium">{error}</p>
-          <Button variant="outline" size="sm" className="mt-4" onClick={loadReports}>
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Retry
-          </Button>
-        </div>
-      ) : filteredReports.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-16 text-center">
-          <FileText className="h-12 w-12 text-muted-foreground mb-4 opacity-50" />
-          <p className="text-muted-foreground font-medium">
-            No reports found
-          </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Try adjusting your filters
-          </p>
-        </div>
-      ) : (
-        <div
-          className={cn(
-            "grid gap-4",
-            viewMode === "grid"
-              ? "grid-cols-1 md:grid-cols-2 lg:grid-cols-3"
-              : "grid-cols-1"
-          )}
-        >
-          <AnimatePresence mode="pop">
-            {filteredReports.slice(0, limit).map((report, index) => (
-              <ReportCard
-                key={report.id}
-                report={report}
-                index={index}
-                onDelete={handleDelete}
-                onRerun={handleRerun}
-                onExport={handleExport}
-              />
-            ))}
-          </AnimatePresence>
-        </div>
-      )}
 
-      {/* Load More */}
-      {filteredReports.length > limit && (
-        <div className="flex justify-center">
-          <Button variant="outline">
-            Load More ({filteredReports.length - limit} more)
-          </Button>
-        </div>
-      )}
+        {loading ? (
+          <div
+            className={cn(
+              "grid gap-4",
+              denseCards ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+            )}
+          >
+            {Array.from({ length: 6 }).map((_, index) => (
+              <LoadingCard key={index} dense={denseCards} />
+            ))}
+          </div>
+        ) : error ? (
+          <div className="rounded-3xl border border-red-500/10 bg-red-500/[0.04] px-6 py-10 text-center">
+            <XCircle className="mx-auto h-8 w-8 text-red-300" />
+            <p className="mt-3 text-sm font-medium text-red-200">{error}</p>
+            <Button
+              variant="outline"
+              onClick={() => void loadReports()}
+              className="mt-4 border-red-500/20 bg-transparent text-red-200 hover:bg-red-500/10"
+            >
+              Retry
+            </Button>
+          </div>
+        ) : filteredReports.length === 0 ? (
+          <EmptyState period={periodFilter} />
+        ) : (
+          <div
+            className={cn(
+              "grid gap-4",
+              denseCards ? "grid-cols-1 md:grid-cols-2 xl:grid-cols-4" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-3",
+            )}
+          >
+            <AnimatePresence mode="popLayout">
+              {filteredReports.slice(0, limit).map((report, index) => (
+                <ReportCard key={report.id} report={report} index={index} dense={denseCards} />
+              ))}
+            </AnimatePresence>
+          </div>
+        )}
+      </section>
     </div>
   )
 }
