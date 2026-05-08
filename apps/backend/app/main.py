@@ -6,6 +6,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.http.graphrag import router as graphrag_router
+from app.api.http.graph_visualization import router as graph_viz_router
 
 from app.api.errors import register_exception_handlers
 from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -233,6 +234,7 @@ app.include_router(suggestions.router, prefix="/v1")
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
 app.include_router(graphrag_router)
+app.include_router(graph_viz_router)
 app.include_router(mobile.router, prefix="/v1")
 
 

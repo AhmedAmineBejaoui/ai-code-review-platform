@@ -43,6 +43,7 @@ import {
   Template,
   SettingsAdjust,
   FolderDetails,
+  Cube,
 } from "@carbon/icons-react";
 
 import { SignOutButton } from "@clerk/nextjs";
@@ -428,6 +429,12 @@ function getSidebarContent(
               label: "Knowledge Base",
               href: "/dashboard/knowledge-base",
               isActive: pathname === "/dashboard/knowledge-base",
+            },
+            {
+              icon: <Cube size={16} className="text-sidebar-foreground" />,
+              label: "Graph 3D",
+              href: "/dashboard/graph-3d",
+              isActive: pathname === "/dashboard/graph-3d",
             },
             {
               icon: <Analytics size={16} className="text-sidebar-foreground" />,
