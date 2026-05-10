@@ -289,6 +289,16 @@ class Settings(BaseSettings):
 
     # ── Incremental Indexing ──────────────────────────────────────────────────
     REPO_CONTEXT_INCREMENTAL: bool = True
+    
+    # ── Pattern Analysis ──────────────────────────────────────────────────────
+    PATTERN_ANALYSIS_ENABLED: bool = True
+    PATTERN_ANALYSIS_MIN_CONFIDENCE: float = 0.6
+    PATTERN_ANALYSIS_MIN_OCCURRENCES: int = 3
+    PATTERN_ANALYSIS_MAX_VIOLATIONS: int = 50
+    PATTERN_ANALYSIS_TARGET_EXTENSIONS: str = ".js,.ts,.jsx,.tsx,.py"
+    PATTERN_ANALYSIS_IGNORE_DIRS: str = "node_modules,dist,build,.git,__pycache__,venv"
+    PATTERN_ANALYSIS_CACHE_ENABLED: bool = True
+    PATTERN_ANALYSIS_CACHE_TTL_HOURS: int = 24
 
     # ── Feedback Loop ─────────────────────────────────────────────────────────
     RAG_FEEDBACK_ENABLED: bool = True
@@ -428,6 +438,22 @@ class Settings(BaseSettings):
         if not raw or not raw.strip():
             return ["python", "javascript", "typescript"]
         return [lang.strip().lower() for lang in raw.split(",") if lang.strip()]
+
+    @property
+    def pattern_analysis_target_extensions(self) -> list[str]:
+        """File extensions to analyze for design patterns."""
+        raw = self.PATTERN_ANALYSIS_TARGET_EXTENSIONS
+        if not raw or not raw.strip():
+            return [".js", ".ts", ".jsx", ".tsx", ".py"]
+        return [ext.strip() for ext in raw.split(",") if ext.strip()]
+    
+    @property
+    def pattern_analysis_ignore_dirs(self) -> list[str]:
+        """Directories to ignore during pattern analysis."""
+        raw = self.PATTERN_ANALYSIS_IGNORE_DIRS
+        if not raw or not raw.strip():
+            return ["node_modules", "dist", "build", ".git", "__pycache__", "venv"]
+        return [d.strip() for d in raw.split(",") if d.strip()]
 
 
 settings = Settings()

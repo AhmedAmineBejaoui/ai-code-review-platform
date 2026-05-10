@@ -28,6 +28,7 @@ from app.core.analysis.history import AnalysisHistoryService, AnalysisStatus, An
 from app.core.review_engine.diff_engine import parse_unified_diff
 from app.core.review_engine.security import redact_unified_diff_added_lines, scan_parsed_diff_for_secrets
 from app.data.repos.analyses_repo import AnalysesRepo, CreateFindingInput
+from app.core.design_patterns.pattern_analysis_service import get_pattern_analysis_service
 from app.settings import settings
 from app.workers.celery_app import celery_app
 
@@ -312,16 +313,44 @@ async def _run_graphrag_pipeline_async(
         analyses_repo.update_status(
             analysis_id=analysis_id,
             stage="ORCHESTRATION_COMPLETE",
+            progress=80,
+        )
+        
+        # 6.5. Run pattern analysis (NEW)
+        logger.info(f"Running pattern analysis for analysis {analysis_id}")
+        
+        pattern_service = get_pattern_analysis_service()
+        pattern_result = await pattern_service.run_pattern_analysis(
+            analysis_id=analysis_id,
+            repository_path=resolved_scope.repo_path,
+            repository_name=resolved_scope.repo_id or "unknown",
+            diff_content=diff_redacted,
+        )
+        
+        logger.info(
+            f"Pattern analysis completed: {pattern_result.get('total_violations', 0)} violations, "
+            f"{pattern_result.get('findings_created', 0)} findings created"
+        )
+        
+        analyses_repo.update_status(
+            analysis_id=analysis_id,
+            stage="PATTERN_ANALYSIS_COMPLETE",
             progress=90,
+            metadata_updates={
+                "pattern_analysis": pattern_result,
+            },
         )
         
         # 7. Calculate metrics
+        total_findings = orchestration_result.get("total_findings", 0)
+        pattern_findings = pattern_result.get("findings_created", 0)
+        
         metrics = AnalysisMetrics(
-            total_findings=orchestration_result.get("total_findings", 0),
-            critical_findings=orchestration_result.get("critical_findings", 0),
-            high_findings=orchestration_result.get("high_findings", 0),
-            medium_findings=orchestration_result.get("medium_findings", 0),
-            low_findings=orchestration_result.get("low_findings", 0),
+            total_findings=total_findings + pattern_findings,
+            critical_findings=orchestration_result.get("critical_findings", 0) + pattern_result.get("violations_by_severity", {}).get("critical", 0),
+            high_findings=orchestration_result.get("high_findings", 0) + pattern_result.get("violations_by_severity", {}).get("high", 0),
+            medium_findings=orchestration_result.get("medium_findings", 0) + pattern_result.get("violations_by_severity", {}).get("medium", 0),
+            low_findings=orchestration_result.get("low_findings", 0) + pattern_result.get("violations_by_severity", {}).get("low", 0),
             files_analyzed=files_count,
             lines_of_code=additions_total + deletions_total,
         )
@@ -376,6 +405,12 @@ async def _run_graphrag_pipeline_async(
                     "persistent_findings": comparison.total_persistent,
                 },
                 "has_secrets": has_secrets,
+                "pattern_analysis": {
+                    "total_violations": pattern_result.get("total_violations", 0),
+                    "patterns_checked": pattern_result.get("patterns_checked", 0),
+                    "violations_by_severity": pattern_result.get("violations_by_severity", {}),
+                    "violations_by_pattern": pattern_result.get("violations_by_pattern", {}),
+                },
             },
         )
         

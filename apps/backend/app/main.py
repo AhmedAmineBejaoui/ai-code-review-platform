@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from prometheus_fastapi_instrumentator import Instrumentator
 from app.api.http.graphrag import router as graphrag_router
 from app.api.http.graph_visualization import router as graph_viz_router
+from app.api.http.patterns import router as patterns_router
 
 from app.api.errors import register_exception_handlers
 from app.api.middleware.rate_limit import RateLimitMiddleware
@@ -132,6 +133,7 @@ app = FastAPI(
         {"name": "observability", "description": "System monitoring and observability APIs."},
         {"name": "jira", "description": "Jira integration for issue creation and linking APIs."},
         {"name": "review-states", "description": "Review state machine and workflow management APIs."},
+        {"name": "patterns", "description": "Design pattern extraction, analysis, and violation tracking APIs."},
     ],
 )
 register_exception_handlers(app)
@@ -235,6 +237,7 @@ app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
 app.include_router(graphrag_router)
 app.include_router(graph_viz_router)
+app.include_router(patterns_router)
 app.include_router(mobile.router, prefix="/v1")
 
 
