@@ -1,503 +1,394 @@
-# 🚀 Guide de Déploiement VPS - Design Pattern Analysis System
+# Déploiement VPS - Guide de Mise à Jour
 
-## Serveur VPS
-- **IP**: 135.125.100.150
-- **Utilisateur**: root
-- **Mot de passe**: DevoraPass2026
+## Changements Majeurs (21,000+ lignes)
 
----
+Ce commit ajoute une plateforme LLMOps complète avec:
+- **LLM Gateway** multi-providers (Ollama, Anthropic, OpenAI, Azure)
+- **Système multi-agents** (6 agents spécialisés)
+- **Observabilité complète** (PostgreSQL traces, Prometheus, Langfuse, RAGAS)
+- **4 dashboards frontend** (Models Hub, Prompt Observatory, GraphRAG Explorer, AI Review Center)
 
-## 📋 Déploiement Automatique
+## Étapes de Déploiement sur VPS
 
-### Option 1: Script Bash (Recommandé)
-
-```bash
-# Sur votre machine locale (Git Bash ou terminal)
-chmod +x deploy-to-vps.sh
-./deploy-to-vps.sh
-```
-
-**Note**: Le script vous demandera le mot de passe SSH plusieurs fois.
-
----
-
-### Option 2: Déploiement Manuel
-
-#### 1️⃣ Connexion au VPS
+### 1. Connexion au VPS et Pull des Changements
 
 ```bash
-ssh root@135.125.100.150
-# Mot de passe: DevoraPass2026
-```
+# Se connecter au VPS
+ssh votre_user@votre_vps_ip
 
-#### 2️⃣ Pull des dernières modifications
+# Aller dans le répertoire du projet
+cd /path/to/ai-code-review-platform
 
-```bash
-cd /root/ai-code-review-platform
+# Vérifier la branche actuelle
+git branch
+
+# Pull les derniers changements
 git pull origin main
 ```
 
-#### 3️⃣ Installation des dépendances
+### 2. Configuration des Variables d'Environnement
+
+Ajoutez ces variables dans votre fichier `.env` à la racine du projet:
+
+```bash
+# LLM Gateway Configuration
+LLM_GATEWAY_ENABLED=true
+LLM_PROVIDER=ollama  # ou anthropic, openai, azure
+
+# Ollama (local, gratuit)
+OLLAMA_ENABLED=true
+OLLAMA_BASE_URL=http://localhost:11434
+OLLAMA_MODEL=deepseek-coder:6.7b
+
+# Anthropic Claude (optionnel, PRIMARY pour production)
+ANTHROPIC_API_KEY=your_anthropic_key
+ANTHROPIC_MODEL=claude-3-5-sonnet-20241022
+ANTHROPIC_MAX_TOKENS=8192
+ANTHROPIC_TEMPERATURE=0.1
+
+# OpenAI GPT (optionnel)
+OPENAI_API_KEY=your_openai_key
+OPENAI_MODEL=gpt-4o
+OPENAI_MAX_TOKENS=4096
+
+# Azure OpenAI (optionnel, pour entreprise)
+AZURE_OPENAI_API_KEY=your_azure_key
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_API_VERSION=2024-02-01
+
+# Rate Limiting
+RATE_LIMIT_ANTHROPIC_PER_MINUTE=50
+RATE_LIMIT_OPENAI_PER_MINUTE=60
+RATE_LIMIT_OLLAMA_PER_MINUTE=0  # unlimited
+RATE_LIMIT_PER_USER_PER_HOUR=100
+
+# Prompt Cache
+PROMPT_CACHE_ENABLED=true
+PROMPT_CACHE_TTL_SECONDS=3600
+PROMPT_CACHE_MAX_SIZE=10000
+
+# Observability - Langfuse (optionnel)
+LANGFUSE_ENABLED=false  # mettre true si vous voulez LLMOps dashboard
+LANGFUSE_PUBLIC_KEY=your_langfuse_public_key
+LANGFUSE_SECRET_KEY=your_langfuse_secret_key
+LANGFUSE_HOST=http://localhost:3100
+
+# Observability - OpenTelemetry (optionnel)
+OTEL_ENABLED=false  # mettre true pour distributed tracing
+OTEL_SERVICE_NAME=devora-backend
+OTEL_EXPORTER_TYPE=otlp  # otlp, jaeger, zipkin, console
+OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4317
+
+# LLM Traces & Metrics
+LLM_TRACES_RETENTION_DAYS=90
+LLM_METRICS_AGGREGATION_INTERVAL_MINUTES=60
+
+# Multi-Agent System
+MULTI_AGENT_ENABLED=true
+MULTI_AGENT_PARALLEL_EXECUTION=true
+MULTI_AGENT_TIMEOUT_SECONDS=300
+MULTI_AGENT_MAX_FINDINGS_PER_AGENT=50
+MULTI_AGENT_DEDUPLICATION_ENABLED=true
+MULTI_AGENT_SIMILARITY_THRESHOLD=0.85
+
+# RAGAS Evaluation
+RAGAS_EVALUATION_ENABLED=true
+RAGAS_COMPUTE_ON_TRACE=true  # évaluer automatiquement après chaque trace
+RAGAS_USE_OLLAMA=true  # utiliser Ollama local (gratuit, CONFIDENTIAL)
+RAGAS_BATCH_SIZE=10
+
+# Backend API URL (pour Next.js)
+BACKEND_API_URL=http://localhost:8000
+
+# Dashboard Timeouts
+DASHBOARD_BACKEND_FETCH_TIMEOUT_MS=15000
+DASHBOARD_BACKEND_WRITE_TIMEOUT_MS=30000
+```
+
+### 3. Installation des Nouvelles Dépendances Backend
 
 ```bash
 cd apps/backend
+
+# Installer les nouvelles dépendances Python
 poetry install
+
+# Les nouvelles dépendances incluent:
+# - httpx (pour LLM API calls)
+# - redis (pour rate limiting + cache)
+# - langfuse (optionnel, pour LLMOps)
+# - opentelemetry-* (optionnel, pour distributed tracing)
 ```
 
-#### 4️⃣ Configuration des variables d'environnement
+### 4. Migrations de Base de Données
 
-Éditez le fichier `.env` à la racine du projet:
+Créer et appliquer les migrations pour les nouvelles tables `llm_traces` et `llm_metrics`:
 
 ```bash
-cd /root/ai-code-review-platform
-nano .env
+# Créer une nouvelle migration
+cd apps/backend
+make migrate-create m=add_llm_observability_tables
+
+# Ou appliquer les migrations existantes
+make host-migrate  # si vous travaillez sur le host
+# ou
+make migrate       # si vous utilisez Docker
 ```
 
-Ajoutez/modifiez ces lignes:
+Le script de migration doit créer ces tables (voir `LLM_GATEWAY_SETUP.md` section "Database Schema"):
+
+- `llm_traces`: stocke chaque requête LLM (trace_id, user_id, project_id, prompt, response, tokens, cost, duration, RAGAS scores)
+- `llm_metrics`: agrège les métriques (hourly/daily, par provider/user/project)
+
+### 5. Démarrage d'Ollama (Recommandé pour Démarrer)
+
+Ollama est **gratuit et local**, parfait pour commencer:
 
 ```bash
-# ========================================
-# Pattern Analysis Configuration
-# ========================================
-PATTERN_ANALYSIS_ENABLED=true
-PATTERN_ANALYSIS_MIN_CONFIDENCE=0.6
-PATTERN_ANALYSIS_MIN_OCCURRENCES=3
-PATTERN_ANALYSIS_MAX_VIOLATIONS=50
-PATTERN_ANALYSIS_TARGET_EXTENSIONS=".js,.ts,.jsx,.tsx,.py"
-PATTERN_ANALYSIS_IGNORE_DIRS="node_modules,dist,build,.git,__pycache__,venv"
-PATTERN_ANALYSIS_CACHE_ENABLED=true
-PATTERN_ANALYSIS_CACHE_TTL_HOURS=24
+# Installer Ollama si pas déjà fait
+curl -fsSL https://ollama.com/install.sh | sh
 
-# ========================================
-# Neo4j Configuration (Required)
-# ========================================
-NEO4J_ENABLED=true
-NEO4J_URI=bolt://localhost:7687
-NEO4J_USER=neo4j
-NEO4J_PASSWORD=neo4j
-NEO4J_DATABASE=neo4j
-NEO4J_MAX_CONNECTION_POOL_SIZE=50
+# Démarrer le service Ollama
+ollama serve
 
-# ========================================
-# GitHub Token (Optional - for profile importer)
-# ========================================
-GITHUB_TOKEN=ghp_your_token_here
+# Dans un autre terminal, télécharger le modèle recommandé
+ollama pull deepseek-coder:6.7b
+
+# Vérifier que ça fonctionne
+curl http://localhost:11434/api/tags
 ```
 
-Sauvegardez avec `Ctrl+O`, `Enter`, puis `Ctrl+X`.
-
-#### 5️⃣ Exécution des migrations
+### 6. Démarrage avec Docker Compose (Option 1 - Recommandée)
 
 ```bash
-cd /root/ai-code-review-platform/apps/backend
-poetry run alembic upgrade head
-```
+# Retour à la racine du projet
+cd /path/to/ai-code-review-platform
 
-#### 6️⃣ Initialisation du schéma Neo4j
+# Option A: Stack de base (sans observabilité avancée)
+docker compose -f docker-compose.local.yml up -d
 
-```bash
-cd /root/ai-code-review-platform/apps/backend
-
-poetry run python -c "
-from app.integrations.graph_database.neo4j_client import get_neo4j_client
-neo4j = get_neo4j_client()
-if neo4j.enabled:
-    neo4j.init_schema()
-    print('✅ Neo4j schema initialized successfully')
-else:
-    print('⚠️  Neo4j is disabled in settings')
-"
-```
-
-#### 7️⃣ Redémarrage des services
-
-**Si vous utilisez Docker:**
-
-```bash
-cd /root/ai-code-review-platform
-docker-compose down
-docker-compose up -d --build
-```
-
-**Si vous utilisez systemd:**
-
-```bash
-sudo systemctl restart ai-code-review-api
-sudo systemctl restart ai-code-review-worker
-```
-
-#### 8️⃣ Vérification du déploiement
-
-```bash
-# Health check
-curl http://localhost:8000/health | python3 -m json.tool
+# Option B: Stack complète avec Langfuse + Jaeger (observabilité avancée)
+docker compose -f docker-compose.local.yml --profile llm-observability up -d
 
 # Vérifier les logs
-# Pour Docker:
-docker logs -f ai-code-review-api
-
-# Pour systemd:
-journalctl -u ai-code-review-api -f
+docker compose -f docker-compose.local.yml logs -f backend
+docker compose -f docker-compose.local.yml logs -f worker
 ```
 
----
+### 7. Démarrage Manuel (Option 2)
 
-## 🧪 Tests Après Déploiement
-
-### 1. Test de l'API Pattern Analysis
+Si vous préférez lancer sans Docker:
 
 ```bash
-# Test endpoint statistics
-curl http://localhost:8000/api/v1/patterns/statistics \
-  -H "Authorization: Bearer YOUR_TOKEN"
+# Terminal 1: Infrastructure (PostgreSQL, Redis, Neo4j, MinIO)
+cd apps/backend
+make infra-core-up  # ou make up-minimal
 
-# Test health check
+# Terminal 2: Backend API
+cd apps/backend
+make host-api  # lance uvicorn sur :8000
+
+# Terminal 3: Celery Worker
+cd apps/backend
+make host-worker  # lance celery worker
+
+# Terminal 4: Dashboard Next.js
+cd apps/dashboard
+npm install  # si nouvelles dépendances
+npm run dev  # lance sur :3001
+```
+
+### 8. Vérification du Déploiement
+
+```bash
+# Backend API health
 curl http://localhost:8000/health
-```
 
-### 2. Import de votre profil GitHub
+# Vérifier que le gateway est disponible
+curl http://localhost:8000/api/v1/llm/providers
 
-```bash
-cd /root/ai-code-review-platform/apps/backend
+# Vérifier les providers configurés
+curl http://localhost:8000/api/v1/llm/providers | jq
 
-poetry run python scripts/github_profile_importer.py AhmedAmineBejaoui \
-  --max-repos 10 \
-  --include-forks false
-```
+# Dashboard
+curl http://localhost:3001
 
-### 3. Extraction de patterns manuellement
+# Langfuse (si activé avec --profile llm-observability)
+curl http://localhost:3100
 
-```bash
-poetry run python -c "
-from app.core.design_patterns import PatternExtractor
+# Jaeger (si activé)
+curl http://localhost:16686
 
-extractor = PatternExtractor()
-patterns = extractor.extract_patterns_from_repository(
-    repo_path='/path/to/repo',
-    repo_name='my-test-repo'
-)
-
-print(f'✅ Extracted {len(patterns)} patterns')
-for pattern in patterns[:5]:
-    print(f'  - {pattern.name} (confidence: {pattern.confidence:.2f})')
-"
-```
-
-### 4. Test de l'analyse de PR
-
-```bash
-curl -X POST http://localhost:8000/v1/analyze \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -d '{
-    "project_id": "your-project-uuid",
-    "diff": "diff --git a/src/routes/user.routes.js...",
-    "context": {
-      "pr_number": 123,
-      "repository_name": "my-repo"
-    }
-  }'
-```
-
----
-
-## 📊 Requêtes Neo4j
-
-Connectez-vous à Neo4j Browser: `http://135.125.100.150:7474`
-
-```cypher
-// 1. Voir tous les patterns extraits
-MATCH (p:DesignPattern)
-RETURN p.name, p.confidence, p.occurrences
-ORDER BY p.confidence DESC
-LIMIT 10
-
-// 2. Voir les patterns d'un repository
-MATCH (r:Repository {name: "my-ecommerce-app"})-[:EXHIBITS_PATTERN]->(p:DesignPattern)
-RETURN p.name, p.confidence, p.occurrences
-ORDER BY p.confidence DESC
-
-// 3. Voir les violations les plus fréquentes
-MATCH (v:PatternViolation)-[:VIOLATES]->(p:DesignPattern)
-RETURN p.name, COUNT(v) AS violations
-ORDER BY violations DESC
-LIMIT 10
-
-// 4. Voir les violations d'une analyse
-MATCH (pr:PullRequest {pr_id: "analysis-uuid"})-[:HAS_VIOLATION]->(v:PatternViolation)
-RETURN v.severity, v.title, v.file_path
-ORDER BY v.severity
-
-// 5. Statistiques globales
-MATCH (p:DesignPattern)
-RETURN 
-  COUNT(p) AS total_patterns,
-  AVG(p.confidence) AS avg_confidence,
-  SUM(p.occurrences) AS total_occurrences
-```
-
----
-
-## 🔍 Monitoring et Logs
-
-### Logs Backend API
-
-```bash
-# Docker
-docker logs -f ai-code-review-api --tail 100
-
-# Systemd
-journalctl -u ai-code-review-api -f --lines 100
-```
-
-### Logs Worker (Celery)
-
-```bash
-# Docker
-docker logs -f ai-code-review-worker --tail 100
-
-# Systemd
-journalctl -u ai-code-review-worker -f --lines 100
-```
-
-### Logs Neo4j
-
-```bash
-docker logs -f neo4j --tail 100
-```
-
-### Métriques Prometheus
-
-```bash
+# Prometheus metrics
 curl http://localhost:8000/metrics
 ```
 
----
+### 9. Test Rapide du LLM Gateway
 
-## 🐛 Dépannage
+```python
+# Dans un terminal Python sur le VPS
+cd apps/backend
+poetry run python
 
-### Problème 1: Neo4j connection failed
+# Test du gateway
+from app.gateway.api_gateway import LLMGateway
+from app.gateway.request_context import RequestContext, SensitivityLevel, CostTarget, Priority
 
-**Solution:**
+gateway = LLMGateway()
+
+context = RequestContext(
+    user_id="test-user",
+    project_id="test-project",
+    analysis_id="test-analysis",
+    sensitivity=SensitivityLevel.INTERNAL,
+    cost_target=CostTarget.BALANCED,
+    priority=Priority.NORMAL
+)
+
+response = gateway.generate(
+    prompt="Explique-moi le code suivant: def hello(): return 'world'",
+    context=context
+)
+
+print(f"Provider: {response.provider}")
+print(f"Model: {response.model}")
+print(f"Response: {response.content}")
+print(f"Tokens: {response.total_tokens}")
+print(f"Cost: ${response.cost_cents / 100:.4f}")
+print(f"Duration: {response.duration_ms}ms")
+```
+
+### 10. Accès aux Dashboards
+
+Une fois déployé, accédez aux nouveaux dashboards:
+
+- **Models Hub**: http://your-vps-ip:3001/models
+  - Status des providers
+  - Spécifications des modèles
+  - Calculateur de coûts
+  - Recommandations d'optimisation
+
+- **Prompt Observatory**: http://your-vps-ip:3001/observatory
+  - Viewer de traces en temps réel (auto-refresh 10s)
+  - Graphiques Recharts (coût par provider, latence)
+  - Métriques RAGAS (faithfulness, relevancy)
+  - Drill-down dans les prompts/responses
+
+- **GraphRAG Explorer**: http://your-vps-ip:3001/graphrag-explorer
+  - Visualisation du graphe Neo4j
+  - Filtres par type de nœud (chunk/rule/pattern/kb_document)
+  - Recherche et export
+
+- **AI Review Center**: http://your-vps-ip:3001/ai-review
+  - 6 cartes d'agents (Security, Performance, CleanCode, Architecture, DevOps, Testing)
+  - Liste des findings avec filtres
+  - Viewer détaillé avec approve/dismiss/create issue
+
+### 11. Monitoring en Production
 
 ```bash
-# Vérifier si Neo4j est actif
-docker ps | grep neo4j
+# Logs en temps réel
+docker compose -f docker-compose.local.yml logs -f backend worker
 
-# Redémarrer Neo4j
-docker-compose restart neo4j
+# Métriques Prometheus
+curl http://localhost:8000/metrics | grep llm_
 
-# Vérifier les logs
-docker logs neo4j --tail 50
+# Exemples de métriques disponibles:
+# - llm_requests_total{provider="ollama",model="deepseek-coder"}
+# - llm_cost_cents_total{provider="anthropic"}
+# - llm_tokens_total{provider="openai",token_type="input"}
+# - llm_latency_seconds_bucket{provider="ollama"}
+# - llm_fallbacks_total{from_provider="anthropic",to_provider="openai"}
+# - llm_error_rate{provider="openai"}
+# - llm_active_requests{provider="ollama"}
 
-# Test de connexion
-poetry run python -c "
-from neo4j import GraphDatabase
-driver = GraphDatabase.driver('bolt://localhost:7687', auth=('neo4j', 'neo4j'))
-with driver.session() as session:
-    result = session.run('RETURN 1')
-    print('✅ Connection OK')
-driver.close()
-"
+# Vérifier les traces PostgreSQL
+docker compose -f docker-compose.local.yml exec postgres psql -U devora -d devora -c "SELECT COUNT(*) FROM llm_traces;"
+
+# Vérifier les métriques agrégées
+docker compose -f docker-compose.local.yml exec postgres psql -U devora -d devora -c "SELECT provider, COUNT(*), SUM(total_cost_cents) FROM llm_metrics WHERE metric_type = 'daily' GROUP BY provider;"
 ```
 
-### Problème 2: Pattern analysis not running
+## Optimisation des Coûts
 
-**Solution:**
+**Configuration recommandée pour production**:
+
+1. **Ollama local pour tout le CONFIDENTIAL data** (0% coût cloud)
+   ```bash
+   # Dans .env
+   OLLAMA_ENABLED=true
+   ```
+
+2. **Anthropic Claude pour code review premium** (~$3/M tokens input, $15/M output)
+   ```bash
+   ANTHROPIC_API_KEY=your_key
+   ```
+
+3. **OpenAI GPT-4o-mini pour tasks simples** ($0.15/M input, $0.60/M output - 20x moins cher que GPT-4)
+   ```bash
+   OPENAI_MODEL=gpt-4o-mini
+   ```
+
+4. **Activer le prompt cache** (~30% de savings)
+   ```bash
+   PROMPT_CACHE_ENABLED=true
+   PROMPT_CACHE_TTL_SECONDS=3600
+   ```
+
+**Exemple de savings**:
+- 1000 requêtes/jour × 500 tokens × 30 jours
+- Ollama: **$0** (gratuit)
+- GPT-4o-mini: **$22.50**
+- Claude Haiku: **$60**
+- Claude Sonnet: **$270**
+
+## Rollback en Cas de Problème
+
+Si quelque chose ne fonctionne pas:
 
 ```bash
-# Vérifier les settings
-cd /root/ai-code-review-platform/apps/backend
-poetry run python -c "
-from app.settings import settings
-print(f'PATTERN_ANALYSIS_ENABLED: {settings.PATTERN_ANALYSIS_ENABLED}')
-print(f'NEO4J_ENABLED: {settings.NEO4J_ENABLED}')
-"
+# Revenir à la version précédente
+git log --oneline -5  # voir les derniers commits
+git revert 3993b5a    # revert ce commit (remplacer par l'ID du commit)
+git push origin main
 
-# Vérifier les logs du worker
-docker logs ai-code-review-worker | grep -i pattern
+# Ou hard reset (ATTENTION: perd les changements)
+git reset --hard 2ec11fa  # commit avant le gateway
+git push origin main --force
+
+# Redémarrer les services
+docker compose -f docker-compose.local.yml restart
 ```
 
-### Problème 3: GitHub profile importer fails
+## Support
 
-**Solution:**
+Pour plus de détails, consultez:
+- `LLM_GATEWAY_SETUP.md`: Guide complet du gateway (2800+ lignes)
+- `MULTI_AGENT_SYSTEM_COMPLETE.md`: Documentation des agents
+- `OBSERVABILITY_IMPLEMENTATION.md`: Setup Langfuse/OTEL/Prometheus
+- `apps/backend/app/observability/INTEGRATION_GUIDE.md`: Intégration de l'observabilité
 
-```bash
-# Vérifier le token GitHub
-echo $GITHUB_TOKEN
+## Notes Importantes
 
-# Tester l'API GitHub
-curl -H "Authorization: token $GITHUB_TOKEN" \
-  https://api.github.com/users/AhmedAmineBejaoui/repos
+1. **PostgreSQL requis**: Les nouvelles tables `llm_traces` et `llm_metrics` doivent être créées via migration
+2. **Redis requis**: Pour rate limiting + prompt cache (peut être désactivé si pas disponible)
+3. **Ollama recommandé**: Gratuit, local, parfait pour CONFIDENTIAL data (0% coût cloud)
+4. **Langfuse/Jaeger optionnels**: Pour observabilité avancée, utiliser `--profile llm-observability`
+5. **Neo4j unchanged**: L'architecture GraphRAG existante est préservée, le gateway s'intègre de manière transparente
 
-# Vérifier les permissions du répertoire de clonage
-ls -la /tmp/github_import_*
-```
+## Checklist de Déploiement
 
-### Problème 4: Module not found errors
+- [ ] Pull des changements (`git pull origin main`)
+- [ ] Ajouter les variables d'environnement dans `.env`
+- [ ] Installer les dépendances Python (`poetry install`)
+- [ ] Créer/appliquer les migrations de base de données
+- [ ] Démarrer Ollama (`ollama serve` + `ollama pull deepseek-coder:6.7b`)
+- [ ] Démarrer l'infrastructure (Docker Compose ou manuel)
+- [ ] Vérifier les endpoints (`/health`, `/api/v1/llm/providers`, `/metrics`)
+- [ ] Tester le gateway avec un appel simple
+- [ ] Accéder aux nouveaux dashboards
+- [ ] Vérifier les logs backend/worker
+- [ ] Monitorer les métriques Prometheus
 
-**Solution:**
-
-```bash
-cd /root/ai-code-review-platform/apps/backend
-poetry install --no-cache
-poetry run pip list | grep -E "ragas|datasets|langchain"
-```
-
-### Problème 5: Database migration errors
-
-**Solution:**
-
-```bash
-cd /root/ai-code-review-platform/apps/backend
-
-# Vérifier l'état des migrations
-poetry run alembic current
-
-# Vérifier l'historique
-poetry run alembic history
-
-# Forcer une migration spécifique
-poetry run alembic upgrade head --sql  # Voir le SQL sans l'exécuter
-poetry run alembic upgrade head        # Exécuter
-```
-
----
-
-## 📈 Utilisation en Production
-
-### 1. Importer vos repositories existants
-
-```bash
-# Via script
-poetry run python scripts/github_profile_importer.py AhmedAmineBejaoui \
-  --max-repos 20 \
-  --filter-languages javascript,typescript,python
-
-# Via API
-curl -X POST http://localhost:8000/api/v1/patterns/import-profile \
-  -H "Authorization: Bearer YOUR_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "username": "AhmedAmineBejaoui",
-    "include_forks": false,
-    "filter_languages": ["javascript", "typescript", "python"],
-    "max_repos": 20
-  }'
-```
-
-### 2. Configurer les webhooks GitHub
-
-Dans GitHub → Settings → Webhooks, configurez:
-- **Payload URL**: `http://135.125.100.150:8000/webhook/github`
-- **Content type**: `application/json`
-- **Events**: Pull requests, Push
-
-### 3. Analyser les PRs automatiquement
-
-L'analyse pattern se fait automatiquement quand un webhook PR est reçu.
-
-Vérifiez dans les logs:
-
-```bash
-docker logs -f ai-code-review-worker | grep "Pattern analysis"
-```
-
-### 4. Visualiser les patterns dans le dashboard
-
-Accédez au dashboard: `http://135.125.100.150:3001/dashboard/patterns`
-
----
-
-## 🔐 Sécurité
-
-### Recommandations
-
-1. **Changer les mots de passe par défaut:**
-
-```bash
-# Neo4j
-docker exec -it neo4j cypher-shell
-# Puis:
-ALTER USER neo4j SET PASSWORD 'NewSecurePassword123!';
-```
-
-2. **Configurer un firewall:**
-
-```bash
-sudo ufw allow 22/tcp      # SSH
-sudo ufw allow 80/tcp      # HTTP
-sudo ufw allow 443/tcp     # HTTPS
-sudo ufw allow 8000/tcp    # Backend API (temporaire, utilisez reverse proxy)
-sudo ufw enable
-```
-
-3. **Utiliser un reverse proxy (Nginx):**
-
-```bash
-sudo apt install nginx
-sudo nano /etc/nginx/sites-available/ai-code-review
-```
-
-Configuration Nginx:
-
-```nginx
-server {
-    listen 80;
-    server_name 135.125.100.150;
-
-    location /api/ {
-        proxy_pass http://localhost:8000;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-
-    location / {
-        proxy_pass http://localhost:3001;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-4. **SSL/TLS avec Let's Encrypt:**
-
-```bash
-sudo apt install certbot python3-certbot-nginx
-sudo certbot --nginx -d your-domain.com
-```
-
----
-
-## 📞 Support
-
-En cas de problème:
-
-1. Vérifiez les logs (voir section Monitoring)
-2. Consultez la documentation: `docs/DESIGN_PATTERN_ANALYSIS.md`
-3. Vérifiez les issues GitHub: https://github.com/AhmedAmineBejaoui/ai-code-review-platform/issues
-
----
-
-## ✅ Checklist de Déploiement
-
-- [ ] Connexion SSH au VPS réussie
-- [ ] Git pull réussi
-- [ ] Dependencies installées (poetry install)
-- [ ] .env configuré avec pattern analysis settings
-- [ ] Neo4j actif et accessible
-- [ ] Migrations de base de données exécutées
-- [ ] Schéma Neo4j initialisé
-- [ ] Services redémarrés (API + Worker)
-- [ ] Health check réussi (GET /health)
-- [ ] Test API pattern statistics réussi
-- [ ] Import GitHub profile testé (optionnel)
-- [ ] Webhooks GitHub configurés
-- [ ] Logs monitoring configuré
-- [ ] Backup configuré (base de données + Neo4j)
-
----
-
-**Déploiement effectué le**: [Date]
-**Version déployée**: commit `67be59a`
-**Fonctionnalités ajoutées**: Design Pattern Analysis System (6,700+ lignes)
+Bonne chance avec le déploiement! 🚀
