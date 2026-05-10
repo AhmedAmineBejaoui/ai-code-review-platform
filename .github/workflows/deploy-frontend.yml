@@ -37,7 +37,8 @@ jobs:
             NEXT_PUBLIC_APP_URL=https://app.dev-ora.tn
             NEXT_PUBLIC_BACKEND_URL=https://api.dev-ora.tn
             NEXT_PUBLIC_Y_WEBSOCKET_URL=wss://yjs.dev-ora.tn
-            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || secrets.CLERK_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_CLERK_JS_URL=/vendor/clerk-js/current/clerk.browser.js
             NEXT_PUBLIC_CLERK_SIGN_IN_URL=/sign-in
             NEXT_PUBLIC_CLERK_SIGN_UP_URL=/sign-up
           cache-from: type=gha,scope=frontend-dashboard

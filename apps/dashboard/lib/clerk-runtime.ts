@@ -11,6 +11,14 @@ function normalizeEnv(value: string | undefined): string | undefined {
   return normalized ? normalized : undefined
 }
 
+export function getClerkPublishableKey(): string | undefined {
+  return normalizeEnv(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+}
+
+export function isClerkConfigured(): boolean {
+  return Boolean(getClerkPublishableKey())
+}
+
 export function getClerkRuntimeConfig(): ClerkRuntimeConfig {
   const explicitUrl = normalizeEnv(process.env.NEXT_PUBLIC_CLERK_JS_URL)
   const explicitVersion = normalizeEnv(process.env.NEXT_PUBLIC_CLERK_JS_VERSION)

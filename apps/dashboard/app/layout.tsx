@@ -1,12 +1,13 @@
 import type { Metadata } from "next"
 import { ClerkProvider } from "@clerk/nextjs"
+import { unstable_noStore as noStore } from "next/cache"
 import { IBM_Plex_Mono, Sora } from "next/font/google"
 
 import { ThemeProvider } from "@/components/dashboard/ThemeProvider"
 import { MobileRedirect } from "@/components/mobile-redirect"
 import { CapacitorProvider } from "@/components/providers/capacitor-provider"
 import { Toaster } from "@/components/ui/sonner"
-import { getClerkRuntimeConfig } from "@/lib/clerk-runtime"
+import { getClerkPublishableKey, getClerkRuntimeConfig } from "@/lib/clerk-runtime"
 import "./globals.css"
 
 const sora = Sora({
@@ -19,10 +20,6 @@ const mono = IBM_Plex_Mono({
   weight: ["400", "500", "600"],
   variable: "--font-ibm-plex-mono",
 })
-
-const clerkRuntimeConfig = getClerkRuntimeConfig()
-const clerkPublishableKey =
-  process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim() || "pk_test_devora_placeholder"
 
 export const metadata: Metadata = {
   title: "Devora",
@@ -37,6 +34,28 @@ export const metadata: Metadata = {
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
+  noStore()
+
+  const clerkRuntimeConfig = getClerkRuntimeConfig()
+  const clerkPublishableKey = getClerkPublishableKey()
+  const appShell = (
+    <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
+      <body className={`${sora.variable} ${mono.variable} bg-background text-foreground antialiased`}>
+        <ThemeProvider>
+          <CapacitorProvider>
+            <MobileRedirect />
+            {children}
+            <Toaster richColors closeButton />
+          </CapacitorProvider>
+        </ThemeProvider>
+      </body>
+    </html>
+  )
+
+  if (!clerkPublishableKey) {
+    return appShell
+  }
+
   return (
     <ClerkProvider
       publishableKey={clerkPublishableKey}
@@ -93,17 +112,7 @@ export default function RootLayout({
         },
       } as any}
     >
-      <html lang="en" suppressHydrationWarning data-scroll-behavior="smooth">
-        <body className={`${sora.variable} ${mono.variable} bg-background text-foreground antialiased`}>
-          <ThemeProvider>
-            <CapacitorProvider>
-              <MobileRedirect />
-              {children}
-              <Toaster richColors closeButton />
-            </CapacitorProvider>
-          </ThemeProvider>
-        </body>
-      </html>
+      {appShell}
     </ClerkProvider>
   )
 }
