@@ -316,6 +316,10 @@ class AnalysisOrchestrator:
             diff_text=diff_content,
             changed_files=changed_files,
             metadata={"source": "analysis_orchestrator"},
+            # Context IDs for gateway observability (enables full trace logging)
+            user_id=None,  # TODO: Extract from analysis metadata or auth context
+            project_id=project_id,
+            organization_id=organization_id,
         )
 
         result = await run_langgraph_analysis(request)

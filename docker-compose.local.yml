@@ -55,6 +55,8 @@ volumes:
     driver: local
   grafana_data_dev:
     driver: local
+  langfuse_db_data:
+    driver: local
 
 ################################################################################
 # SERVICES
@@ -211,6 +213,12 @@ services:
       RBAC_ENFORCEMENT_ENABLED: "false"
       EMAIL_ENABLED: "false"
       SLACK_ENABLED: "false"
+      # LLM Gateway Configuration
+      OLLAMA_ENABLED: "true"
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      # Observability (disabled by default, enable with --profile llm-observability)
+      LANGFUSE_ENABLED: "false"
+      OTEL_ENABLED: "false"
     volumes:
       - ./apps/backend:/app:ro  # Code source en read-only
       - ./imported_repo:/app/imported_repo  # Workspace pour les analyses
@@ -427,6 +435,80 @@ services:
         max-size: "5m"
         max-file: "2"
 
+  # ─── Langfuse (LLMOps Platform - optionnel) ─────────────────────────────────
+  langfuse-db:
+    image: postgres:16-alpine
+    container_name: ai-review-dev-langfuse-db
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    environment:
+      POSTGRES_USER: langfuse
+      POSTGRES_PASSWORD: langfuse
+      POSTGRES_DB: langfuse
+    volumes:
+      - langfuse_db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U langfuse"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  langfuse:
+    image: langfuse/langfuse:2.68.0
+    container_name: ai-review-dev-langfuse
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "3100:3000"
+    environment:
+      DATABASE_URL: postgresql://langfuse:langfuse@langfuse-db:5432/langfuse
+      NEXTAUTH_URL: http://localhost:3100
+      NEXTAUTH_SECRET: changeme-langfuse-secret-key-must-be-at-least-32-chars
+      SALT: changeme-salt-must-be-at-least-32-chars-long
+      TELEMETRY_ENABLED: "false"
+    depends_on:
+      langfuse-db:
+        condition: service_healthy
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
+  # ─── Jaeger (OpenTelemetry Distributed Tracing - optionnel) ────────────────
+  jaeger:
+    image: jaegertracing/all-in-one:1.56
+    container_name: ai-review-dev-jaeger
+    restart: unless-stopped
+    networks:
+      - ai-review-dev
+    ports:
+      - "16686:16686"  # Jaeger UI
+      - "4317:4317"    # OTLP gRPC receiver
+      - "4318:4318"    # OTLP HTTP receiver
+      - "14268:14268"  # Jaeger Collector HTTP
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+      SPAN_STORAGE_TYPE: memory
+    profiles:
+      - llm-observability
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "2"
+
 ################################################################################
 # NOTES D'UTILISATION
 ################################################################################
@@ -437,20 +519,26 @@ services:
 # 2. Démarrage avec monitoring:
 #    docker compose -f docker-compose.local.yml --profile monitoring up -d
 #
-# 3. Voir les logs:
+# 3. Démarrage avec LLM observability (Langfuse + Jaeger):
+#    docker compose -f docker-compose.local.yml --profile llm-observability up -d
+#
+# 4. Démarrage complet (tous les profils):
+#    docker compose -f docker-compose.local.yml --profile monitoring --profile llm-observability up -d
+#
+# 5. Voir les logs:
 #    docker compose -f docker-compose.local.yml logs -f backend
 #    docker compose -f docker-compose.local.yml logs -f worker
 #
-# 4. Rebuild après changement de code:
+# 6. Rebuild après changement de code:
 #    docker compose -f docker-compose.local.yml up -d --build backend
 #
-# 5. Exécuter les migrations:
+# 7. Exécuter les migrations:
 #    docker compose -f docker-compose.local.yml exec backend alembic upgrade head
 #
-# 6. Shell dans un container:
+# 8. Shell dans un container:
 #    docker compose -f docker-compose.local.yml exec backend bash
 #
-# 7. Accès aux services:
+# 9. Accès aux services:
 #    - API:          http://localhost:8000
 #    - API Docs:     http://localhost:8000/docs
 #    - Dashboard:    http://localhost:3000
@@ -463,8 +551,10 @@ services:
 #    - Flower:       http://localhost:5555
 #    - Prometheus:   http://localhost:9090 (avec --profile monitoring)
 #    - Grafana:      http://localhost:3030 (avec --profile monitoring)
+#    - Langfuse:     http://localhost:3100 (avec --profile llm-observability)
+#    - Jaeger:       http://localhost:16686 (avec --profile llm-observability)
 #
-# 8. Reset complet:
+# 10. Reset complet:
 #    docker compose -f docker-compose.local.yml down -v
 #
 ################################################################################

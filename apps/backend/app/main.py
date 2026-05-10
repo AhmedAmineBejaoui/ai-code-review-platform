@@ -21,6 +21,7 @@ from app.api.http import (
     internal_analysis_engine,
     jira_integration,
     knowledge_base,
+    llm_gateway,
     mobile,
     notifications,
     object_storage,
@@ -50,6 +51,7 @@ from app.api.http import (
 )
 from app.api.websockets import notifications as notifications_ws
 from app.api.websockets import review_sessions as review_sessions_ws
+from app.api.websockets import llm_progress as llm_progress_ws
 from app.core.security.secret_store import get_secret_store
 from app.data.database import close_db, init_db
 from app.services.analysis_recovery import run_stale_recovery_if_due
@@ -77,6 +79,15 @@ async def _analysis_stale_recovery_loop(stop_event: asyncio.Event) -> None:
 async def lifespan(app: FastAPI):
     init_db()
     get_secret_store().bootstrap_from_env()
+    
+    # Initialize observability infrastructure (LLM traces + metrics)
+    try:
+        from app.observability import init_observability
+        init_observability()
+        logging.info("Observability infrastructure initialized (LLM traces + metrics)")
+    except Exception:
+        logging.exception("Failed to initialize observability infrastructure (non-fatal)")
+    
     logger = logging.getLogger(__name__)
 
     # Initialise Neo4j schema (constraints, indexes, vector indexes) if enabled
@@ -134,6 +145,7 @@ app = FastAPI(
         {"name": "jira", "description": "Jira integration for issue creation and linking APIs."},
         {"name": "review-states", "description": "Review state machine and workflow management APIs."},
         {"name": "patterns", "description": "Design pattern extraction, analysis, and violation tracking APIs."},
+        {"name": "llm-gateway", "description": "LLM Gateway for intelligent routing, tracing, and cost management."},
     ],
 )
 register_exception_handlers(app)
@@ -232,9 +244,11 @@ app.include_router(integrations.router)
 app.include_router(project_roles.router)
 app.include_router(role_permissions.router)
 app.include_router(ai.router, prefix="/api/v1", tags=["ai"])
+app.include_router(llm_gateway.router)
 app.include_router(suggestions.router, prefix="/v1")
 app.include_router(notifications_ws.router)
 app.include_router(review_sessions_ws.router)
+app.include_router(llm_progress_ws.router)
 app.include_router(graphrag_router)
 app.include_router(graph_viz_router)
 app.include_router(patterns_router)

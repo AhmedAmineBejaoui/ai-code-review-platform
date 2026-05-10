@@ -335,22 +335,100 @@ async def _run_graphrag_pipeline_async(
         analyses_repo.update_status(
             analysis_id=analysis_id,
             stage="PATTERN_ANALYSIS_COMPLETE",
-            progress=90,
+            progress=85,
             metadata_updates={
                 "pattern_analysis": pattern_result,
+            },
+        )
+        
+        # 6.6. Run multi-agent review (NEW)
+        logger.info(f"Running multi-agent review for analysis {analysis_id}")
+        
+        from app.agents.agent_dispatcher import dispatch_review
+        
+        # Extract changed files from parsed diff
+        changed_files = [file.file_path for file in parsed_diff.files if file.file_path]
+        
+        agent_findings = await dispatch_review(
+            diff_content=diff_redacted,
+            changed_files=changed_files,
+            project_type=analysis.metadata.get("project_type") if analysis.metadata else None,
+            repository_path=resolved_scope.repo_path,
+            metadata={
+                "analysis_id": analysis_id,
+                "repository_id": str(repository_id),
+                "project_id": str(project_id),
+            },
+        )
+        
+        # Persist multi-agent findings
+        agent_findings_count = 0
+        agent_findings_by_severity = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+        
+        for finding in agent_findings:
+            fingerprint = hashlib.sha256(
+                (
+                    f"{analysis_id}:multi_agent:{finding.agent_id}:{finding.file_path}:{finding.line}:"
+                    f"{finding.category}:{finding.message}"
+                ).encode("utf-8")
+            ).hexdigest()
+            
+            analyses_repo.create_finding(
+                CreateFindingInput(
+                    finding_id=uuid.uuid4().hex,
+                    analysis_id=analysis_id,
+                    source=f"multi_agent:{finding.agent_id}",
+                    file_path=finding.file_path,
+                    line_start=finding.line,
+                    line_end=finding.line,
+                    severity=finding.severity,
+                    category=finding.category,
+                    message=finding.message,
+                    suggestion=finding.suggestion,
+                    confidence=finding.confidence,
+                    fingerprint=fingerprint,
+                    issue_type="agent_review",
+                    rule_id=finding.rule_id,
+                    evidence={
+                        "agent_id": finding.agent_id,
+                        "agent_evidence": finding.evidence,
+                    },
+                )
+            )
+            
+            agent_findings_count += 1
+            severity_lower = finding.severity.lower()
+            if severity_lower in agent_findings_by_severity:
+                agent_findings_by_severity[severity_lower] += 1
+        
+        logger.info(
+            f"Multi-agent review completed: {agent_findings_count} findings from {len(set(f.agent_id for f in agent_findings))} agents"
+        )
+        
+        analyses_repo.update_status(
+            analysis_id=analysis_id,
+            stage="MULTI_AGENT_COMPLETE",
+            progress=90,
+            metadata_updates={
+                "multi_agent_review": {
+                    "total_findings": agent_findings_count,
+                    "findings_by_severity": agent_findings_by_severity,
+                    "agents_used": list(set(f.agent_id for f in agent_findings)),
+                },
             },
         )
         
         # 7. Calculate metrics
         total_findings = orchestration_result.get("total_findings", 0)
         pattern_findings = pattern_result.get("findings_created", 0)
+        agent_findings_total = agent_findings_count
         
         metrics = AnalysisMetrics(
-            total_findings=total_findings + pattern_findings,
-            critical_findings=orchestration_result.get("critical_findings", 0) + pattern_result.get("violations_by_severity", {}).get("critical", 0),
-            high_findings=orchestration_result.get("high_findings", 0) + pattern_result.get("violations_by_severity", {}).get("high", 0),
-            medium_findings=orchestration_result.get("medium_findings", 0) + pattern_result.get("violations_by_severity", {}).get("medium", 0),
-            low_findings=orchestration_result.get("low_findings", 0) + pattern_result.get("violations_by_severity", {}).get("low", 0),
+            total_findings=total_findings + pattern_findings + agent_findings_total,
+            critical_findings=orchestration_result.get("critical_findings", 0) + pattern_result.get("violations_by_severity", {}).get("critical", 0) + agent_findings_by_severity.get("critical", 0),
+            high_findings=orchestration_result.get("high_findings", 0) + pattern_result.get("violations_by_severity", {}).get("high", 0) + agent_findings_by_severity.get("high", 0),
+            medium_findings=orchestration_result.get("medium_findings", 0) + pattern_result.get("violations_by_severity", {}).get("medium", 0) + agent_findings_by_severity.get("medium", 0),
+            low_findings=orchestration_result.get("low_findings", 0) + pattern_result.get("violations_by_severity", {}).get("low", 0) + agent_findings_by_severity.get("low", 0),
             files_analyzed=files_count,
             lines_of_code=additions_total + deletions_total,
         )
@@ -410,6 +488,11 @@ async def _run_graphrag_pipeline_async(
                     "patterns_checked": pattern_result.get("patterns_checked", 0),
                     "violations_by_severity": pattern_result.get("violations_by_severity", {}),
                     "violations_by_pattern": pattern_result.get("violations_by_pattern", {}),
+                },
+                "multi_agent_review": {
+                    "total_findings": agent_findings_count,
+                    "findings_by_severity": agent_findings_by_severity,
+                    "agents_used": list(set(f.agent_id for f in agent_findings)),
                 },
             },
         )

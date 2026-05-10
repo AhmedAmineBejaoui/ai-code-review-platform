@@ -221,6 +221,63 @@ class Settings(BaseSettings):
     ANTHROPIC_MAX_TOKENS: int = 4096
     ANTHROPIC_TEMPERATURE: float = 0.0
     
+    # ── LLM Gateway Configuration ─────────────────────────────────────────────
+    # Provider Availability
+    OLLAMA_ENABLED: bool = True
+    AZURE_OPENAI_API_KEY: str | None = None
+    AZURE_OPENAI_ENDPOINT: str | None = None
+    AZURE_OPENAI_DEPLOYMENT_NAME: str | None = None
+    AZURE_OPENAI_API_VERSION: str = "2024-02-01"
+    
+    # Rate Limiting (per provider)
+    RATE_LIMIT_ANTHROPIC_PER_MINUTE: int = 50
+    RATE_LIMIT_OPENAI_PER_MINUTE: int = 60
+    RATE_LIMIT_OLLAMA_PER_MINUTE: int = 0  # Unlimited
+    RATE_LIMIT_PER_USER_PER_HOUR: int = 100
+    
+    # Prompt Caching
+    PROMPT_CACHE_ENABLED: bool = True
+    PROMPT_CACHE_TTL_SECONDS: int = 3600  # 1 hour
+    PROMPT_CACHE_MAX_SIZE: int = 10000
+    
+    # ── Observability Configuration ───────────────────────────────────────────
+    # Langfuse LLMOps Platform (optional)
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    LANGFUSE_TIMEOUT_SECONDS: int = 10
+    LANGFUSE_RETRY_COUNT: int = 2
+    
+    # OpenTelemetry Distributed Tracing (optional)
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "devora-backend"
+    OTEL_EXPORTER_TYPE: str = "otlp"  # "otlp", "jaeger", "zipkin"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_SAMPLE_RATE: float = 1.0
+    OTEL_RESOURCE_ATTRIBUTES: str | None = None
+    OTEL_JAEGER_AGENT_HOST: str = "localhost"
+    OTEL_JAEGER_AGENT_PORT: int = 6831
+    OTEL_ZIPKIN_ENDPOINT: str = "http://localhost:9411/api/v2/spans"
+    
+    # LLM Traces Retention
+    LLM_TRACES_RETENTION_DAYS: int = 90
+    LLM_METRICS_AGGREGATION_INTERVAL_MINUTES: int = 60
+    
+    # ── Multi-Agent Configuration ─────────────────────────────────────────────
+    MULTI_AGENT_ENABLED: bool = True
+    MULTI_AGENT_PARALLEL_EXECUTION: bool = True
+    MULTI_AGENT_TIMEOUT_SECONDS: int = 120
+    MULTI_AGENT_MAX_FINDINGS_PER_AGENT: int = 20
+    MULTI_AGENT_DEDUPLICATION_ENABLED: bool = True
+    MULTI_AGENT_SIMILARITY_THRESHOLD: float = 0.85
+    
+    # ── RAGAS Evaluation Configuration ────────────────────────────────────────
+    RAGAS_EVALUATION_ENABLED: bool = True
+    RAGAS_COMPUTE_ON_TRACE: bool = True  # Compute metrics automatically after each trace
+    RAGAS_USE_OLLAMA: bool = True  # Use Ollama local for evaluation (free, CONFIDENTIAL)
+    RAGAS_BATCH_SIZE: int = 10  # Process N traces at once for efficiency
+    
     # Embedding Configuration
     EMBEDDING_PROVIDER: str = "sentence_transformers"  # "sentence_transformers", "openai", "codebert"
     EMBEDDING_MODEL: str = "all-MiniLM-L6-v2"  # For sentence_transformers
@@ -338,6 +395,25 @@ class Settings(BaseSettings):
     VAPID_PUBLIC_KEY: str | None = None
     VAPID_PRIVATE_KEY: str | None = None
     VAPID_SUBJECT: str | None = None
+
+    # ── Observability (Langfuse) ──────────────────────────────────────────
+    LANGFUSE_ENABLED: bool = False
+    LANGFUSE_PUBLIC_KEY: str | None = None
+    LANGFUSE_SECRET_KEY: str | None = None
+    LANGFUSE_HOST: str = "https://cloud.langfuse.com"
+    LANGFUSE_TIMEOUT_SECONDS: int = 10
+    LANGFUSE_RETRY_COUNT: int = 2
+
+    # ── Observability (OpenTelemetry) ─────────────────────────────────────
+    OTEL_ENABLED: bool = False
+    OTEL_SERVICE_NAME: str = "devora-backend"
+    OTEL_EXPORTER_OTLP_ENDPOINT: str = "http://localhost:4317"
+    OTEL_EXPORTER_TYPE: str = "otlp"  # "otlp", "jaeger", "zipkin"
+    OTEL_SAMPLE_RATE: float = 1.0  # 0.0 - 1.0 (1.0 = trace all requests)
+    OTEL_RESOURCE_ATTRIBUTES: str | None = None  # comma-separated key=value pairs
+    OTEL_JAEGER_AGENT_HOST: str = "localhost"
+    OTEL_JAEGER_AGENT_PORT: int = 6831
+    OTEL_ZIPKIN_ENDPOINT: str = "http://localhost:9411/api/v2/spans"
 
     model_config = SettingsConfigDict(env_file=tuple(_ENV_FILES), extra="ignore")
 
