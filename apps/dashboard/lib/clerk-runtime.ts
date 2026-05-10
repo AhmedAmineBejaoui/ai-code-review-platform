@@ -12,7 +12,7 @@ function normalizeEnv(value: string | undefined): string | undefined {
 }
 
 export function getClerkPublishableKey(): string | undefined {
-  return normalizeEnv(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
+  return normalizeEnv(process.env.CLERK_PUBLISHABLE_KEY) ?? normalizeEnv(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY)
 }
 
 export function isClerkConfigured(): boolean {
